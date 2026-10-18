@@ -63,6 +63,25 @@ enum BookingStatus {
   FAILED
 }
 
+enum RideStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  PAYMENT_PENDING
+  PAID_UNASSIGNED
+  MATCHING
+  DRIVER_ASSIGNED
+  DRIVER_EN_ROUTE
+  DRIVER_ARRIVED
+  PICKUP_VERIFICATION_PENDING
+  TRIP_IN_PROGRESS
+  TRIP_COMPLETION_PENDING
+  COMPLETED
+  CANCELLATION_PENDING
+  CANCELLED
+  NO_DRIVER_FOUND
+  FAILED
+}
+
 enum PaymentStatus {
   INITIALIZED
   PENDING
@@ -149,7 +168,6 @@ model User {
   driverProfile DriverProfile?
   sentParcels   ParcelBooking[] @relation("ParcelSender")
   rideBookings  RideBooking[]   @relation("RidePassenger")
-  offers        DriverOffer[]
   assignments   DriverAssignment[]
   notifications Notification[]
 
@@ -401,7 +419,7 @@ model RideBooking {
   publicReference       String        @unique
   passengerId           String
   serviceZoneId         String
-  status                BookingStatus @default(DRAFT)
+  status                RideStatus    @default(DRAFT)
   paymentStatus         PaymentStatus @default(INITIALIZED)
   currency              String        @default("NGN")
   pickupAddress         String
@@ -430,6 +448,7 @@ model RideBooking {
   events                BookingEvent[]
   ledgerEntries         LedgerEntry[]
   payouts               DriverPayout[]
+  verificationTokens    VerificationToken[]
 
   @@index([passengerId, createdAt])
   @@index([serviceZoneId, status, createdAt])
@@ -588,6 +607,7 @@ model DriverPayout {
 model VerificationToken {
   id                String                  @id @default(cuid())
   parcelBookingId   String?
+  rideBookingId     String?
   action            VerificationAction
   tokenHash         String                  @unique
   status            VerificationTokenStatus @default(ACTIVE)
@@ -597,8 +617,10 @@ model VerificationToken {
   createdAt         DateTime                @default(now())
 
   parcelBooking     ParcelBooking?          @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
+  rideBooking       RideBooking?             @relation(fields: [rideBookingId], references: [id], onDelete: Cascade)
 
   @@index([parcelBookingId, action, status])
+  @@index([rideBookingId, action, status])
   @@index([status, expiresAt])
   @@map("verification_tokens")
 }
