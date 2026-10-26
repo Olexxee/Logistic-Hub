@@ -772,15 +772,15 @@ model Notification {
 
 model AuthSession {
   id               String    @id @default(cuid())
-  userId           String
-  refreshTokenHash String    @unique
-  expiresAt        DateTime
-  revokedAt        DateTime?
-  lastUsedAt       DateTime?
-  userAgent        String?
-  ipHash           String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  userId           String    @map("user_id")
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  userAgent        String?   @map("user_agent")
+  ipHash           String?   @map("ip_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
