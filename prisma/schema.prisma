@@ -754,10 +754,16 @@ model Notification {
   body        String
   data        Json?
   readAt      DateTime?
+  emailStatus String   @default("NOT_REQUESTED")
+  emailSentAt DateTime?
+  emailProviderId String?
+  emailErrorCode String?
+  deliveryKey String?  @unique
   createdAt   DateTime @default(now())
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
+  @@index([emailStatus, createdAt])
   @@map("notifications")
 }

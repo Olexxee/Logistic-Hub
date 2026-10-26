@@ -2,11 +2,13 @@ import { Router } from "express";
 import { ZodError } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { createParcelBookingsService } from "./parcel-bookings.service.js";
+import { createNotificationsService } from "../notifications/notifications.service.js";
 import { createParcelBookingSchema, idempotencyKeySchema } from "./parcel-bookings.schemas.js";
 
 export function createParcelBookingsRouter({ prismaClient = prisma } = {}) {
   const router = Router();
   const service = createParcelBookingsService({ prismaClient });
+  const notifications = createNotificationsService({ prismaClient });
 
   router.post("/", async (req, res, next) => {
     const parsed = createParcelBookingSchema.safeParse(req.body);
@@ -39,6 +41,21 @@ export function createParcelBookingsRouter({ prismaClient = prisma } = {}) {
         idempotencyKey: idempotency.data,
         input: parsed.data,
       });
+      if (!result.replay) {
+        try {
+          await notifications.createAndDeliver({
+            userId: req.user.id,
+            type: "PARCEL_BOOKING_CREATED",
+            title: "Parcel booking created",
+            body: `Your parcel booking ${result.booking.publicReference} has been created. A driver fare must be accepted before payment is collected.`,
+            data: { bookingId: result.booking.id, publicReference: result.booking.publicReference },
+            deliveryKey: `parcel-booking-created-${result.booking.id}`,
+            emailSubject: "Your Logistic Hub parcel booking was created",
+          });
+        } catch (notificationError) {
+          req.log?.warn({ code: notificationError.code ?? "NOTIFICATION_FAILED" }, "Could not create parcel booking notification");
+        }
+      }
       return res.status(result.replay ? 200 : 201).json({ success: true, data: result.booking });
     } catch (error) {
       if (error instanceof ZodError) {
