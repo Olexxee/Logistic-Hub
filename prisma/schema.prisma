@@ -459,6 +459,8 @@ model ParcelBooking {
 model RideBooking {
   idempotencyKey        String?       @unique
   idempotencyPayloadHash String?
+  fareAcceptanceIdempotencyKey String? @unique
+  fareAcceptancePayloadHash String?
   id                    String        @id @default(cuid())
   publicReference       String        @unique
   passengerId           String
