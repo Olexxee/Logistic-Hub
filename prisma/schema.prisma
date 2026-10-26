@@ -178,6 +178,7 @@ model User {
   rideBookings  RideBooking[]   @relation("RidePassenger")
   assignments   DriverAssignment[]
   notifications Notification[]
+  authActionTokens AuthActionToken[]
 
   @@index([role, status])
   @@map("users")
@@ -399,6 +400,10 @@ model PricingRule {
 model ParcelBooking {
   id                      String        @id @default(cuid())
   publicReference         String        @unique
+  idempotencyKey          String?       @unique
+  idempotencyPayloadHash   String?
+  fareAcceptanceIdempotencyKey String? @unique
+  fareAcceptancePayloadHash String?
   senderId                String
   pickupServiceZoneId     String
   destinationServiceZoneId String
@@ -452,6 +457,10 @@ model ParcelBooking {
 }
 
 model RideBooking {
+  idempotencyKey        String?       @unique
+  idempotencyPayloadHash String?
+  fareAcceptanceIdempotencyKey String? @unique
+  fareAcceptancePayloadHash String?
   id                    String        @id @default(cuid())
   publicReference       String        @unique
   passengerId           String
@@ -502,6 +511,8 @@ model DriverOffer {
   driverProfileId   String
   status            OfferStatus @default(OFFERED)
   proposedFareMinor BigInt?
+  fareProposalIdempotencyKey String? @unique
+  fareProposalPayloadHash String?
   currency          String      @default("NGN")
   expiresAt         DateTime
   respondedAt       DateTime?
@@ -714,6 +725,27 @@ model HubPoint {
   @@map("hub_points")
 }
 
+enum AuthTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model AuthActionToken {
+  id         String           @id @default(cuid())
+  userId     String
+  purpose    AuthTokenPurpose
+  tokenHash  String           @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime         @default(now())
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, consumedAt])
+  @@index([purpose, expiresAt])
+  @@map("auth_action_tokens")
+}
+
 model Notification {
   id          String   @id @default(cuid())
   userId      String
@@ -722,10 +754,16 @@ model Notification {
   body        String
   data        Json?
   readAt      DateTime?
+  emailStatus String   @default("NOT_REQUESTED")
+  emailSentAt DateTime?
+  emailProviderId String?
+  emailErrorCode String?
+  deliveryKey String?  @unique
   createdAt   DateTime @default(now())
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
+  @@index([emailStatus, createdAt])
   @@map("notifications")
 }

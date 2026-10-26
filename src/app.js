@@ -3,7 +3,18 @@ import express from "express";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { env } from "./config/env.js";
+import { authRouter } from "./modules/auth/auth.routes.js";
+import { requireAuth } from "./modules/auth/auth.middleware.js";
 import { healthRouter } from "./modules/health/health.routes.js";
+import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js";
+import { mapsRouter } from "./modules/maps/maps.routes.js";
+import { parcelBookingsRouter } from "./modules/parcels/parcel-bookings.routes.js";
+import { rideBookingsRouter } from "./modules/rides/ride-bookings.routes.js";
+import { rideDispatchRouter } from "./modules/rides/ride-dispatch.routes.js";
+import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
+import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
+import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
+import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -28,10 +39,22 @@ app.get("/", (_req, res) => {
       name: "Logistic Hub API",
       version: "v1",
       health: "/api/v1/health",
+      readiness: "/api/v1/health/ready",
+      authentication: "/api/v1/auth",
     },
   });
 });
 
 app.use("/api/v1/health", healthRouter);
+app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/service-zones", serviceZonesRouter);
+app.use("/api/v1/hub-points", hubPointsRouter);
+app.use("/api/v1/drivers", driversRouter);
+app.use("/api/v1/maps", requireAuth, mapsRouter);
+app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
+app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);
+app.use("/api/v1", rideDispatchRouter);
+app.use("/api/v1", dispatchRouter);
+app.use("/api/v1/notifications", notificationsRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

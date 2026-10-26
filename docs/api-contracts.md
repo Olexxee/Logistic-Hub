@@ -1,8 +1,8 @@
 # Backend API Contracts
 
-**Status:** Initial contract baseline. The root metadata and health routes are implemented. All other routes in the OpenAPI document are planned contracts, not available endpoints.
+**Status:** The root metadata, health/readiness, active service zones, authentication/email verification, and provider-backed maps endpoints are implemented. Remaining routes in the OpenAPI document are planned contracts, not available endpoints.
 
-The machine-readable contract is [`openapi.yaml`](openapi.yaml). Treat it as the source of truth for request/response shapes. Update the spec and contract tests together whenever a contract changes.
+The machine-readable contract is [`openapi.yaml`](openapi.yaml). Treat it as the source of truth for request/response shapes. Update the spec and contract tests together whenever a contract changes. Implemented operational endpoints are documented in [`operational-basics.md`](operational-basics.md).
 
 ## Stable API rules
 
@@ -48,21 +48,40 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | Method | Path | Status | Purpose |
 |---|---|---|---|
 | GET | `/` | Implemented | API metadata |
-| GET | `/api/v1/health` | Implemented | Process health; does not yet prove database readiness |
-| GET | `/api/v1/service-zones` | Planned | Active zones and service availability |
-| POST | `/api/v1/maps/geocode` | Planned | Normalize an address to candidate coordinates |
-| POST | `/api/v1/maps/routes` | Planned | Return normalized distance and ETA |
-| POST | `/api/v1/parcel-bookings` | Planned | Create a draft parcel booking |
-| GET | `/api/v1/parcel-bookings/{bookingId}` | Planned | Read owner-visible booking details and lifecycle state |
-| GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Planned | List fare proposals for the booking sender |
-| GET | `/api/v1/driver/offers` | Planned | List current offers for the authenticated driver |
-| POST | `/api/v1/driver/offers/{offerId}/propose-fare` | Planned | Driver submits a fare proposal |
-| POST | `/api/v1/parcel-bookings/{bookingId}/accept-fare` | Planned | Sender accepts one valid fare proposal |
+| GET | `/api/v1/health` | Implemented | Process health only |
+| GET | `/api/v1/health/ready` | Implemented | Database readiness check; returns 503 when PostgreSQL is unavailable |
+| GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |
+| GET | `/api/v1/hub-points` | Implemented | List active parcel drop-off and collection points |
+| GET | `/api/v1/drivers/me` | Implemented | Read driver profile and onboarding status |
+| POST | `/api/v1/drivers/onboarding` | Implemented | Submit driver profile and vehicle for review |
+| PATCH | `/api/v1/drivers/availability` | Implemented | Update verified driver's online/available state |
+| POST | `/api/v1/drivers/location` | Implemented | Record an authenticated online driver's location |
+| PATCH | `/api/v1/drivers/admin/{driverProfileId}/verification` | Implemented | Admin approves or rejects driver verification |
+| PATCH | `/api/v1/drivers/admin/vehicles/{vehicleId}/verification` | Implemented | Admin approves or rejects vehicle verification |
+| PUT | `/api/v1/drivers/admin/coverage` | Implemented | Admin configures driver service-zone coverage |
+| POST | `/api/v1/auth/register` | Implemented | Create a pending customer account and send verification email |
+| POST | `/api/v1/auth/verify-email` | Implemented | Consume one-time verification token |
+| POST | `/api/v1/auth/login` | Implemented | Authenticate an active verified account |
+| POST | `/api/v1/auth/password/forgot` | Implemented | Request password reset without account enumeration |
+| POST | `/api/v1/auth/password/reset` | Implemented | Consume one-time password reset token |
+| GET | `/api/v1/auth/me` | Implemented | Read authenticated account profile |
+| POST | `/api/v1/maps/geocode` | Implemented | Geocode address through configured provider; authenticated |
+| POST | `/api/v1/maps/routes` | Implemented | Compute normalized route; authenticated |
+| GET | `/api/v1/notifications` | Implemented | List the caller's notifications and unread count |
+| PATCH | `/api/v1/notifications/{notificationId}/read` | Implemented | Mark an owned notification as read |
+| POST | `/api/v1/notifications/read-all` | Implemented | Mark all caller notifications as read |
+| POST | `/api/v1/parcel-bookings` | Implemented | Create an idempotent draft parcel booking with a fixed connection-fee snapshot |
+| GET | `/api/v1/parcel-bookings/{bookingId}` | Implemented | Read owner-visible booking details and lifecycle state |
+| POST | `/api/v1/parcel-bookings/{bookingId}/request-matching` | Implemented | Fan out offers to verified drivers covering both service zones |
+| GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Implemented | List driver fare proposals for the booking sender |
+| GET | `/api/v1/driver/offers` | Implemented | List active offers for an eligible driver |
+| POST | `/api/v1/driver/offers/{offerId}/propose-fare` | Implemented | Driver submits one idempotent fare proposal |
+| POST | `/api/v1/parcel-bookings/{bookingId}/accept-fare` | Implemented | Sender accepts a fare and reserves the driver pending payment |
 | POST | `/api/v1/payments` | Planned and disabled | Initialize payment after fare acceptance |
 | GET | `/api/v1/payments/{paymentAttemptId}` | Planned and disabled | Read server-verified payment status |
 | POST | `/api/v1/webhooks/paystack` | Planned and disabled | Receive signature-verified provider events |
 
-Authentication, ride-booking, assignment, verification and admin contracts remain outside this initial parcel-flow baseline and must be specified before their modules or client applications are built.
+Role-specific driver onboarding, refresh-session rotation/revocation, ride-booking, assignment, booking verification, admin workflows, matching, and payments remain unimplemented.
 
 ## Resource visibility and privacy
 

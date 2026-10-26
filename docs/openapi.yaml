@@ -17,6 +17,10 @@ tags:
   - name: Parcel bookings
   - name: Driver offers
   - name: Payments
+  - name: Drivers
+  - name: Admin
+  - name: Hub points
+  - name: Notifications
   - name: Webhooks
 paths:
   /health:
@@ -28,17 +32,52 @@ paths:
       x-implementation-status: implemented
       responses:
         '200':
-          description: Process health; does not guarantee database readiness.
+          description: Process health only; database readiness is reported separately.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+  /health/ready:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Check database readiness
+      security: []
+      x-implementation-status: implemented
+      responses:
+        '200':
+          description: PostgreSQL readiness confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [service, status, dependencies, timestamp]
+                    properties:
+                      service: { const: logistic-hub-api }
+                      status: { const: ready }
+                      dependencies:
+                        type: object
+                        required: [database]
+                        properties:
+                          database: { const: ok }
+                      timestamp: { type: string, format: date-time }
+        '503':
+          description: PostgreSQL is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /service-zones:
     get:
       tags: [Geography]
       operationId: listActiveServiceZones
       summary: List active service zones and service availability
-      x-implementation-status: planned
+      x-implementation-status: implemented
       parameters:
         - in: query
           name: countryCode
@@ -83,7 +122,7 @@ paths:
       operationId: geocodeAddress
       summary: Convert an address to candidate coordinates
       description: Geocoding does not establish service-zone eligibility.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       requestBody:
@@ -136,7 +175,7 @@ paths:
       operationId: computeRoute
       summary: Estimate route distance and duration
       description: Route distance and duration are estimates, not fare guarantees.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       requestBody:
@@ -181,6 +220,409 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: registerCustomer
+      summary: Register a customer and send an email verification link
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [fullName, email, password]
+              properties:
+                fullName: { type: string, minLength: 2, maxLength: 160 }
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, minLength: 10, maxLength: 128 }
+      responses:
+        '201':
+          description: Account created; verification email accepted.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email is already registered.
+        '503':
+          description: Email service is unavailable.
+  /auth/verify-email:
+    post:
+      tags: [Authentication]
+      operationId: verifyEmail
+      summary: Verify an email address using a one-time token
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, minLength: 64, maxLength: 64 }
+      responses:
+        '200':
+          description: Email verified and account activated.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Authenticate a verified active account
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Short-lived bearer access token and public account profile.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Account is not active or email is not verified.
+        '503':
+          description: Authentication signing is not configured.
+  /auth/password/forgot:
+    post:
+      tags: [Authentication]
+      operationId: requestPasswordReset
+      summary: Request a password reset email
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          description: Generic response that does not disclose whether the account exists.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /auth/password/reset:
+    post:
+      tags: [Authentication]
+      operationId: resetPassword
+      summary: Set a new password using a one-time reset token
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, password]
+              properties:
+                token: { type: string, minLength: 64, maxLength: 64 }
+                password: { type: string, minLength: 10, maxLength: 128 }
+      responses:
+        '200':
+          description: Password reset successfully.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentAccount
+      summary: Return the authenticated account profile
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current account profile.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /drivers/me:
+    get:
+      tags: [Drivers]
+      operationId: getMyDriverProfile
+      summary: Read the authenticated user's driver profile and onboarding status
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: "Driver profile, or null if onboarding has not started." }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /drivers/onboarding:
+    post:
+      tags: [Drivers]
+      operationId: submitDriverOnboarding
+      summary: Submit a driver profile and vehicle for review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [vehicle]
+              properties:
+                serviceRadiusMeters: { type: integer, minimum: 500, maximum: 100000, default: 5000 }
+                vehicle:
+                  type: object
+                  additionalProperties: false
+                  required: [type]
+                  properties:
+                    type: { type: string, enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK] }
+                    make: { type: string, maxLength: 80 }
+                    model: { type: string, maxLength: 80 }
+                    registrationPlate: { type: string, minLength: 2, maxLength: 32 }
+                    parcelCapacity: { type: string, maxLength: 80 }
+      responses:
+        '201': { description: Onboarding submitted; driver and vehicle await admin review. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: Driver profile or vehicle already exists. }
+  /drivers/availability:
+    patch:
+      tags: [Drivers]
+      operationId: setDriverAvailability
+      summary: Set online and available status for a verified driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isOnline, isAvailable]
+              properties:
+                isOnline: { type: boolean }
+                isAvailable: { type: boolean }
+      responses:
+        '200': { description: Updated online and available state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Driver is not ready for dispatch. }
+  /drivers/location:
+    post:
+      tags: [Drivers]
+      operationId: recordDriverLocation
+      summary: Record a location update for a verified online driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [latitude, longitude]
+              properties:
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+                accuracyMeters: { type: number, minimum: 0, maximum: 10000 }
+      responses:
+        '201': { description: Location recorded; response includes timestamp. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /drivers/admin/{driverProfileId}/verification:
+    patch:
+      tags: [Admin]
+      operationId: reviewDriverVerification
+      summary: Approve or reject driver verification
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: driverProfileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [verificationStatus]
+              properties:
+                verificationStatus: { type: string, enum: [VERIFIED, REJECTED] }
+      responses:
+        '200': { description: Driver verification updated. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/vehicles/{vehicleId}/verification:
+    patch:
+      tags: [Admin]
+      operationId: reviewVehicleVerification
+      summary: Approve or reject a driver's vehicle
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: vehicleId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [verificationStatus]
+              properties:
+                verificationStatus: { type: string, enum: [VERIFIED, REJECTED] }
+      responses:
+        '200': { description: Vehicle verification updated. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/coverage:
+    put:
+      tags: [Admin]
+      operationId: setDriverCoverage
+      summary: Enable or disable service-zone coverage for a driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [driverProfileId, serviceZoneId, serviceType, isEnabled]
+              properties:
+                driverProfileId: { type: string }
+                serviceZoneId: { type: string }
+                serviceType: { $ref: '#/components/schemas/ServiceType' }
+                isEnabled: { type: boolean }
+      responses:
+        '200': { description: Driver coverage upserted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /hub-points:
+    get:
+      tags: [Hub points]
+      operationId: listActiveHubPoints
+      summary: List active parcel drop-off and collection points
+      description: Only active hub points in active zones with current parcel-service availability are returned.
+      x-implementation-status: implemented
+      security: []
+      parameters:
+        - in: query
+          name: countryCode
+          schema: { type: string, minLength: 2, maxLength: 2, default: NG }
+        - in: query
+          name: stateCode
+          schema: { type: string, minLength: 5, maxLength: 5 }
+        - in: query
+          name: lgaName
+          schema: { type: string, minLength: 1, maxLength: 100 }
+        - in: query
+          name: serviceZoneId
+          schema: { type: string }
+        - in: query
+          name: q
+          schema: { type: string, minLength: 1, maxLength: 120 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Active hub points with zone, LGA, state and country labels.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List notifications for the authenticated account
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Notification page and unread count for the authenticated account.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notifications/{notificationId}/read:
+    patch:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Mark one owned notification as read
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: notificationId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Notification marked read; repeated requests are safe.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Mark all notifications for the authenticated account as read
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Number of unread notifications marked read.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /parcel-bookings:
     post:
       tags: [Parcel bookings]
@@ -189,7 +631,7 @@ paths:
       description: |
         The server validates both service zones and current parcel-service availability.
         The client cannot set status, payment status, price snapshots or driver assignment.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -286,7 +728,7 @@ paths:
       tags: [Parcel bookings]
       operationId: getParcelBooking
       summary: Get a parcel booking and its current lifecycle state
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -310,12 +752,37 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /parcel-bookings/{bookingId}/request-matching:
+    post:
+      tags: [Driver offers]
+      operationId: requestParcelMatching
+      summary: Request offers from eligible drivers for a draft parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '202':
+          description: Matching requested; offers have a finite expiry window.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Booking state conflict or no eligible drivers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /parcel-bookings/{bookingId}/offers:
     get:
       tags: [Driver offers]
       operationId: listParcelFareOffers
       summary: List fare offers visible to the booking sender
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -346,7 +813,7 @@ paths:
       tags: [Driver offers]
       operationId: listDriverOffers
       summary: List current offers for the authenticated driver
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -387,7 +854,7 @@ paths:
       tags: [Driver offers]
       operationId: proposeDriverFare
       summary: Submit or revise a fare proposal for an offer
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -448,7 +915,7 @@ paths:
         Acceptance is transactional. The backend snapshots the agreed fare and
         fixed connection fee, reserves the selected driver while payment is pending,
         and withdraws competing offers. This does not initialize payment.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -493,6 +960,185 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /ride-bookings:
+    post:
+      tags: [Passenger rides]
+      operationId: createRideBooking
+      summary: Create an idempotent passenger ride draft
+      description: The ride is not dispatched and no payment is collected until a driver fare is proposed and explicitly accepted by the passenger.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Ride draft created.
+        '200':
+          description: Existing ride returned for an identical idempotent retry.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Service zone, pricing or idempotency conflict.
+  /ride-bookings/{rideBookingId}:
+    get:
+      tags: [Passenger rides]
+      operationId: getRideBooking
+      summary: Get a ride booking visible to the authenticated passenger
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Ride booking details.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /ride-bookings/{rideBookingId}/request-matching:
+    post:
+      tags: [Passenger rides]
+      operationId: requestRideMatching
+      summary: Request driver offers for a draft passenger ride
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202':
+          description: Matching request accepted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Ride state or driver availability conflict.
+  /ride-bookings/{rideBookingId}/offers:
+    get:
+      tags: [Passenger rides]
+      operationId: listRideOffers
+      summary: List fare proposals for a passenger ride
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Driver fare proposals.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /driver/ride-offers:
+    get:
+      tags: [Passenger rides]
+      operationId: listDriverRideOffers
+      summary: List current passenger ride offers for the authenticated driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Driver ride offer page.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /driver/ride-offers/{offerId}/propose-fare:
+    post:
+      tags: [Passenger rides]
+      operationId: proposeRideFare
+      summary: Submit a fare proposal for a passenger ride
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: offerId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Fare proposal recorded.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Offer expired or idempotency conflict.
+  /ride-bookings/{rideBookingId}/accept-fare:
+    post:
+      tags: [Passenger rides]
+      operationId: acceptRideFare
+      summary: Accept one driver fare proposal before payment
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Fare accepted and payable total snapshotted.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Offer expired or ride state conflict.
   /payments:
     post:
       tags: [Payments]
