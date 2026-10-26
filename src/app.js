@@ -10,6 +10,7 @@ import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js"
 import { mapsRouter } from "./modules/maps/maps.routes.js";
 import { parcelBookingsRouter } from "./modules/parcels/parcel-bookings.routes.js";
 import { rideBookingsRouter } from "./modules/rides/ride-bookings.routes.js";
+import { rideDispatchRouter } from "./modules/rides/ride-dispatch.routes.js";
 import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
@@ -52,6 +53,7 @@ app.use("/api/v1/drivers", driversRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);
+app.use("/api/v1", rideDispatchRouter);
 app.use("/api/v1", dispatchRouter);
 app.use("/api/v1/notifications", notificationsRouter);
 app.use(notFoundHandler);
