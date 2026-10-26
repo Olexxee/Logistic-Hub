@@ -1011,6 +1011,134 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /ride-bookings/{rideBookingId}/request-matching:
+    post:
+      tags: [Passenger rides]
+      operationId: requestRideMatching
+      summary: Request driver offers for a draft passenger ride
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202':
+          description: Matching request accepted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Ride state or driver availability conflict.
+  /ride-bookings/{rideBookingId}/offers:
+    get:
+      tags: [Passenger rides]
+      operationId: listRideOffers
+      summary: List fare proposals for a passenger ride
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Driver fare proposals.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /driver/ride-offers:
+    get:
+      tags: [Passenger rides]
+      operationId: listDriverRideOffers
+      summary: List current passenger ride offers for the authenticated driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Driver ride offer page.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /driver/ride-offers/{offerId}/propose-fare:
+    post:
+      tags: [Passenger rides]
+      operationId: proposeRideFare
+      summary: Submit a fare proposal for a passenger ride
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: offerId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Fare proposal recorded.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Offer expired or idempotency conflict.
+  /ride-bookings/{rideBookingId}/accept-fare:
+    post:
+      tags: [Passenger rides]
+      operationId: acceptRideFare
+      summary: Accept one driver fare proposal before payment
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Fare accepted and payable total snapshotted.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Offer expired or ride state conflict.
   /payments:
     post:
       tags: [Payments]
