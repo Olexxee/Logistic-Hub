@@ -4,7 +4,7 @@ import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { createSupportService } from "./support.service.js";
 import { createSupportController } from "./support.controller.js";
-import { validateCancelBooking, validateCreateSupportTicket, validateSupportTicketUpdate } from "./support.validators.js";
+import { validateCancelBooking, validateCreateSupportTicket, validateSupportListQuery, validateSupportTicketUpdate } from "./support.validators.js";
 
 export function createSupportRouter({ prismaClient = prisma } = {}) {
   const router = Router();
@@ -12,8 +12,8 @@ export function createSupportRouter({ prismaClient = prisma } = {}) {
   const controller = createSupportController({ service });
   const requireSupport = requireRole("ADMIN", "SUPPORT");
   router.post("/tickets", requireAuth, validateCreateSupportTicket, asyncWrapper(controller.create));
-  router.get("/tickets/mine", requireAuth, asyncWrapper(controller.mine));
-  router.get("/tickets/admin", requireAuth, requireSupport, asyncWrapper(controller.adminList));
+  router.get("/tickets/mine", requireAuth, validateSupportListQuery, asyncWrapper(controller.mine));
+  router.get("/tickets/admin", requireAuth, requireSupport, validateSupportListQuery, asyncWrapper(controller.adminList));
   router.patch("/tickets/admin/:ticketId", requireAuth, requireSupport, validateSupportTicketUpdate, asyncWrapper(controller.update));
   router.post("/ride-bookings/:bookingId/cancel", requireAuth, validateCancelBooking, asyncWrapper(controller.cancel));
   router.post("/parcel-bookings/:bookingId/cancel", requireAuth, validateCancelBooking, asyncWrapper(controller.cancel));
