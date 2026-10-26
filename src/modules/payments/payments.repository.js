@@ -190,5 +190,137 @@ export function createPaymentsRepository({ prismaClient }) {
         return { duplicate: false };
       });
     },
+
+    async createRefundRequest({ bookingType, bookingId, userId, idempotencyKey, reason, now }) {
+      const existing = await prismaClient.refund.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        if (existing.requestedByUserId !== userId) throw conflict("The idempotency key belongs to another account.", "IDEMPOTENCY_CONFLICT");
+        return { refund: existing, replay: true };
+      }
+      return prismaClient.$transaction(async (tx) => {
+        const isRide = bookingType === "PASSENGER_RIDE";
+        const booking = isRide ? await tx.rideBooking.findUnique({ where: { id: bookingId } }) : await tx.parcelBooking.findUnique({ where: { id: bookingId } });
+        if (!booking) throw new NotFoundError("The booking was not found.");
+        if ((isRide ? booking.passengerId : booking.senderId) !== userId) throw conflict("You cannot request a refund for this booking.", "BOOKING_ACCESS_DENIED");
+        if (booking.status !== "CANCELLATION_PENDING" || booking.paymentStatus !== "SUCCEEDED") throw conflict("A refund can only be requested for a paid booking awaiting cancellation review.", "REFUND_NOT_ELIGIBLE");
+        const attempt = await tx.paymentAttempt.findFirst({ where: { status: "SUCCEEDED", ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }) }, orderBy: { verifiedAt: "desc" } });
+        if (!attempt) throw conflict("A verified payment attempt was not found.", "PAYMENT_NOT_FOUND");
+        const existingActive = await tx.refund.findFirst({ where: { paymentAttemptId: attempt.id, status: { in: ["REQUESTED", "PROCESSING", "SUCCEEDED"] } } });
+        if (existingActive) throw conflict("A refund has already been requested for this payment.", "REFUND_ALREADY_REQUESTED");
+        const refund = await tx.refund.create({
+          data: {
+            paymentAttemptId: attempt.id, requestedByUserId: userId,
+            ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }),
+            amountMinor: booking.customerPayableMinor, currency: booking.currency, reason, idempotencyKey,
+          },
+        });
+        await tx.bookingEvent.create({ data: { ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }), actorUserId: userId, eventType: "REFUND_REQUESTED", fromStatus: "CANCELLATION_PENDING", toStatus: "CANCELLATION_PENDING", metadata: { refundId: refund.id, amountMinor: refund.amountMinor.toString() } } });
+        return { refund, replay: false };
+      });
+    },
+    listRefunds({ status, cursor, limit }) {
+      return prismaClient.refund.findMany({ where: status ? { status } : {}, orderBy: { requestedAt: "asc" }, take: limit + 1, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
+    },
+    async markRefundProcessing({ id, providerReference, providerPayload }) {
+      return prismaClient.refund.update({ where: { id }, data: { status: "PROCESSING", providerReference, providerPayload } });
+    },
+    async settleRefund({ providerReference, payload, now, succeeded }) {
+      return prismaClient.$transaction(async (tx) => {
+        const refund = await tx.refund.findUnique({ where: { providerReference }, include: { paymentAttempt: true } });
+        if (!refund) throw new NotFoundError("The refund reference was not found.");
+        if (["SUCCEEDED", "FAILED", "REJECTED"].includes(refund.status)) return { duplicate: true, refundId: refund.id };
+        if (!succeeded) {
+          await tx.refund.update({ where: { id: refund.id }, data: { status: "FAILED", failureReason: "Provider reported refund failure.", providerPayload: payload, processedAt: now } });
+          return { duplicate: false, refundId: refund.id, status: "FAILED" };
+        }
+        const payout = await tx.driverPayout.findFirst({ where: { status: "PAID", ...(refund.rideBookingId ? { rideBookingId: refund.rideBookingId } : { parcelBookingId: refund.parcelBookingId }) } });
+        if (payout) throw conflict("The driver has already been paid. This refund requires manual financial review.", "PAYOUT_ALREADY_SETTLED");
+        const attempt = refund.paymentAttempt;
+        const isRide = Boolean(refund.rideBookingId);
+        const booking = isRide ? await tx.rideBooking.findUnique({ where: { id: refund.rideBookingId } }) : await tx.parcelBooking.findUnique({ where: { id: refund.parcelBookingId } });
+        if (!booking || booking.status !== "CANCELLATION_PENDING" || booking.paymentStatus !== "SUCCEEDED") throw conflict("The booking is not in a refundable cancellation state.", "REFUND_BOOKING_STATE_CONFLICT");
+        const driverAmount = attempt.driverAllocationMinor ?? 0n;
+        const platformAmount = attempt.platformAllocationMinor ?? 0n;
+        if (driverAmount + platformAmount !== refund.amountMinor) throw conflict("Refund allocations do not balance.", "REFUND_ALLOCATION_MISMATCH");
+        const currency = refund.currency;
+        const clearing = await tx.ledgerAccount.findUnique({ where: { code: `PAYSTACK_CLEARING_${currency}` } });
+        const driverPayable = await tx.ledgerAccount.findUnique({ where: { code: `DRIVER_PAYABLE_${currency}` } });
+        const platformRevenue = await tx.ledgerAccount.findUnique({ where: { code: `PLATFORM_CONNECTION_FEE_${currency}` } });
+        if (!clearing || !driverPayable || !platformRevenue) throw conflict("The original payment journal is incomplete.", "LEDGER_ACCOUNT_MISSING");
+        const common = { journalReference: `REFUND-${refund.id}`, currency, ...(isRide ? { rideBookingId: refund.rideBookingId } : { parcelBookingId: refund.parcelBookingId }), paymentAttemptId: attempt.id, description: "Customer refund", metadata: { refundId: refund.id, providerReference } };
+        const entries = [
+          ...(driverAmount > 0n ? [{ accountId: driverPayable.id, side: "DEBIT", amountMinor: driverAmount }] : []),
+          ...(platformAmount > 0n ? [{ accountId: platformRevenue.id, side: "DEBIT", amountMinor: platformAmount }] : []),
+          { accountId: clearing.id, side: "CREDIT", amountMinor: refund.amountMinor },
+        ];
+        await tx.ledgerEntry.createMany({ data: entries.map((entry) => ({ ...common, ...entry })) });
+        await tx.refund.update({ where: { id: refund.id }, data: { status: "SUCCEEDED", processedAt: now, providerPayload: payload } });
+        await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: "REVERSED" } });
+        if (isRide) {
+          await tx.rideBooking.update({ where: { id: booking.id }, data: { status: "CANCELLED", paymentStatus: "REVERSED", cancelledAt: now } });
+          await tx.bookingEvent.create({ data: { rideBookingId: booking.id, eventType: "REFUND_COMPLETED", fromStatus: "CANCELLATION_PENDING", toStatus: "CANCELLED", metadata: { refundId: refund.id } } });
+        } else {
+          await tx.parcelBooking.update({ where: { id: booking.id }, data: { status: "CANCELLED", paymentStatus: "REVERSED", cancelledAt: now } });
+          await tx.bookingEvent.create({ data: { parcelBookingId: booking.id, eventType: "REFUND_COMPLETED", fromStatus: "CANCELLATION_PENDING", toStatus: "CANCELLED", metadata: { refundId: refund.id } } });
+        }
+        return { duplicate: false, refundId: refund.id, status: "SUCCEEDED" };
+      });
+    },
+    async createPayoutRequest({ bookingType, bookingId, userId, idempotencyKey, reference }) {
+      return prismaClient.$transaction(async (tx) => {
+        const isRide = bookingType === "PASSENGER_RIDE";
+        const booking = isRide
+          ? await tx.rideBooking.findUnique({ where: { id: bookingId }, include: { assignments: { where: { status: "COMPLETED" }, include: { driverProfile: { include: { settlementAccounts: { where: { status: "VERIFIED", provider: "PAYSTACK" } } } } } } })
+          : await tx.parcelBooking.findUnique({ where: { id: bookingId }, include: { assignments: { where: { status: "COMPLETED" }, include: { driverProfile: { include: { settlementAccounts: { where: { status: "VERIFIED", provider: "PAYSTACK" } } } } } } });
+        if (!booking) throw new NotFoundError("The booking was not found.");
+        if (booking.status !== "COMPLETED" || booking.paymentStatus !== "SUCCEEDED") throw conflict("Payout is available only after a paid booking is completed.", "PAYOUT_NOT_ELIGIBLE");
+        const assignment = booking.assignments[0];
+        if (!assignment || assignment.driverProfile.userId !== userId) throw conflict("You are not the driver for this completed booking.", "PAYOUT_ACCESS_DENIED");
+        const account = assignment.driverProfile.settlementAccounts[0];
+        if (!account) throw conflict("A verified Paystack settlement recipient is required before payout.", "SETTLEMENT_ACCOUNT_NOT_READY");
+        const existing = await tx.driverPayout.findUnique({ where: { idempotencyKey } });
+        if (existing) {
+          if (existing.driverProfileId !== assignment.driverProfileId) throw conflict("The idempotency key belongs to another driver.", "IDEMPOTENCY_CONFLICT");
+          return { payout: existing, recipientCode: account.externalAccountRef, replay: true };
+        }
+        const alreadyPaid = await tx.driverPayout.findFirst({ where: { status: { in: ["PENDING", "ELIGIBLE", "PROCESSING", "PAID"] }, ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }) } });
+        if (alreadyPaid) throw conflict("A payout already exists for this booking.", "PAYOUT_ALREADY_EXISTS");
+        const payout = await tx.driverPayout.create({
+          data: {
+            driverProfileId: assignment.driverProfileId,
+            ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }),
+            amountMinor: assignment.agreedFareMinor, currency: assignment.currency, status: "PENDING",
+            provider: "PAYSTACK", providerReference: reference, idempotencyKey,
+          },
+        });
+        return { payout, recipientCode: account.externalAccountRef, replay: false };
+      });
+    },
+    async settlePayoutWebhook({ reference, amountMinor, payload, now, succeeded }) {
+      return prismaClient.$transaction(async (tx) => {
+        const payout = await tx.driverPayout.findUnique({ where: { providerReference: reference } });
+        if (!payout) throw new NotFoundError("The payout reference was not found.");
+        if (payout.status === "PAID" || payout.status === "FAILED") return { duplicate: true, payoutId: payout.id };
+        if (!succeeded) {
+          await tx.driverPayout.update({ where: { id: payout.id }, data: { status: "FAILED", failureReason: "Provider reported transfer failure.", processedAt: now } });
+          return { duplicate: false, payoutId: payout.id, status: "FAILED" };
+        }
+        if (amountMinor !== payout.amountMinor) throw conflict("The transfer amount does not match the payout record.", "PAYOUT_AMOUNT_MISMATCH");
+        const currency = payout.currency;
+        const payable = await tx.ledgerAccount.findUnique({ where: { code: `DRIVER_PAYABLE_${currency}` } });
+        const clearing = await tx.ledgerAccount.findUnique({ where: { code: `PAYSTACK_CLEARING_${currency}` } });
+        if (!payable || !clearing) throw conflict("The payout ledger accounts are missing.", "LEDGER_ACCOUNT_MISSING");
+        const update = await tx.driverPayout.updateMany({ where: { id: payout.id, status: { in: ["PENDING", "ELIGIBLE", "PROCESSING"] } }, data: { status: "PAID", processedAt: now } });
+        if (update.count !== 1) return { duplicate: true, payoutId: payout.id };
+        await tx.ledgerEntry.createMany({ data: [
+          { journalReference: `PAYOUT-${payout.id}`, accountId: payable.id, side: "DEBIT", amountMinor: payout.amountMinor, currency, ...(payout.rideBookingId ? { rideBookingId: payout.rideBookingId } : { parcelBookingId: payout.parcelBookingId }), payoutId: payout.id, description: "Driver payout settled", metadata: { providerReference: reference } },
+          { journalReference: `PAYOUT-${payout.id}`, accountId: clearing.id, side: "CREDIT", amountMinor: payout.amountMinor, currency, ...(payout.rideBookingId ? { rideBookingId: payout.rideBookingId } : { parcelBookingId: payout.parcelBookingId }), payoutId: payout.id, description: "Paystack transfer paid", metadata: { providerReference: reference } },
+        ] });
+        return { duplicate: false, payoutId: payout.id, status: "PAID" };
+      });
+    },
+    findAttemptByReference(reference) {
+      return prismaClient.paymentAttempt.findUnique({ where: { providerReference: reference } });
+    },
   };
 }
