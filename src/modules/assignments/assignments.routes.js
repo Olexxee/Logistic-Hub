@@ -14,6 +14,7 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
   const service = createAssignmentsService({ prismaClient });
   const controller = createAssignmentsController({ service });
   router.use(requireAuth);
+  router.get("/:assignmentId/location", validateRequest(idSchema, "params"), controller.location);
   router.post("/:assignmentId/verification-codes", validateRequest(idSchema, "params"), validateRequest(issueSchema), controller.issueCode);
   router.post("/:assignmentId/verify", validateRequest(idSchema, "params"), validateRequest(verifySchema), controller.verifyCode);
   router.post("/:assignmentId/arrived-pickup", validateRequest(idSchema, "params"), controller.arrivedPickup);
