@@ -303,6 +303,7 @@ export function createAuthRouter({
         });
         if (update.count !== 1) return false;
         await tx.user.update({ where: { id: token.userId }, data: { passwordHash } });
+        await tx.authSession.updateMany({ where: { userId: token.userId, revokedAt: null }, data: { revokedAt: now } });
         await tx.authActionToken.updateMany({
           where: { userId: token.userId, purpose: "PASSWORD_RESET", consumedAt: null },
           data: { consumedAt: now },
