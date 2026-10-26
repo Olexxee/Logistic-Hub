@@ -1,8 +1,9 @@
 import { prisma } from "../../db/prisma.js";
 export function createPaymentsRepository(prismaClient = prisma) {
  return {
-  findBooking({bookingType,bookingId,userId}) { return bookingType === "PARCEL" ? prismaClient.parcelBooking.findFirst({where:{id:bookingId,senderId:userId},include:{assignments:{where:{status:"AWAITING_PAYMENT"},take:1}}}) : prismaClient.rideBooking.findFirst({where:{id:bookingId,passengerId:userId},include:{assignments:{where:{status:"AWAITING_PAYMENT"},take:1}}}); },
+  findBooking({bookingType,bookingId,userId}) { return bookingType === "PARCEL" ? prismaClient.parcelBooking.findFirst({where:{id:bookingId,senderId:userId},include:{assignments:{where:{status:"AWAITING_PAYMENT"},take:1,include:{driverProfile:{include:{settlementAccounts:{where:{provider:"PAYSTACK",status:"ACTIVE"},take:1}}}}}}}) : prismaClient.rideBooking.findFirst({where:{id:bookingId,passengerId:userId},include:{assignments:{where:{status:"AWAITING_PAYMENT"},take:1}}}); },
   createAttempt(data) { return prismaClient.paymentAttempt.create({data}); },
+  getNotificationContext(reference) { return prismaClient.paymentAttempt.findUnique({where:{providerReference:reference},include:{parcelBooking:{include:{sender:{select:{id:true}},}},rideBooking:{include:{passenger:{select:{id:true}}}}}}); },
   settle({reference,amountMinor,currency,providerPayload,providerEventId,eventType,payloadHash}) { return prismaClient.$transaction(async tx => {
    const eventKey={provider_providerEventId:{provider:"PAYSTACK",providerEventId}};
    const prior=await tx.providerWebhookEvent.findUnique({where:eventKey});
