@@ -10,5 +10,6 @@ export function createFinancialController({ service }) {
     }) }),
     listPayouts: async (req, res) => res.status(200).json({ success: true, ...await service.listPayouts(req.validated.query) }),
     reconcilePayment: async (req, res) => res.status(200).json({ success: true, data: await service.reconcilePayment(req.validated.params.reference) }),
+    reconcilePayout: async (req, res) => res.status(200).json({ success: true, data: await service.reconcilePayout(req.validated.params.reference) }),
   };
 }
