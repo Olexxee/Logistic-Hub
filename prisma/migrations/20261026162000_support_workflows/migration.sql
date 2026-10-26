@@ -5,6 +5,7 @@ CREATE TABLE "support_tickets" (
   "bookingId" TEXT,
   "category" TEXT NOT NULL,
   "subject" TEXT NOT NULL,
+  "description" TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'OPEN',
   "priority" TEXT NOT NULL DEFAULT 'NORMAL',
   "assignedAdminId" TEXT,
