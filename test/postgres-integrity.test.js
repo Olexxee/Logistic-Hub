@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRITY_TESTS === "true";
 const prisma = new PrismaClient();
+test.after(async () => prisma.$disconnect());
 
 function suffix() {
   return randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase();
