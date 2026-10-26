@@ -27,6 +27,21 @@ export function createPaymentsRepository(prismaClient = prisma) {
    return {count:1};
   }); },
   getNotificationContext(reference) { return prismaClient.paymentAttempt.findUnique({where:{providerReference:reference},include:{parcelBooking:{include:{sender:{select:{id:true}},}},rideBooking:{include:{passenger:{select:{id:true}}}}}}); },
+  markFailed({reference,providerEventId,eventType,payloadHash,providerPayload}) { return prismaClient.$transaction(async tx=>{
+   const eventKey={provider_providerEventId:{provider:"PAYSTACK",providerEventId}};
+   const prior=await tx.providerWebhookEvent.findUnique({where:eventKey});
+   if(prior?.processedAt)return {replay:true,status:"already_processed"};
+   if(!prior)await tx.providerWebhookEvent.create({data:{provider:"PAYSTACK",providerEventId,eventType,payloadHash}});
+   const attempt=await tx.paymentAttempt.findUnique({where:{providerReference:reference}});
+   if(!attempt)throw Object.assign(new Error("Payment reference was not found."),{statusCode:404,code:"PAYMENT_REFERENCE_NOT_FOUND"});
+   if(attempt.status!=="SUCCEEDED") {
+    await tx.paymentAttempt.update({where:{id:attempt.id},data:{status:"FAILED",failedAt:new Date(),providerPayload}});
+    if(attempt.parcelBookingId)await tx.parcelBooking.updateMany({where:{id:attempt.parcelBookingId,paymentStatus:{not:"SUCCEEDED"}},data:{paymentStatus:"FAILED"}});
+    if(attempt.rideBookingId)await tx.rideBooking.updateMany({where:{id:attempt.rideBookingId,paymentStatus:{not:"SUCCEEDED"}},data:{paymentStatus:"FAILED"}});
+   }
+   await tx.providerWebhookEvent.update({where:eventKey,data:{processedAt:new Date()}});
+   return {replay:false,status:"failed",reference};
+  }); },
   settle({reference,amountMinor,currency,providerPayload,providerEventId,eventType,payloadHash}) { return prismaClient.$transaction(async tx => {
    const eventKey={provider_providerEventId:{provider:"PAYSTACK",providerEventId}};
    const prior=await tx.providerWebhookEvent.findUnique({where:eventKey});
