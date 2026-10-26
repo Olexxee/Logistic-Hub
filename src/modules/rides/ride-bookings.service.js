@@ -1,20 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
+import { createRideBookingsRepository } from "./ride-bookings.repository.js";
+import { ConflictError, ForbiddenError } from "../../shared/http/app-error.js";
 
 function requestHash(input) {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
-
 function publicReference() {
   return `LH-RID-${randomBytes(6).toString("hex").toUpperCase()}`;
 }
-
-function httpError(statusCode, code, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-}
-
 function serializeRide(ride) {
   return {
     id: ride.id,
@@ -41,23 +34,14 @@ function serializeRide(ride) {
   };
 }
 
-const activeRideAvailability = (now) => ({
-  serviceType: "PASSENGER_RIDE",
-  isEnabled: true,
-  AND: [
-    { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-    { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-  ],
-});
-
-export function createRideBookingsService({ prismaClient, clock = () => new Date() }) {
-  if (!prismaClient) throw new Error("A Prisma client is required.");
+export function createRideBookingsService({ prismaClient, repository, clock = () => new Date() }) {
+  const db = repository ?? createRideBookingsRepository({ prismaClient });
 
   async function existingByKey(key, hash, passengerId) {
-    const ride = await prismaClient.rideBooking.findUnique({ where: { idempotencyKey: key } });
+    const ride = await db.findByIdempotencyKey(key);
     if (!ride) return null;
     if (ride.passengerId !== passengerId || ride.idempotencyPayloadHash !== hash) {
-      throw httpError(409, "IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different request.");
+      throw new ConflictError("The Idempotency-Key was already used with a different request.", "IDEMPOTENCY_CONFLICT");
     }
     return { ride: serializeRide(ride), replay: true };
   }
@@ -70,34 +54,17 @@ export function createRideBookingsService({ prismaClient, clock = () => new Date
 
       const now = clock();
       const zoneIds = [...new Set([input.pickupServiceZoneId, input.destinationServiceZoneId])];
-      const zones = await prismaClient.serviceZone.findMany({
-        where: {
-          id: { in: zoneIds },
-          isActive: true,
-          state: { isActive: true, country: { isActive: true } },
-          availability: { some: activeRideAvailability(now) },
-        },
-        select: { id: true },
-      });
+      const zones = await db.findActiveRideZones(zoneIds, now);
       if (zones.length !== zoneIds.length) {
-        throw httpError(409, "SERVICE_ZONE_UNAVAILABLE", "One or both requested zones are not active for passenger rides.");
+        throw new ConflictError("One or both requested zones are not active for passenger rides.", "SERVICE_ZONE_UNAVAILABLE");
       }
 
-      const rules = await prismaClient.pricingRule.findMany({
-        where: {
-          serviceType: "PASSENGER_RIDE",
-          isActive: true,
-          effectiveFrom: { lte: now },
-          AND: [
-            { OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }] },
-            { OR: [{ serviceZoneId: input.pickupServiceZoneId }, { serviceZoneId: null }] },
-          ],
-        },
-        orderBy: { effectiveFrom: "desc" },
-      });
+      const rules = await db.findApplicablePricingRules(input.pickupServiceZoneId, now);
       const rule = rules.find((item) => item.serviceZoneId === input.pickupServiceZoneId)
         ?? rules.find((item) => item.serviceZoneId == null);
-      if (!rule) throw httpError(409, "PRICING_UNAVAILABLE", "Passenger ride pricing is not configured for the pickup zone.");
+      if (!rule) {
+        throw new ConflictError("Passenger ride pricing is not configured for the pickup zone.", "PRICING_UNAVAILABLE");
+      }
 
       const data = {
         publicReference: publicReference(),
@@ -131,19 +98,9 @@ export function createRideBookingsService({ prismaClient, clock = () => new Date
       };
 
       try {
-        const ride = await prismaClient.$transaction(async (tx) => {
-          const created = await tx.rideBooking.create({ data });
-          await tx.bookingEvent.create({
-            data: {
-              rideBookingId: created.id,
-              actorUserId: passengerId,
-              eventType: "RIDE_BOOKING_CREATED",
-              fromStatus: null,
-              toStatus: "DRAFT",
-              metadata: { publicReference: created.publicReference, pricingRuleId: rule.id },
-            },
-          });
-          return created;
+        const ride = await db.createWithEvent(data, {
+          actorUserId: passengerId,
+          metadata: { publicReference: data.publicReference, pricingRuleId: rule.id },
         });
         return { ride: serializeRide(ride), replay: false };
       } catch (error) {
@@ -156,10 +113,10 @@ export function createRideBookingsService({ prismaClient, clock = () => new Date
     },
 
     async getVisibleRide({ rideBookingId, user }) {
-      const ride = await prismaClient.rideBooking.findUnique({ where: { id: rideBookingId } });
+      const ride = await db.findById(rideBookingId);
       if (!ride) return null;
       if (ride.passengerId !== user.id && !["ADMIN", "SUPPORT"].includes(user.role)) {
-        throw httpError(403, "FORBIDDEN", "You do not have permission to view this ride booking.");
+        throw new ForbiddenError("You do not have permission to view this ride booking.");
       }
       return serializeRide(ride);
     },
