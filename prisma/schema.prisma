@@ -179,6 +179,7 @@ model User {
   assignments   DriverAssignment[]
   notifications Notification[]
   authActionTokens AuthActionToken[]
+  authSessions AuthSession[]
 
   @@index([role, status])
   @@map("users")
