@@ -736,6 +736,7 @@ model SupportTicket {
   bookingId     String?
   category      String
   subject       String
+  description   String
   status        String   @default("OPEN")
   priority      String   @default("NORMAL")
   assignedAdminId String?
