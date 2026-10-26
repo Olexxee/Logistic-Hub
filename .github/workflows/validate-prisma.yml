@@ -1,5 +1,9 @@
 name: Validate Prisma Schema
 
+concurrency:
+  group: prisma-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
