@@ -18,4 +18,10 @@ if (!parsed.success) {
   throw new Error(`Invalid environment configuration: ${details}`);
 }
 
-export const env = Object.freeze(parsed.data);
+if (parsed.data.PAYMENTS_ENABLED) {
+  throw new Error(
+    "PAYMENTS_ENABLED=true is blocked until the project owner explicitly approves payment implementation and deployment.",
+  );
+}
+
+export const env = Object.freeze({ ...parsed.data, PAYMENTS_ENABLED: false });
