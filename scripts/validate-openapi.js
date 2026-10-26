@@ -22,6 +22,7 @@ const implementedOperations = new Set([
   "POST /assignments/{assignmentId}/arrived-at-pickup",
   "POST /assignments/{assignmentId}/verify-code",
   "POST /assignments/{assignmentId}/arrived-at-destination",
+  "POST /assignments/{assignmentId}/start-transit",
   "GET /assignments/{assignmentId}/driver-location",
   "POST /payments/initialize",
   "POST /payments/webhook",
