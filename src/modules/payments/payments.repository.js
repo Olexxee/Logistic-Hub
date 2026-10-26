@@ -5,7 +5,27 @@ export function createPaymentsRepository(prismaClient = prisma) {
   createAttempt(data) { return prismaClient.paymentAttempt.upsert({where:{idempotencyKey:data.idempotencyKey},create:data,update:{}}); },
   findUserEmail(userId) { return prismaClient.user.findUnique({where:{id:userId},select:{email:true}}); },
   saveAuthorization({id,authorizationUrl,accessCode}) { return prismaClient.paymentAttempt.update({where:{id},data:{providerPayload:{authorizationUrl,accessCode}}}); },
-  updateRefundFromWebhook({providerReference,status,providerResponse}) { return prismaClient.refundRequest.updateMany({where:{providerReference},data:{status,providerResponse,processedAt:new Date()}}); },
+  updateRefundFromWebhook({providerReference,status,providerResponse}) { return prismaClient.$transaction(async tx=>{
+   const refund=await tx.refundRequest.findUnique({where:{providerReference},include:{paymentAttempt:true}});
+   if(!refund)return {count:0};
+   await tx.refundRequest.update({where:{id:refund.id},data:{status,providerResponse,processedAt:new Date()}});
+   if(status==="PROCESSED"){
+    const total=await tx.refundRequest.aggregate({where:{paymentAttemptId:refund.paymentAttemptId,status:"PROCESSED"},_sum:{amountMinor:true}});
+    if((total._sum.amountMinor??0n)>=refund.paymentAttempt.amountMinor)await tx.paymentAttempt.update({where:{id:refund.paymentAttemptId},data:{status:"REVERSED"}});
+    const journalReference="REFUND:"+providerReference;
+    const posted=await tx.ledgerEntry.findFirst({where:{journalReference},select:{id:true}});
+    const platformRefund=refund.amountMinor<(refund.paymentAttempt.platformAllocationMinor??0n)?refund.amountMinor:(refund.paymentAttempt.platformAllocationMinor??0n);
+    if(!posted&&platformRefund>0n){
+     const accounts=await Promise.all([
+      tx.ledgerAccount.upsert({where:{code:"PLATFORM_CONNECTION_REVENUE_NGN"},create:{code:"PLATFORM_CONNECTION_REVENUE_NGN",name:"Platform connection fee revenue",type:"REVENUE",currency:refund.currency},update:{}}),
+      tx.ledgerAccount.upsert({where:{code:"PAYSTACK_CLEARING_NGN"},create:{code:"PAYSTACK_CLEARING_NGN",name:"Paystack platform clearing",type:"ASSET",currency:refund.currency},update:{}})
+     ]);
+     const common={journalReference,currency:refund.currency,paymentAttemptId:refund.paymentAttemptId,parcelBookingId:refund.paymentAttempt.parcelBookingId,rideBookingId:refund.paymentAttempt.rideBookingId,description:"Provider-confirmed platform refund reversal"};
+     await tx.ledgerEntry.createMany({data:[{...common,accountId:accounts[0].id,side:"DEBIT",amountMinor:platformRefund},{...common,accountId:accounts[1].id,side:"CREDIT",amountMinor:platformRefund}]});
+    }
+   }
+   return {count:1};
+  }); },
   getNotificationContext(reference) { return prismaClient.paymentAttempt.findUnique({where:{providerReference:reference},include:{parcelBooking:{include:{sender:{select:{id:true}},}},rideBooking:{include:{passenger:{select:{id:true}}}}}}); },
   settle({reference,amountMinor,currency,providerPayload,providerEventId,eventType,payloadHash}) { return prismaClient.$transaction(async tx => {
    const eventKey={provider_providerEventId:{provider:"PAYSTACK",providerEventId}};
