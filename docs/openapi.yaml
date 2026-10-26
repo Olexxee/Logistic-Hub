@@ -2356,6 +2356,24 @@ components:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Code invalid, expired, or lifecycle state conflict. }
+  /assignments/{assignmentId}/start-transit:
+    post:
+      tags: [Assignments]
+      operationId: startParcelTransit
+      summary: Move a pickup-verified parcel assignment into transit
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Parcel is in transit. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Assignment is not ready for transit. }
   /assignments/{assignmentId}/arrived-at-destination:
     post:
       tags: [Assignments]
