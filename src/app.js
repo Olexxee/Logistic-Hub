@@ -17,6 +17,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { assignmentsRouter } from "./modules/assignments/assignments.routes.js";
+import { paymentsRouter } from "./modules/payments/payments.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -30,7 +31,7 @@ const allowedOrigins = env.CORS_ORIGINS
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "1mb", verify: (req, _res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(pinoHttp({ redact: ["req.headers.authorization", "req.headers.cookie"] }));
 
@@ -54,6 +55,7 @@ app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
 app.use("/api/v1/drivers", driversRouter);
 app.use("/api/v1/assignments", assignmentsRouter);
+app.use("/api/v1/payments", paymentsRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);
