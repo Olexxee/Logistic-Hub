@@ -218,6 +218,12 @@ export function createPaymentsRepository({ prismaClient }) {
         return { refund, replay: false };
       });
     },
+    findRefundById(id) {
+      return prismaClient.refund.findUnique({ where: { id }, include: { paymentAttempt: true } });
+    },
+    listPayouts({ status, cursor, limit }) {
+      return prismaClient.driverPayout.findMany({ where: status ? { status } : {}, orderBy: { requestedAt: "asc" }, take: limit + 1, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
+    },
     listRefunds({ status, cursor, limit }) {
       return prismaClient.refund.findMany({ where: status ? { status } : {}, orderBy: { requestedAt: "asc" }, take: limit + 1, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
     },
