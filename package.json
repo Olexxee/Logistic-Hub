@@ -1,0 +1,21 @@
+{
+  "name": "logistic-hub-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend API for Logistic Hub",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "db:validate": "prisma validate",
+    "db:generate": "prisma generate",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0"
+  },
+  "devDependencies": {
+    "prisma": "6.19.0"
+  }
+}
