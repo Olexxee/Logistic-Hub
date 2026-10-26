@@ -34,3 +34,8 @@ jobs:
         run: npm run db:generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
+      - name: Run API contract smoke tests
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
+          PAYMENTS_ENABLED: "false"
