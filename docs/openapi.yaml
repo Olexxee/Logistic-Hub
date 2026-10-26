@@ -52,9 +52,16 @@ paths:
                   success: { const: true }
                   data:
                     type: object
-                    required: [database]
+                    required: [service, status, dependencies, timestamp]
                     properties:
-                      database: { const: ok }
+                      service: { const: logistic-hub-api }
+                      status: { const: ready }
+                      dependencies:
+                        type: object
+                        required: [database]
+                        properties:
+                          database: { const: ok }
+                      timestamp: { type: string, format: date-time }
         '503':
           description: PostgreSQL is unavailable.
           content:
