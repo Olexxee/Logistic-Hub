@@ -97,13 +97,21 @@ A row-level CHECK cannot guarantee that the sum of multiple ledger entries in a 
 - Add constraints or service-layer validation that latitude is between -90 and 90 and longitude between -180 and 180.
 - Restrict direct UPDATE/DELETE access to financial history at the database/application permission level where feasible.
 
-## 5. Geospatial index
+## 5. Multi-state geography and split-payment integrity
+
+- A service zone's stateId must match the state that owns its optional lgaId. The current foreign keys alone do not enforce this cross-table invariant; enforce it with a trigger or redesign the relation so the database can verify the state/LGA pair.
+- Validate country/state/LGA codes and source imports before activating service. Reference geography is not proof that service is operational in that area.
+- For payment attempts with a split-routing snapshot, require non-negative driver/platform allocations and enforce that their sum equals the expected customer payment amount for the confirmed booking snapshot. The provider fee is tracked separately and must not silently reduce the agreed driver fare.
+- Driver settlement-account references must be unique per provider and linked to one driver profile. Store provider identifiers and minimum reconciliation metadata only; never store API secrets or account credentials in this table.
+- A settlement-routing snapshot must be immutable once payment initialization begins. If routing configuration changes, create a new payment attempt rather than rewriting the prior attempt's routing details.
+
+## 6. Geospatial index
 
 The initial Prisma schema stores latitude and longitude as decimals. For efficient nearby-driver matching, add a PostGIS geography/geometry column through a SQL migration (or use a maintained generated point column) and create a GiST index. Keep source coordinates validated and synchronise the point column transactionally. Use parameterized raw SQL for spatial queries; never concatenate user-provided coordinates into SQL.
 
 A simple btree index on latitude/longitude is not a substitute for a geospatial index at scale.
 
-## 6. Migration procedure
+## 7. Migration procedure
 
 1. Generate the first migration from the Prisma schema.
 2. Review the generated SQL and database identifiers.
