@@ -12,6 +12,7 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
   router.post("/:assignmentId/verification-code", validateAssignmentId, asyncWrapper(controller.issueVerificationCode));
   router.post("/:assignmentId/arrived-at-pickup", validateAssignmentId, asyncWrapper(controller.markArrivedAtPickup));
   router.post("/:assignmentId/verify-code", validateAssignmentId, validateVerificationCode, asyncWrapper(controller.verifyCode));
+  router.post("/:assignmentId/start-transit", validateAssignmentId, asyncWrapper(controller.startParcelTransit));
   router.post("/:assignmentId/arrived-at-destination", validateAssignmentId, asyncWrapper(controller.markArrivedAtDestination));
   router.get("/:assignmentId/driver-location", validateAssignmentId, asyncWrapper(controller.location));
   return router;
