@@ -3,6 +3,7 @@ export class AppError extends Error {
     super(message, cause ? { cause } : undefined);
     this.name = this.constructor.name;
     this.statusCode = statusCode;
+    this.isOperational = true;
     this.code = code;
     if (details !== undefined) this.details = details;
     Error.captureStackTrace?.(this, this.constructor);
