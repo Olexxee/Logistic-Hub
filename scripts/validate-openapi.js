@@ -1,6 +1,7 @@
 import SwaggerParser from "@apidevtools/swagger-parser";
+import { fileURLToPath } from "node:url";
 
-const specPath = new URL("../docs/openapi.yaml", import.meta.url);
+const specPath = fileURLToPath(new URL("../docs/openapi.yaml", import.meta.url));
 
 try {
   const api = await SwaggerParser.validate(specPath);
