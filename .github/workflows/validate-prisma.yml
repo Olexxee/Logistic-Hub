@@ -60,6 +60,16 @@ jobs:
         run: npx prisma db execute --file /tmp/logistic-hub-base.sql --schema prisma/schema.prisma
       - name: Apply supplemental PostgreSQL constraints
         run: npx prisma db execute --file prisma/constraints/foundation.sql --schema prisma/schema.prisma
+      - name: Package initial migration candidate for review
+        if: github.event_name == 'push'
+        run: cat /tmp/logistic-hub-base.sql prisma/constraints/foundation.sql > /tmp/logistic-hub-initial-migration.sql
+      - name: Upload initial migration candidate
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: logistic-hub-initial-migration-candidate
+          path: /tmp/logistic-hub-initial-migration.sql
+          retention-days: 1
       - name: Check schema drift against disposable PostgreSQL
         run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Run API and PostgreSQL integrity tests
