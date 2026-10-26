@@ -103,7 +103,7 @@ export function createAssignmentsService({ prismaClient, repository, clock = () 
         throw new ConflictError("Driver location is available only during an active assignment.", "LOCATION_NOT_AVAILABLE");
       }
       const location = await db.latestLocation(assignment.driverProfileId);
-      if (!location) return null;
+      if (!location || clock().getTime() - new Date(location.recordedAt).getTime() > 2 * 60 * 1000) return null;
       return {
         latitude: String(location.latitude),
         longitude: String(location.longitude),
