@@ -80,8 +80,12 @@ Each attempt has:
 - Unique idempotency key.
 - Provider reference (unique when present).
 - Expected amount and currency.
-- Status and timestamps.
+- Explicit driver and platform allocation amounts when split routing is used.
+- Immutable settlement-routing snapshot identifying the approved routing configuration and driver settlement destination.
+- Provider fee, status and timestamps.
 - Provider response metadata with secrets and unnecessary personal data removed.
+
+A driver's settlement destination is stored as a provider-scoped account reference with an eligibility status. The provider account reference is not proof of successful verification or payout eligibility. Only activate a destination after the provider confirms the account and the business has approved the settlement policy.
 
 ### Ledger journal
 
