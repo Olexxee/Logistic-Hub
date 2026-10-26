@@ -657,6 +657,7 @@ model DriverPayout {
   providerReference String?      @unique
   idempotencyKey    String       @unique
   failureReason     String?
+  providerPayload   Json?
   requestedAt       DateTime     @default(now())
   processedAt       DateTime?
   createdAt         DateTime     @default(now())
