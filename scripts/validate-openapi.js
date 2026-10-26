@@ -3,7 +3,19 @@ import { fileURLToPath } from "node:url";
 
 const specPath = fileURLToPath(new URL("../docs/openapi.yaml", import.meta.url));
 const allowedStatuses = new Set(["implemented", "planned", "planned-disabled"]);
-const implementedOperations = new Set(["GET /health"]);
+const implementedOperations = new Set([
+  "GET /health",
+  "GET /health/ready",
+  "GET /service-zones",
+  "POST /maps/geocode",
+  "POST /maps/routes",
+  "POST /auth/register",
+  "POST /auth/verify-email",
+  "POST /auth/login",
+  "POST /auth/password/forgot",
+  "POST /auth/password/reset",
+  "GET /auth/me",
+]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
   "POST /driver/offers/{offerId}/propose-fare",
