@@ -11,6 +11,8 @@ import {
   verifyPassword,
 } from "./auth.crypto.js";
 import { createAuthMiddleware } from "./auth.middleware.js";
+import { createAuthSessionsService } from "./auth-sessions.service.js";
+import { persistentRateLimit } from "../../shared/http/persistent-rate-limit.js";
 
 const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(160),
@@ -58,6 +60,8 @@ export function createAuthRouter({
 } = {}) {
   const router = Router();
   const { requireAuth } = createAuthMiddleware({ prismaClient, secret });
+  const sessions = createAuthSessionsService({ prismaClient, secret });
+  router.use(persistentRateLimit({ prismaClient, namespace: "auth-general", limit: 80, windowMs: 15 * 60_000, blockMs: 15 * 60_000 }));
 
   router.post("/register", async (req, res, next) => {
     const parsed = registerSchema.safeParse(req.body);
@@ -209,13 +213,11 @@ export function createAuthRouter({
           error: { code: "ACCOUNT_NOT_ACTIVE", message: "Verify your email before signing in." },
         });
       }
-      const access = signAccessToken({ userId: user.id, role: user.role, secret });
+      const tokens = await sessions.createForUser(user);
       return res.status(200).json({
         success: true,
         data: {
-          accessToken: access.token,
-          tokenType: "Bearer",
-          expiresIn: access.expiresIn,
+          ...tokens,
           user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
         },
       });
