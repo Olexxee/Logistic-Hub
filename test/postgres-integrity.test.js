@@ -124,6 +124,96 @@ test("PostgreSQL rejects invalid booking coordinates and inconsistent accepted t
   }
 });
 
+test("PostgreSQL enforces split allocation and payment reservation integrity", { skip: !enabled }, async () => {
+  const tag = suffix();
+  let country;
+  let state;
+  let zone;
+  let sender;
+  let driverUser;
+  let driverProfile;
+  let booking;
+  let settlementAccount;
+
+  try {
+    country = await prisma.country.create({ data: { code: `T${tag}`, name: `Test Country ${tag}` } });
+    state = await prisma.state.create({
+      data: { countryId: country.id, code: `S${tag}`, name: `Test State ${tag}` },
+    });
+    zone = await prisma.serviceZone.create({
+      data: { stateId: state.id, code: `Z${tag}`, name: `Test Zone ${tag}` },
+    });
+    sender = await prisma.user.create({ data: { fullName: `Test Sender ${tag}` } });
+    driverUser = await prisma.user.create({ data: { fullName: `Test Driver ${tag}` } });
+    driverProfile = await prisma.driverProfile.create({ data: { userId: driverUser.id } });
+    booking = await prisma.parcelBooking.create({
+      data: {
+        publicReference: `SPLIT-${tag}`,
+        senderId: sender.id,
+        pickupServiceZoneId: zone.id,
+        destinationServiceZoneId: zone.id,
+        pickupAddress: "Test pickup",
+        pickupLatitude: 6.5,
+        pickupLongitude: 3.4,
+        destinationAddress: "Test destination",
+        destinationLatitude: 6.6,
+        destinationLongitude: 3.5,
+        recipientName: "Test Recipient",
+        recipientPhone: "+2348000000000",
+        parcelCategory: "DOCUMENT",
+        parcelSize: "SMALL",
+        connectionFeeMinor: 300n,
+        pricingSnapshot: {},
+      },
+    });
+    settlementAccount = await prisma.driverSettlementAccount.create({
+      data: {
+        driverProfileId: driverProfile.id,
+        externalAccountRef: `TEST-${tag}`,
+      },
+    });
+
+    await assert.rejects(
+      prisma.paymentAttempt.create({
+        data: {
+          parcelBookingId: booking.id,
+          idempotencyKey: `SPLIT-KEY-${tag}`,
+          amountMinor: 4300n,
+          driverAllocationMinor: 4000n,
+          platformAllocationMinor: 200n,
+          driverSettlementAccountId: settlementAccount.id,
+          splitConfigurationSnapshot: { version: 1, purpose: "integrity-test" },
+        },
+      }),
+    );
+
+    await assert.rejects(
+      prisma.driverAssignment.create({
+        data: {
+          parcelBookingId: booking.id,
+          driverProfileId: driverProfile.id,
+          agreedFareMinor: 4000n,
+        },
+      }),
+    );
+  } finally {
+    if (booking) {
+      await prisma.driverAssignment.deleteMany({ where: { parcelBookingId: booking.id } });
+      await prisma.paymentAttempt.deleteMany({ where: { parcelBookingId: booking.id } });
+    }
+    if (settlementAccount) {
+      await prisma.driverSettlementAccount.deleteMany({ where: { id: settlementAccount.id } });
+    }
+    if (booking) await prisma.parcelBooking.deleteMany({ where: { id: booking.id } });
+    if (driverProfile) await prisma.driverProfile.deleteMany({ where: { id: driverProfile.id } });
+    const userIds = [sender?.id, driverUser?.id].filter(Boolean);
+    if (userIds.length) await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
+    if (state) await prisma.state.deleteMany({ where: { id: state.id } });
+    if (country) await prisma.country.deleteMany({ where: { id: country.id } });
+  }
+});
+
 test("PostgreSQL integrity tests are explicitly gated outside the disposable CI database", { skip: enabled }, () => {
   assert.equal(enabled, false);
 });
