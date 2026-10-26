@@ -11,6 +11,7 @@ The platform is designed to expand into passenger rides, partner-operated parcel
 - [Payment ledger and settlement](docs/payment-ledger.md)
 - [Database integrity and migration requirements](docs/database-integrity.md)
 - [Initial database schema](prisma/schema.prisma)
+- [API contracts and implementation status](docs/api-contracts.md)
 
 ## Initial architecture
 
@@ -22,7 +23,11 @@ The platform is designed to expand into passenger rides, partner-operated parcel
 
 ## Current status
 
-This repository is establishing the product and technical foundation. It is not production-ready and does not yet implement booking, payment, driver matching or settlement. Do not use it to accept live bookings or payments until implementation, tests, security review and regulatory checks are complete.
+The backend foundation is being implemented on `feat/backend-foundation` and tracked in [draft PR #2](https://github.com/Olexxee/Logistic-Hub/pull/2). The current branch includes environment validation, an Express API shell, a health endpoint, Prisma validation/client-generation CI and initial smoke tests. Booking, fare negotiation, matching, pickup verification, payment collection and settlement are not implemented yet.
+
+The initial launch is configured for **multiple Lagos LGAs**, controlled by service zones and per-service availability. The payment sequence is **driver fare negotiation → sender acceptance → payment**. Backend API contracts must stabilize before client apps begin. Payments are hard-disabled in the current implementation and cannot be enabled through configuration.
+
+Do not merge this branch into `main`, apply production migrations, or accept live bookings/payments until implementation, tests, security review and regulatory checks are complete and the repository owner approves the next step.
 
 ## Working principles
 

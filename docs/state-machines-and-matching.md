@@ -10,11 +10,12 @@ The persisted booking lifecycle is separate from payment, dispute and refund lif
 
 | From | To | Actor | Guard |
 |---|---|---|---|
-| DRAFT | AWAITING_PAYMENT | Sender | Required parcel, route and contact fields valid; final quote persisted |
-| AWAITING_PAYMENT | PAYMENT_PENDING | Server | Payment attempt created with idempotency key |
-| PAYMENT_PENDING | PAID_UNASSIGNED | Server/provider verification | Provider confirms matching reference, amount, currency and success |
-| PAID_UNASSIGNED | MATCHING | Server/worker | Service enabled in zone; matching job persisted |
-| MATCHING | DRIVER_ASSIGNED | Server transaction | Eligible offer accepted and assignment won atomically |
+| DRAFT | MATCHING | Sender/server | Required parcel, route and contact fields are valid; service is enabled in the pickup zone |
+| MATCHING | AWAITING_CUSTOMER_ACCEPTANCE | Driver/server | Driver submits a fare proposal and the offer is still active |
+| AWAITING_CUSTOMER_ACCEPTANCE | MATCHING | Sender/server | Sender declines or lets the proposed fare expire; another offer may be considered |
+| AWAITING_CUSTOMER_ACCEPTANCE | AWAITING_PAYMENT | Sender/server | Sender explicitly accepts one driver's fare; the agreed fare and separate fixed connection fee are snapshotted |
+| AWAITING_PAYMENT | PAYMENT_PENDING | Server | Payment attempt created idempotently for the accepted total |
+| PAYMENT_PENDING | DRIVER_ASSIGNED | Server/provider verification | Provider confirms matching reference, amount, currency and success; reserved assignment becomes active |
 | DRIVER_ASSIGNED | PICKUP_VERIFICATION_PENDING | Driver/server | Assigned driver reports arrival |
 | PICKUP_VERIFICATION_PENDING | PICKED_UP | Server | Correct, unexpired, unused pickup token validated; handover event committed |
 | PICKED_UP | IN_TRANSIT | Driver/server | Pickup already verified |
@@ -22,7 +23,7 @@ The persisted booking lifecycle is separate from payment, dispute and refund lif
 | DELIVERY_VERIFICATION_PENDING | COMPLETED | Server | Recipient PIN/QR or approved proof validated; completion rules satisfied |
 | Any eligible pre-pickup state | CANCELLATION_PENDING | Sender/driver/support | Cancellation policy permits request |
 | CANCELLATION_PENDING | CANCELLED | Server/support | Cancellation decision recorded; financial follow-up queued |
-| MATCHING | PAID_UNASSIGNED | Server/worker | Match wave ended without a driver; retry policy allows another wave |
+| MATCHING | FAILED | Server/worker | Matching policy exhausts its retry budget or booking expires without an acceptable offer |
 | Eligible nonterminal state | FAILED | Server/support | Terminal operational failure recorded with reason |
 
 The table is illustrative for the allowed transitions; implement a central transition function with an explicit allowlist. Never accept arbitrary `fromStatus` or `toStatus` from the client.
@@ -38,9 +39,9 @@ This avoids one status field trying to represent several concurrent facts. A shi
 
 ## 2. Ride lifecycle
 
-Use the separate `RideStatus` enum and a distinct transition function. A typical path is:
+Use the separate `RideStatus` enum and a distinct transition function. A typical path follows the same negotiation-before-payment rule as parcels:
 
-`DRAFT → AWAITING_PAYMENT → PAYMENT_PENDING → PAID_UNASSIGNED → MATCHING → DRIVER_ASSIGNED → DRIVER_EN_ROUTE → DRIVER_ARRIVED → PICKUP_VERIFICATION_PENDING → TRIP_IN_PROGRESS → TRIP_COMPLETION_PENDING → COMPLETED`
+`DRAFT → MATCHING → AWAITING_CUSTOMER_ACCEPTANCE → AWAITING_PAYMENT → PAYMENT_PENDING → DRIVER_ASSIGNED → DRIVER_EN_ROUTE → DRIVER_ARRIVED → PICKUP_VERIFICATION_PENDING → TRIP_IN_PROGRESS → TRIP_COMPLETION_PENDING → COMPLETED`
 
 Ride-specific guards:
 - Driver and vehicle are eligible for the active jurisdiction and ride service.
@@ -52,17 +53,17 @@ Ride-specific guards:
 
 ## 3. Assignment lifecycle and concurrency
 
-An offer is not an assignment. A driver clicking Accept does not guarantee the job: the server must verify that the offer is still active and that no other driver has already won.
+An offer is not a confirmed assignment. A driver's fare proposal must be explicitly accepted by the sender before payment. After sender acceptance, reserve the selected driver with an assignment in `AWAITING_PAYMENT`; do not expose the booking as confirmed until payment is verified. Expired or failed payment releases the reservation safely so matching can resume.
 
 Acceptance transaction:
 1. Lock or conditionally update the booking row.
 2. Verify booking is still in `MATCHING`.
 3. Verify offer belongs to the requesting driver, is `OFFERED`, and has not expired.
 4. Revalidate driver status, verification, coverage, location freshness and workload.
-5. Create assignment and update booking to `DRIVER_ASSIGNED` in the same database transaction.
-6. Mark the winning offer `ACCEPTED` and other active offers `WITHDRAWN`.
-7. Record a booking event and enqueue notifications/outbox work.
-8. Commit. Return the assignment only if this transaction wins.
+5. When a sender accepts an unexpired fare proposal, atomically snapshot the driver fare, fixed connection fee and total; create a temporary assignment with `AWAITING_PAYMENT`; and withdraw competing offers.
+6. Create the payment attempt only after customer acceptance. Use an idempotency key and a server-calculated total.
+7. On verified provider success, atomically change the payment to succeeded, assignment to `ACCEPTED`, and booking to `DRIVER_ASSIGNED`; write ledger entries once and enqueue outbox work.
+8. On payment expiry/failure, safely release the temporary assignment and resume matching according to policy.
 
 A PostgreSQL partial unique index should enforce at most one active assignment per parcel booking and at most one active assignment per ride booking. Prisma schema alone does not express this partial index; add it through a reviewed SQL migration. Add SQL CHECK constraints requiring exactly one of `parcelBookingId` or `rideBookingId` on offers, assignments, payment attempts, payout records and other polymorphic references. Alternatively, replace polymorphic nullable foreign keys with separate typed tables if that yields clearer constraints.
 
@@ -97,22 +98,22 @@ Store score components and algorithm version for audit/debugging. Avoid protecte
 
 ### Offer waves
 
-1. A verified payment moves the booking to `PAID_UNASSIGNED` and writes a durable matching task/outbox event in the same transaction.
+1. A valid draft enters `MATCHING` before payment; matching tasks and offer expiry work are persisted durably.
 2. Worker claims the task idempotently and changes booking to `MATCHING`.
 3. Find eligible candidates in the initial radius and rank them.
 4. Send a limited first wave of offers with server-generated expiry timestamps.
 5. Driver acceptance is processed through the atomic transaction above.
 6. If no acceptance, expire offers and widen the radius or send the next wave.
 7. Stop after configured radius, wave count or timeout.
-8. If no driver is found, notify the sender and execute the approved refund/cancellation policy. Do not keep customer funds in an undefined state.
+8. If no driver is found, notify the sender and close or expire the unpaid booking according to policy; no refund is due because payment has not started.
 
 ### Pseudocode
 
 ```text
 match(bookingId):
   booking = load booking
-  assert booking.paymentStatus == SUCCEEDED
-  assert booking.status in [PAID_UNASSIGNED, MATCHING]
+  assert booking.status == MATCHING
+  assert booking.paymentStatus in [INITIALIZED, FAILED, ABANDONED]
   assert serviceEnabled(booking.serviceType, booking.pickupZone)
 
   for wave in configuredOfferWaves:
