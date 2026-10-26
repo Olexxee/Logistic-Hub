@@ -25,8 +25,6 @@ This document defines the first implementation boundaries for the data model, bo
 2. Every state transition is validated on the server and recorded in an event/audit trail.
 3. Payment webhooks and provider verification are idempotent.
 4. A booking can have at most one active driver assignment.
-13. Driver settlement destinations are provider-scoped records; driver/platform allocations and the routing configuration used are snapshotted per payment attempt.
-14. Maps providers may geocode and estimate routes, but never decide service eligibility, final pricing, or driver assignment.
 5. A pickup QR/PIN can be consumed only once for the intended booking and assigned driver.
 6. Driver fare and platform connection fee are separate amounts. The platform fee is not a percentage of driver fare.
 7. A booking's confirmed price is immutable. Any permitted change requires a new offer/quote and customer acceptance before payment or fulfilment proceeds.
@@ -35,12 +33,14 @@ This document defines the first implementation boundaries for the data model, bo
 10. Financial corrections use ledger adjustments/reversals, not silent mutation of historical entries.
 11. No driver payout is marked successful until the payment provider confirms it.
 12. Provider redirects are not proof of payment.
+13. Driver settlement destinations are provider-scoped records; driver/platform allocations and the routing configuration used are snapshotted per payment attempt.
+14. Maps providers may geocode and estimate routes, but never decide service eligibility, final pricing, or driver assignment.
 
 ## 2. Booking lifecycle state machines
 
 **Payment timing decision:** negotiate driver fare first, require explicit sender acceptance, then collect payment. Do not collect payment before a driver fare is accepted. Reserve the selected driver during payment initiation using a temporary assignment state; release the reservation on expiry or terminal payment failure. The agreed driver fare and fixed connection fee remain separate, immutable line items after acceptance.
 
-**Launch geography decision:** configure multiple Lagos LGAs from day one. Do not hardcode one LGA or assume every LGA is active: use service zones and per-service availability to control actual launch coverage.
+**Launch geography decision:** configure multiple Lagos LGAs from day one. Do not hardcode one LGA or assume every LGA is active: use service zones and per-service availability to control actual launch coverage. Every parcel/ride booking records both pickup and destination service zones; the service layer must validate both ends before accepting the route.
 
 ### 2.1 Parcel booking
 
