@@ -1,7 +1,7 @@
 name: Validate Prisma Schema and PostgreSQL Constraints
 
 concurrency:
-  group: prisma-validation-${{ github.ref }}
+  group: prisma-validation-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 on:
