@@ -544,7 +544,247 @@ paths:
       parameters:
         - in: query
           name: countryCode
-          schema: { type: string, pattern: '^[A-Z]{2}
+          schema: { type: string, pattern: '^[A-Z]{2}$', default: NG }
+        - in: query
+          name: stateCode
+          schema: { type: string, maxLength: 16 }
+        - in: query
+          name: lga
+          schema: { type: string, maxLength: 120 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Active hub point page.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /maps/geocode:
+    post:
+      tags: [Maps]
+      operationId: geocodeAddress
+      summary: Convert an address or place query into coordinates
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Geocoded location.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Maps provider is not configured.
+  /maps/routes:
+    post:
+      tags: [Maps]
+      operationId: computeRoute
+      summary: Compute route distance and duration between coordinates
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Route distance and duration.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Maps provider is not configured.
+  /parcel-bookings:
+    post:
+      tags: [Parcel bookings]
+      operationId: createParcelBooking
+      summary: Create an idempotent parcel booking draft
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Parcel booking draft created.
+        '200':
+          description: Existing booking returned for an identical idempotent retry.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Service zone, pricing or idempotency conflict.
+  /parcel-bookings/{bookingId}:
+    get:
+      tags: [Parcel bookings]
+      operationId: getParcelBooking
+      summary: Get a parcel booking visible to the authenticated account
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Parcel booking details.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /parcel-bookings/{bookingId}/request-matching:
+    post:
+      tags: [Dispatch]
+      operationId: requestParcelMatching
+      summary: Request driver offers for a draft parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202':
+          description: Matching request accepted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Booking state or driver availability conflict.
+  /parcel-bookings/{bookingId}/offers:
+    get:
+      tags: [Dispatch]
+      operationId: listParcelOffers
+      summary: List fare proposals for a parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Available driver fare proposals.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /driver/offers:
+    get:
+      tags: [Dispatch]
+      operationId: listDriverOffers
+      summary: List current offers for the authenticated driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Driver offer page.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /driver/offers/{offerId}/propose-fare:
+    post:
+      tags: [Dispatch]
+      operationId: proposeParcelFare
+      summary: Submit or revise a fare proposal for an offered parcel
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: offerId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Fare proposal recorded.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Offer expired or idempotency conflict.
+  /parcel-bookings/{bookingId}/accept-fare:
+    post:
+      tags: [Dispatch]
+      operationId: acceptParcelFare
+      summary: Accept one driver fare proposal before payment
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Fare accepted and payable total snapshotted.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Offer expired or booking state conflict.
+  /notifications:
     get:
       tags: [Notifications]
       operationId: listNotifications
