@@ -400,6 +400,8 @@ model PricingRule {
 model ParcelBooking {
   id                      String        @id @default(cuid())
   publicReference         String        @unique
+  idempotencyKey          String?       @unique
+  idempotencyPayloadHash   String?
   senderId                String
   pickupServiceZoneId     String
   destinationServiceZoneId String
