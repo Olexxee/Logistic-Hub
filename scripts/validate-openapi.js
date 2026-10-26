@@ -31,6 +31,7 @@ const implementedOperations = new Set([
   "POST /payments/payouts/request",
   "GET /payments/payouts/admin",
   "GET /payments/admin/reconciliation/payments/{reference}",
+  "GET /payments/admin/reconciliation/payouts/{reference}",
   "POST /support/tickets",
   "GET /support/tickets/mine",
   "GET /support/tickets/admin",
