@@ -1,3 +1,4 @@
+ALTER TABLE "ride_bookings" ADD COLUMN IF NOT EXISTS "cancellationReason" TEXT;
 ALTER TYPE "VerificationAction" ADD VALUE IF NOT EXISTS 'RIDE_COMPLETION';
 
 CREATE TABLE "auth_sessions" (
