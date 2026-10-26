@@ -18,6 +18,7 @@ export function createFinancialRouter({ prismaClient = prisma } = {}) {
   router.post("/payouts/request", requireAuth, requireRole("DRIVER"), validatePayoutRequest, asyncWrapper(controller.requestPayout));
   router.get("/payouts/admin", requireAuth, requireFinance, validateFinancialList, asyncWrapper(controller.listPayouts));
   router.get("/admin/reconciliation/payments/:reference", requireAuth, requireFinance, validatePaymentReference, asyncWrapper(controller.reconcilePayment));
+  router.get("/admin/reconciliation/payouts/:reference", requireAuth, requireFinance, validatePaymentReference, asyncWrapper(controller.reconcilePayout));
   return router;
 }
 export const financialRouter = createFinancialRouter();
