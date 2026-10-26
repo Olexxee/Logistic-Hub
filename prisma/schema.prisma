@@ -223,6 +223,7 @@ model DriverSettlementAccount {
   updatedAt           DateTime               @updatedAt
 
   driverProfile       DriverProfile          @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+  paymentAttempts     PaymentAttempt[]
 
   @@unique([driverProfileId, provider])
   @@unique([provider, externalAccountRef])
@@ -304,7 +305,9 @@ model LGA {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([id, stateId])
   @@unique([stateId, name])
+  @@unique([stateId, code])
   @@index([stateId])
   @@map("lgas")
 }
@@ -318,7 +321,7 @@ model ServiceZone {
   isActive    Boolean  @default(false)
   boundaryGeoJson Json?
   state       State    @relation(fields: [stateId], references: [id], onDelete: Restrict)
-  lga         LGA?     @relation(fields: [lgaId], references: [id], onDelete: Restrict)
+  lga         LGA?     @relation(fields: [lgaId, stateId], references: [id, stateId], onDelete: Restrict)
   availability ServiceAvailability[]
   coverage    DriverCoverage[]
   parcelBookings ParcelBooking[]
@@ -512,7 +515,7 @@ model DriverAssignment {
   rideBookingId     String?
   driverProfileId   String
   assignedByUserId  String?
-  status            AssignmentStatus @default(ACCEPTED)
+  status            AssignmentStatus @default(AWAITING_PAYMENT)
   agreedFareMinor   BigInt
   currency          String           @default("NGN")
   acceptedAt        DateTime         @default(now())
@@ -546,9 +549,10 @@ model PaymentAttempt {
   amountMinor         BigInt
   currency            String        @default("NGN")
   providerFeeMinor    BigInt?
-  driverSettlementMinor BigInt?
-  platformSettlementMinor BigInt?
-  settlementRoutingSnapshot Json?
+  driverAllocationMinor BigInt?
+  platformAllocationMinor BigInt?
+  driverSettlementAccountId String?
+  splitConfigurationSnapshot Json?
   providerPayload     Json?
   initializedAt       DateTime      @default(now())
   verifiedAt          DateTime?
@@ -558,6 +562,7 @@ model PaymentAttempt {
 
   parcelBooking       ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
   rideBooking         RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
+  driverSettlementAccount DriverSettlementAccount? @relation(fields: [driverSettlementAccountId], references: [id], onDelete: Restrict)
   ledgerEntries       LedgerEntry[]
 
   @@index([parcelBookingId, status])
