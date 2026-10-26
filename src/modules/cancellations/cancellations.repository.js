@@ -14,7 +14,9 @@ export function createCancellationsRepository(prismaClient=prisma){return{
    const assignments=await tx.driverAssignment.findMany({where:isParcel?{parcelBookingId:booking.id,status:{notIn:["COMPLETED","CANCELLED","FAILED"]}}:{rideBookingId:booking.id,status:{notIn:["COMPLETED","CANCELLED","FAILED"]}},select:{id:true,driverProfileId:true}});
    for(const a of assignments){await tx.driverAssignment.update({where:{id:a.id},data:{status:"CANCELLED",cancelledAt:now,failureReason:"Customer cancelled before payment"}});await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true}});}
   }
-  await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:userId,eventType:paid?"CANCELLATION_REVIEW_REQUESTED":"BOOKING_CANCELLED",fromStatus:booking.status,toStatus:nextStatus,metadata:{reason,refundReviewRequired:paid}}});
-  return{bookingId:booking.id,bookingType,status:nextStatus,refundReviewRequired:paid,policy:paid?"Payment captured: cancellation and refund require support/admin review; no automatic refund was issued.":"Unpaid booking cancelled; offers withdrawn and reserved driver released."};
+  let supportTicketReference=null;
+  if(paid){supportTicketReference="SUP-CANCEL-"+booking.publicReference;await tx.supportTicket.create({data:{publicReference:supportTicketReference,customerId:userId,bookingType,bookingId:booking.id,category:"REFUND",subject:"Cancellation and refund review: "+booking.publicReference,description:"Customer requested cancellation after payment. Reason: "+reason+"\nSupport must review eligibility and explicitly approve any refund; no automatic refund was issued.",status:"OPEN",priority:"HIGH"}});}
+  await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:userId,eventType:paid?"CANCELLATION_REVIEW_REQUESTED":"BOOKING_CANCELLED",fromStatus:booking.status,toStatus:nextStatus,metadata:{reason,refundReviewRequired:paid,supportTicketReference}}});
+  return{bookingId:booking.id,bookingType,status:nextStatus,refundReviewRequired:paid,supportTicketReference,policy:paid?"Payment captured: cancellation and refund require support/admin review; no automatic refund was issued.":"Unpaid booking cancelled; offers withdrawn and reserved driver released."};
  });}
 };}
