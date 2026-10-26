@@ -1,5 +1,6 @@
 export function createAssignmentsRepository({ prismaClient }) {
   return {
+    findLatestLocation(driverProfileId) { return prismaClient.driverLocation.findFirst({ where: { driverProfileId }, orderBy: { recordedAt: "desc" }, select: { latitude: true, longitude: true, accuracyMeters: true, recordedAt: true } }); },
     findById(id) {
       return prismaClient.driverAssignment.findUnique({
         where: { id },
