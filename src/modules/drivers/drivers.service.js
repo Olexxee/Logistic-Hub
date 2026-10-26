@@ -171,6 +171,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
           verificationStatus: updated.verificationStatus,
           isOnline: updated.isOnline,
           isAvailable: updated.isAvailable,
+          userId: updated.userId,
         };
       });
     },
