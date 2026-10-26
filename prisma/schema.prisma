@@ -834,3 +834,27 @@ model SupportTicket {
   @@index([assignedToUserId, status])
   @@map("support_tickets")
 }
+
+model RefundRequest {
+  id                 String   @id @default(cuid())
+  publicReference    String   @unique
+  paymentAttemptId   String
+  amountMinor        BigInt
+  currency           String   @default("NGN")
+  reason             String
+  status             String   @default("PENDING_REVIEW")
+  requestedByUserId  String
+  reviewedByUserId   String?
+  providerReference  String?  @unique
+  idempotencyKey     String   @unique
+  providerResponse   Json?
+  reviewedAt         DateTime?
+  processedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  paymentAttempt     PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([paymentAttemptId, status])
+  @@map("refund_requests")
+}
