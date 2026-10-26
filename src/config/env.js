@@ -12,6 +12,7 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional().default(""),
   RESEND_FROM_EMAIL: z.string().optional().default(""),
   APP_BASE_URL: z.string().url().optional().default("http://localhost:3000"),
+  JWT_ACCESS_SECRET: z.string().optional().default(""),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });
 
@@ -35,6 +36,10 @@ if (parsed.data.EMAIL_PROVIDER === "resend") {
   if (!z.string().email().safeParse(parsed.data.RESEND_FROM_EMAIL).success) {
     throw new Error("RESEND_FROM_EMAIL must be a valid sender email when EMAIL_PROVIDER=resend.");
   }
+}
+
+if (parsed.data.NODE_ENV === "production" && parsed.data.JWT_ACCESS_SECRET.length < 32) {
+  throw new Error("JWT_ACCESS_SECRET must contain at least 32 characters in production.");
 }
 
 if (parsed.data.PAYMENTS_ENABLED) {

@@ -3,6 +3,8 @@ import express from "express";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { env } from "./config/env.js";
+import { authRouter } from "./modules/auth/auth.routes.js";
+import { requireAuth } from "./modules/auth/auth.middleware.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js";
 import { mapsRouter } from "./modules/maps/maps.routes.js";
@@ -31,12 +33,14 @@ app.get("/", (_req, res) => {
       version: "v1",
       health: "/api/v1/health",
       readiness: "/api/v1/health/ready",
+      authentication: "/api/v1/auth",
     },
   });
 });
 
 app.use("/api/v1/health", healthRouter);
+app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
-app.use("/api/v1/maps", mapsRouter);
+app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

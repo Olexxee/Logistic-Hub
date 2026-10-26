@@ -38,7 +38,7 @@ paths:
       tags: [Geography]
       operationId: listActiveServiceZones
       summary: List active service zones and service availability
-      x-implementation-status: planned
+      x-implementation-status: implemented
       parameters:
         - in: query
           name: countryCode
@@ -83,7 +83,7 @@ paths:
       operationId: geocodeAddress
       summary: Convert an address to candidate coordinates
       description: Geocoding does not establish service-zone eligibility.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       requestBody:
@@ -136,7 +136,7 @@ paths:
       operationId: computeRoute
       summary: Estimate route distance and duration
       description: Route distance and duration are estimates, not fare guarantees.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       requestBody:
@@ -181,6 +181,1860 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: registerCustomer
+      summary: Register a customer and send an email verification link
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [fullName, email, password]
+              properties:
+                fullName: { type: string, minLength: 2, maxLength: 160 }
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, minLength: 10, maxLength: 128 }
+      responses:
+        '201': { description: Account created; verification email accepted. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { description: Email is already registered. }
+        '503': { description: Email service is unavailable. }
+  /auth/verify-email:
+    post:
+      tags: [Authentication]
+      operationId: verifyEmail
+      summary: Verify an email address using a one-time token
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, pattern: '^[a-f0-9]{64}
+    post:
+      tags: [Parcel bookings]
+      operationId: createParcelBooking
+      summary: Create a draft parcel booking
+      description: |
+        The server validates both service zones and current parcel-service availability.
+        The client cannot set status, payment status, price snapshots or driver assignment.
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - pickupServiceZoneId
+                - destinationServiceZoneId
+                - pickupAddress
+                - pickup
+                - destinationAddress
+                - destination
+                - recipientName
+                - recipientPhone
+                - parcelCategory
+                - parcelSize
+              properties:
+                pickupServiceZoneId:
+                  type: string
+                  minLength: 1
+                destinationServiceZoneId:
+                  type: string
+                  minLength: 1
+                pickupAddress:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                pickup:
+                  $ref: '#/components/schemas/Coordinates'
+                pickupInstructions:
+                  type: string
+                  maxLength: 1000
+                destinationAddress:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                destination:
+                  $ref: '#/components/schemas/Coordinates'
+                recipientName:
+                  type: string
+                  minLength: 1
+                  maxLength: 160
+                recipientPhone:
+                  type: string
+                  minLength: 7
+                  maxLength: 32
+                parcelCategory:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                parcelDescription:
+                  type: string
+                  maxLength: 2000
+                parcelSize:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                declaredValueMinor:
+                  $ref: '#/components/schemas/MinorAmount'
+                handlingInstructions:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '201':
+          description: Draft booking created; payment has not been initiated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/ParcelBookingCreated'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Idempotency conflict or requested service zone is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /parcel-bookings/{bookingId}:
+    get:
+      tags: [Parcel bookings]
+      operationId: getParcelBooking
+      summary: Get a parcel booking and its current lifecycle state
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking resource visible to its sender or an authorized operator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/ParcelBookingResource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /parcel-bookings/{bookingId}/offers:
+    get:
+      tags: [Driver offers]
+      operationId: listParcelFareOffers
+      summary: List fare offers visible to the booking sender
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Offers for the caller's booking.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FareOffer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /driver/offers:
+    get:
+      tags: [Driver offers]
+      operationId: listDriverOffers
+      summary: List current offers for the authenticated driver
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Offers for the authenticated and eligible driver.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DriverOfferResource'
+                  nextCursor:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /driver/offers/{offerId}/propose-fare:
+    post:
+      tags: [Driver offers]
+      operationId: proposeDriverFare
+      summary: Submit or revise a fare proposal for an offer
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: offerId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [proposedFareMinor, currency]
+              properties:
+                proposedFareMinor:
+                  $ref: '#/components/schemas/PositiveMinorAmount'
+                currency:
+                  type: string
+                  const: NGN
+      responses:
+        '200':
+          description: Fare proposal recorded with server-generated expiry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/FareOffer'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Offer is expired, withdrawn, or no longer eligible for a proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /parcel-bookings/{bookingId}/accept-fare:
+    post:
+      tags: [Parcel bookings]
+      operationId: acceptParcelFare
+      summary: Accept one valid driver fare proposal
+      description: |
+        Acceptance is transactional. The backend snapshots the agreed fare and
+        fixed connection fee, reserves the selected driver while payment is pending,
+        and withdraws competing offers. This does not initialize payment.
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [offerId]
+              properties:
+                offerId:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: Fare accepted; booking awaits payment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/AcceptedQuote'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Offer expired, another offer was accepted, or booking is no longer payable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /payments:
+    post:
+      tags: [Payments]
+      operationId: initializePayment
+      summary: Initialize payment for an accepted parcel quote
+      description: |
+        Planned and disabled until the owner approves implementation. The request
+        contains no amount, fee, split destination or provider reference. The server
+        computes all amounts and uses a versioned split-routing configuration.
+      x-implementation-status: planned-disabled
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [bookingType, bookingId]
+              properties:
+                bookingType:
+                  type: string
+                  const: PARCEL
+                bookingId:
+                  type: string
+                  minLength: 1
+      responses:
+        '202':
+          description: Payment attempt initialized with provider checkout details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/PaymentInitialization'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No accepted quote, payment already in progress, or booking is not payable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Payment processing is disabled or provider is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /payments/{paymentAttemptId}:
+    get:
+      tags: [Payments]
+      operationId: getPaymentAttempt
+      summary: Get the status of a payment attempt
+      description: The status is server-verified; browser redirect parameters are not authoritative.
+      x-implementation-status: planned-disabled
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentAttemptId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Payment status visible to the booking owner or authorized operator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/PaymentStatusResource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Payment processing is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /webhooks/paystack:
+    post:
+      tags: [Webhooks]
+      operationId: receivePaystackWebhook
+      summary: Receive Paystack payment events
+      description: |
+        Planned and disabled. Verify the X-Paystack-Signature against the exact raw
+        request body before parsing or processing. Then verify the transaction server-side.
+        This endpoint is not authenticated with a user bearer token.
+      x-implementation-status: planned-disabled
+      security: []
+      parameters:
+        - in: header
+          name: x-paystack-signature
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event, data]
+              properties:
+                event:
+                  type: string
+                  const: charge.success
+                data:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Event accepted or safely ignored as a duplicate.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Signature is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Payment processing is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique client-generated key for one logical state-changing request.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+  responses:
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication is missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Caller is authenticated but not allowed to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource does not exist or is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    HealthResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          const: true
+        data:
+          type: object
+          required: [name, status, version, paymentsEnabled]
+          properties:
+            name:
+              type: string
+              const: Logistic Hub API
+            status:
+              type: string
+              const: ok
+            version:
+              type: string
+            paymentsEnabled:
+              type: boolean
+              const: false
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  path:
+                    type: array
+                    items:
+                      oneOf:
+                        - type: string
+                        - type: integer
+                  message:
+                    type: string
+    MinorAmount:
+      type: string
+      pattern: '^[0-9]+$'
+      description: Non-negative integer minor units serialized as a decimal string.
+      examples: ['430000']
+    PositiveMinorAmount:
+      type: string
+      pattern: '^[1-9][0-9]*$'
+      description: Positive integer minor units serialized as a decimal string.
+    Coordinates:
+      type: object
+      additionalProperties: false
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+    ServiceType:
+      type: string
+      enum: [PARCEL_DELIVERY, PASSENGER_RIDE, HUB_POINT, BUSINESS_LOGISTICS]
+    ServiceZone:
+      type: object
+      required: [id, code, name, countryCode, stateCode, stateName, isActive, services]
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        countryCode:
+          type: string
+          const: NG
+        stateCode:
+          type: string
+          examples: [NG-LA]
+        stateName:
+          type: string
+        lgaCode:
+          type: string
+        lgaName:
+          type: string
+        isActive:
+          type: boolean
+          const: true
+        services:
+          type: array
+          items:
+            type: object
+            required: [serviceType, isEnabled]
+            properties:
+              serviceType:
+                $ref: '#/components/schemas/ServiceType'
+              isEnabled:
+                type: boolean
+    GeocodeResult:
+      type: object
+      required: [formattedAddress, location]
+      properties:
+        formattedAddress:
+          type: string
+        location:
+          $ref: '#/components/schemas/Coordinates'
+        placeId:
+          type: string
+    RouteResult:
+      type: object
+      required: [distanceMeters, durationSeconds]
+      properties:
+        distanceMeters:
+          type: integer
+          minimum: 0
+        durationSeconds:
+          type: integer
+          minimum: 0
+        encodedPolyline:
+          type: string
+    ParcelBookingCreated:
+      type: object
+      required: [id, publicReference, status, paymentStatus, currency, pickupServiceZoneId, destinationServiceZoneId, createdAt]
+      properties:
+        id:
+          type: string
+        publicReference:
+          type: string
+        status:
+          type: string
+          const: DRAFT
+        paymentStatus:
+          type: string
+          const: INITIALIZED
+        currency:
+          type: string
+          const: NGN
+        pickupServiceZoneId:
+          type: string
+        destinationServiceZoneId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ParcelBookingResource:
+      type: object
+      required: [id, publicReference, status, paymentStatus, currency, pickupServiceZoneId, destinationServiceZoneId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        publicReference:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
+        paymentStatus:
+          type: string
+          enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED]
+        currency:
+          type: string
+          const: NGN
+        pickupServiceZoneId:
+          type: string
+        destinationServiceZoneId:
+          type: string
+        pickupAddress:
+          type: string
+        pickupInstructions:
+          type: string
+        pickup:
+          $ref: '#/components/schemas/Coordinates'
+        destinationAddress:
+          type: string
+        destination:
+          $ref: '#/components/schemas/Coordinates'
+        recipientName:
+          type: string
+        recipientPhone:
+          type: string
+        parcelCategory:
+          type: string
+        parcelDescription:
+          type: string
+        parcelSize:
+          type: string
+        declaredValueMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        handlingInstructions:
+          type: string
+        driverFareMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        connectionFeeMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        otherChargesMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        customerPayableMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    FareOffer:
+      type: object
+      required: [id, status, proposedFareMinor, currency, expiresAt]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [OFFERED, ACCEPTED, DECLINED, EXPIRED, WITHDRAWN]
+        proposedFareMinor:
+          $ref: '#/components/schemas/PositiveMinorAmount'
+        currency:
+          type: string
+          const: NGN
+        expiresAt:
+          type: string
+          format: date-time
+        driver:
+          $ref: '#/components/schemas/DriverSummary'
+    DriverSummary:
+      type: object
+      required: [displayName, verificationStatus, completedJobs]
+      properties:
+        displayName:
+          type: string
+          description: Public display name; do not expose the driver's full legal name by default.
+        verificationStatus:
+          type: string
+          const: VERIFIED
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+        completedJobs:
+          type: integer
+          minimum: 0
+        vehicleType:
+          type: string
+          enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK]
+    DriverOfferResource:
+      type: object
+      required: [id, status, expiresAt, serviceType, pickup, destination]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [OFFERED, ACCEPTED, DECLINED, EXPIRED, WITHDRAWN]
+        expiresAt:
+          type: string
+          format: date-time
+        serviceType:
+          type: string
+          const: PARCEL_DELIVERY
+        pickup:
+          $ref: '#/components/schemas/LocationSummary'
+        destination:
+          $ref: '#/components/schemas/LocationSummary'
+        parcelCategory:
+          type: string
+        parcelSize:
+          type: string
+        parcelDescription:
+          type: string
+          description: Omit or redact sensitive contents where not needed for driver eligibility.
+        handlingInstructions:
+          type: string
+    LocationSummary:
+      type: object
+      required: [address, coordinates]
+      properties:
+        address:
+          type: string
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+    AcceptedQuote:
+      type: object
+      required: [bookingId, offerId, status, driverFareMinor, connectionFeeMinor, otherChargesMinor, customerPayableMinor, currency, expiresAt]
+      properties:
+        bookingId:
+          type: string
+        offerId:
+          type: string
+        status:
+          type: string
+          const: AWAITING_PAYMENT
+        driverFareMinor:
+          $ref: '#/components/schemas/PositiveMinorAmount'
+        connectionFeeMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        otherChargesMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        customerPayableMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        currency:
+          type: string
+          const: NGN
+        expiresAt:
+          type: string
+          format: date-time
+      description: Quote reservation expiry while the customer completes payment; it is distinct from the original driver offer expiry.
+    PaymentInitialization:
+      type: object
+      required: [id, status, amountMinor, currency]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [INITIALIZED, PENDING]
+        amountMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        currency:
+          type: string
+          const: NGN
+        authorizationUrl:
+          type: string
+          format: uri
+          description: Provider-hosted checkout URL; omitted if not available.
+    PaymentStatusResource:
+      type: object
+      required: [id, status, amountMinor, currency, updatedAt]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED]
+        amountMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        currency:
+          type: string
+          const: NGN
+        updatedAt:
+          type: string
+          format: date-time
+ }
+      responses:
+        '200': { description: Email verified and account activated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Authenticate a verified active account
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Short-lived bearer access token and public account profile. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Account is not active or email is not verified. }
+        '503': { description: Authentication signing is not configured. }
+  /auth/password/forgot:
+    post:
+      tags: [Authentication]
+      operationId: requestPasswordReset
+      summary: Request a password reset email
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202': { description: Generic response that does not disclose whether the account exists. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/password/reset:
+    post:
+      tags: [Authentication]
+      operationId: resetPassword
+      summary: Set a new password using a one-time reset token
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, password]
+              properties:
+                token: { type: string, pattern: '^[a-f0-9]{64}
+    post:
+      tags: [Parcel bookings]
+      operationId: createParcelBooking
+      summary: Create a draft parcel booking
+      description: |
+        The server validates both service zones and current parcel-service availability.
+        The client cannot set status, payment status, price snapshots or driver assignment.
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - pickupServiceZoneId
+                - destinationServiceZoneId
+                - pickupAddress
+                - pickup
+                - destinationAddress
+                - destination
+                - recipientName
+                - recipientPhone
+                - parcelCategory
+                - parcelSize
+              properties:
+                pickupServiceZoneId:
+                  type: string
+                  minLength: 1
+                destinationServiceZoneId:
+                  type: string
+                  minLength: 1
+                pickupAddress:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                pickup:
+                  $ref: '#/components/schemas/Coordinates'
+                pickupInstructions:
+                  type: string
+                  maxLength: 1000
+                destinationAddress:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                destination:
+                  $ref: '#/components/schemas/Coordinates'
+                recipientName:
+                  type: string
+                  minLength: 1
+                  maxLength: 160
+                recipientPhone:
+                  type: string
+                  minLength: 7
+                  maxLength: 32
+                parcelCategory:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                parcelDescription:
+                  type: string
+                  maxLength: 2000
+                parcelSize:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                declaredValueMinor:
+                  $ref: '#/components/schemas/MinorAmount'
+                handlingInstructions:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '201':
+          description: Draft booking created; payment has not been initiated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/ParcelBookingCreated'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Idempotency conflict or requested service zone is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /parcel-bookings/{bookingId}:
+    get:
+      tags: [Parcel bookings]
+      operationId: getParcelBooking
+      summary: Get a parcel booking and its current lifecycle state
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking resource visible to its sender or an authorized operator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/ParcelBookingResource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /parcel-bookings/{bookingId}/offers:
+    get:
+      tags: [Driver offers]
+      operationId: listParcelFareOffers
+      summary: List fare offers visible to the booking sender
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Offers for the caller's booking.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FareOffer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /driver/offers:
+    get:
+      tags: [Driver offers]
+      operationId: listDriverOffers
+      summary: List current offers for the authenticated driver
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Offers for the authenticated and eligible driver.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DriverOfferResource'
+                  nextCursor:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /driver/offers/{offerId}/propose-fare:
+    post:
+      tags: [Driver offers]
+      operationId: proposeDriverFare
+      summary: Submit or revise a fare proposal for an offer
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: offerId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [proposedFareMinor, currency]
+              properties:
+                proposedFareMinor:
+                  $ref: '#/components/schemas/PositiveMinorAmount'
+                currency:
+                  type: string
+                  const: NGN
+      responses:
+        '200':
+          description: Fare proposal recorded with server-generated expiry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/FareOffer'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Offer is expired, withdrawn, or no longer eligible for a proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /parcel-bookings/{bookingId}/accept-fare:
+    post:
+      tags: [Parcel bookings]
+      operationId: acceptParcelFare
+      summary: Accept one valid driver fare proposal
+      description: |
+        Acceptance is transactional. The backend snapshots the agreed fare and
+        fixed connection fee, reserves the selected driver while payment is pending,
+        and withdraws competing offers. This does not initialize payment.
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [offerId]
+              properties:
+                offerId:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: Fare accepted; booking awaits payment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/AcceptedQuote'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Offer expired, another offer was accepted, or booking is no longer payable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /payments:
+    post:
+      tags: [Payments]
+      operationId: initializePayment
+      summary: Initialize payment for an accepted parcel quote
+      description: |
+        Planned and disabled until the owner approves implementation. The request
+        contains no amount, fee, split destination or provider reference. The server
+        computes all amounts and uses a versioned split-routing configuration.
+      x-implementation-status: planned-disabled
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [bookingType, bookingId]
+              properties:
+                bookingType:
+                  type: string
+                  const: PARCEL
+                bookingId:
+                  type: string
+                  minLength: 1
+      responses:
+        '202':
+          description: Payment attempt initialized with provider checkout details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/PaymentInitialization'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No accepted quote, payment already in progress, or booking is not payable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Payment processing is disabled or provider is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /payments/{paymentAttemptId}:
+    get:
+      tags: [Payments]
+      operationId: getPaymentAttempt
+      summary: Get the status of a payment attempt
+      description: The status is server-verified; browser redirect parameters are not authoritative.
+      x-implementation-status: planned-disabled
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentAttemptId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Payment status visible to the booking owner or authorized operator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/PaymentStatusResource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Payment processing is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /webhooks/paystack:
+    post:
+      tags: [Webhooks]
+      operationId: receivePaystackWebhook
+      summary: Receive Paystack payment events
+      description: |
+        Planned and disabled. Verify the X-Paystack-Signature against the exact raw
+        request body before parsing or processing. Then verify the transaction server-side.
+        This endpoint is not authenticated with a user bearer token.
+      x-implementation-status: planned-disabled
+      security: []
+      parameters:
+        - in: header
+          name: x-paystack-signature
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event, data]
+              properties:
+                event:
+                  type: string
+                  const: charge.success
+                data:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Event accepted or safely ignored as a duplicate.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Signature is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Payment processing is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique client-generated key for one logical state-changing request.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+  responses:
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication is missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Caller is authenticated but not allowed to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource does not exist or is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    HealthResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          const: true
+        data:
+          type: object
+          required: [name, status, version, paymentsEnabled]
+          properties:
+            name:
+              type: string
+              const: Logistic Hub API
+            status:
+              type: string
+              const: ok
+            version:
+              type: string
+            paymentsEnabled:
+              type: boolean
+              const: false
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  path:
+                    type: array
+                    items:
+                      oneOf:
+                        - type: string
+                        - type: integer
+                  message:
+                    type: string
+    MinorAmount:
+      type: string
+      pattern: '^[0-9]+$'
+      description: Non-negative integer minor units serialized as a decimal string.
+      examples: ['430000']
+    PositiveMinorAmount:
+      type: string
+      pattern: '^[1-9][0-9]*$'
+      description: Positive integer minor units serialized as a decimal string.
+    Coordinates:
+      type: object
+      additionalProperties: false
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+    ServiceType:
+      type: string
+      enum: [PARCEL_DELIVERY, PASSENGER_RIDE, HUB_POINT, BUSINESS_LOGISTICS]
+    ServiceZone:
+      type: object
+      required: [id, code, name, countryCode, stateCode, stateName, isActive, services]
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        countryCode:
+          type: string
+          const: NG
+        stateCode:
+          type: string
+          examples: [NG-LA]
+        stateName:
+          type: string
+        lgaCode:
+          type: string
+        lgaName:
+          type: string
+        isActive:
+          type: boolean
+          const: true
+        services:
+          type: array
+          items:
+            type: object
+            required: [serviceType, isEnabled]
+            properties:
+              serviceType:
+                $ref: '#/components/schemas/ServiceType'
+              isEnabled:
+                type: boolean
+    GeocodeResult:
+      type: object
+      required: [formattedAddress, location]
+      properties:
+        formattedAddress:
+          type: string
+        location:
+          $ref: '#/components/schemas/Coordinates'
+        placeId:
+          type: string
+    RouteResult:
+      type: object
+      required: [distanceMeters, durationSeconds]
+      properties:
+        distanceMeters:
+          type: integer
+          minimum: 0
+        durationSeconds:
+          type: integer
+          minimum: 0
+        encodedPolyline:
+          type: string
+    ParcelBookingCreated:
+      type: object
+      required: [id, publicReference, status, paymentStatus, currency, pickupServiceZoneId, destinationServiceZoneId, createdAt]
+      properties:
+        id:
+          type: string
+        publicReference:
+          type: string
+        status:
+          type: string
+          const: DRAFT
+        paymentStatus:
+          type: string
+          const: INITIALIZED
+        currency:
+          type: string
+          const: NGN
+        pickupServiceZoneId:
+          type: string
+        destinationServiceZoneId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ParcelBookingResource:
+      type: object
+      required: [id, publicReference, status, paymentStatus, currency, pickupServiceZoneId, destinationServiceZoneId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        publicReference:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
+        paymentStatus:
+          type: string
+          enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED]
+        currency:
+          type: string
+          const: NGN
+        pickupServiceZoneId:
+          type: string
+        destinationServiceZoneId:
+          type: string
+        pickupAddress:
+          type: string
+        pickupInstructions:
+          type: string
+        pickup:
+          $ref: '#/components/schemas/Coordinates'
+        destinationAddress:
+          type: string
+        destination:
+          $ref: '#/components/schemas/Coordinates'
+        recipientName:
+          type: string
+        recipientPhone:
+          type: string
+        parcelCategory:
+          type: string
+        parcelDescription:
+          type: string
+        parcelSize:
+          type: string
+        declaredValueMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        handlingInstructions:
+          type: string
+        driverFareMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        connectionFeeMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        otherChargesMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        customerPayableMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    FareOffer:
+      type: object
+      required: [id, status, proposedFareMinor, currency, expiresAt]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [OFFERED, ACCEPTED, DECLINED, EXPIRED, WITHDRAWN]
+        proposedFareMinor:
+          $ref: '#/components/schemas/PositiveMinorAmount'
+        currency:
+          type: string
+          const: NGN
+        expiresAt:
+          type: string
+          format: date-time
+        driver:
+          $ref: '#/components/schemas/DriverSummary'
+    DriverSummary:
+      type: object
+      required: [displayName, verificationStatus, completedJobs]
+      properties:
+        displayName:
+          type: string
+          description: Public display name; do not expose the driver's full legal name by default.
+        verificationStatus:
+          type: string
+          const: VERIFIED
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+        completedJobs:
+          type: integer
+          minimum: 0
+        vehicleType:
+          type: string
+          enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK]
+    DriverOfferResource:
+      type: object
+      required: [id, status, expiresAt, serviceType, pickup, destination]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [OFFERED, ACCEPTED, DECLINED, EXPIRED, WITHDRAWN]
+        expiresAt:
+          type: string
+          format: date-time
+        serviceType:
+          type: string
+          const: PARCEL_DELIVERY
+        pickup:
+          $ref: '#/components/schemas/LocationSummary'
+        destination:
+          $ref: '#/components/schemas/LocationSummary'
+        parcelCategory:
+          type: string
+        parcelSize:
+          type: string
+        parcelDescription:
+          type: string
+          description: Omit or redact sensitive contents where not needed for driver eligibility.
+        handlingInstructions:
+          type: string
+    LocationSummary:
+      type: object
+      required: [address, coordinates]
+      properties:
+        address:
+          type: string
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+    AcceptedQuote:
+      type: object
+      required: [bookingId, offerId, status, driverFareMinor, connectionFeeMinor, otherChargesMinor, customerPayableMinor, currency, expiresAt]
+      properties:
+        bookingId:
+          type: string
+        offerId:
+          type: string
+        status:
+          type: string
+          const: AWAITING_PAYMENT
+        driverFareMinor:
+          $ref: '#/components/schemas/PositiveMinorAmount'
+        connectionFeeMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        otherChargesMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        customerPayableMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        currency:
+          type: string
+          const: NGN
+        expiresAt:
+          type: string
+          format: date-time
+      description: Quote reservation expiry while the customer completes payment; it is distinct from the original driver offer expiry.
+    PaymentInitialization:
+      type: object
+      required: [id, status, amountMinor, currency]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [INITIALIZED, PENDING]
+        amountMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        currency:
+          type: string
+          const: NGN
+        authorizationUrl:
+          type: string
+          format: uri
+          description: Provider-hosted checkout URL; omitted if not available.
+    PaymentStatusResource:
+      type: object
+      required: [id, status, amountMinor, currency, updatedAt]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED]
+        amountMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        currency:
+          type: string
+          const: NGN
+        updatedAt:
+          type: string
+          format: date-time
+ }
+                password: { type: string, minLength: 10, maxLength: 128 }
+      responses:
+        '200': { description: Password reset successfully. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentAccount
+      summary: Return the authenticated account profile
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Current account profile. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /parcel-bookings:
     post:
       tags: [Parcel bookings]

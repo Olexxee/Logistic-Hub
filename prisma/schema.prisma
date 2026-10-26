@@ -178,6 +178,7 @@ model User {
   rideBookings  RideBooking[]   @relation("RidePassenger")
   assignments   DriverAssignment[]
   notifications Notification[]
+  authActionTokens AuthActionToken[]
 
   @@index([role, status])
   @@map("users")
@@ -712,6 +713,27 @@ model HubPoint {
 
   @@index([serviceZoneId, status])
   @@map("hub_points")
+}
+
+enum AuthTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model AuthActionToken {
+  id         String           @id @default(cuid())
+  userId     String
+  purpose    AuthTokenPurpose
+  tokenHash  String           @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime         @default(now())
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, consumedAt])
+  @@index([purpose, expiresAt])
+  @@map("auth_action_tokens")
 }
 
 model Notification {

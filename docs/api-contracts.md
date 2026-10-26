@@ -1,6 +1,6 @@
 # Backend API Contracts
 
-**Status:** The root metadata, process health, database readiness, and active service-zone listing are implemented. Remaining routes in the OpenAPI document are planned contracts, not available endpoints.
+**Status:** The root metadata, health/readiness, active service zones, authentication/email verification, and provider-backed maps endpoints are implemented. Remaining routes in the OpenAPI document are planned contracts, not available endpoints.
 
 The machine-readable contract is [`openapi.yaml`](openapi.yaml). Treat it as the source of truth for request/response shapes. Update the spec and contract tests together whenever a contract changes. Implemented operational endpoints are documented in [`operational-basics.md`](operational-basics.md).
 
@@ -50,7 +50,7 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/` | Implemented | API metadata |
 | GET | `/api/v1/health` | Implemented | Process health only |
 | GET | `/api/v1/health/ready` | Implemented | Database readiness check; returns 503 when PostgreSQL is unavailable |
-| GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |
+| GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |\n| POST | `/api/v1/auth/register` | Implemented | Create a pending customer account and send verification email |\n| POST | `/api/v1/auth/verify-email` | Implemented | Consume one-time verification token |\n| POST | `/api/v1/auth/login` | Implemented | Authenticate an active verified account |\n| POST | `/api/v1/auth/password/forgot` | Implemented | Request password reset without account enumeration |\n| POST | `/api/v1/auth/password/reset` | Implemented | Consume one-time password reset token |\n| GET | `/api/v1/auth/me` | Implemented | Read authenticated account profile |\n| POST | `/api/v1/maps/geocode` | Implemented | Geocode address through configured provider; authenticated |\n| POST | `/api/v1/maps/routes` | Implemented | Compute normalized route; authenticated |
 | POST | `/api/v1/maps/geocode` | Planned | Normalize an address to candidate coordinates |
 | POST | `/api/v1/maps/routes` | Planned | Return normalized distance and ETA |
 | POST | `/api/v1/parcel-bookings` | Planned | Create a draft parcel booking |
@@ -63,7 +63,7 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/api/v1/payments/{paymentAttemptId}` | Planned and disabled | Read server-verified payment status |
 | POST | `/api/v1/webhooks/paystack` | Planned and disabled | Receive signature-verified provider events |
 
-Authentication and authorization, ride-booking, assignment, verification and admin contracts remain unimplemented and must be specified before protected workflows or client applications are built.
+Role-specific driver onboarding, refresh-session rotation/revocation, ride-booking, assignment, booking verification, admin workflows, matching, and payments remain unimplemented.
 
 ## Resource visibility and privacy
 
