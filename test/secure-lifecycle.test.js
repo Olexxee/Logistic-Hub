@@ -4,6 +4,7 @@ import { initializePaymentSchema } from "../src/modules/payments/payments.schema
 import { issueCodeSchema, verifyCodeSchema } from "../src/modules/assignments/assignments.schemas.js";
 import { refundRequestSchema, reviewRefundSchema, confirmPayoutSchema } from "../src/modules/finance/finance.schemas.js";
 import { createAuthSessionsService } from "../src/modules/auth/auth-sessions.service.js";
+import { hashOpaqueToken } from "../src/modules/auth/auth.crypto.js";
 
 test("payment initialization schema restricts booking types and identifiers", () => {
   assert.equal(initializePaymentSchema.safeParse({ bookingType: "RIDE", bookingId: "ride_123" }).success, true);
@@ -33,7 +34,7 @@ test("refresh token rotation invalidates the previous token", async () => {
       findUnique: async ({ where }) => rows.get(where.tokenHash) ?? null,
       updateMany: async ({ where, data }) => {
         const row = rows.get(where.tokenHash);
-        if (!row || row.id !== where.id || row.revokedAt || row.expiresAt <= where.expiresAt.gt) return { count: 0 };
+        if (!row || row.id !== where.id) return { count: 0 };
         rows.delete(where.tokenHash);
         rows.set(data.tokenHash, { ...row, ...data });
         return { count: 1 };
@@ -44,9 +45,10 @@ test("refresh token rotation invalidates the previous token", async () => {
   const service = createAuthSessionsService({ prismaClient: client, secret: "x".repeat(32) });
   const issued = await service.issue(user);
   assert.match(issued.refreshToken, /^[a-f0-9]{64}$/);
-  assert.equal(rows.has(issued.refreshToken), false);
+  assert.equal(rows.has(hashOpaqueToken(issued.refreshToken)), true);
   const rotated = await service.refresh(issued.refreshToken);
   assert.notEqual(rotated.refreshToken, issued.refreshToken);
-  assert.equal(rows.has(issued.refreshToken), false);
+  assert.equal(rows.has(hashOpaqueToken(issued.refreshToken)), false);
+  assert.equal(rows.has(hashOpaqueToken(rotated.refreshToken)), true);
   await assert.rejects(() => service.refresh(issued.refreshToken), { code: "INVALID_REFRESH_TOKEN" });
 });
