@@ -1,3 +1,5 @@
+ALTER TYPE "VerificationAction" ADD VALUE IF NOT EXISTS 'RIDE_COMPLETION';
+
 CREATE TABLE "auth_sessions" (
   "id" TEXT NOT NULL,
   "userId" TEXT NOT NULL,
