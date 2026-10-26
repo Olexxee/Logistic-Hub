@@ -588,6 +588,7 @@ model PaymentAttempt {
   rideBooking         RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
   driverSettlementAccount DriverSettlementAccount? @relation(fields: [driverSettlementAccountId], references: [id], onDelete: Restrict)
   ledgerEntries       LedgerEntry[]
+  refundRequests      RefundRequest[]
 
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
