@@ -62,3 +62,29 @@ CREATE UNIQUE INDEX "support_tickets_publicReference_key" ON "support_tickets"("
 CREATE INDEX "support_tickets_customerId_status_createdAt_idx" ON "support_tickets"("customerId", "status", "createdAt");
 CREATE INDEX "support_tickets_status_priority_createdAt_idx" ON "support_tickets"("status", "priority", "createdAt");
 CREATE INDEX "support_tickets_assignedToUserId_status_idx" ON "support_tickets"("assignedToUserId", "status");
+
+CREATE TABLE "refund_requests" (
+ "id" TEXT NOT NULL,
+ "publicReference" TEXT NOT NULL,
+ "paymentAttemptId" TEXT NOT NULL,
+ "amountMinor" BIGINT NOT NULL,
+ "currency" TEXT NOT NULL DEFAULT 'NGN',
+ "reason" TEXT NOT NULL,
+ "status" TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
+ "requestedByUserId" TEXT NOT NULL,
+ "reviewedByUserId" TEXT,
+ "providerReference" TEXT,
+ "idempotencyKey" TEXT NOT NULL,
+ "providerResponse" JSONB,
+ "reviewedAt" TIMESTAMP(3),
+ "processedAt" TIMESTAMP(3),
+ "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ "updatedAt" TIMESTAMP(3) NOT NULL,
+ CONSTRAINT "refund_requests_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "refund_requests_publicReference_key" ON "refund_requests"("publicReference");
+CREATE UNIQUE INDEX "refund_requests_providerReference_key" ON "refund_requests"("providerReference");
+CREATE UNIQUE INDEX "refund_requests_idempotencyKey_key" ON "refund_requests"("idempotencyKey");
+CREATE INDEX "refund_requests_status_createdAt_idx" ON "refund_requests"("status","createdAt");
+CREATE INDEX "refund_requests_paymentAttemptId_status_idx" ON "refund_requests"("paymentAttemptId","status");
+ALTER TABLE "refund_requests" ADD CONSTRAINT "refund_requests_paymentAttemptId_fkey" FOREIGN KEY ("paymentAttemptId") REFERENCES "payment_attempts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
