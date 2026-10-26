@@ -51,6 +51,7 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/api/v1/health` | Implemented | Process health only |
 | GET | `/api/v1/health/ready` | Implemented | Database readiness check; returns 503 when PostgreSQL is unavailable |
 | GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |
+| GET | `/api/v1/hub-points` | Implemented | List active parcel drop-off and collection points |
 | POST | `/api/v1/auth/register` | Implemented | Create a pending customer account and send verification email |
 | POST | `/api/v1/auth/verify-email` | Implemented | Consume one-time verification token |
 | POST | `/api/v1/auth/login` | Implemented | Authenticate an active verified account |

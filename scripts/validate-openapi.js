@@ -25,6 +25,7 @@ const implementedOperations = new Set([
   "GET /notifications",
   "PATCH /notifications/{notificationId}/read",
   "POST /notifications/read-all",
+  "GET /hub-points",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
