@@ -52,7 +52,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(isParcel) await tx.parcelBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"PICKED_UP":"COMPLETED",...(action==="PICKUP"?{pickedUpAt:now}:{completedAt:now})}});
     else await tx.rideBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"TRIP_IN_PROGRESS":"COMPLETED",...(action==="PICKUP"?{tripStartedAt:now}:{completedAt:now})}});
     await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:driverUserId,eventType:action==="PICKUP"?"PICKUP_VERIFIED":"COMPLETION_VERIFIED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id}}});
-    if(action==="DELIVERY")await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true,completedJobs:{increment:1}}});
+    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true,completedJobs:{increment:1}}});await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
     return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):"COMPLETED",verifiedAt:now};
    });
   },
