@@ -14,6 +14,7 @@ import { rideBookingsRouter } from "./modules/rides/ride-bookings.routes.js";
 import { rideDispatchRouter } from "./modules/rides/ride-dispatch.routes.js";
 import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
+import { paymentsRouter } from "./modules/payments/payments.routes.js";
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
@@ -29,7 +30,7 @@ const allowedOrigins = env.CORS_ORIGINS
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "1mb", verify: (req, _res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(pinoHttp({ redact: ["req.headers.authorization", "req.headers.cookie"] }));
 
@@ -58,5 +59,6 @@ app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);
 app.use("/api/v1", rideDispatchRouter);
 app.use("/api/v1", dispatchRouter);
 app.use("/api/v1/notifications", notificationsRouter);
+app.use("/api/v1/payments", paymentsRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
