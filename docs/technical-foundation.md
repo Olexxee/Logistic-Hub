@@ -92,7 +92,7 @@ Use database transactions and uniqueness constraints to prevent multiple active 
 
 Rides use a separate state machine:
 
-`REQUESTED → AWAITING_PAYMENT → PAID_UNASSIGNED → MATCHING → DRIVER_ASSIGNED → DRIVER_EN_ROUTE → DRIVER_ARRIVED → PICKUP_VERIFIED → TRIP_IN_PROGRESS → TRIP_COMPLETION_PENDING → COMPLETED`
+`DRAFT → MATCHING → AWAITING_CUSTOMER_ACCEPTANCE → AWAITING_PAYMENT → PAYMENT_PENDING → DRIVER_ASSIGNED → DRIVER_EN_ROUTE → DRIVER_ARRIVED → PICKUP_VERIFICATION_PENDING → TRIP_IN_PROGRESS → TRIP_COMPLETION_PENDING → COMPLETED`
 
 Exceptional statuses include `CANCELLED`, `NO_DRIVER_FOUND`, `PAYMENT_FAILED` and `DISPUTED`. Ride safety events and emergency-support records must not be conflated with ordinary cancellation.
 
@@ -176,7 +176,7 @@ A payout is a separate financial event that settles an existing driver payable. 
 4. Customer completes provider checkout.
 5. Server verifies the transaction with Paystack and/or validates a signed webhook according to current Paystack documentation.
 6. Server validates reference, amount, currency, status and booking association.
-7. In one database transaction, record the verified provider event, mark the payment successful, post ledger entries once, and move the booking to `PAID_UNASSIGNED`.
+7. In one database transaction, record the verified provider event, mark the payment successful, post ledger entries once, promote the reserved assignment to active, and move the booking to `DRIVER_ASSIGNED`.
 8. Enqueue matching through a durable outbox/job record.
 9. Reconciliation compares internal records with provider transaction and settlement reports.
 
