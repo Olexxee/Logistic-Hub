@@ -35,7 +35,7 @@ export function createAuthSessionService({ prismaClient, secret, clock = () => n
     const oldHash = hashOpaqueToken(rawToken);
     const session = await repository.findActiveByRefreshHash(oldHash, now);
     if (!session) throw new UnauthorizedError("The refresh token is invalid or expired.");
-    const user = await prismaClient.user.findUnique({ where: { id: session.userId } });
+    const user = await repository.findUserForSession(session.userId);
     if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) {
       await repository.revoke({ id: session.id, userId: session.userId, now });
       throw new UnauthorizedError("The account is not active.");
