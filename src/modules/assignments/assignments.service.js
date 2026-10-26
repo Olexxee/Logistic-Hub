@@ -19,6 +19,15 @@ export function createAssignmentsService({ prismaClient, clock = () => new Date(
     if (!ownerId || ownerId !== user.id) throw new ForbiddenError("Only the booking owner can request a verification code.");
   }
   return {
+    async getVisibleLocation({ assignmentId, user }) {
+      const assignment = await load(assignmentId);
+      const ownerId = assignment.rideBooking?.passengerId ?? assignment.parcelBooking?.senderId;
+      if (ownerId !== user.id && assignment.driverProfile.userId !== user.id && !["ADMIN", "SUPPORT"].includes(user.role)) throw new ForbiddenError("You cannot view this driver location.");
+      if (["COMPLETED", "CANCELLED", "FAILED"].includes(assignment.status)) throw new ConflictError("Live location is unavailable after the assignment ends.", "LOCATION_VISIBILITY_ENDED");
+      const location = await repository.findLatestLocation(assignment.driverProfileId);
+      if (!location || clock().getTime() - location.recordedAt.getTime() > 2 * 60_000) return { available: false, reason: "LOCATION_STALE" };
+      return { available: true, location: { latitude: location.latitude.toString(), longitude: location.longitude.toString(), accuracyMeters: location.accuracyMeters?.toString() ?? null, recordedAt: location.recordedAt } };
+    },
     async issueCode({ assignmentId, user, action }) {
       if (!ACTIONS.has(action)) throw new ValidationError("Unsupported verification action.");
       const assignment = await load(assignmentId);
