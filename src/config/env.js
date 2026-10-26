@@ -8,6 +8,10 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().optional().default(""),
   MAPS_PROVIDER: z.enum(["none", "google"]).default("none"),
   GOOGLE_MAPS_API_KEY: z.string().optional().default(""),
+  EMAIL_PROVIDER: z.enum(["none", "resend"]).default("none"),
+  RESEND_API_KEY: z.string().optional().default(""),
+  RESEND_FROM_EMAIL: z.string().optional().default(""),
+  APP_BASE_URL: z.string().url().optional().default("http://localhost:3000"),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });
 
@@ -22,6 +26,15 @@ if (!parsed.success) {
 
 if (parsed.data.MAPS_PROVIDER === "google" && !parsed.data.GOOGLE_MAPS_API_KEY.trim()) {
   throw new Error("GOOGLE_MAPS_API_KEY is required when MAPS_PROVIDER=google.");
+}
+
+if (parsed.data.EMAIL_PROVIDER === "resend") {
+  if (!parsed.data.RESEND_API_KEY.trim()) {
+    throw new Error("RESEND_API_KEY is required when EMAIL_PROVIDER=resend.");
+  }
+  if (!z.string().email().safeParse(parsed.data.RESEND_FROM_EMAIL).success) {
+    throw new Error("RESEND_FROM_EMAIL must be a valid sender email when EMAIL_PROVIDER=resend.");
+  }
 }
 
 if (parsed.data.PAYMENTS_ENABLED) {
