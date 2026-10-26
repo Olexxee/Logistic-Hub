@@ -1,8 +1,8 @@
 # Backend API Contracts
 
-**Status:** Initial contract baseline. The root metadata and health routes are implemented. All other routes in the OpenAPI document are planned contracts, not available endpoints.
+**Status:** The root metadata, process health, database readiness, and active service-zone listing are implemented. Remaining routes in the OpenAPI document are planned contracts, not available endpoints.
 
-The machine-readable contract is [`openapi.yaml`](openapi.yaml). Treat it as the source of truth for request/response shapes. Update the spec and contract tests together whenever a contract changes.
+The machine-readable contract is [`openapi.yaml`](openapi.yaml). Treat it as the source of truth for request/response shapes. Update the spec and contract tests together whenever a contract changes. Implemented operational endpoints are documented in [`operational-basics.md`](operational-basics.md).
 
 ## Stable API rules
 
@@ -48,8 +48,9 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | Method | Path | Status | Purpose |
 |---|---|---|---|
 | GET | `/` | Implemented | API metadata |
-| GET | `/api/v1/health` | Implemented | Process health; does not yet prove database readiness |
-| GET | `/api/v1/service-zones` | Planned | Active zones and service availability |
+| GET | `/api/v1/health` | Implemented | Process health only |
+| GET | `/api/v1/health/ready` | Implemented | Database readiness check; returns 503 when PostgreSQL is unavailable |
+| GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |
 | POST | `/api/v1/maps/geocode` | Planned | Normalize an address to candidate coordinates |
 | POST | `/api/v1/maps/routes` | Planned | Return normalized distance and ETA |
 | POST | `/api/v1/parcel-bookings` | Planned | Create a draft parcel booking |
@@ -62,7 +63,7 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/api/v1/payments/{paymentAttemptId}` | Planned and disabled | Read server-verified payment status |
 | POST | `/api/v1/webhooks/paystack` | Planned and disabled | Receive signature-verified provider events |
 
-Authentication, ride-booking, assignment, verification and admin contracts remain outside this initial parcel-flow baseline and must be specified before their modules or client applications are built.
+Authentication and authorization, ride-booking, assignment, verification and admin contracts remain unimplemented and must be specified before protected workflows or client applications are built.
 
 ## Resource visibility and privacy
 

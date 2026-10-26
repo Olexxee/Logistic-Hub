@@ -28,7 +28,7 @@ paths:
       x-implementation-status: implemented
       responses:
         '200':
-          description: Process health; does not guarantee database readiness.
+          description: Process health only; database readiness is reported separately.
           content:
             application/json:
               schema:

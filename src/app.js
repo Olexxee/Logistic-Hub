@@ -4,6 +4,7 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { env } from "./config/env.js";
 import { healthRouter } from "./modules/health/health.routes.js";
+import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -28,10 +29,12 @@ app.get("/", (_req, res) => {
       name: "Logistic Hub API",
       version: "v1",
       health: "/api/v1/health",
+      readiness: "/api/v1/health/ready",
     },
   });
 });
 
 app.use("/api/v1/health", healthRouter);
+app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
