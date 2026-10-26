@@ -29,7 +29,7 @@ The platform is designed to expand into passenger rides, partner-operated parcel
 
 Backend foundation work is tracked on `feat/backend-foundation` and reviewed in [draft PR #3](https://github.com/Olexxee/Logistic-Hub/pull/3). The branch includes environment validation, an Express API shell, health endpoint, maps adapter, multi-state pickup/destination zones, settlement destination records, OpenAPI contracts and PostgreSQL integrity tests.
 
-CI now generates a disposable base schema from Prisma, applies it to PostgreSQL 16, applies supplemental integrity SQL and runs constraint tests. This is a validation process, **not a committed deployable migration**. The first migration must be generated, reviewed, committed and tested from an empty database before any deployment.
+The initial migration is committed at `prisma/migrations/20261026121500_initial_foundation/migration.sql`. CI applies the committed migration chain to an empty PostgreSQL 16 database with `prisma migrate deploy`, checks migration history and schema drift, and runs PostgreSQL integrity tests. The initial migration includes the supplemental constraints; CI also checks that the immutable `prisma/constraints/foundation.sql` snapshot remains an exact suffix of that migration. Future database changes must use new timestamped migrations.
 
 The initial rollout targets **multiple Lagos LGAs**. The payment sequence is **driver fare proposal → sender acceptance → payment**. Client applications should wait until the API contracts and lifecycle tests are stable. Maps default to disabled. Payments are hard-disabled and cannot be enabled through configuration.
 
