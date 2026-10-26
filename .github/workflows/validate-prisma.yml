@@ -56,38 +56,23 @@ jobs:
         run: npm run db:generate
       - name: Validate OpenAPI contracts
         run: npm run api:validate
-      - name: Generate disposable baseline SQL
-        run: npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/logistic-hub-base.sql
-      - name: Apply generated schema to disposable PostgreSQL
-        run: npx prisma db execute --file /tmp/logistic-hub-base.sql --schema prisma/schema.prisma
-      - name: Apply supplemental PostgreSQL constraints
-        run: npx prisma db execute --file prisma/constraints/foundation.sql --schema prisma/schema.prisma
-      - name: Package initial migration candidate for review
-        if: success()
-        run: cat /tmp/logistic-hub-base.sql prisma/constraints/foundation.sql > /tmp/logistic-hub-initial-migration.sql
-      - name: Upload initial migration candidate
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: logistic-hub-initial-migration-candidate
-          path: /tmp/logistic-hub-initial-migration.sql
-          retention-days: 1
+      - name: Apply committed migrations to disposable PostgreSQL
+        run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - name: Check migration history status
+        run: npx prisma migrate status --schema prisma/schema.prisma
       - name: Check schema drift against disposable PostgreSQL
         run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Run API and PostgreSQL integrity tests
         run: npm test
-      - name: Commit generated initial migration to the feature branch
-        if: success() && ((github.event_name == 'push' && github.ref_name == 'feat/backend-foundation') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/backend-foundation')) && hashFiles('prisma/migrations/*/migration.sql') == ''
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      - name: Commit npm lockfile to the feature branch
+        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/backend-foundation'
         run: |
-          mkdir -p prisma/migrations/20261026121500_initial_foundation
-          cp /tmp/logistic-hub-initial-migration.sql prisma/migrations/20261026121500_initial_foundation/migration.sql
-          printf 'provider = "postgresql"\n' > prisma/migrations/migration_lock.toml
+          if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+            echo "package-lock.json is already tracked."
+            exit 0
+          fi
+          git add package-lock.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add prisma/migrations/20261026121500_initial_foundation/migration.sql prisma/migrations/migration_lock.toml
-          git commit -m "chore: add initial PostgreSQL migration"
-          TARGET_BRANCH="${GITHUB_REF_NAME}"
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then TARGET_BRANCH="${{ github.event.pull_request.head.ref }}"; fi
-          git push origin "HEAD:${TARGET_BRANCH}"
+          git commit -m "chore: lock npm dependency tree"
+          git push origin "${{ github.event.pull_request.head.ref }}"
