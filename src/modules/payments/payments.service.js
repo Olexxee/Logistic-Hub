@@ -53,6 +53,13 @@ export function createPaymentsService({ prismaClient, secretKey = env.PAYSTACK_S
     async handleWebhook({ payload, rawBody, signature }) {
       if (!enabled) throw new ServiceUnavailableError("Paystack webhook processing is disabled until payment activation is approved.", "PAYMENTS_DISABLED");
       if (!this.verifySignature(rawBody, signature)) throw Object.assign(new Error("Invalid Paystack signature."), { statusCode: 401, code: "INVALID_WEBHOOK_SIGNATURE" });
+      if (payload.event === "refund.processed" || payload.event === "refund.failed") {
+        const status = payload.event === "refund.processed" ? "PROCESSED" : "FAILED";
+        const providerReference = String(payload.data?.id ?? payload.data?.reference ?? "");
+        if (!providerReference) return { accepted: true, ignored: true };
+        const updated = await repository.updateRefundFromWebhook({ providerReference, status, providerResponse: { event: payload.event, id: providerReference } });
+        return { accepted: true, updatedCount: updated.count };
+      }
       if (payload.event !== "charge.success" || payload.data?.status !== "success") return { accepted: true, ignored: true };
       const reference = payload.data.reference;
       const response = await fetchImpl("https://api.paystack.co/transaction/verify/" + encodeURIComponent(reference), { headers: { Authorization: "Bearer " + secretKey } });
