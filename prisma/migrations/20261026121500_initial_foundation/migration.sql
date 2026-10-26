@@ -819,10 +819,9 @@ ALTER TABLE "hub_points" ADD CONSTRAINT "hub_points_serviceZoneId_fkey" FOREIGN 
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Supplemental PostgreSQL integrity constraints.
--- Apply only AFTER generating/applying the base schema from prisma/schema.prisma.
--- This file is validated in CI against a disposable PostgreSQL database.
--- It is not yet a standalone Prisma migration; the reviewed initial migration must
--- include the generated base schema plus these constraints before any deployment.
+-- Immutable initial-constraint snapshot, applied as part of the initial Prisma migration.
+-- Keep this file and the migration suffix identical; CI validates this invariant.
+-- Add future integrity changes through new timestamped migrations, not by rewriting this snapshot.
 
 -- A polymorphic booking reference must point to exactly one booking type.
 ALTER TABLE "driver_offers"
