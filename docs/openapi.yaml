@@ -17,6 +17,8 @@ tags:
   - name: Parcel bookings
   - name: Driver offers
   - name: Payments
+  - name: Drivers
+  - name: Admin
   - name: Hub points
   - name: Notifications
   - name: Webhooks
@@ -355,6 +357,182 @@ paths:
           description: Current account profile.
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /drivers/me:
+    get:
+      tags: [Drivers]
+      operationId: getMyDriverProfile
+      summary: Read the authenticated user's driver profile and onboarding status
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Driver profile, or null if onboarding has not started. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /drivers/onboarding:
+    post:
+      tags: [Drivers]
+      operationId: submitDriverOnboarding
+      summary: Submit a driver profile and vehicle for review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [vehicle]
+              properties:
+                serviceRadiusMeters: { type: integer, minimum: 500, maximum: 100000, default: 5000 }
+                vehicle:
+                  type: object
+                  additionalProperties: false
+                  required: [type]
+                  properties:
+                    type: { type: string, enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK] }
+                    make: { type: string, maxLength: 80 }
+                    model: { type: string, maxLength: 80 }
+                    registrationPlate: { type: string, minLength: 2, maxLength: 32 }
+                    parcelCapacity: { type: string, maxLength: 80 }
+      responses:
+        '201': { description: Onboarding submitted; driver and vehicle await admin review. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: Driver profile or vehicle already exists. }
+  /drivers/availability:
+    patch:
+      tags: [Drivers]
+      operationId: setDriverAvailability
+      summary: Set online and available status for a verified driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isOnline, isAvailable]
+              properties:
+                isOnline: { type: boolean }
+                isAvailable: { type: boolean }
+      responses:
+        '200': { description: Updated online and available state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Driver is not ready for dispatch. }
+  /drivers/location:
+    post:
+      tags: [Drivers]
+      operationId: recordDriverLocation
+      summary: Record a location update for a verified online driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [latitude, longitude]
+              properties:
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+                accuracyMeters: { type: number, minimum: 0, maximum: 10000 }
+      responses:
+        '201': { description: Location recorded; response includes timestamp. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /drivers/admin/{driverProfileId}/verification:
+    patch:
+      tags: [Admin]
+      operationId: reviewDriverVerification
+      summary: Approve or reject driver verification
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: driverProfileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [verificationStatus]
+              properties:
+                verificationStatus: { type: string, enum: [VERIFIED, REJECTED] }
+      responses:
+        '200': { description: Driver verification updated. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/vehicles/{vehicleId}/verification:
+    patch:
+      tags: [Admin]
+      operationId: reviewVehicleVerification
+      summary: Approve or reject a driver's vehicle
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: vehicleId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [verificationStatus]
+              properties:
+                verificationStatus: { type: string, enum: [VERIFIED, REJECTED] }
+      responses:
+        '200': { description: Vehicle verification updated. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/coverage:
+    put:
+      tags: [Admin]
+      operationId: setDriverCoverage
+      summary: Enable or disable service-zone coverage for a driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [driverProfileId, serviceZoneId, serviceType, isEnabled]
+              properties:
+                driverProfileId: { type: string }
+                serviceZoneId: { type: string }
+                serviceType: { $ref: '#/components/schemas/ServiceType' }
+                isEnabled: { type: boolean }
+      responses:
+        '200': { description: Driver coverage upserted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /hub-points:
     get:
       tags: [Hub points]

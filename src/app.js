@@ -12,6 +12,7 @@ import { parcelBookingsRouter } from "./modules/parcels/parcel-bookings.routes.j
 import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
+import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -46,6 +47,7 @@ app.use("/api/v1/health", healthRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
+app.use("/api/v1/drivers", driversRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1", dispatchRouter);

@@ -52,6 +52,13 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/api/v1/health/ready` | Implemented | Database readiness check; returns 503 when PostgreSQL is unavailable |
 | GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |
 | GET | `/api/v1/hub-points` | Implemented | List active parcel drop-off and collection points |
+| GET | `/api/v1/drivers/me` | Implemented | Read driver profile and onboarding status |
+| POST | `/api/v1/drivers/onboarding` | Implemented | Submit driver profile and vehicle for review |
+| PATCH | `/api/v1/drivers/availability` | Implemented | Update verified driver's online/available state |
+| POST | `/api/v1/drivers/location` | Implemented | Record an authenticated online driver's location |
+| PATCH | `/api/v1/drivers/admin/{driverProfileId}/verification` | Implemented | Admin approves or rejects driver verification |
+| PATCH | `/api/v1/drivers/admin/vehicles/{vehicleId}/verification` | Implemented | Admin approves or rejects vehicle verification |
+| PUT | `/api/v1/drivers/admin/coverage` | Implemented | Admin configures driver service-zone coverage |
 | POST | `/api/v1/auth/register` | Implemented | Create a pending customer account and send verification email |
 | POST | `/api/v1/auth/verify-email` | Implemented | Consume one-time verification token |
 | POST | `/api/v1/auth/login` | Implemented | Authenticate an active verified account |
