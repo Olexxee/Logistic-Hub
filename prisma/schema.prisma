@@ -147,6 +147,29 @@ enum PayoutStatus {
   REVERSED
 }
 
+enum RefundStatus {
+  REQUESTED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REJECTED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
 enum SettlementAccountStatus {
   PENDING
   ACTIVE
