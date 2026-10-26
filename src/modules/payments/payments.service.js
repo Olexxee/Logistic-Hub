@@ -228,13 +228,26 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
 
     async reconcilePayment(reference) {
       if (!config.PAYMENTS_ENABLED || !config.PAYSTACK_SECRET_KEY?.trim()) throw new ServiceUnavailableError("Payment reconciliation is disabled for this environment.");
-      const local = await db.findAttemptByReference(reference);
+      let local = await db.findAttemptByReference(reference);
       if (!local) throw new ConflictError("The local payment reference was not found.", "PAYMENT_NOT_FOUND");
       const remote = await paystackGet(`/transaction/verify/${encodeURIComponent(reference)}`);
       const providerStatus = String(remote.status ?? "unknown").toUpperCase();
       const amountMatches = Number.isSafeInteger(remote.amount) && BigInt(remote.amount) === local.amountMinor;
       const currencyMatches = String(remote.currency ?? "") === local.currency;
-      const statusMatches = providerStatus === "SUCCESS" ? local.status === "SUCCEEDED" : providerStatus === local.status;
+      if (amountMatches && currencyMatches && providerStatus === "SUCCESS" && local.status !== "SUCCEEDED") {
+        await db.processSuccessfulWebhook({
+          reference,
+          amountMinor: BigInt(remote.amount),
+          currency: String(remote.currency),
+          providerFeeMinor: BigInt(Number(remote.fees) || 0),
+          payload: { source: "PAYSTACK_RECONCILIATION", status: providerStatus, reference },
+          now: clock(),
+        });
+      } else if (providerStatus === "FAILED" && local.status !== "FAILED") {
+        await db.processFailedWebhook({ reference, payload: { source: "PAYSTACK_RECONCILIATION", status: providerStatus, reference }, now: clock() });
+      }
+      local = await db.findAttemptByReference(reference);
+      const statusMatches = providerStatus === "SUCCESS" ? local.status === "SUCCEEDED" : providerStatus === "FAILED" ? local.status === "FAILED" : providerStatus === local.status;
       return {
         reference,
         local: { status: local.status, amountMinor: local.amountMinor.toString(), currency: local.currency },
@@ -305,8 +318,10 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
       }
       if (event.event === "refund.processed" || event.event === "refund.failed") {
         if (data.id == null) throw new ConflictError("The refund webhook reference is invalid.", "PAYMENT_WEBHOOK_INVALID");
+        if (event.event === "refund.processed" && data.amount != null && !Number.isSafeInteger(data.amount)) throw new ConflictError("The refund amount is invalid.", "PAYMENT_WEBHOOK_INVALID");
         return db.settleRefund({
           providerReference: String(data.id),
+          amountMinor: data.amount == null ? null : BigInt(data.amount),
           payload: { event: event.event, id: String(data.id), status: data.status ?? null },
           now: clock(),
           succeeded: event.event === "refund.processed" && ["processed", "success", "successful"].includes(String(data.status ?? "processed").toLowerCase()),
