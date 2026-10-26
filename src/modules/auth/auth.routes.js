@@ -11,6 +11,7 @@ import {
   verifyPassword,
 } from "./auth.crypto.js";
 import { createAuthMiddleware } from "./auth.middleware.js";
+import { createAuthSessionsService } from "./auth-sessions.service.js";
 
 const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(160),
@@ -209,13 +210,11 @@ export function createAuthRouter({
           error: { code: "ACCOUNT_NOT_ACTIVE", message: "Verify your email before signing in." },
         });
       }
-      const access = signAccessToken({ userId: user.id, role: user.role, secret });
+      const sessionTokens = await createAuthSessionsService({ prismaClient, secret }).issue(user);
       return res.status(200).json({
         success: true,
         data: {
-          accessToken: access.token,
-          tokenType: "Bearer",
-          expiresIn: access.expiresIn,
+          ...sessionTokens,
           user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
         },
       });
