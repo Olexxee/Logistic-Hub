@@ -52,6 +52,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api/v1/health", healthRouter);
+app.use("/api/v1", createPersistentRateLimit({ namespace: "api", limit: 300, windowMs: 60_000, skip: (req) => req.path === "/payments/webhook" }));
 app.use("/api/v1/auth", createPersistentRateLimit({ namespace: "auth", limit: 30, windowMs: 15 * 60 * 1000 }), authRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
