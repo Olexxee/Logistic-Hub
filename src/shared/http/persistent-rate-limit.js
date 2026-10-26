@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { prisma } from "../../db/prisma.js";
 import { asyncWrapper } from "./async-wrapper.js";
 import { TooManyRequestsError } from "./app-error.js";
-import { createHash } from "node:crypto";
+import { createPersistentRateLimitRepository } from "./persistent-rate-limit.repository.js";
 
 export function persistentRateLimit({
   prismaClient = prisma,
@@ -12,38 +13,11 @@ export function persistentRateLimit({
   keyGenerator = (req) => req.ip ?? req.socket?.remoteAddress ?? "unknown",
   clock = () => new Date(),
 } = {}) {
+  const repository = createPersistentRateLimitRepository({ prismaClient });
   return asyncWrapper(async (req, res, next) => {
     const identity = String(keyGenerator(req) || "unknown");
     const key = createHash("sha256").update(`${namespace}:${identity}`).digest("hex");
-    const now = clock();
-    const resetAt = new Date(now.getTime() - windowMs);
-    const blockedUntil = new Date(now.getTime() + blockMs);
-
-    const result = await prismaClient.$transaction(async (tx) => {
-      const existing = await tx.authRateLimitBucket.findUnique({ where: { key } });
-      if (!existing || existing.windowStartedAt <= resetAt) {
-        await tx.authRateLimitBucket.upsert({
-          where: { key },
-          create: { key, windowStartedAt: now, requestCount: 1, blockedUntil: null },
-          update: { windowStartedAt: now, requestCount: 1, blockedUntil: null },
-        });
-        return { allowed: true, remaining: limit - 1 };
-      }
-      if (existing.blockedUntil && existing.blockedUntil > now) {
-        return { allowed: false, retryAfterMs: existing.blockedUntil.getTime() - now.getTime() };
-      }
-      const updated = await tx.authRateLimitBucket.update({
-        where: { key },
-        data: {
-          requestCount: { increment: 1 },
-          ...(existing.requestCount + 1 >= limit ? { blockedUntil } : {}),
-        },
-      });
-      return updated.requestCount > limit
-        ? { allowed: false, retryAfterMs: blockMs }
-        : { allowed: true, remaining: Math.max(0, limit - updated.requestCount) };
-    });
-
+    const result = await repository.consume({ key, now: clock(), windowMs, limit, blockMs });
     if (!result.allowed) {
       const retryAfter = Math.max(1, Math.ceil((result.retryAfterMs ?? blockMs) / 1000));
       res.setHeader("Retry-After", String(retryAfter));
