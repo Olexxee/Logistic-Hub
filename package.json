@@ -8,12 +8,20 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
     "test": "node --test"
   },
   "dependencies": {
-    "@prisma/client": "6.19.0"
+    "@prisma/client": "6.19.0",
+    "cors": "2.8.5",
+    "dotenv": "17.2.3",
+    "express": "5.1.0",
+    "helmet": "8.1.0",
+    "pino-http": "10.5.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "prisma": "6.19.0"
