@@ -116,11 +116,30 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
       }
     },
 
+    async requestRefund({ bookingType, bookingId, user, idempotencyKey, reason }) {
+      const stableKey = createHash("sha256").update(`${user.id}:${idempotencyKey}`).digest("hex");
+      const result = await db.createRefundRequest({
+        bookingType,
+        bookingId,
+        userId: user.id,
+        idempotencyKey: stableKey,
+        reason,
+        now: clock(),
+      });
+      return {
+        id: result.refund.id,
+        status: result.refund.status,
+        amountMinor: result.refund.amountMinor.toString(),
+        currency: result.refund.currency,
+        replay: result.replay,
+      };
+    },
+
     async requestRefund({ refundId, actor }) {
       if (!config.PAYMENTS_ENABLED || !config.PAYSTACK_SECRET_KEY?.trim()) throw new ServiceUnavailableError("Refund processing is disabled for this environment.");
       const refund = await db.findRefundById(refundId);
       if (!refund) throw new ConflictError("The refund request was not found.", "REFUND_NOT_FOUND");
-      if (!["ADMIN", "SUPPORT"].includes(actor.role)) throw new UnauthorizedError("Only an authorized operator can process refunds.");
+      if (actor.role !== "ADMIN") throw new UnauthorizedError("Only an administrator can process refunds.");
       if (refund.status !== "REQUESTED") throw new ConflictError("Only requested refunds can be processed.", "REFUND_STATE_CONFLICT");
       if (!refund.paymentAttempt.providerReference) throw new ConflictError("The original provider transaction reference is missing.", "PAYMENT_REFERENCE_MISSING");
       const amount = Number(refund.amountMinor);
@@ -167,7 +186,7 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
         });
         return { id: updated.id, status: updated.status, reference, replay: false };
       } catch (error) {
-        await db.updatePayout({ id: prepared.payout.id, status: "FAILED", failureReason: error.code ?? "PAYMENT_PROVIDER_FAILED", providerPayload: { code: error.code ?? "PAYMENT_PROVIDER_FAILED" }, processedAt: clock() });
+        await db.updatePayout({ id: prepared.payout.id, status: "PENDING", failureReason: "PROVIDER_RESPONSE_UNKNOWN", providerPayload: { code: error.code ?? "PAYMENT_PROVIDER_FAILED", reconciliationRequired: true } });
         throw error;
       }
     },
