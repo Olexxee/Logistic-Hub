@@ -38,7 +38,8 @@ export function createPersistentRateLimit({
           error: { code: "RATE_LIMIT_UNAVAILABLE", message: "Request protection is temporarily unavailable." },
         });
       }
-      return next(error);
+      req.log?.warn({ code: error.code ?? "RATE_LIMIT_UNAVAILABLE" }, "Persistent rate limiter unavailable; allowing non-authenticated route to continue");
+      return next();
     }
   };
 }
