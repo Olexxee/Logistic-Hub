@@ -84,8 +84,6 @@ paths:
       x-implementation-status: planned
       security:
         - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -128,8 +126,6 @@ paths:
       x-implementation-status: planned
       security:
         - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -530,7 +526,6 @@ components:
                 $ref: '#/components/schemas/ServiceType'
               isEnabled:
                 type: boolean
-                const: true
     GeocodeResult:
       type: object
       required: [formattedAddress, location]
