@@ -44,8 +44,10 @@ if (parsed.data.NODE_ENV === "production" && parsed.data.JWT_ACCESS_SECRET.lengt
   throw new Error("JWT_ACCESS_SECRET must contain at least 32 characters in production.");
 }
 
-if (parsed.data.PAYMENTS_ENABLED && !parsed.data.PAYSTACK_SECRET_KEY.trim()) {
-  throw new Error("PAYSTACK_SECRET_KEY is required when PAYMENTS_ENABLED=true.");
+if (parsed.data.PAYMENTS_ENABLED) {
+  throw new Error(
+    "PAYMENTS_ENABLED=true is blocked until the project owner explicitly approves live payment activation and deployment.",
+  );
 }
 
-export const env = Object.freeze({ ...parsed.data });
+export const env = Object.freeze({ ...parsed.data, PAYMENTS_ENABLED: false });
