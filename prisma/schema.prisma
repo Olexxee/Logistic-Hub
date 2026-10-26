@@ -526,8 +526,9 @@ model DriverAssignment {
   status            AssignmentStatus @default(AWAITING_PAYMENT)
   agreedFareMinor   BigInt
   currency          String           @default("NGN")
-  acceptedAt        DateTime         @default(now())
-  pickupAt          DateTime?
+  reservedAt        DateTime         @default(now())
+  acceptedAt        DateTime?
+  pickupAt           DateTime?
   startedAt         DateTime?
   completedAt       DateTime?
   cancelledAt       DateTime?
@@ -540,7 +541,7 @@ model DriverAssignment {
   driverProfile     DriverProfile    @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
   assignedBy        User?            @relation(fields: [assignedByUserId], references: [id], onDelete: SetNull)
 
-  @@index([driverProfileId, status, acceptedAt])
+  @@index([driverProfileId, status, reservedAt])
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
   @@map("driver_assignments")
