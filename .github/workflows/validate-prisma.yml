@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   prisma-validate:
@@ -74,3 +74,16 @@ jobs:
         run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Run API and PostgreSQL integrity tests
         run: npm test
+      - name: Commit generated initial migration to the feature branch
+        if: success() && github.event_name == 'push' && github.ref_name == 'feat/backend-foundation' && hashFiles('prisma/migrations/*/migration.sql') == ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p prisma/migrations/20261026121500_initial_foundation
+          cp /tmp/logistic-hub-initial-migration.sql prisma/migrations/20261026121500_initial_foundation/migration.sql
+          printf 'provider = "postgresql"\n' > prisma/migrations/migration_lock.toml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prisma/migrations/20261026121500_initial_foundation/migration.sql prisma/migrations/migration_lock.toml
+          git commit -m "chore: add initial PostgreSQL migration"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
