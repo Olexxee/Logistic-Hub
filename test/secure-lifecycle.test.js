@@ -17,29 +17,36 @@ test("assignment verification accepts only pickup/delivery and six-digit codes",
   assert.equal(verifyCodeSchema.safeParse({ action: "PICKUP", code: "12345" }).success, false);
 });
 
-test("financial schemas require idempotency-compatible amount and explicit review decisions", () => {
+test("financial schemas require valid refund amounts and explicit review decisions", () => {
   assert.equal(refundRequestSchema.safeParse({ paymentAttemptId: "pay_1", amountMinor: "1200", reason: "Customer was charged twice" }).success, true);
   assert.equal(refundRequestSchema.safeParse({ paymentAttemptId: "pay_1", amountMinor: "-1", reason: "Duplicate payment issue" }).success, false);
   assert.equal(reviewRefundSchema.safeParse({ decision: "APPROVE", reviewNote: "Verified duplicate charge" }).success, true);
   assert.equal(confirmPayoutSchema.safeParse({ providerReference: "settlement-123" }).success, true);
 });
 
-test("refresh token rotation persists a hash and refuses replay", async () => {
+test("refresh token rotation invalidates the previous token", async () => {
   const rows = new Map();
   const user = { id: "user_1", role: "CUSTOMER", status: "ACTIVE", emailVerifiedAt: new Date() };
-  const client = { authSession: {
-    create: async ({ data }) => { const row = { id: "session_1", ...data, user }; rows.set(data.tokenHash, row); return row; },
-    findUnique: async ({ where }) => rows.get(where.tokenHash) ?? null,
-    updateMany: async ({ where, data }) => {
-      const row = rows.get(where.tokenHash);
-      if (!row || row.revokedAt || row.expiresAt <= where.expiresAt?.gt || row.expiresAt <= new Date(0)) return { count: 0 };
-      rows.delete(where.tokenHash); const next = { ...row, ...data }; rows.set(data.tokenHash, next); return { count: 1 };
+  const client = {
+    authSession: {
+      create: async ({ data }) => { const row = { id: "session_1", ...data, user }; rows.set(data.tokenHash, row); return row; },
+      findUnique: async ({ where }) => rows.get(where.tokenHash) ?? null,
+      updateMany: async ({ where, data }) => {
+        const row = rows.get(where.tokenHash);
+        if (!row || row.id !== where.id || row.revokedAt || row.expiresAt <= where.expiresAt.gt) return { count: 0 };
+        rows.delete(where.tokenHash);
+        rows.set(data.tokenHash, { ...row, ...data });
+        return { count: 1 };
+      },
     },
-    updateMany: async () => ({ count: 0 }),
-  }, $transaction: async (callback) => callback(client) };
-  // The repository calls updateMany with a conditional Prisma where clause; this mock exercises issuance and token format only.
+    $transaction: async (callback) => callback(client),
+  };
   const service = createAuthSessionsService({ prismaClient: client, secret: "x".repeat(32) });
   const issued = await service.issue(user);
   assert.match(issued.refreshToken, /^[a-f0-9]{64}$/);
-  assert.ok(issued.accessToken);
+  assert.equal(rows.has(issued.refreshToken), false);
+  const rotated = await service.refresh(issued.refreshToken);
+  assert.notEqual(rotated.refreshToken, issued.refreshToken);
+  assert.equal(rows.has(issued.refreshToken), false);
+  await assert.rejects(() => service.refresh(issued.refreshToken), { code: "INVALID_REFRESH_TOKEN" });
 });
