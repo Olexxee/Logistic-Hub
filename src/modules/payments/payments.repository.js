@@ -343,5 +343,8 @@ export function createPaymentsRepository({ prismaClient }) {
     findAttemptByReference(reference) {
       return prismaClient.paymentAttempt.findUnique({ where: { providerReference: reference } });
     },
+    findPayoutByReference(reference) {
+      return prismaClient.driverPayout.findUnique({ where: { providerReference: reference } });
+    },
   };
 }
