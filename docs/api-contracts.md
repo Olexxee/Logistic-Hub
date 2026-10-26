@@ -53,11 +53,16 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | POST | `/api/v1/maps/geocode` | Planned | Normalize an address to candidate coordinates |
 | POST | `/api/v1/maps/routes` | Planned | Return normalized distance and ETA |
 | POST | `/api/v1/parcel-bookings` | Planned | Create a draft parcel booking |
+| GET | `/api/v1/parcel-bookings/{bookingId}` | Planned | Read owner-visible booking details and lifecycle state |
+| GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Planned | List fare proposals for the booking sender |
+| GET | `/api/v1/driver/offers` | Planned | List current offers for the authenticated driver |
 | POST | `/api/v1/driver/offers/{offerId}/propose-fare` | Planned | Driver submits a fare proposal |
 | POST | `/api/v1/parcel-bookings/{bookingId}/accept-fare` | Planned | Sender accepts one valid fare proposal |
 | POST | `/api/v1/payments` | Planned and disabled | Initialize payment after fare acceptance |
+| GET | `/api/v1/payments/{paymentAttemptId}` | Planned and disabled | Read server-verified payment status |
+| POST | `/api/v1/webhooks/paystack` | Planned and disabled | Receive signature-verified provider events |
 
-Authentication, ride-booking, webhook, assignment, verification and admin contracts will be added in their respective foundation passes before those modules are implemented.
+Authentication, ride-booking, assignment, verification and admin contracts remain outside this initial parcel-flow baseline and must be specified before their modules or client applications are built.
 
 ## Resource visibility and privacy
 
