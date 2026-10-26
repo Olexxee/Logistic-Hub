@@ -5,6 +5,7 @@ export function createPaymentsRepository(prismaClient = prisma) {
   createAttempt(data) { return prismaClient.paymentAttempt.upsert({where:{idempotencyKey:data.idempotencyKey},create:data,update:{}}); },
   findUserEmail(userId) { return prismaClient.user.findUnique({where:{id:userId},select:{email:true}}); },
   saveAuthorization({id,authorizationUrl,accessCode}) { return prismaClient.paymentAttempt.update({where:{id},data:{providerPayload:{authorizationUrl,accessCode}}}); },
+  updateRefundFromWebhook({providerReference,status,providerResponse}) { return prismaClient.refundRequest.updateMany({where:{providerReference},data:{status,providerResponse,processedAt:new Date()}}); },
   getNotificationContext(reference) { return prismaClient.paymentAttempt.findUnique({where:{providerReference:reference},include:{parcelBooking:{include:{sender:{select:{id:true}},}},rideBooking:{include:{passenger:{select:{id:true}}}}}}); },
   settle({reference,amountMinor,currency,providerPayload,providerEventId,eventType,payloadHash}) { return prismaClient.$transaction(async tx => {
    const eventKey={provider_providerEventId:{provider:"PAYSTACK",providerEventId}};
