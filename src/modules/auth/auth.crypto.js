@@ -39,7 +39,7 @@ function encodeJson(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-export function signAccessToken({ userId, role, secret, now = Date.now() }) {
+export function signAccessToken({ userId, role, secret, sessionId, now = Date.now() }) {
   if (typeof secret !== "string" || Buffer.byteLength(secret) < 32) {
     const error = new Error("Authentication is not configured.");
     error.code = "AUTH_NOT_CONFIGURED";
@@ -51,6 +51,7 @@ export function signAccessToken({ userId, role, secret, now = Date.now() }) {
   const payload = encodeJson({
     sub: userId,
     role,
+    ...(sessionId ? { sid: sessionId } : {}),
     iat: issuedAt,
     exp: issuedAt + ACCESS_TOKEN_TTL_SECONDS,
   });
