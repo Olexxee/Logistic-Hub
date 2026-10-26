@@ -83,6 +83,17 @@ export function createAssignmentsService({ prismaClient, repository, clock = () 
       return { assignmentId, status: result.status };
     },
 
+    async startParcelTransit({ assignmentId, user }) {
+      const assignment = await requireContext(assignmentId);
+      if (!isDriver(assignment, user.id)) throw new ForbiddenError("Only the assigned driver can update this assignment.");
+      if (!assignment.parcelBooking || assignment.status !== "PICKUP_CONFIRMED") {
+        throw new ConflictError("Only a parcel assignment with verified pickup can enter transit.", "ASSIGNMENT_STATE_CONFLICT");
+      }
+      const changed = await db.startParcelTransit({ assignment, actorUserId: user.id, now: clock() });
+      if (!changed) throw new ConflictError("Assignment state changed before the update could be applied.", "ASSIGNMENT_STATE_CONFLICT");
+      return { assignmentId, status: "IN_PROGRESS" };
+    },
+
     async markArrivedAtDestination({ assignmentId, user }) {
       const assignment = await requireContext(assignmentId);
       if (!isDriver(assignment, user.id)) throw new ForbiddenError("Only the assigned driver can update this assignment.");
