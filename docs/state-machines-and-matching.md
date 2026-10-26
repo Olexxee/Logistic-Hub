@@ -60,10 +60,10 @@ Acceptance transaction:
 2. Verify booking is still in `MATCHING`.
 3. Verify offer belongs to the requesting driver, is `OFFERED`, and has not expired.
 4. Revalidate driver status, verification, coverage, location freshness and workload.
-5. Create assignment and update booking to `DRIVER_ASSIGNED` in the same database transaction.
-6. Mark the winning offer `ACCEPTED` and other active offers `WITHDRAWN`.
-7. Record a booking event and enqueue notifications/outbox work.
-8. Commit. Return the assignment only if this transaction wins.
+5. When a sender accepts an unexpired fare proposal, atomically snapshot the driver fare, fixed connection fee and total; create a temporary assignment with `AWAITING_PAYMENT`; and withdraw competing offers.
+6. Create the payment attempt only after customer acceptance. Use an idempotency key and a server-calculated total.
+7. On verified provider success, atomically change the payment to succeeded, assignment to `ACCEPTED`, and booking to `DRIVER_ASSIGNED`; write ledger entries once and enqueue outbox work.
+8. On payment expiry/failure, safely release the temporary assignment and resume matching according to policy.
 
 A PostgreSQL partial unique index should enforce at most one active assignment per parcel booking and at most one active assignment per ride booking. Prisma schema alone does not express this partial index; add it through a reviewed SQL migration. Add SQL CHECK constraints requiring exactly one of `parcelBookingId` or `rideBookingId` on offers, assignments, payment attempts, payout records and other polymorphic references. Alternatively, replace polymorphic nullable foreign keys with separate typed tables if that yields clearer constraints.
 
@@ -98,7 +98,7 @@ Store score components and algorithm version for audit/debugging. Avoid protecte
 
 ### Offer waves
 
-1. A verified payment moves the booking to `PAID_UNASSIGNED` and writes a durable matching task/outbox event in the same transaction.
+1. A valid draft enters `MATCHING` before payment; matching tasks and offer expiry work are persisted durably.
 2. Worker claims the task idempotently and changes booking to `MATCHING`.
 3. Find eligible candidates in the initial radius and rank them.
 4. Send a limited first wave of offers with server-generated expiry timestamps.
