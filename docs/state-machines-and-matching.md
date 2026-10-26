@@ -105,15 +105,15 @@ Store score components and algorithm version for audit/debugging. Avoid protecte
 5. Driver acceptance is processed through the atomic transaction above.
 6. If no acceptance, expire offers and widen the radius or send the next wave.
 7. Stop after configured radius, wave count or timeout.
-8. If no driver is found, notify the sender and execute the approved refund/cancellation policy. Do not keep customer funds in an undefined state.
+8. If no driver is found, notify the sender and close or expire the unpaid booking according to policy; no refund is due because payment has not started.
 
 ### Pseudocode
 
 ```text
 match(bookingId):
   booking = load booking
-  assert booking.paymentStatus == SUCCEEDED
-  assert booking.status in [PAID_UNASSIGNED, MATCHING]
+  assert booking.status == MATCHING
+  assert booking.paymentStatus in [INITIALIZED, FAILED, ABANDONED]
   assert serviceEnabled(booking.serviceType, booking.pickupZone)
 
   for wave in configuredOfferWaves:
