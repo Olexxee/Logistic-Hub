@@ -179,6 +179,7 @@ model User {
   assignments   DriverAssignment[]
   notifications Notification[]
   authActionTokens AuthActionToken[]
+  authSessions     AuthSession[]
 
   @@index([role, status])
   @@map("users")
@@ -766,4 +767,35 @@ model Notification {
   @@index([userId, readAt, createdAt])
   @@index([emailStatus, createdAt])
   @@map("notifications")
+}
+
+
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  userAgent        String?
+  ipHash           String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model RateLimitBucket {
+  key              String   @id
+  windowStartedAt  DateTime @map("window_started_at")
+  requestCount     Int      @default(0) @map("request_count")
+  expiresAt        DateTime @map("expires_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@map("rate_limit_buckets")
 }
