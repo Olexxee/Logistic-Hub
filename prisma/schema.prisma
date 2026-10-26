@@ -527,6 +527,7 @@ model DriverAssignment {
   agreedFareMinor   BigInt
   currency          String           @default("NGN")
   reservedAt        DateTime         @default(now())
+  paymentExpiresAt  DateTime?
   acceptedAt        DateTime?
   pickupAt           DateTime?
   startedAt         DateTime?
