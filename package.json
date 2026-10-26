@@ -13,7 +13,8 @@
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
     "test": "node --test",
-    "api:validate": "node scripts/validate-openapi.js"
+    "api:validate": "node scripts/validate-openapi.js",
+    "db:validate-initial-migration": "node scripts/validate-initial-migration.js"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
