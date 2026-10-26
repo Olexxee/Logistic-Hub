@@ -4,6 +4,7 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { env } from "./config/env.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
+import { authSessionsRouter } from "./modules/auth/auth-sessions.routes.js";
 import { requireAuth } from "./modules/auth/auth.middleware.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js";
@@ -47,6 +48,7 @@ app.get("/", (_req, res) => {
 
 app.use("/api/v1/health", healthRouter);
 app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/auth/sessions", authSessionsRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
 app.use("/api/v1/drivers", driversRouter);
