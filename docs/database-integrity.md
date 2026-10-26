@@ -4,8 +4,11 @@
 
 - `prisma/schema.prisma` is the declarative relational model.
 - `prisma/constraints/foundation.sql` contains supplemental PostgreSQL checks and partial unique indexes that Prisma cannot represent fully.
-- CI generates a disposable base schema from the Prisma model, applies it to PostgreSQL 16, applies the supplemental constraints, runs schema-drift validation, and exercises critical constraints.
-- There is **not yet a committed deployable initial migration**. The generated SQL in CI is a validation artifact, not production migration history. Do not run `prisma migrate deploy` against any environment until the initial migration has been generated, reviewed, committed and tested from an empty database.
+- `prisma/migrations/20261026121500_initial_foundation/migration.sql` is the committed initial migration.
+- `prisma/migrations/migration_lock.toml` records PostgreSQL as the migration provider.
+- `prisma/constraints/foundation.sql` is the initial supplemental-constraint snapshot included verbatim at the end of the initial migration. It is not a separate deployable migration.
+- CI applies the committed migration chain to a disposable PostgreSQL 16 database with `prisma migrate deploy`, checks migration status and Prisma schema drift, and exercises the database constraints.
+- The migration has been tested against a disposable CI database only. It has **not** been applied to staging or production.
 
 ## Geography invariants
 
@@ -17,7 +20,7 @@ Country codes should use ISO 3166-1 alpha-2. Nigerian state codes should use ISO
 
 ## Supplemental database constraints
 
-The checked-in SQL applies the following safeguards:
+The initial migration's supplemental SQL applies the following safeguards:
 
 - Exactly one parcel/ride booking reference for driver offers, assignments, payment attempts, payouts, verification tokens and booking events.
 - At most one booking type reference on ledger entries; platform-level ledger entries may have neither.
@@ -33,13 +36,12 @@ The database cannot, with a row-level CHECK alone, guarantee that multiple ledge
 
 ## Migration process
 
-1. Freeze the schema for the foundation review.
-2. Generate the base SQL using the pinned Prisma CLI against the checked-in schema.
-3. Review generated identifiers, enum definitions, foreign keys, indexes and defaults.
-4. Include the reviewed base SQL and supplemental constraints in the first committed migration history. Keep PostGIS/spatial indexes in a separate migration if the deployment image/database has the extension available.
-5. Apply the full migration chain to an empty disposable PostgreSQL database.
-6. Run the PostgreSQL integrity tests, API tests, Prisma validation/client generation and schema-drift checks.
-7. Verify forward deployment and documented recovery/rollback strategy before staging.
-8. Only after review, test the same migration chain against a staging database. Production migrations require separate explicit approval.
+1. Treat the initial migration as immutable once merged. Do not edit its SQL to represent later schema changes.
+2. For every schema or integrity change, create a new timestamped directory under `prisma/migrations` and include the matching SQL. Any change to the initial constraint snapshot must be reviewed carefully; later changes belong in a new migration, not by rewriting history.
+3. CI runs `prisma migrate deploy` against an empty disposable PostgreSQL 16 database and checks `prisma migrate status`.
+4. CI verifies Prisma schema drift and runs PostgreSQL integrity tests against the migrated database.
+5. Review generated SQL, foreign keys, indexes, enum changes, data migration requirements and recovery strategy before staging.
+6. Keep PostGIS/spatial indexes in a separate migration when the target database supports the required extension.
+7. Apply the migration chain to staging only after review. Production migration execution requires separate explicit approval.
 
-Do not treat `prisma validate` or `prisma generate` as proof that PostgreSQL constraints or migrations work. CI now tests the generated schema and supplemental SQL against a real disposable PostgreSQL 16 instance, but the first deployable migration still needs to be committed and reviewed.
+Passing `prisma validate` or `prisma generate` alone is not proof that PostgreSQL constraints or migrations work. The CI migration path now exercises the committed SQL rather than constructing an untracked baseline.
