@@ -1,0 +1,2 @@
+import { asyncWrapper } from "../../shared/http/async-wrapper.js";
+export function createPaymentsController(service){return {initialize:asyncWrapper(async(req,res)=>{const data=await service.initialize({...req.body,userId:req.user.id,idempotencyKey:req.get("Idempotency-Key")});res.status(201).json({success:true,data});}),webhook:asyncWrapper(async(req,res)=>{const data=await service.handleWebhook({payload:req.body,rawBody:req.rawBody,signature:req.get("x-paystack-signature")});res.status(200).json({success:true,data});})};}
