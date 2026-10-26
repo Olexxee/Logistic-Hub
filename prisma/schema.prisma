@@ -48,10 +48,10 @@ enum ServiceType {
 
 enum BookingStatus {
   DRAFT
+  MATCHING
+  AWAITING_CUSTOMER_ACCEPTANCE
   AWAITING_PAYMENT
   PAYMENT_PENDING
-  PAID_UNASSIGNED
-  MATCHING
   DRIVER_ASSIGNED
   PICKUP_VERIFICATION_PENDING
   PICKED_UP
@@ -65,10 +65,10 @@ enum BookingStatus {
 
 enum RideStatus {
   DRAFT
+  MATCHING
+  AWAITING_CUSTOMER_ACCEPTANCE
   AWAITING_PAYMENT
   PAYMENT_PENDING
-  PAID_UNASSIGNED
-  MATCHING
   DRIVER_ASSIGNED
   DRIVER_EN_ROUTE
   DRIVER_ARRIVED
@@ -100,6 +100,7 @@ enum OfferStatus {
 }
 
 enum AssignmentStatus {
+  AWAITING_PAYMENT
   ACCEPTED
   ARRIVED_AT_PICKUP
   PICKUP_CONFIRMED
@@ -384,10 +385,10 @@ model ParcelBooking {
   parcelSize              String
   declaredValueMinor      BigInt?
   handlingInstructions    String?
-  driverFareMinor         BigInt
+  driverFareMinor         BigInt?
   connectionFeeMinor      BigInt
   otherChargesMinor       BigInt       @default(0)
-  customerPayableMinor    BigInt
+  customerPayableMinor    BigInt?
   pricingRuleId           String?
   pricingSnapshot         Json
   paidAt                  DateTime?
@@ -429,9 +430,9 @@ model RideBooking {
   destinationLatitude   Decimal       @db.Decimal(10, 7)
   destinationLongitude  Decimal       @db.Decimal(10, 7)
   vehicleType           VehicleType
-  driverFareMinor       BigInt
+  driverFareMinor       BigInt?
   connectionFeeMinor    BigInt
-  customerPayableMinor  BigInt
+  customerPayableMinor  BigInt?
   pricingSnapshot       Json
   paidAt                DateTime?
   tripStartedAt         DateTime?
