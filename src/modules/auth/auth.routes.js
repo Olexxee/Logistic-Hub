@@ -7,10 +7,10 @@ import {
   createOpaqueToken,
   hashOpaqueToken,
   hashPassword,
-  signAccessToken,
   verifyPassword,
 } from "./auth.crypto.js";
 import { createAuthMiddleware } from "./auth.middleware.js";
+import { createAuthSessionService } from "./auth-session.service.js";
 
 const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(160),
@@ -27,6 +27,7 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
 }).strict();
 const resetPasswordSchema = emailTokenSchema.extend({ password: z.string().min(10).max(128) }).strict();
+const refreshSchema = z.object({ refreshToken: z.string().regex(/^[a-f0-9]{64}$/i) }).strict();
 const DUMMY_PASSWORD_HASH = "scrypt$" + "0".repeat(32) + "$" + "0".repeat(128);
 
 const genericValidationError = (res, issues) => res.status(400).json({
@@ -58,6 +59,7 @@ export function createAuthRouter({
 } = {}) {
   const router = Router();
   const { requireAuth } = createAuthMiddleware({ prismaClient, secret });
+  const sessions = createAuthSessionService({ prismaClient, secret });
 
   router.post("/register", async (req, res, next) => {
     const parsed = registerSchema.safeParse(req.body);
@@ -209,13 +211,11 @@ export function createAuthRouter({
           error: { code: "ACCOUNT_NOT_ACTIVE", message: "Verify your email before signing in." },
         });
       }
-      const access = signAccessToken({ userId: user.id, role: user.role, secret });
+      const tokens = await sessions.issue(user, { userAgent: req.get("user-agent") });
       return res.status(200).json({
         success: true,
         data: {
-          accessToken: access.token,
-          tokenType: "Bearer",
-          expiresIn: access.expiresIn,
+          ...tokens,
           user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
         },
       });
@@ -315,7 +315,39 @@ export function createAuthRouter({
         });
       }
 
+      await sessions.revokeAll(token.userId);
       return res.status(200).json({ success: true, data: { message: "Password reset successfully. Please sign in again." } });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/refresh", async (req, res, next) => {
+    const parsed = refreshSchema.safeParse(req.body);
+    if (!parsed.success) return genericValidationError(res, parsed.error.issues);
+    try {
+      const tokens = await sessions.refresh(parsed.data.refreshToken);
+      return res.status(200).json({ success: true, data: tokens });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/logout", requireAuth, async (req, res, next) => {
+    try {
+      if (req.auth.sessionId) {
+        await sessions.revoke({ sessionId: req.auth.sessionId, userId: req.user.id });
+      }
+      return res.status(200).json({ success: true, data: { message: "Session revoked." } });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/logout-all", requireAuth, async (req, res, next) => {
+    try {
+      await sessions.revokeAll(req.user.id);
+      return res.status(200).json({ success: true, data: { message: "All sessions revoked." } });
     } catch (error) {
       return next(error);
     }
