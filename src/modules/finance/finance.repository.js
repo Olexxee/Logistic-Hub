@@ -5,6 +5,7 @@ export function createFinanceRepository(prismaClient=prisma){return{
  findRefund(id){return prismaClient.refundRequest.findUnique({where:{id},include:{paymentAttempt:true}});},
  reviewRefund({id,reviewerId,decision,note}){return prismaClient.refundRequest.update({where:{id},data:{status:decision==="REJECT"?"REJECTED":"PROCESSING",reviewedByUserId:reviewerId,reviewedAt:new Date(),providerResponse:{reviewNote:note}}});},
  recordRefundProviderResult({id,providerReference,providerResponse}){return prismaClient.refundRequest.update({where:{id},data:{status:"PROCESSING",providerReference,providerResponse}});},
+ markRefundFailed({id,providerResponse}){return prismaClient.refundRequest.update({where:{id},data:{status:"FAILED",providerResponse}});},
  updateRefundFromWebhook({providerReference,status,providerResponse}){return prismaClient.refundRequest.updateMany({where:{providerReference},data:{status,providerResponse,processedAt:new Date()}});},
  listPayouts({status}){return prismaClient.driverPayout.findMany({where:status?{status}:{},include:{driverProfile:{include:{user:{select:{id:true,fullName:true,email:true}}}},parcelBooking:{select:{publicReference:true}},rideBooking:{select:{publicReference:true}}},orderBy:{createdAt:"asc"},take:100});},
  confirmPayout({id,providerReference}){return prismaClient.$transaction(async tx=>{const p=await tx.driverPayout.findUnique({where:{id}});if(!p)return null;if(p.status==="PAID")return p;return tx.driverPayout.update({where:{id},data:{status:"PAID",providerReference,processedAt:new Date()}});});},
