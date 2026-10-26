@@ -53,6 +53,9 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
         if (existing.providerPayload?.authorizationUrl) {
           return { reference: existing.providerReference, authorizationUrl: existing.providerPayload.authorizationUrl, status: existing.status, replay: true };
         }
+        if (["SUCCEEDED", "FAILED", "ABANDONED", "REVERSED"].includes(existing.status)) {
+          return { reference: existing.providerReference, status: existing.status, replay: true };
+        }
         throw new ConflictError("This payment attempt is already being processed.", "PAYMENT_ALREADY_PENDING");
       }
       const reference = `LH-${randomBytes(12).toString("hex").toUpperCase()}`;
@@ -110,6 +113,9 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
         throw new ConflictError("The payment webhook payload is invalid.", "PAYMENT_WEBHOOK_INVALID");
       }
       if (event.event === "charge.success") {
+        if (data.status !== "success" || !Number.isSafeInteger(data.amount) || data.amount < 1) {
+          throw new ConflictError("The successful payment webhook payload is invalid.", "PAYMENT_WEBHOOK_INVALID");
+        }
         const amountMinor = BigInt(data.amount);
         const fee = data.fees == null ? 0n : BigInt(data.fees);
         return db.processSuccessfulWebhook({
