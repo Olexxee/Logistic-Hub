@@ -149,7 +149,7 @@ export function createAssignmentsRepository({ prismaClient }) {
         if (updated.count !== 1) return false;
         const isRide = Boolean(assignment.rideBookingId);
         const booking = isRide ? assignment.rideBooking : assignment.parcelBooking;
-        const from = isRide ? "TRIP_IN_PROGRESS" : "PICKED_UP";
+        const from = isRide ? "TRIP_IN_PROGRESS" : "IN_TRANSIT";
         const to = isRide ? "TRIP_COMPLETION_PENDING" : "DELIVERY_VERIFICATION_PENDING";
         const bookingChanged = isRide
           ? await tx.rideBooking.updateMany({ where: { id: booking.id, status: from, paymentStatus: "SUCCEEDED" }, data: { status: to } })
@@ -173,6 +173,25 @@ export function createAssignmentsRepository({ prismaClient }) {
         where: { driverProfileId },
         orderBy: { recordedAt: "desc" },
         select: { latitude: true, longitude: true, accuracyMeters: true, recordedAt: true },
+      });
+    },
+
+    async startParcelTransit({ assignment, actorUserId, now }) {
+      return prismaClient.$transaction(async (tx) => {
+        const updated = await tx.driverAssignment.updateMany({
+          where: { id: assignment.id, status: "PICKUP_CONFIRMED", parcelBookingId: { not: null } },
+          data: { status: "IN_PROGRESS", startedAt: now },
+        });
+        if (updated.count !== 1) throw stateConflict("Parcel assignment is not ready to enter transit.");
+        const bookingChanged = await tx.parcelBooking.updateMany({
+          where: { id: assignment.parcelBookingId, status: "PICKED_UP", paymentStatus: "SUCCEEDED" },
+          data: { status: "IN_TRANSIT" },
+        });
+        if (bookingChanged.count !== 1) throw stateConflict("Parcel booking is not in the picked-up state.");
+        await tx.bookingEvent.create({
+          data: { parcelBookingId: assignment.parcelBookingId, actorUserId, eventType: "PARCEL_IN_TRANSIT", fromStatus: "PICKED_UP", toStatus: "IN_TRANSIT", metadata: { assignmentId: assignment.id } },
+        });
+        return true;
       });
     },
   };
