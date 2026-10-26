@@ -800,3 +800,61 @@ model RateLimitBucket {
   @@index([expiresAt])
   @@map("rate_limit_buckets")
 }
+
+
+model Refund {
+  id                String       @id @default(cuid())
+  paymentAttemptId  String
+  requestedByUserId String
+  parcelBookingId   String?
+  rideBookingId     String?
+  amountMinor       BigInt
+  currency          String       @default("NGN")
+  reason            String
+  status            RefundStatus @default(REQUESTED)
+  idempotencyKey    String       @unique
+  providerReference String?      @unique
+  providerPayload   Json?
+  failureReason     String?
+  requestedAt       DateTime     @default(now())
+  processedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  paymentAttempt    PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  requestedBy       User           @relation("RefundRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  parcelBooking     ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  rideBooking       RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
+
+  @@index([status, requestedAt])
+  @@index([paymentAttemptId, status])
+  @@map("refunds")
+}
+
+model SupportTicket {
+  id                String               @id @default(cuid())
+  publicReference   String               @unique
+  requesterId       String
+  assignedToUserId  String?
+  parcelBookingId   String?
+  rideBookingId     String?
+  category          String
+  subject           String
+  description       String
+  status            SupportTicketStatus  @default(OPEN)
+  priority          SupportTicketPriority @default(NORMAL)
+  resolution        String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  closedAt          DateTime?
+
+  requester         User                 @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  assignedTo        User?                @relation("SupportAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  parcelBooking     ParcelBooking?       @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  rideBooking       RideBooking?         @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
+
+  @@index([requesterId, status, createdAt])
+  @@index([status, priority, createdAt])
+  @@index([assignedToUserId, status])
+  @@map("support_tickets")
+}
