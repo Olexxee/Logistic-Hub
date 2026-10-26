@@ -7,6 +7,7 @@ The platform is designed to expand into passenger rides, partner-operated parcel
 ## Product and technical foundation
 
 - [Technical foundation](docs/technical-foundation.md)
+- [Foundation decisions: geography, maps and Paystack split payments](docs/foundation-decisions.md)
 - [State machines and matching algorithm](docs/state-machines-and-matching.md)
 - [Payment ledger and settlement](docs/payment-ledger.md)
 - [Database integrity and migration requirements](docs/database-integrity.md)
@@ -18,14 +19,15 @@ The platform is designed to expand into passenger rides, partner-operated parcel
 - Backend: JavaScript (ES modules), Node.js and Express
 - Data layer: PostgreSQL and Prisma ORM
 - Geospatial queries: PostgreSQL spatial support, introduced through explicit SQL migrations where Prisma's schema abstraction is insufficient
-- Payments: Paystack, subject to merchant-account capability and terms validation
+- Maps: provider-neutral server-side adapter; Google Maps geocoding and Routes API adapter is present but disabled by default
+- Payments: Paystack shared/split payments are the intended direction, subject to merchant-account capability and terms validation
 - Redis and a queue worker may be added for short-lived matching coordination, notifications and retries; PostgreSQL remains the source of truth
 
 ## Current status
 
-The backend foundation is being implemented on `feat/backend-foundation` and tracked in [draft PR #2](https://github.com/Olexxee/Logistic-Hub/pull/2). The current branch includes environment validation, an Express API shell, a health endpoint, Prisma validation/client-generation CI and initial smoke tests. Booking, fare negotiation, matching, pickup verification, payment collection and settlement are not implemented yet.
+The backend foundation is being implemented on `feat/backend-foundation` and tracked in [draft PR #2](https://github.com/Olexxee/Logistic-Hub/pull/2). The branch includes environment validation, an Express API shell, a health endpoint, Prisma validation/client-generation CI, smoke tests and the first provider-neutral maps boundary. Booking, fare negotiation, matching, pickup verification, payment collection and settlement are not implemented yet.
 
-The initial launch is configured for **multiple Lagos LGAs**, controlled by service zones and per-service availability. The payment sequence is **driver fare negotiation → sender acceptance → payment**. Backend API contracts must stabilize before client apps begin. Payments are hard-disabled in the current implementation and cannot be enabled through configuration.
+The platform uses one multi-state data model, with service zones and per-service availability controlling rollout. The initial launch targets **multiple Lagos LGAs**. The payment sequence is **driver fare negotiation → sender acceptance → payment**. Backend API contracts must stabilize before client apps begin. Maps default to disabled unless configured with a server-side key. Payments are hard-disabled and cannot be enabled through configuration.
 
 Do not merge this branch into `main`, apply production migrations, or accept live bookings/payments until implementation, tests, security review and regulatory checks are complete and the repository owner approves the next step.
 
