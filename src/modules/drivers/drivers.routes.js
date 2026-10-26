@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
+import { emailService } from "../../shared/email/email.service.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import {
   driverAvailabilitySchema,
@@ -25,7 +26,7 @@ function validationError(res, issues) {
   });
 }
 
-export function createDriversRouter({ prismaClient = prisma } = {}) {
+export function createDriversRouter({ prismaClient = prisma, email = emailService } = {}) {
   const router = Router();
   const service = createDriversService({ prismaClient });
   const requireAdmin = requireRole("ADMIN");
@@ -81,7 +82,32 @@ export function createDriversRouter({ prismaClient = prisma } = {}) {
     try {
       const result = await service.reviewDriver({ driverProfileId: parsedId.data, verificationStatus: parsed.data.verificationStatus });
       if (!result) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Driver profile not found." } });
-      return res.status(200).json({ success: true, data: result });
+      let emailStatus = "not_sent";
+      if (email.configured && result.userId) {
+        const account = await prismaClient.user.findUnique({ where: { id: result.userId }, select: { fullName: true, email: true } });
+        if (account?.email) {
+          try {
+            const approved = result.verificationStatus === "VERIFIED";
+            await email.send({
+              to: account.email,
+              subject: approved ? "Your Logistic Hub driver profile is verified" : "Update on your Logistic Hub driver application",
+              text: approved
+                ? `Hello ${account.fullName}, your driver profile has been verified. You can go online when your vehicle and service coverage are eligible.`
+                : `Hello ${account.fullName}, your driver application was not approved. Please contact support if you need clarification.`,
+              html: approved
+                ? `<p>Hello ${account.fullName},</p><p>Your driver profile has been verified. You can go online when your vehicle and service coverage are eligible.</p>`
+                : `<p>Hello ${account.fullName},</p><p>Your driver application was not approved. Please contact support if you need clarification.</p>`,
+              idempotencyKey: `driver-verification-${result.id}-${result.verificationStatus.toLowerCase()}`,
+              tags: [{ name: "category", value: "driver-verification" }],
+            });
+            emailStatus = "sent";
+          } catch {
+            emailStatus = "failed";
+          }
+        }
+      }
+      const { userId: _userId, ...publicResult } = result;
+      return res.status(200).json({ success: true, data: { ...publicResult, emailStatus } });
     } catch (error) {
       return next(error);
     }
