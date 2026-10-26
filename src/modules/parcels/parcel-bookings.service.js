@@ -52,10 +52,10 @@ function serializeBooking(booking) {
 export function createParcelBookingsService({ prismaClient, clock = () => new Date() }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
 
-  async function findExistingByIdempotencyKey(key, hash) {
+  async function findExistingByIdempotencyKey(key, hash, senderId) {
     const existing = await prismaClient.parcelBooking.findUnique({ where: { idempotencyKey: key } });
     if (!existing) return null;
-    if (existing.idempotencyPayloadHash !== hash) {
+    if (existing.senderId !== senderId || existing.idempotencyPayloadHash !== hash) {
       const error = new Error("The Idempotency-Key was already used with a different request.");
       error.statusCode = 409;
       error.code = "IDEMPOTENCY_CONFLICT";
@@ -67,12 +67,8 @@ export function createParcelBookingsService({ prismaClient, clock = () => new Da
   return {
     async createDraft({ senderId, idempotencyKey, input }) {
       const hash = requestHash(input);
-      const existing = await findExistingByIdempotencyKey(idempotencyKey, hash);
+      const existing = await findExistingByIdempotencyKey(idempotencyKey, hash, senderId);
       if (existing) return existing;
-
-      if (input.pickupServiceZoneId === input.destinationServiceZoneId) {
-        // Same-zone deliveries are valid, so no rejection here; this branch intentionally remains a no-op.
-      }
 
       const now = clock();
       const zoneIds = [...new Set([input.pickupServiceZoneId, input.destinationServiceZoneId])];
@@ -171,7 +167,7 @@ export function createParcelBookingsService({ prismaClient, clock = () => new Da
         return { booking: serializeBooking(booking), replay: false };
       } catch (error) {
         if (error.code === "P2002") {
-          const replay = await findExistingByIdempotencyKey(idempotencyKey, hash);
+          const replay = await findExistingByIdempotencyKey(idempotencyKey, hash, senderId);
           if (replay) return replay;
         }
         throw error;
