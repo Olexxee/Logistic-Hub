@@ -30,5 +30,8 @@ export function createAuthSessionRepository({ prismaClient }) {
     findById(id, tx = prismaClient) {
       return tx.authSession.findUnique({ where: { id } });
     },
+    findUserForSession(userId, tx = prismaClient) {
+      return tx.user.findUnique({ where: { id: userId } });
+    },
   };
 }
