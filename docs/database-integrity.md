@@ -22,6 +22,8 @@ The checked-in SQL applies the following safeguards:
 - Exactly one parcel/ride booking reference for driver offers, assignments, payment attempts, payouts, verification tokens and booking events.
 - At most one booking type reference on ledger entries; platform-level ledger entries may have neither.
 - At most one active assignment per booking and one active job per driver.
+- An assignment in `AWAITING_PAYMENT` must have a payment-reservation expiry; accepted driver fares and submitted fare proposals must be positive.
+- Driver service radius must be positive, rating must be between 0 and 5, job counters and location accuracy must be non-negative, and service-availability windows must be valid.
 - Positive payment, ledger-entry and payout amounts; non-negative fare/pricing amounts; and consistent accepted booking totals.
 - Payment split allocations are either entirely absent or complete, linked to a driver settlement account, accompanied by a routing snapshot, non-negative, and equal to the expected payment amount.
 - Latitude/longitude bounds on driver locations, parcel/ride endpoints and hub points.
