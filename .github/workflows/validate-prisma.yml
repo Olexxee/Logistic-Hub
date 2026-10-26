@@ -1,7 +1,7 @@
 name: Validate Prisma Schema and PostgreSQL Constraints
 
 concurrency:
-  group: prisma-validation-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: prisma-validation-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 on:
@@ -61,10 +61,10 @@ jobs:
       - name: Apply supplemental PostgreSQL constraints
         run: npx prisma db execute --file prisma/constraints/foundation.sql --schema prisma/schema.prisma
       - name: Package initial migration candidate for review
-        if: github.event_name == 'push'
+        if: success()
         run: cat /tmp/logistic-hub-base.sql prisma/constraints/foundation.sql > /tmp/logistic-hub-initial-migration.sql
       - name: Upload initial migration candidate
-        if: github.event_name == 'push'
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: logistic-hub-initial-migration-candidate
