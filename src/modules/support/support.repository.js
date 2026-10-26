@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 export function createSupportRepository({ prismaClient }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
   return {
@@ -54,11 +56,12 @@ export function createSupportRepository({ prismaClient }) {
           });
           return { kind: "CANCELLED", status: "CANCELLED", publicReference: booking.publicReference };
         }
-        const canRequest = !["COMPLETED", "CANCELLED", "FAILED"].includes(booking.status);
+        if (booking.paymentStatus === "PENDING") return { kind: "PAYMENT_PENDING" };
+        const canRequest = !["COMPLETED", "CANCELLED", "FAILED", "CANCELLATION_PENDING"].includes(booking.status);
         if (!canRequest) return { kind: "CONFLICT" };
         const ticket = await tx.supportTicket.create({
           data: {
-            publicReference: `LH-SUP-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+            publicReference: `LH-SUP-${randomBytes(5).toString("hex").toUpperCase()}`,
             requesterId: userId,
             ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }),
             category: "CANCELLATION_REFUND",
@@ -71,7 +74,11 @@ export function createSupportRepository({ prismaClient }) {
           const updated = isRide
             ? await tx.rideBooking.updateMany({ where: { id: bookingId, status: booking.status }, data: { status: "CANCELLATION_PENDING", cancellationReason: reason } })
             : await tx.parcelBooking.updateMany({ where: { id: bookingId, status: booking.status }, data: { status: "CANCELLATION_PENDING", cancellationReason: reason } });
-          if (updated.count !== 1) return { kind: "CONFLICT" };
+          if (updated.count !== 1) throw Object.assign(new Error("Booking state changed concurrently."), { statusCode: 409, code: "CANCELLATION_STATE_CONFLICT" });
+          await tx.driverAssignment.updateMany({
+            where: { ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }), status: "ACCEPTED" },
+            data: { status: "CANCELLED", cancelledAt: now, failureReason: "CUSTOMER_CANCELLED_POST_PAYMENT_PENDING_REVIEW" },
+          });
           await tx.bookingEvent.create({
             data: { ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }), actorUserId: userId, eventType: "CANCELLATION_REQUESTED", fromStatus: booking.status, toStatus: "CANCELLATION_PENDING", metadata: { reason, supportTicketId: ticket.id, policy: "POST_PAYMENT_REVIEW_REQUIRED" } },
           });
