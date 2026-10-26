@@ -5,41 +5,43 @@ This document records decisions that must remain stable while API contracts and 
 ## 1. Multi-state operating model
 
 - Logistic Hub is one platform and one shared data model across Nigerian states. A state is an operating jurisdiction/configuration boundary, not automatically a separate company or database.
-- Geography is normalized as country → state → LGA → service zone. Service zones may cover all or part of an LGA; state/LGA existence does not mean the service is live there.
+- Geography is normalized as country → state → LGA → service zone. Service zones may cover all or part of an LGA; a state/LGA/zone record does not imply that service is live there.
+- Country codes use ISO 3166-1 alpha-2; Nigerian state codes use ISO 3166-2, such as `NG-LA`. LGA codes are imported from a reviewed source, never invented.
+- Each parcel/ride booking stores both pickup and destination service-zone references. Cross-zone and cross-state trips are possible only when both ends and the service type are active under operational policy.
 - Availability is configured by zone and service type. Parcel delivery, passenger rides, hub points and business logistics can be enabled independently.
-- Drivers declare explicit zone/service coverage. Candidate matching must check coverage and service activation in addition to physical distance.
-- Launch activation is controlled through database configuration, starting with multiple Lagos LGAs. Do not create fake drivers, bookings, coordinates or zones to make the application appear populated.
-- Geography reference data is legitimate configuration data and may be imported from a reviewed source. Operational/test data belongs in isolated test fixtures, never production seed scripts.
+- Drivers declare explicit zone/service coverage. Candidate matching checks coverage, service activation, verification, availability and location freshness.
+- Initial rollout covers multiple Lagos LGAs. Do not create fake drivers, bookings or coordinates to make production look populated. Reference geography is configuration data; operational data and test fixtures are separate.
 
 ## 2. Maps and location services
 
-- Maps are used for user-entered address geocoding, map-pin coordinates and route distance/ETA. Maps results do not define service availability or replace Logistic Hub's own geography and operational records.
+- Maps support address geocoding, map-pin coordinates and route distance/ETA. They do not replace Logistic Hub's own geography or service availability records.
 - Provider calls run server-side. API keys must not be embedded in browser/mobile bundles or returned by the API.
-- Application code depends on a provider-neutral interface (geocode and computeRoute), not provider-specific response payloads. Google Maps is the first adapter; a provider can be replaced without changing booking/matching business rules.
-- Coordinates are validated to latitude [-90, 90] and longitude [-180, 180]. A geocoded result must be checked against service-zone coverage before a booking can be accepted.
-- Route distance/ETA is an estimate, not a promised fare or service guarantee. Fare calculation remains a server-side pricing rule with a versioned snapshot.
-- Do not persist every route response indefinitely. Persist the selected pickup/destination address and coordinates needed for fulfilment; retain provider place IDs or route metadata only where operationally justified.
-- Driver matching must use fresh driver-location updates and database-backed eligibility. A map provider is not the source of truth for driver availability or assignment.
-- Spatial radius/boundary queries require reviewed PostgreSQL/PostGIS migrations and integration tests. Do not assume Prisma schema validation created spatial indexes.
+- Application code depends on a provider-neutral interface (`geocode`, `computeRoute`); Google Maps is the first adapter.
+- Coordinates are validated to latitude [-90, 90] and longitude [-180, 180]. Geocoding results are candidates and must be checked against the selected service zone.
+- Route distance/ETA is an estimate, not a fare guarantee. Pricing is server-side and versioned; driver fare is negotiated and explicitly accepted.
+- Do not persist every route response indefinitely. Persist selected address and coordinates needed for fulfilment, plus provider IDs/route metadata only where justified.
+- Driver matching uses fresh database-backed location records. A map provider does not decide driver availability or assignment.
+- PostGIS indexes require explicit, reviewed migrations and integration tests; Prisma schema validation does not create spatial indexes.
 
 ### Current code status
 
-The Google Maps adapter supports server-side geocoding and route computation. It is not yet connected to public API routes, and requires MAPS_PROVIDER=google plus a server-only GOOGLE_MAPS_API_KEY. The default is MAPS_PROVIDER=none; missing credentials fail closed. No live maps requests are made by the test suite.
+The Google Maps adapter supports server-side geocoding and route computation. It is not connected to public API routes and is disabled by default. It requires `MAPS_PROVIDER=google` and a server-only `GOOGLE_MAPS_API_KEY`; tests use mocked responses only.
 
 ## 3. Paystack split-payment model
 
-- Paystack is the intended payment provider. The intended commercial flow is: driver proposes fare → sender accepts → server snapshots the driver fare and fixed platform connection fee → sender initiates payment.
-- The payment request must be server-calculated and idempotent. Never trust a client-supplied payable total, subaccount code, platform fee, amount, or payment-success state.
-- The product model is a shared platform with a platform account and eligible driver settlement destinations (Paystack subaccounts or another provider-supported mechanism confirmed for the merchant account). Split-payment configuration is data, versioned and auditable—not hard-coded in booking handlers.
-- The driver fare and platform connection fee are separate business line items. The platform fee is fixed by the active pricing rule; it is not a percentage of the driver's negotiated fare.
-- A Paystack split is a settlement-routing mechanism, not escrow and not proof that a driver has completed a delivery. Do not promise delayed release, custody-based escrow, refunds, or payout timing unless Paystack confirms the specific account capability and product terms.
-- Webhook events are untrusted until signature verification and server-side transaction verification. Handle duplicate, delayed and out-of-order events idempotently; reconcile provider records against internal payment attempts and a balanced ledger.
-- Live payment initialization, subaccount creation, split activation and payout execution remain disabled until the owner approves implementation and the exact Paystack settlement model, fees, refund handling and account eligibility are verified.
+- Intended sequence: driver proposes fare → sender accepts → server snapshots agreed driver fare, fixed platform connection fee and disclosed additional charges → sender initiates payment.
+- The request body must not control payable total, platform fee, settlement destination, split allocations, provider reference or payment success.
+- Driver and platform allocations are stored separately from the provider fee and tied to a versioned settlement-routing snapshot for each payment attempt.
+- The driver allocation represents the accepted driver fare. The platform allocation represents the fixed connection fee plus any other explicitly disclosed customer charges assigned to the platform. Their sum must equal the expected customer payment amount.
+- Driver settlement destinations are provider-scoped records. An account record is not active or payout-eligible until verified through the provider and approved by the business.
+- A Paystack split is a settlement-routing mechanism, not escrow and not proof of fulfilment. Do not promise delayed release, custody-based escrow or payout timing without provider confirmation.
+- Webhooks must be signature-verified and reconciled against server-side transaction verification; duplicate, delayed and out-of-order events are processed idempotently.
+- Live payment initialization, subaccount creation, split activation and payout execution remain disabled pending explicit owner approval and verification of merchant-account eligibility, fees, settlement timing and refund handling.
 
 ## 4. Persistence and release gates
 
-- PostgreSQL is the source of truth. Maps, payment providers, queues and clients are external integrations, not authorities over booking state.
-- Every financial amount is stored as an integer in minor currency units. Currency and pricing/payment-routing snapshots are stored with the relevant booking/payment attempt.
-- Database constraints must enforce polymorphic-reference exclusivity, non-negative amounts, unique provider references, and at most one active assignment per booking where applicable. Use reviewed SQL migrations for constraints Prisma cannot represent.
-- Keep schema changes, migrations and application changes together in the same reviewable branch. Validate migrations against a clean disposable PostgreSQL database before treating CI schema validation as sufficient.
-- No production migration, merge to main, or live payment enablement is authorised by this foundation work.
+- PostgreSQL is authoritative for booking state, payment state, assignment and ledger history.
+- Monetary values use integer minor units. API responses serialize them as decimal strings to avoid JavaScript precision errors.
+- Database constraints enforce polymorphic-reference exclusivity, coordinate bounds, accepted quote totals, split allocation consistency and one active assignment per booking/driver.
+- A row-level constraint cannot enforce a balanced multi-row ledger journal or cross-record quote/payment equality; these are transactional service invariants with integration tests.
+- Keep schema, supplemental SQL and migrations in the same reviewable branch. No production migration, merge to `main`, or live payment enablement is authorised by this foundation work.
