@@ -71,7 +71,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             verificationStatus: "VERIFIED",
             isOnline: true,
             isAvailable: true,
-            user: { is: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+            user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
             vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
             AND: [
               {
@@ -344,6 +344,12 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             verificationStatus: "VERIFIED",
             isOnline: true,
             isAvailable: true,
+            user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
+            vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
+            AND: [
+              { coverage: { some: { serviceZoneId: booking.pickupServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+              { coverage: { some: { serviceZoneId: booking.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+            ],
             assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
           },
           data: { isAvailable: false },

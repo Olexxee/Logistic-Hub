@@ -60,7 +60,8 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | POST | `/api/v1/maps/geocode` | Implemented | Geocode address through configured provider; authenticated |
 | POST | `/api/v1/maps/routes` | Implemented | Compute normalized route; authenticated |
 | POST | `/api/v1/parcel-bookings` | Implemented | Create an idempotent draft parcel booking with a fixed connection-fee snapshot |
-| GET | `/api/v1/parcel-bookings/{bookingId}` | Implemented | Read owner-visible booking details and lifecycle state |\n| POST | `/api/v1/parcel-bookings/{bookingId}/request-matching` | Implemented | Fan out offers to verified drivers covering both service zones |
+| GET | `/api/v1/parcel-bookings/{bookingId}` | Implemented | Read owner-visible booking details and lifecycle state |
+| POST | `/api/v1/parcel-bookings/{bookingId}/request-matching` | Implemented | Fan out offers to verified drivers covering both service zones |
 | GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Implemented | List driver fare proposals for the booking sender |
 | GET | `/api/v1/driver/offers` | Implemented | List active offers for an eligible driver |
 | POST | `/api/v1/driver/offers/{offerId}/propose-fare` | Implemented | Driver submits one idempotent fare proposal |

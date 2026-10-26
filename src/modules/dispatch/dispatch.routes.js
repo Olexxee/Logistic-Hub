@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
+import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { createDispatchService } from "./dispatch.service.js";
 import { acceptFareSchema, listDriverOffersQuerySchema, proposeFareSchema } from "./dispatch.schemas.js";
 import { idempotencyKeySchema } from "../parcels/parcel-bookings.schemas.js";
@@ -21,8 +22,9 @@ function validationError(res, issues) {
 export function createDispatchRouter({ prismaClient = prisma } = {}) {
   const router = Router();
   const service = createDispatchService({ prismaClient });
+  const requireDriver = requireRole("DRIVER");
 
-  router.post("/parcel-bookings/:bookingId/request-matching", async (req, res, next) => {
+  router.post("/parcel-bookings/:bookingId/request-matching", requireAuth, async (req, res, next) => {
     const parsedId = idSchema.safeParse(req.params.bookingId);
     if (!parsedId.success) return validationError(res, parsedId.error.issues);
     try {
@@ -34,7 +36,7 @@ export function createDispatchRouter({ prismaClient = prisma } = {}) {
     }
   });
 
-  router.get("/parcel-bookings/:bookingId/offers", async (req, res, next) => {
+  router.get("/parcel-bookings/:bookingId/offers", requireAuth, async (req, res, next) => {
     const parsedId = idSchema.safeParse(req.params.bookingId);
     if (!parsedId.success) return validationError(res, parsedId.error.issues);
     try {
@@ -46,7 +48,7 @@ export function createDispatchRouter({ prismaClient = prisma } = {}) {
     }
   });
 
-  router.get("/driver/offers", async (req, res, next) => {
+  router.get("/driver/offers", requireAuth, requireDriver, async (req, res, next) => {
     const parsed = listDriverOffersQuerySchema.safeParse(req.query);
     if (!parsed.success) return validationError(res, parsed.error.issues);
     try {
@@ -57,7 +59,7 @@ export function createDispatchRouter({ prismaClient = prisma } = {}) {
     }
   });
 
-  router.post("/driver/offers/:offerId/propose-fare", async (req, res, next) => {
+  router.post("/driver/offers/:offerId/propose-fare", requireAuth, requireDriver, async (req, res, next) => {
     const parsedId = idSchema.safeParse(req.params.offerId);
     if (!parsedId.success) return validationError(res, parsedId.error.issues);
     const parsed = proposeFareSchema.safeParse(req.body);
@@ -85,7 +87,7 @@ export function createDispatchRouter({ prismaClient = prisma } = {}) {
     }
   });
 
-  router.post("/parcel-bookings/:bookingId/accept-fare", async (req, res, next) => {
+  router.post("/parcel-bookings/:bookingId/accept-fare", requireAuth, async (req, res, next) => {
     const parsedId = idSchema.safeParse(req.params.bookingId);
     if (!parsedId.success) return validationError(res, parsedId.error.issues);
     const parsed = acceptFareSchema.safeParse(req.body);

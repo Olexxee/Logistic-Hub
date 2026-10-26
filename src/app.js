@@ -45,6 +45,6 @@ app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
-app.use("/api/v1", requireAuth, dispatchRouter);
+app.use("/api/v1", dispatchRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
