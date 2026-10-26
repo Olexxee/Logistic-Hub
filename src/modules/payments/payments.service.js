@@ -60,6 +60,16 @@ export function createPaymentsService({ prismaClient, secretKey = env.PAYSTACK_S
         const updated = await repository.updateRefundFromWebhook({ providerReference, status, providerResponse: { event: payload.event, id: providerReference } });
         return { accepted: true, updatedCount: updated.count };
       }
+      if (payload.event === "charge.failed" && payload.data?.reference) {
+        const reference = payload.data.reference;
+        return repository.markFailed({
+          reference,
+          providerEventId: String(payload.data.id ?? reference),
+          eventType: payload.event,
+          payloadHash: createHash("sha256").update(rawBody).digest("hex"),
+          providerPayload: { event: payload.event, reference, status: payload.data.status ?? "failed" },
+        });
+      }
       if (payload.event !== "charge.success" || payload.data?.status !== "success") return { accepted: true, ignored: true };
       const reference = payload.data.reference;
       const response = await fetchImpl("https://api.paystack.co/transaction/verify/" + encodeURIComponent(reference), { headers: { Authorization: "Bearer " + secretKey } });
