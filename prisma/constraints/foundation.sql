@@ -7,7 +7,9 @@
 -- A polymorphic booking reference must point to exactly one booking type.
 ALTER TABLE "driver_offers"
   ADD CONSTRAINT "driver_offers_exactly_one_booking"
-  CHECK (("parcelBookingId" IS NOT NULL)::int + ("rideBookingId" IS NOT NULL)::int = 1);
+  CHECK (("parcelBookingId" IS NOT NULL)::int + ("rideBookingId" IS NOT NULL)::int = 1),
+  ADD CONSTRAINT "driver_offers_positive_proposed_fare"
+  CHECK ("proposedFareMinor" IS NULL OR "proposedFareMinor" > 0);
 
 ALTER TABLE "driver_assignments"
   ADD CONSTRAINT "driver_assignments_exactly_one_booking"
@@ -85,8 +87,26 @@ ALTER TABLE "driver_payouts"
   CHECK ("amountMinor" > 0);
 
 ALTER TABLE "driver_assignments"
-  ADD CONSTRAINT "driver_assignments_nonnegative_agreed_fare"
-  CHECK ("agreedFareMinor" >= 0);
+  ADD CONSTRAINT "driver_assignments_positive_agreed_fare"
+  CHECK ("agreedFareMinor" > 0),
+  ADD CONSTRAINT "driver_assignments_payment_expiry_required"
+  CHECK (status <> 'AWAITING_PAYMENT' OR "paymentExpiresAt" IS NOT NULL);
+
+ALTER TABLE "service_availability"
+  ADD CONSTRAINT "service_availability_valid_window"
+  CHECK ("endsAt" IS NULL OR "startsAt" IS NULL OR "endsAt" > "startsAt");
+
+ALTER TABLE "driver_profiles"
+  ADD CONSTRAINT "driver_profiles_positive_service_radius"
+  CHECK ("serviceRadiusMeters" > 0),
+  ADD CONSTRAINT "driver_profiles_nonnegative_job_counts"
+  CHECK ("completedJobs" >= 0 AND "cancelledJobs" >= 0),
+  ADD CONSTRAINT "driver_profiles_rating_range"
+  CHECK ("averageRating" IS NULL OR "averageRating" BETWEEN 0 AND 5);
+
+ALTER TABLE "driver_locations"
+  ADD CONSTRAINT "driver_locations_nonnegative_accuracy"
+  CHECK ("accuracyMeters" IS NULL OR "accuracyMeters" >= 0);
 
 ALTER TABLE "pricing_rules"
   ADD CONSTRAINT "pricing_rules_nonnegative_amounts"
@@ -114,7 +134,7 @@ ALTER TABLE "parcel_bookings"
       (
         "driverFareMinor" IS NOT NULL
         AND "customerPayableMinor" IS NOT NULL
-        AND "driverFareMinor" >= 0
+        AND "driverFareMinor" > 0
         AND "customerPayableMinor" =
           "driverFareMinor" + "connectionFeeMinor" + "otherChargesMinor"
       )
@@ -131,7 +151,7 @@ ALTER TABLE "ride_bookings"
       (
         "driverFareMinor" IS NOT NULL
         AND "customerPayableMinor" IS NOT NULL
-        AND "driverFareMinor" >= 0
+        AND "driverFareMinor" > 0
         AND "customerPayableMinor" = "driverFareMinor" + "connectionFeeMinor"
       )
     )
