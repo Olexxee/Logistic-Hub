@@ -115,6 +115,7 @@ enum VerificationAction {
   PARCEL_PICKUP
   PARCEL_DELIVERY
   RIDE_PICKUP
+  RIDE_COMPLETION
 }
 
 enum VerificationTokenStatus {
