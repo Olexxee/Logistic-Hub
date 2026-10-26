@@ -38,6 +38,7 @@ const implementedOperations = new Set([
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
+  "POST /ride-bookings",
   "POST /driver/offers/{offerId}/propose-fare",
   "POST /parcel-bookings/{bookingId}/accept-fare",
   "POST /payments",
