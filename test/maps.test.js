@@ -31,3 +31,62 @@ test("Google Maps provider requires a server-side API key", () => {
   assert.throws(() => new GoogleMapsProvider({ apiKey: "" }), /API key is required/);
   assert.throws(() => createMapsProvider({ MAPS_PROVIDER: "google", GOOGLE_MAPS_API_KEY: "" }), /API key is required/);
 });
+
+test("geocoding normalizes provider data and handles no results", async () => {
+  const provider = new GoogleMapsProvider({
+    apiKey: "test-key",
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        status: "OK",
+        results: [{
+          formatted_address: "Ikeja, Lagos, Nigeria",
+          place_id: "test-place",
+          geometry: { location: { lat: 6.6018, lng: 3.3515 } },
+        }],
+      }),
+    }),
+  });
+  assert.deepEqual(await provider.geocode({ address: "Ikeja, Lagos" }), {
+    formattedAddress: "Ikeja, Lagos, Nigeria",
+    location: { latitude: 6.6018, longitude: 3.3515 },
+    placeId: "test-place",
+  });
+
+  const noResults = new GoogleMapsProvider({
+    apiKey: "test-key",
+    fetchImpl: async () => ({ ok: true, json: async () => ({ status: "ZERO_RESULTS", results: [] }) }),
+  });
+  assert.equal(await noResults.geocode({ address: "Unknown location" }), null);
+});
+
+test("route computation normalizes distance and duration", async () => {
+  let requestOptions;
+  const provider = new GoogleMapsProvider({
+    apiKey: "test-key",
+    fetchImpl: async (_url, options) => {
+      requestOptions = options;
+      return {
+        ok: true,
+        json: async () => ({
+          routes: [{
+            distanceMeters: 12400,
+            duration: "1800s",
+            polyline: { encodedPolyline: "encoded-test-route" },
+          }],
+        }),
+      };
+    },
+  });
+  const result = await provider.computeRoute({
+    origin: { latitude: 6.5, longitude: 3.4 },
+    destination: { latitude: 6.6, longitude: 3.5 },
+  });
+  assert.deepEqual(result, {
+    distanceMeters: 12400,
+    durationSeconds: 1800,
+    encodedPolyline: "encoded-test-route",
+  });
+  assert.equal(requestOptions.headers["X-Goog-Api-Key"], "test-key");
+  assert.equal(requestOptions.headers["X-Goog-FieldMask"], "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline");
+});
