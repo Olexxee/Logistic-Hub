@@ -1,0 +1,684 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  HUB_OPERATOR
+  SUPPORT
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum VerificationStatus {
+  NOT_SUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum VehicleType {
+  BICYCLE
+  MOTORCYCLE
+  CAR
+  VAN
+  PICKUP
+  TRUCK
+}
+
+enum ServiceType {
+  PARCEL_DELIVERY
+  PASSENGER_RIDE
+  HUB_POINT
+  BUSINESS_LOGISTICS
+}
+
+enum BookingStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  PAYMENT_PENDING
+  PAID_UNASSIGNED
+  MATCHING
+  DRIVER_ASSIGNED
+  PICKUP_VERIFICATION_PENDING
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERY_VERIFICATION_PENDING
+  COMPLETED
+  CANCELLATION_PENDING
+  CANCELLED
+  FAILED
+}
+
+enum RideStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  PAYMENT_PENDING
+  PAID_UNASSIGNED
+  MATCHING
+  DRIVER_ASSIGNED
+  DRIVER_EN_ROUTE
+  DRIVER_ARRIVED
+  PICKUP_VERIFICATION_PENDING
+  TRIP_IN_PROGRESS
+  TRIP_COMPLETION_PENDING
+  COMPLETED
+  CANCELLATION_PENDING
+  CANCELLED
+  NO_DRIVER_FOUND
+  FAILED
+}
+
+enum PaymentStatus {
+  INITIALIZED
+  PENDING
+  SUCCEEDED
+  FAILED
+  ABANDONED
+  REVERSED
+}
+
+enum OfferStatus {
+  OFFERED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum AssignmentStatus {
+  ACCEPTED
+  ARRIVED_AT_PICKUP
+  PICKUP_CONFIRMED
+  IN_PROGRESS
+  ARRIVED_AT_DESTINATION
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum VerificationAction {
+  PARCEL_PICKUP
+  PARCEL_DELIVERY
+  RIDE_PICKUP
+}
+
+enum VerificationTokenStatus {
+  ACTIVE
+  CONSUMED
+  EXPIRED
+  REVOKED
+}
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  REVENUE
+  EXPENSE
+  EQUITY
+}
+
+enum LedgerEntrySide {
+  DEBIT
+  CREDIT
+}
+
+enum PayoutStatus {
+  PENDING
+  ELIGIBLE
+  PROCESSING
+  PAID
+  FAILED
+  REVERSED
+}
+
+enum HubPointStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+model User {
+  id            String     @id @default(cuid())
+  fullName      String
+  email         String?    @unique
+  phone         String?    @unique
+  passwordHash  String?
+  role          UserRole   @default(CUSTOMER)
+  status        UserStatus @default(PENDING)
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  driverProfile DriverProfile?
+  sentParcels   ParcelBooking[] @relation("ParcelSender")
+  rideBookings  RideBooking[]   @relation("RidePassenger")
+  assignments   DriverAssignment[]
+  notifications Notification[]
+
+  @@index([role, status])
+  @@map("users")
+}
+
+model DriverProfile {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  verificationStatus   VerificationStatus @default(NOT_SUBMITTED)
+  isOnline             Boolean            @default(false)
+  isAvailable          Boolean            @default(false)
+  serviceRadiusMeters  Int                @default(5000)
+  averageRating        Decimal?           @db.Decimal(3, 2)
+  completedJobs        Int                @default(0)
+  cancelledJobs        Int                @default(0)
+  lastLocationAt       DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicles             Vehicle[]
+  locations            DriverLocation[]
+  coverage             DriverCoverage[]
+  offers               DriverOffer[]
+  assignments          DriverAssignment[]
+  payouts              DriverPayout[]
+
+  @@index([verificationStatus, isOnline, isAvailable])
+  @@map("driver_profiles")
+}
+
+model Vehicle {
+  id                String       @id @default(cuid())
+  driverProfileId   String
+  type              VehicleType
+  make              String?
+  model             String?
+  registrationPlate String?      @unique
+  verificationStatus VerificationStatus @default(NOT_SUBMITTED)
+  isActive          Boolean      @default(false)
+  parcelCapacity    String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  driverProfile     DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@index([driverProfileId, isActive, verificationStatus])
+  @@map("vehicles")
+}
+
+model DriverLocation {
+  id               String        @id @default(cuid())
+  driverProfileId  String
+  latitude         Decimal       @db.Decimal(10, 7)
+  longitude        Decimal       @db.Decimal(10, 7)
+  accuracyMeters   Decimal?      @db.Decimal(8, 2)
+  recordedAt       DateTime      @default(now())
+
+  driverProfile    DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@index([driverProfileId, recordedAt])
+  @@index([recordedAt])
+  @@map("driver_locations")
+}
+
+model Country {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(false)
+  states    State[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("countries")
+}
+
+model State {
+  id          String   @id @default(cuid())
+  countryId   String
+  code        String
+  name        String
+  isActive    Boolean  @default(false)
+  country     Country  @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  lgas        LGA[]
+  zones       ServiceZone[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([countryId, code])
+  @@unique([countryId, name])
+  @@index([countryId, isActive])
+  @@map("states")
+}
+
+model LGA {
+  id          String   @id @default(cuid())
+  stateId     String
+  code        String?
+  name        String
+  state       State    @relation(fields: [stateId], references: [id], onDelete: Restrict)
+  zones       ServiceZone[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([stateId, name])
+  @@index([stateId])
+  @@map("lgas")
+}
+
+model ServiceZone {
+  id          String   @id @default(cuid())
+  stateId     String
+  lgaId       String?
+  code        String
+  name        String
+  isActive    Boolean  @default(false)
+  boundaryGeoJson Json?
+  state       State    @relation(fields: [stateId], references: [id], onDelete: Restrict)
+  lga         LGA?     @relation(fields: [lgaId], references: [id], onDelete: Restrict)
+  availability ServiceAvailability[]
+  coverage    DriverCoverage[]
+  parcelBookings ParcelBooking[]
+  rideBookings RideBooking[]
+  hubPoints   HubPoint[]
+  pricingRules PricingRule[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([stateId, code])
+  @@index([stateId, isActive])
+  @@index([lgaId])
+  @@map("service_zones")
+}
+
+model ServiceAvailability {
+  id          String      @id @default(cuid())
+  serviceZoneId String
+  serviceType ServiceType
+  isEnabled   Boolean     @default(false)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  config      Json?
+  serviceZone ServiceZone @relation(fields: [serviceZoneId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([serviceZoneId, serviceType])
+  @@index([serviceType, isEnabled])
+  @@map("service_availability")
+}
+
+model DriverCoverage {
+  id              String        @id @default(cuid())
+  driverProfileId String
+  serviceZoneId   String
+  serviceType     ServiceType
+  isEnabled       Boolean       @default(true)
+  driverProfile   DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  serviceZone     ServiceZone   @relation(fields: [serviceZoneId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([driverProfileId, serviceZoneId, serviceType])
+  @@index([serviceZoneId, serviceType, isEnabled])
+  @@map("driver_coverage")
+}
+
+model PricingRule {
+  id                    String      @id @default(cuid())
+  serviceZoneId         String?
+  serviceType           ServiceType
+  currency              String      @default("NGN")
+  fixedConnectionFeeMinor BigInt
+  minimumDriverFareMinor BigInt      @default(0)
+  baseFareMinor         BigInt       @default(0)
+  perKmMinor            BigInt       @default(0)
+  perMinuteMinor        BigInt       @default(0)
+  config                Json?
+  version               Int          @default(1)
+  isActive              Boolean      @default(false)
+  effectiveFrom         DateTime     @default(now())
+  effectiveUntil        DateTime?
+  serviceZone           ServiceZone? @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([serviceType, isActive, effectiveFrom])
+  @@index([serviceZoneId, serviceType, isActive])
+  @@map("pricing_rules")
+}
+
+model ParcelBooking {
+  id                      String        @id @default(cuid())
+  publicReference         String        @unique
+  senderId                String
+  serviceZoneId           String
+  status                  BookingStatus @default(DRAFT)
+  paymentStatus           PaymentStatus @default(INITIALIZED)
+  currency                String        @default("NGN")
+  pickupAddress           String
+  pickupLatitude          Decimal       @db.Decimal(10, 7)
+  pickupLongitude         Decimal       @db.Decimal(10, 7)
+  pickupInstructions      String?
+  destinationAddress      String
+  destinationLatitude     Decimal       @db.Decimal(10, 7)
+  destinationLongitude    Decimal       @db.Decimal(10, 7)
+  recipientName           String
+  recipientPhone          String
+  parcelCategory          String
+  parcelDescription       String?
+  parcelSize              String
+  declaredValueMinor      BigInt?
+  handlingInstructions    String?
+  driverFareMinor         BigInt
+  connectionFeeMinor      BigInt
+  otherChargesMinor       BigInt       @default(0)
+  customerPayableMinor    BigInt
+  pricingRuleId           String?
+  pricingSnapshot         Json
+  paidAt                  DateTime?
+  pickedUpAt              DateTime?
+  completedAt             DateTime?
+  cancelledAt             DateTime?
+  cancellationReason      String?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  sender                  User          @relation("ParcelSender", fields: [senderId], references: [id], onDelete: Restrict)
+  serviceZone             ServiceZone   @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  offers                  DriverOffer[]
+  assignments             DriverAssignment[]
+  paymentAttempts         PaymentAttempt[]
+  verificationTokens      VerificationToken[]
+  events                  BookingEvent[]
+  ledgerEntries           LedgerEntry[]
+  payouts                 DriverPayout[]
+
+  @@index([senderId, createdAt])
+  @@index([serviceZoneId, status, createdAt])
+  @@index([status, paymentStatus, createdAt])
+  @@map("parcel_bookings")
+}
+
+model RideBooking {
+  id                    String        @id @default(cuid())
+  publicReference       String        @unique
+  passengerId           String
+  serviceZoneId         String
+  status                RideStatus    @default(DRAFT)
+  paymentStatus         PaymentStatus @default(INITIALIZED)
+  currency              String        @default("NGN")
+  pickupAddress         String
+  pickupLatitude        Decimal       @db.Decimal(10, 7)
+  pickupLongitude       Decimal       @db.Decimal(10, 7)
+  destinationAddress    String
+  destinationLatitude   Decimal       @db.Decimal(10, 7)
+  destinationLongitude  Decimal       @db.Decimal(10, 7)
+  vehicleType           VehicleType
+  driverFareMinor       BigInt
+  connectionFeeMinor    BigInt
+  customerPayableMinor  BigInt
+  pricingSnapshot       Json
+  paidAt                DateTime?
+  tripStartedAt         DateTime?
+  completedAt           DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  passenger             User          @relation("RidePassenger", fields: [passengerId], references: [id], onDelete: Restrict)
+  serviceZone           ServiceZone   @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  offers                DriverOffer[]
+  assignments           DriverAssignment[]
+  paymentAttempts       PaymentAttempt[]
+  events                BookingEvent[]
+  ledgerEntries         LedgerEntry[]
+  payouts               DriverPayout[]
+  verificationTokens    VerificationToken[]
+
+  @@index([passengerId, createdAt])
+  @@index([serviceZoneId, status, createdAt])
+  @@map("ride_bookings")
+}
+
+model DriverOffer {
+  id                String      @id @default(cuid())
+  parcelBookingId   String?
+  rideBookingId     String?
+  driverProfileId   String
+  status            OfferStatus @default(OFFERED)
+  proposedFareMinor BigInt?
+  currency          String      @default("NGN")
+  expiresAt         DateTime
+  respondedAt       DateTime?
+  createdAt         DateTime    @default(now())
+
+  parcelBooking     ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
+  rideBooking       RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Cascade)
+  driverProfile     DriverProfile  @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@index([driverProfileId, status, expiresAt])
+  @@index([parcelBookingId, status, expiresAt])
+  @@index([rideBookingId, status, expiresAt])
+  @@map("driver_offers")
+}
+
+model DriverAssignment {
+  id                String           @id @default(cuid())
+  parcelBookingId   String?
+  rideBookingId     String?
+  driverProfileId   String
+  assignedByUserId  String?
+  status            AssignmentStatus @default(ACCEPTED)
+  agreedFareMinor   BigInt
+  currency          String           @default("NGN")
+  acceptedAt        DateTime         @default(now())
+  pickupAt          DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  failureReason     String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  parcelBooking     ParcelBooking?   @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  rideBooking       RideBooking?     @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
+  driverProfile     DriverProfile    @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+  assignedBy        User?            @relation(fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([driverProfileId, status, acceptedAt])
+  @@index([parcelBookingId, status])
+  @@index([rideBookingId, status])
+  @@map("driver_assignments")
+}
+
+model PaymentAttempt {
+  id                  String        @id @default(cuid())
+  parcelBookingId     String?
+  rideBookingId       String?
+  provider            String        @default("PAYSTACK")
+  providerReference   String?       @unique
+  idempotencyKey      String        @unique
+  status              PaymentStatus @default(INITIALIZED)
+  amountMinor         BigInt
+  currency            String        @default("NGN")
+  providerFeeMinor    BigInt?
+  providerPayload     Json?
+  initializedAt       DateTime      @default(now())
+  verifiedAt          DateTime?
+  failedAt            DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  parcelBooking       ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  rideBooking         RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
+  ledgerEntries       LedgerEntry[]
+
+  @@index([parcelBookingId, status])
+  @@index([rideBookingId, status])
+  @@index([provider, status, createdAt])
+  @@map("payment_attempts")
+}
+
+model LedgerAccount {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  type        LedgerAccountType
+  currency    String            @default("NGN")
+  isActive    Boolean           @default(true)
+  entries     LedgerEntry[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([type, currency, isActive])
+  @@map("ledger_accounts")
+}
+
+model LedgerEntry {
+  id                String          @id @default(cuid())
+  journalReference  String
+  accountId         String
+  side              LedgerEntrySide
+  amountMinor       BigInt
+  currency          String          @default("NGN")
+  parcelBookingId   String?
+  rideBookingId     String?
+  paymentAttemptId  String?
+  payoutId          String?
+  description       String
+  metadata          Json?
+  postedAt          DateTime        @default(now())
+
+  account           LedgerAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  parcelBooking     ParcelBooking?  @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  rideBooking       RideBooking?    @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
+  paymentAttempt    PaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  payout            DriverPayout?   @relation(fields: [payoutId], references: [id], onDelete: Restrict)
+
+  @@index([journalReference])
+  @@index([accountId, postedAt])
+  @@index([parcelBookingId])
+  @@index([rideBookingId])
+  @@map("ledger_entries")
+}
+
+model DriverPayout {
+  id                String       @id @default(cuid())
+  driverProfileId   String
+  parcelBookingId   String?
+  rideBookingId     String?
+  amountMinor       BigInt
+  currency          String       @default("NGN")
+  status            PayoutStatus @default(PENDING)
+  provider          String       @default("PAYSTACK")
+  providerReference String?      @unique
+  idempotencyKey    String       @unique
+  failureReason     String?
+  requestedAt       DateTime     @default(now())
+  processedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  driverProfile     DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+  parcelBooking     ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  rideBooking       RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
+  ledgerEntries     LedgerEntry[]
+
+  @@index([driverProfileId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("driver_payouts")
+}
+
+model VerificationToken {
+  id                String                  @id @default(cuid())
+  parcelBookingId   String?
+  rideBookingId     String?
+  action            VerificationAction
+  tokenHash         String                  @unique
+  status            VerificationTokenStatus @default(ACTIVE)
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  consumedByUserId  String?
+  createdAt         DateTime                @default(now())
+
+  parcelBooking     ParcelBooking?          @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
+  rideBooking       RideBooking?             @relation(fields: [rideBookingId], references: [id], onDelete: Cascade)
+
+  @@index([parcelBookingId, action, status])
+  @@index([rideBookingId, action, status])
+  @@index([status, expiresAt])
+  @@map("verification_tokens")
+}
+
+model BookingEvent {
+  id                String   @id @default(cuid())
+  parcelBookingId   String?
+  rideBookingId     String?
+  actorUserId       String?
+  eventType         String
+  fromStatus        String?
+  toStatus          String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  parcelBooking     ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
+  rideBooking       RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Cascade)
+
+  @@index([parcelBookingId, createdAt])
+  @@index([rideBookingId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("booking_events")
+}
+
+model HubPoint {
+  id              String         @id @default(cuid())
+  serviceZoneId   String
+  name            String
+  address         String
+  latitude        Decimal        @db.Decimal(10, 7)
+  longitude       Decimal        @db.Decimal(10, 7)
+  status          HubPointStatus @default(PENDING)
+  operatorName    String?
+  operatorPhone   String?
+  openingHours    Json?
+  acceptedParcelTypes Json?
+  capacityConfig  Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  serviceZone     ServiceZone    @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+
+  @@index([serviceZoneId, status])
+  @@map("hub_points")
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  title       String
+  body        String
+  data        Json?
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}

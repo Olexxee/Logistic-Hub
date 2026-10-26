@@ -7,7 +7,10 @@ The platform is designed to expand into passenger rides, partner-operated parcel
 ## Product and technical foundation
 
 - [Technical foundation](docs/technical-foundation.md)
-- [Database schema](prisma/schema.prisma)
+- [State machines and matching algorithm](docs/state-machines-and-matching.md)
+- [Payment ledger and settlement](docs/payment-ledger.md)
+- [Database integrity and migration requirements](docs/database-integrity.md)
+- [Initial database schema](prisma/schema.prisma)
 
 ## Initial architecture
 
