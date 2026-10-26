@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import { env } from "./config/env.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js";
+import { mapsRouter } from "./modules/maps/maps.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -36,5 +37,6 @@ app.get("/", (_req, res) => {
 
 app.use("/api/v1/health", healthRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
+app.use("/api/v1/maps", mapsRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
