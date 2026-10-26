@@ -311,7 +311,7 @@ Do not accept live bookings until all of these pass:
 ## 8. Decisions still open
 
 - Exact Lagos launch zone(s).
-- Final fare mode and whether payment occurs before or after matching.
+- Payment timing is fixed: negotiate driver fare, obtain sender acceptance, then collect payment.
 - Connection fee amount and whether it varies by service zone.
 - Driver payout milestone and permitted provider mechanism.
 - Cancellation/refund policy.
