@@ -48,4 +48,4 @@ if (parsed.data.PAYMENTS_ENABLED && !parsed.data.PAYSTACK_SECRET_KEY.trim()) {
   throw new Error("PAYSTACK_SECRET_KEY is required when PAYMENTS_ENABLED=true.");
 }
 
-export const env = Object.freeze({ ...parsed.data, PAYMENTS_ENABLED: false });
+export const env = Object.freeze({ ...parsed.data });
