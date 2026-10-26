@@ -181,6 +181,9 @@ model User {
   notifications Notification[]
   authActionTokens AuthActionToken[]
   authSessions     AuthSession[]
+  supportTicketsOpened SupportTicket[] @relation("SupportRequester")
+  supportTicketsAssigned SupportTicket[] @relation("SupportAssignee")
+  refundRequests Refund[] @relation("RefundRequester")
 
   @@index([role, status])
   @@map("users")
@@ -450,6 +453,8 @@ model ParcelBooking {
   events                  BookingEvent[]
   ledgerEntries           LedgerEntry[]
   payouts                 DriverPayout[]
+  refunds                 Refund[]
+  supportTickets          SupportTicket[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
@@ -498,6 +503,8 @@ model RideBooking {
   events                BookingEvent[]
   ledgerEntries         LedgerEntry[]
   payouts               DriverPayout[]
+  refunds               Refund[]
+  supportTickets        SupportTicket[]
   verificationTokens    VerificationToken[]
 
   @@index([passengerId, createdAt])
@@ -587,6 +594,7 @@ model PaymentAttempt {
   rideBooking         RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
   driverSettlementAccount DriverSettlementAccount? @relation(fields: [driverSettlementAccountId], references: [id], onDelete: Restrict)
   ledgerEntries       LedgerEntry[]
+  refunds             Refund[]
 
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
