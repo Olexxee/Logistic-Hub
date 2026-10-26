@@ -31,7 +31,7 @@ test("refresh token rotation invalidates the previous token", async () => {
   const client = {
     authSession: {
       create: async ({ data }) => { const row = { id: "session_1", ...data, user }; rows.set(data.tokenHash, row); return row; },
-      findUnique: async ({ where }) => rows.get(where.tokenHash) ?? null,
+      findUnique: async ({ where }) => where.tokenHash ? (rows.get(where.tokenHash) ?? null) : ([...rows.values()].find((row) => row.id === where.id) ?? null),
       updateMany: async ({ where, data }) => {
         const row = rows.get(where.tokenHash);
         if (!row || row.id !== where.id) return { count: 0 };
