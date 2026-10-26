@@ -108,11 +108,12 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
         await db.updateInitialization({ id: prepared.attempt.id, status: "PENDING", providerPayload: safeProviderPayload(data) });
         return { reference, authorizationUrl: data.authorization_url, status: "PENDING", replay: false };
       } catch (error) {
+        // Provider timeouts can happen after Paystack has accepted a request. Keep the
+        // attempt pending and require reconciliation rather than risk a duplicate charge.
         await db.updateInitialization({
           id: prepared.attempt.id,
-          status: "FAILED",
-          providerPayload: { code: error.code ?? "PAYMENT_PROVIDER_FAILED" },
-          failedAt: clock(),
+          status: "PENDING",
+          providerPayload: { code: "PAYMENT_PROVIDER_RESPONSE_UNKNOWN", reference, reconciliationRequired: true },
         });
         throw error;
       }
