@@ -208,6 +208,24 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
       return { data, nextCursor: hasMore ? data[data.length - 1].id : null };
     },
 
+    async reconcilePayout(reference) {
+      if (!config.PAYMENTS_ENABLED || !config.PAYSTACK_SECRET_KEY?.trim()) throw new ServiceUnavailableError("Payout reconciliation is disabled for this environment.");
+      const local = await db.findPayoutByReference(reference);
+      if (!local) throw new ConflictError("The local payout reference was not found.", "PAYOUT_NOT_FOUND");
+      const remote = await paystackGet(`/transfer/verify/${encodeURIComponent(reference)}`);
+      const providerStatus = String(remote.status ?? "unknown").toLowerCase();
+      const amountMatches = Number.isSafeInteger(Number(remote.amount)) && BigInt(remote.amount) === local.amountMinor;
+      const currencyMatches = String(remote.currency ?? local.currency) === local.currency;
+      if (amountMatches && currencyMatches && providerStatus === "success" && local.status !== "PAID") {
+        await db.settlePayoutWebhook({ reference, amountMinor: local.amountMinor, payload: { status: providerStatus, reference }, now: clock(), succeeded: true });
+      } else if (providerStatus === "failed" && local.status !== "FAILED") {
+        await db.settlePayoutWebhook({ reference, amountMinor: local.amountMinor, payload: { status: providerStatus, reference }, now: clock(), succeeded: false });
+      }
+      const refreshed = await db.findPayoutByReference(reference);
+      const statusMatches = providerStatus === "success" ? refreshed.status === "PAID" : providerStatus === "failed" ? refreshed.status === "FAILED" : false;
+      return { reference, local: { status: refreshed.status, amountMinor: refreshed.amountMinor.toString(), currency: refreshed.currency }, provider: { status: providerStatus, amountMinor: remote.amount == null ? null : String(remote.amount), currency: remote.currency ?? null }, matches: { amount: amountMatches, currency: currencyMatches, status: statusMatches }, reconciled: amountMatches && currencyMatches && statusMatches, checkedAt: clock() };
+    },
+
     async reconcilePayment(reference) {
       if (!config.PAYMENTS_ENABLED || !config.PAYSTACK_SECRET_KEY?.trim()) throw new ServiceUnavailableError("Payment reconciliation is disabled for this environment.");
       const local = await db.findAttemptByReference(reference);
