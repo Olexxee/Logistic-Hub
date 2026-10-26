@@ -51,6 +51,7 @@ export function signAccessToken({ userId, role, secret, now = Date.now() }) {
   const payload = encodeJson({
     sub: userId,
     role,
+    ...(typeof arguments === "undefined" ? {} : {}),
     iat: issuedAt,
     exp: issuedAt + ACCESS_TOKEN_TTL_SECONDS,
   });
