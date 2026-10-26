@@ -80,8 +80,9 @@ Each attempt has:
 - Unique idempotency key.
 - Provider reference (unique when present).
 - Expected amount and currency.
-- Explicit driver and platform allocation amounts when split routing is used.
-- Immutable settlement-routing snapshot identifying the approved routing configuration and driver settlement destination.
+- `driverAllocationMinor` and `platformAllocationMinor` when split routing is used.
+- `driverSettlementAccountId` linked to the provider-scoped driver settlement destination.
+- Immutable `splitConfigurationSnapshot` identifying the approved routing configuration and driver settlement destination.
 - Provider fee, status and timestamps.
 - Provider response metadata with secrets and unnecessary personal data removed.
 
@@ -103,6 +104,8 @@ Required invariants:
 Prisma's basic model does not enforce aggregate debit/credit balance across rows. Implement journal posting inside a database transaction in a dedicated ledger service, and add database-level protection where practical. Add a reconciliation test that independently verifies every posted journal.
 
 ### Driver payable and payout
+
+For a Paystack split, the driver allocation is the accepted driver fare; the platform allocation is the fixed connection fee plus other disclosed customer charges allocated to the platform. The two allocations must equal the expected customer payment amount. Provider processing fees are separate and must not silently reduce the driver's agreed fare. This internal allocation snapshot is not evidence that the provider has settled funds to a bank account.
 
 The driver payable is created when the financial recognition policy says the driver has earned the fare. It remains outstanding until a provider-confirmed payout is reconciled.
 
