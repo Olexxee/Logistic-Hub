@@ -1,7 +1,7 @@
 # Technical Foundation
 
 **Status:** Draft implementation specification  
-**Initial market:** Lagos, Nigeria  
+**Initial market:** Multiple Lagos LGAs from day one  
 **Initial service:** On-demand local parcel delivery  
 **Planned services:** Passenger rides, partner drop-off points, business logistics, multi-state operations
 
@@ -36,16 +36,20 @@ This document defines the first implementation boundaries for the data model, bo
 
 ## 2. Booking lifecycle state machines
 
+**Payment timing decision:** negotiate driver fare first, require explicit sender acceptance, then collect payment. Do not collect payment before a driver fare is accepted. Reserve the selected driver during payment initiation using a temporary assignment state; release the reservation on expiry or terminal payment failure. The agreed driver fare and fixed connection fee remain separate, immutable line items after acceptance.
+
+**Launch geography decision:** configure multiple Lagos LGAs from day one. Do not hardcode one LGA or assume every LGA is active: use service zones and per-service availability to control actual launch coverage.
+
 ### 2.1 Parcel booking
 
 Canonical statuses:
 
-- `DRAFT`: client is still entering shipment details; no payment attempt.
-- `AWAITING_PAYMENT`: final quote and connection fee have been shown; payment is being collected.
-- `PAYMENT_PENDING`: payment intent exists but provider confirmation is not final.
-- `PAID_UNASSIGNED`: backend has verified payment; no driver has secured the booking.
-- `MATCHING`: eligible drivers are being offered the job.
-- `DRIVER_ASSIGNED`: a driver accepted the confirmed fare or the customer accepted a driver offer.
+- `DRAFT`: client is entering shipment details; no payment attempt exists.
+- `MATCHING`: eligible drivers are offered the job and can propose/negotiate a fare.
+- `AWAITING_CUSTOMER_ACCEPTANCE`: at least one driver has proposed a fare; the sender must explicitly accept one.
+- `AWAITING_PAYMENT`: the sender accepted a driver's fare; the agreed fare, fixed connection fee and other disclosed charges are snapshotted, and the selected driver is temporarily reserved.
+- `PAYMENT_PENDING`: an idempotent payment attempt exists; provider confirmation is not final.
+- `DRIVER_ASSIGNED`: server-side payment verification succeeded and the reserved assignment is confirmed.
 - `PICKUP_VERIFICATION_PENDING`: driver arrived and pickup is awaiting QR/PIN validation.
 - `PICKED_UP`: handover verified and custody transferred to the driver.
 - `IN_TRANSIT`: shipment is in transit; may be optional as a separate status depending on product UX.
@@ -60,7 +64,7 @@ Canonical statuses:
 
 Transitions must be explicit. Typical path:
 
-`DRAFT → AWAITING_PAYMENT → PAYMENT_PENDING → PAID_UNASSIGNED → MATCHING → DRIVER_ASSIGNED → PICKUP_VERIFICATION_PENDING → PICKED_UP → IN_TRANSIT → DELIVERY_VERIFICATION_PENDING → COMPLETED`
+`DRAFT → MATCHING → AWAITING_CUSTOMER_ACCEPTANCE → AWAITING_PAYMENT → PAYMENT_PENDING → DRIVER_ASSIGNED → PICKUP_VERIFICATION_PENDING → PICKED_UP → IN_TRANSIT → DELIVERY_VERIFICATION_PENDING → COMPLETED`
 
 Exceptional paths can lead to `CANCELLED`, `FAILED`, `REFUND_PENDING` or `DISPUTED`. A dispute should not erase the underlying fulfilment state; represent dispute status independently if operational reporting needs both dimensions. Before implementation, prefer a separate `dispute_status` field rather than making `DISPUTED` replace a shipment status.
 
