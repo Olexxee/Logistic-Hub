@@ -41,7 +41,7 @@ export function validateRefundId(req, _res, next) {
 }
 export function validateFinancialList(req, _res, next) {
   const schema = z.object({
-    status: z.string().optional(),
+    status: z.enum(["REQUESTED", "PROCESSING", "SUCCEEDED", "FAILED", "REJECTED", "PENDING", "ELIGIBLE", "PAID"]).optional(),
     cursor: z.string().trim().min(1).max(128).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   }).strict();
