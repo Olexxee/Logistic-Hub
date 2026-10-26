@@ -2551,6 +2551,24 @@ components:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { description: Reconciliation is disabled. }
+  /payments/admin/reconciliation/payouts/{reference}:
+    get:
+      tags: [Payments]
+      operationId: reconcilePaystackPayout
+      summary: Compare a local payout with Paystack's verified transfer
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: reference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Local/provider comparison; successful transfers are settled idempotently. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { description: Reconciliation is disabled. }
   /support/tickets:
     post:
       tags: [Support]
