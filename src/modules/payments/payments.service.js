@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual, createHash } from "node:crypto";
 import { env } from "../../config/env.js";
-import { ServiceUnavailableError, ConflictError, UnauthorizedError } from "../../shared/http/app-error.js";
+import { ServiceUnavailableError, ConflictError, ForbiddenError } from "../../shared/http/app-error.js";
 import { createPaymentsRepository } from "./payments.repository.js";
 
 function safeProviderPayload(data) {
@@ -116,7 +116,7 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
       }
     },
 
-    async requestRefund({ bookingType, bookingId, user, idempotencyKey, reason }) {
+    async createRefundRequest({ bookingType, bookingId, user, idempotencyKey, reason }) {
       const stableKey = createHash("sha256").update(`${user.id}:${idempotencyKey}`).digest("hex");
       const result = await db.createRefundRequest({
         bookingType,
@@ -135,11 +135,11 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
       };
     },
 
-    async requestRefund({ refundId, actor }) {
+    async processRefund({ refundId, actor }) {
       if (!config.PAYMENTS_ENABLED || !config.PAYSTACK_SECRET_KEY?.trim()) throw new ServiceUnavailableError("Refund processing is disabled for this environment.");
       const refund = await db.findRefundById(refundId);
       if (!refund) throw new ConflictError("The refund request was not found.", "REFUND_NOT_FOUND");
-      if (actor.role !== "ADMIN") throw new UnauthorizedError("Only an administrator can process refunds.");
+      if (actor.role !== "ADMIN") throw new ForbiddenError("Only an administrator can process refunds.");
       if (refund.status !== "REQUESTED") throw new ConflictError("Only requested refunds can be processed.", "REFUND_STATE_CONFLICT");
       if (!refund.paymentAttempt.providerReference) throw new ConflictError("The original provider transaction reference is missing.", "PAYMENT_REFERENCE_MISSING");
       const amount = Number(refund.amountMinor);
