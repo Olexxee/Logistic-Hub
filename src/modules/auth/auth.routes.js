@@ -27,6 +27,7 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
 }).strict();
 const resetPasswordSchema = emailTokenSchema.extend({ password: z.string().min(10).max(128) }).strict();
+const DUMMY_PASSWORD_HASH = "scrypt$" + "0".repeat(32) + "$" + "0".repeat(128);
 
 const genericValidationError = (res, issues) => res.status(400).json({
   success: false,
@@ -195,7 +196,7 @@ export function createAuthRouter({
 
     try {
       const user = await prismaClient.user.findUnique({ where: { email: parsed.data.email } });
-      const passwordMatches = await verifyPassword(parsed.data.password, user?.passwordHash);
+      const passwordMatches = await verifyPassword(parsed.data.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
       if (!user || !passwordMatches) {
         return res.status(401).json({
           success: false,
