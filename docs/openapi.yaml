@@ -361,7 +361,7 @@ paths:
       description: |
         The server validates both service zones and current parcel-service availability.
         The client cannot set status, payment status, price snapshots or driver assignment.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -458,7 +458,7 @@ paths:
       tags: [Parcel bookings]
       operationId: getParcelBooking
       summary: Get a parcel booking and its current lifecycle state
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -482,12 +482,37 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /parcel-bookings/{bookingId}/request-matching:
+    post:
+      tags: [Driver offers]
+      operationId: requestParcelMatching
+      summary: Request offers from eligible drivers for a draft parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '202':
+          description: Matching requested; offers have a finite expiry window.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Booking state conflict or no eligible drivers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /parcel-bookings/{bookingId}/offers:
     get:
       tags: [Driver offers]
       operationId: listParcelFareOffers
       summary: List fare offers visible to the booking sender
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -518,7 +543,7 @@ paths:
       tags: [Driver offers]
       operationId: listDriverOffers
       summary: List current offers for the authenticated driver
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -559,7 +584,7 @@ paths:
       tags: [Driver offers]
       operationId: proposeDriverFare
       summary: Submit or revise a fare proposal for an offer
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -620,7 +645,7 @@ paths:
         Acceptance is transactional. The backend snapshots the agreed fare and
         fixed connection fee, reserves the selected driver while payment is pending,
         and withdraws competing offers. This does not initialize payment.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:

@@ -402,6 +402,8 @@ model ParcelBooking {
   publicReference         String        @unique
   idempotencyKey          String?       @unique
   idempotencyPayloadHash   String?
+  fareAcceptanceIdempotencyKey String? @unique
+  fareAcceptancePayloadHash String?
   senderId                String
   pickupServiceZoneId     String
   destinationServiceZoneId String
@@ -505,6 +507,8 @@ model DriverOffer {
   driverProfileId   String
   status            OfferStatus @default(OFFERED)
   proposedFareMinor BigInt?
+  fareProposalIdempotencyKey String? @unique
+  fareProposalPayloadHash String?
   currency          String      @default("NGN")
   expiresAt         DateTime
   respondedAt       DateTime?

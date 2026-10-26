@@ -8,6 +8,8 @@ import { requireAuth } from "./modules/auth/auth.middleware.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js";
 import { mapsRouter } from "./modules/maps/maps.routes.js";
+import { parcelBookingsRouter } from "./modules/parcels/parcel-bookings.routes.js";
+import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -42,5 +44,7 @@ app.use("/api/v1/health", healthRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
+app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
+app.use("/api/v1", requireAuth, dispatchRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

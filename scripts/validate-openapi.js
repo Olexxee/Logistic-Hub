@@ -15,6 +15,13 @@ const implementedOperations = new Set([
   "POST /auth/password/forgot",
   "POST /auth/password/reset",
   "GET /auth/me",
+  "POST /parcel-bookings",
+  "GET /parcel-bookings/{bookingId}",
+  "GET /parcel-bookings/{bookingId}/offers",
+  "GET /driver/offers",
+  "POST /driver/offers/{offerId}/propose-fare",
+  "POST /parcel-bookings/{bookingId}/accept-fare",
+  "POST /parcel-bookings/{bookingId}/request-matching",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",

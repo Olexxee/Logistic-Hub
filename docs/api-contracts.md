@@ -59,12 +59,12 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/api/v1/auth/me` | Implemented | Read authenticated account profile |
 | POST | `/api/v1/maps/geocode` | Implemented | Geocode address through configured provider; authenticated |
 | POST | `/api/v1/maps/routes` | Implemented | Compute normalized route; authenticated |
-| POST | `/api/v1/parcel-bookings` | Planned | Create a draft parcel booking |
-| GET | `/api/v1/parcel-bookings/{bookingId}` | Planned | Read owner-visible booking details and lifecycle state |
-| GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Planned | List fare proposals for the booking sender |
-| GET | `/api/v1/driver/offers` | Planned | List current offers for the authenticated driver |
-| POST | `/api/v1/driver/offers/{offerId}/propose-fare` | Planned | Driver submits a fare proposal |
-| POST | `/api/v1/parcel-bookings/{bookingId}/accept-fare` | Planned | Sender accepts one valid fare proposal |
+| POST | `/api/v1/parcel-bookings` | Implemented | Create an idempotent draft parcel booking with a fixed connection-fee snapshot |
+| GET | `/api/v1/parcel-bookings/{bookingId}` | Implemented | Read owner-visible booking details and lifecycle state |\n| POST | `/api/v1/parcel-bookings/{bookingId}/request-matching` | Implemented | Fan out offers to verified drivers covering both service zones |
+| GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Implemented | List driver fare proposals for the booking sender |
+| GET | `/api/v1/driver/offers` | Implemented | List active offers for an eligible driver |
+| POST | `/api/v1/driver/offers/{offerId}/propose-fare` | Implemented | Driver submits one idempotent fare proposal |
+| POST | `/api/v1/parcel-bookings/{bookingId}/accept-fare` | Implemented | Sender accepts a fare and reserves the driver pending payment |
 | POST | `/api/v1/payments` | Planned and disabled | Initialize payment after fare acceptance |
 | GET | `/api/v1/payments/{paymentAttemptId}` | Planned and disabled | Read server-verified payment status |
 | POST | `/api/v1/webhooks/paystack` | Planned and disabled | Receive signature-verified provider events |
