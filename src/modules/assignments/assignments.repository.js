@@ -1,3 +1,10 @@
+function stateConflict(message) {
+  const error = new Error(message);
+  error.statusCode = 409;
+  error.code = "ASSIGNMENT_STATE_CONFLICT";
+  return error;
+}
+
 export function createAssignmentsRepository({ prismaClient }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
   const contextInclude = {
@@ -42,7 +49,7 @@ export function createAssignmentsRepository({ prismaClient }) {
           where: { id: assignment.id, status: "ACCEPTED" },
           data: { status: "ARRIVED_AT_PICKUP" },
         });
-        if (updated.count !== 1) return false;
+        if (updated.count !== 1) throw stateConflict("Assignment state changed concurrently.");
         const booking = assignment.rideBooking ?? assignment.parcelBooking;
         const isRide = Boolean(assignment.rideBookingId);
         await tx.bookingEvent.create({
@@ -55,11 +62,10 @@ export function createAssignmentsRepository({ prismaClient }) {
             metadata: { assignmentId: assignment.id },
           },
         });
-        if (isRide) {
-          await tx.rideBooking.updateMany({ where: { id: booking.id, status: "DRIVER_ASSIGNED" }, data: { status: "PICKUP_VERIFICATION_PENDING" } });
-        } else {
-          await tx.parcelBooking.updateMany({ where: { id: booking.id, status: "DRIVER_ASSIGNED" }, data: { status: "PICKUP_VERIFICATION_PENDING" } });
-        }
+        const bookingChanged = isRide
+          ? await tx.rideBooking.updateMany({ where: { id: booking.id, status: "DRIVER_ASSIGNED", paymentStatus: "SUCCEEDED" }, data: { status: "PICKUP_VERIFICATION_PENDING" } })
+          : await tx.parcelBooking.updateMany({ where: { id: booking.id, status: "DRIVER_ASSIGNED", paymentStatus: "SUCCEEDED" }, data: { status: "PICKUP_VERIFICATION_PENDING" } });
+        if (bookingChanged.count !== 1) throw stateConflict("Booking is not in a paid, driver-assigned state.");
         return true;
       });
     },
@@ -102,26 +108,25 @@ export function createAssignmentsRepository({ prismaClient }) {
           where: { id: assignment.id, status: assignmentFrom },
           data: { status: assignmentTo, [timestampField]: now, ...(assignmentTo === "COMPLETED" ? { completedAt: now } : {}) },
         });
-        if (changed.count !== 1) return { ok: false, reason: "INVALID_STATE" };
-        if (isRide) {
-          await tx.rideBooking.updateMany({
-            where: { id: booking.id, status: bookingFrom, paymentStatus: "SUCCEEDED" },
-            data: {
-              status: bookingTo,
-              ...(bookingTo === "TRIP_IN_PROGRESS" ? { tripStartedAt: now } : {}),
-              ...(bookingTo === "COMPLETED" ? { completedAt: now } : {}),
-            },
-          });
-        } else {
-          await tx.parcelBooking.updateMany({
-            where: { id: booking.id, status: bookingFrom, paymentStatus: "SUCCEEDED" },
-            data: {
-              status: bookingTo,
-              ...(bookingTo === "PICKED_UP" ? { pickedUpAt: now } : {}),
-              ...(bookingTo === "COMPLETED" ? { completedAt: now } : {}),
-            },
-          });
-        }
+        if (changed.count !== 1) throw stateConflict("Assignment state changed concurrently.");
+        const bookingChanged = isRide
+          ? await tx.rideBooking.updateMany({
+              where: { id: booking.id, status: bookingFrom, paymentStatus: "SUCCEEDED" },
+              data: {
+                status: bookingTo,
+                ...(bookingTo === "TRIP_IN_PROGRESS" ? { tripStartedAt: now } : {}),
+                ...(bookingTo === "COMPLETED" ? { completedAt: now } : {}),
+              },
+            })
+          : await tx.parcelBooking.updateMany({
+              where: { id: booking.id, status: bookingFrom, paymentStatus: "SUCCEEDED" },
+              data: {
+                status: bookingTo,
+                ...(bookingTo === "PICKED_UP" ? { pickedUpAt: now } : {}),
+                ...(bookingTo === "COMPLETED" ? { completedAt: now } : {}),
+              },
+            });
+        if (bookingChanged.count !== 1) throw stateConflict("Booking state changed concurrently.");
         await tx.bookingEvent.create({
           data: {
             ...(isRide ? { rideBookingId: booking.id } : { parcelBookingId: booking.id }),
@@ -146,8 +151,10 @@ export function createAssignmentsRepository({ prismaClient }) {
         const booking = isRide ? assignment.rideBooking : assignment.parcelBooking;
         const from = isRide ? "TRIP_IN_PROGRESS" : "PICKED_UP";
         const to = isRide ? "TRIP_COMPLETION_PENDING" : "DELIVERY_VERIFICATION_PENDING";
-        if (isRide) await tx.rideBooking.updateMany({ where: { id: booking.id, status: from }, data: { status: to } });
-        else await tx.parcelBooking.updateMany({ where: { id: booking.id, status: from }, data: { status: to } });
+        const bookingChanged = isRide
+          ? await tx.rideBooking.updateMany({ where: { id: booking.id, status: from, paymentStatus: "SUCCEEDED" }, data: { status: to } })
+          : await tx.parcelBooking.updateMany({ where: { id: booking.id, status: from, paymentStatus: "SUCCEEDED" }, data: { status: to } });
+        if (bookingChanged.count !== 1) throw stateConflict("Booking is not in the expected active state.");
         await tx.bookingEvent.create({
           data: {
             ...(isRide ? { rideBookingId: booking.id } : { parcelBookingId: booking.id }),
