@@ -767,3 +767,67 @@ model Notification {
   @@index([emailStatus, createdAt])
   @@map("notifications")
 }
+
+model AuthSession {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model RateLimitBucket {
+  key             String   @id
+  count           Int      @default(0)
+  windowStartedAt DateTime
+  windowEndsAt    DateTime
+  updatedAt       DateTime @updatedAt
+
+  @@index([windowEndsAt])
+  @@map("rate_limit_buckets")
+}
+
+model ProviderWebhookEvent {
+  id             String   @id @default(cuid())
+  provider       String
+  providerEventId String
+  eventType      String
+  payloadHash    String
+  processedAt    DateTime?
+  processingError String?
+  receivedAt     DateTime @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([provider, processedAt, receivedAt])
+  @@map("provider_webhook_events")
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  publicReference String @unique
+  customerId  String
+  assignedToUserId String?
+  bookingType String?
+  bookingId   String?
+  category    String
+  subject     String
+  description String
+  status      String   @default("OPEN")
+  priority    String   @default("NORMAL")
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId, status, createdAt])
+  @@index([status, priority, createdAt])
+  @@index([assignedToUserId, status])
+  @@map("support_tickets")
+}
