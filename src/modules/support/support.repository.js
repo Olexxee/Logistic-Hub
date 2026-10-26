@@ -60,6 +60,22 @@ export function createSupportRepository({ prismaClient }) {
         if (booking.paymentStatus === "PENDING") return { kind: "PAYMENT_PENDING" };
         const canRequest = !["COMPLETED", "CANCELLED", "FAILED", "CANCELLATION_PENDING"].includes(booking.status);
         if (!canRequest) return { kind: "CONFLICT" };
+        const beforePickup = booking.status === "DRIVER_ASSIGNED" && booking.paymentStatus === "SUCCEEDED";
+        if (booking.paymentStatus === "SUCCEEDED" && !beforePickup) {
+          const ticket = await tx.supportTicket.create({
+            data: {
+              publicReference: `LH-SUP-${randomBytes(5).toString("hex").toUpperCase()}`,
+              requesterId: userId,
+              ...(isRide ? { rideBookingId: bookingId } : { parcelBookingId: bookingId }),
+              category: "SAFETY",
+              subject: `Urgent assistance requested for ${booking.publicReference}`,
+              description: reason,
+              priority: "URGENT",
+            },
+          });
+          return { kind: "SAFETY_REVIEW", status: booking.status, supportTicketReference: ticket.publicReference };
+        }
+        if (booking.paymentStatus === "SUCCEEDED" && !beforePickup) return { kind: "CONFLICT" };
         const ticket = await tx.supportTicket.create({
           data: {
             publicReference: `LH-SUP-${randomBytes(5).toString("hex").toUpperCase()}`,
