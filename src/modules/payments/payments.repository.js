@@ -116,6 +116,7 @@ export function createPaymentsRepository({ prismaClient }) {
             status: "AWAITING_PAYMENT",
             ...(isRide ? { rideBookingId: booking.id } : { parcelBookingId: booking.id }),
           },
+          include: { driverProfile: { select: { userId: true } } },
           orderBy: { reservedAt: "desc" },
         });
         if (!assignment) throw conflict("The reserved driver assignment was not found.", "ASSIGNMENT_NOT_RESERVED");
@@ -170,7 +171,7 @@ export function createPaymentsRepository({ prismaClient }) {
             metadata: { paymentAttemptId: attempt.id, reference },
           },
         });
-        return { duplicate: false, paymentAttemptId: attempt.id, assignmentId: assignment.id };
+        return { duplicate: false, paymentAttemptId: attempt.id, assignmentId: assignment.id, bookingId: booking.id, bookingType: isRide ? "PASSENGER_RIDE" : "PARCEL_DELIVERY", customerId: isRide ? booking.passengerId : booking.senderId, driverUserId: assignment.driverProfile.userId, publicReference: booking.publicReference, amountMinor: amountMinor.toString(), currency: attempt.currency };
       });
     },
     async processFailedWebhook({ reference, payload, now }) {
