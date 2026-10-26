@@ -874,6 +874,30 @@ components:
           type: string
         destinationServiceZoneId:
           type: string
+        pickupAddress:
+          type: string
+        pickupInstructions:
+          type: string
+        pickup:
+          $ref: '#/components/schemas/Coordinates'
+        destinationAddress:
+          type: string
+        destination:
+          $ref: '#/components/schemas/Coordinates'
+        recipientName:
+          type: string
+        recipientPhone:
+          type: string
+        parcelCategory:
+          type: string
+        parcelDescription:
+          type: string
+        parcelSize:
+          type: string
+        declaredValueMinor:
+          $ref: '#/components/schemas/MinorAmount'
+        handlingInstructions:
+          type: string
         driverFareMinor:
           $ref: '#/components/schemas/MinorAmount'
         connectionFeeMinor:
@@ -905,6 +929,28 @@ components:
         expiresAt:
           type: string
           format: date-time
+        driver:
+          $ref: '#/components/schemas/DriverSummary'
+    DriverSummary:
+      type: object
+      required: [displayName, verificationStatus, completedJobs]
+      properties:
+        displayName:
+          type: string
+          description: Public display name; do not expose the driver's full legal name by default.
+        verificationStatus:
+          type: string
+          const: VERIFIED
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+        completedJobs:
+          type: integer
+          minimum: 0
+        vehicleType:
+          type: string
+          enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK]
     DriverOfferResource:
       type: object
       required: [id, status, expiresAt, serviceType, pickup, destination]
@@ -924,6 +970,15 @@ components:
           $ref: '#/components/schemas/LocationSummary'
         destination:
           $ref: '#/components/schemas/LocationSummary'
+        parcelCategory:
+          type: string
+        parcelSize:
+          type: string
+        parcelDescription:
+          type: string
+          description: Omit or redact sensitive contents where not needed for driver eligibility.
+        handlingInstructions:
+          type: string
     LocationSummary:
       type: object
       required: [address, coordinates]
