@@ -245,11 +245,13 @@ export function createPaymentsRepository({ prismaClient }) {
     async markRefundProcessing({ id, providerReference, providerPayload }) {
       return prismaClient.refund.update({ where: { id }, data: { status: "PROCESSING", providerReference, providerPayload } });
     },
-    async settleRefund({ providerReference, payload, now, succeeded }) {
+    async settleRefund({ providerReference, amountMinor, payload, now, succeeded }) {
       return prismaClient.$transaction(async (tx) => {
         const refund = await tx.refund.findUnique({ where: { providerReference }, include: { paymentAttempt: true } });
         if (!refund) throw new NotFoundError("The refund reference was not found.");
         if (["SUCCEEDED", "FAILED", "REJECTED"].includes(refund.status)) return { duplicate: true, refundId: refund.id };
+        if (succeeded && amountMinor != null && amountMinor !== refund.amountMinor) throw conflict("The verified refund amount does not match the request.", "REFUND_AMOUNT_MISMATCH");
+        if (succeeded && refund.status !== "PROCESSING") throw conflict("The refund was not submitted to the provider.", "REFUND_STATE_CONFLICT");
         if (!succeeded) {
           await tx.refund.update({ where: { id: refund.id }, data: { status: "FAILED", failureReason: "Provider reported refund failure.", providerPayload: payload, processedAt: now } });
           return { duplicate: false, refundId: refund.id, status: "FAILED" };
