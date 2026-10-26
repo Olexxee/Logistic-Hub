@@ -80,6 +80,7 @@ export function verifyAccessToken(token, secret, now = Date.now()) {
     const decodedPayload = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (decodedHeader.alg !== "HS256" || decodedHeader.typ !== "JWT") return null;
     if (typeof decodedPayload.sub !== "string" || typeof decodedPayload.role !== "string") return null;
+    if (decodedPayload.sid !== undefined && typeof decodedPayload.sid !== "string") return null;
     if (!Number.isInteger(decodedPayload.exp) || decodedPayload.exp <= Math.floor(now / 1000)) return null;
     return decodedPayload;
   } catch {
