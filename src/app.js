@@ -16,6 +16,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { assignmentsRouter } from "./modules/assignments/assignments.routes.js";
+import { paymentsRouter } from "./modules/payments/payments.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 import { createPersistentRateLimit } from "./modules/security/rate-limit.middleware.js";
@@ -54,6 +55,7 @@ app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
 app.use("/api/v1/drivers", driversRouter);
 app.use("/api/v1/assignments", requireAuth, assignmentsRouter);
+app.use("/api/v1/payments", paymentsRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);
