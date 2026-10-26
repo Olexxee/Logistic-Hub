@@ -50,9 +50,15 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/` | Implemented | API metadata |
 | GET | `/api/v1/health` | Implemented | Process health only |
 | GET | `/api/v1/health/ready` | Implemented | Database readiness check; returns 503 when PostgreSQL is unavailable |
-| GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |\n| POST | `/api/v1/auth/register` | Implemented | Create a pending customer account and send verification email |\n| POST | `/api/v1/auth/verify-email` | Implemented | Consume one-time verification token |\n| POST | `/api/v1/auth/login` | Implemented | Authenticate an active verified account |\n| POST | `/api/v1/auth/password/forgot` | Implemented | Request password reset without account enumeration |\n| POST | `/api/v1/auth/password/reset` | Implemented | Consume one-time password reset token |\n| GET | `/api/v1/auth/me` | Implemented | Read authenticated account profile |\n| POST | `/api/v1/maps/geocode` | Implemented | Geocode address through configured provider; authenticated |\n| POST | `/api/v1/maps/routes` | Implemented | Compute normalized route; authenticated |
-| POST | `/api/v1/maps/geocode` | Planned | Normalize an address to candidate coordinates |
-| POST | `/api/v1/maps/routes` | Planned | Return normalized distance and ETA |
+| GET | `/api/v1/service-zones` | Implemented | Active zones and currently available service types |
+| POST | `/api/v1/auth/register` | Implemented | Create a pending customer account and send verification email |
+| POST | `/api/v1/auth/verify-email` | Implemented | Consume one-time verification token |
+| POST | `/api/v1/auth/login` | Implemented | Authenticate an active verified account |
+| POST | `/api/v1/auth/password/forgot` | Implemented | Request password reset without account enumeration |
+| POST | `/api/v1/auth/password/reset` | Implemented | Consume one-time password reset token |
+| GET | `/api/v1/auth/me` | Implemented | Read authenticated account profile |
+| POST | `/api/v1/maps/geocode` | Implemented | Geocode address through configured provider; authenticated |
+| POST | `/api/v1/maps/routes` | Implemented | Compute normalized route; authenticated |
 | POST | `/api/v1/parcel-bookings` | Planned | Create a draft parcel booking |
 | GET | `/api/v1/parcel-bookings/{bookingId}` | Planned | Read owner-visible booking details and lifecycle state |
 | GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Planned | List fare proposals for the booking sender |

@@ -43,8 +43,8 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function emailActionUrl(path, token) {
-  const url = new URL(path, env.APP_BASE_URL);
+function emailActionUrl(path, token, baseUrl = env.APP_BASE_URL) {
+  const url = new URL(path, baseUrl);
   url.searchParams.set("token", token);
   return url.toString();
 }
@@ -95,7 +95,7 @@ export function createAuthRouter({
       });
 
       try {
-        const verificationUrl = emailActionUrl("/verify-email", rawToken);
+        const verificationUrl = emailActionUrl("/verify-email", rawToken, appBaseUrl);
         await email.send({
           to: address,
           subject: "Verify your Logistic Hub account",
@@ -186,6 +186,13 @@ export function createAuthRouter({
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
 
+    if (typeof secret !== "string" || Buffer.byteLength(secret) < 32) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
+      });
+    }
+
     try {
       const user = await prismaClient.user.findUnique({ where: { email: parsed.data.email } });
       const passwordMatches = await verifyPassword(parsed.data.password, user?.passwordHash);
@@ -236,7 +243,7 @@ export function createAuthRouter({
           },
           select: { id: true },
         });
-        const resetUrl = emailActionUrl("/reset-password", rawToken);
+        const resetUrl = emailActionUrl("/reset-password", rawToken, appBaseUrl);
         try {
           await email.send({
             to: user.email,
