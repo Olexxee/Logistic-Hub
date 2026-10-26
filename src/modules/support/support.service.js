@@ -39,6 +39,10 @@ export function createSupportService({ prismaClient, repository, clock = () => n
       const ticket = await db.findTicket(ticketId);
       if (!ticket) throw new NotFoundError("The support ticket was not found.");
       if (ticket.status === "CLOSED" && input.status && input.status !== "CLOSED") throw new ConflictError("Closed tickets cannot be reopened through this endpoint.", "TICKET_CLOSED");
+      if (input.assignedToUserId) {
+        const agent = await db.findSupportAgent(input.assignedToUserId);
+        if (!agent) throw new ValidationError("The assignee must be an active support agent or administrator.");
+      }
       const data = {
         ...(input.status ? { status: input.status } : {}),
         ...(input.priority ? { priority: input.priority } : {}),
