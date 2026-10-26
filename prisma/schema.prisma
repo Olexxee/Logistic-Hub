@@ -181,6 +181,8 @@ model User {
   notifications Notification[]
   authActionTokens AuthActionToken[]
   authSessions AuthSession[]
+  supportTickets SupportTicket[] @relation("SupportTicketCreator")
+  supportMessages SupportMessage[] @relation("SupportMessageAuthor")
 
   @@index([role, status])
   @@map("users")
@@ -725,6 +727,44 @@ model HubPoint {
 
   @@index([serviceZoneId, status])
   @@map("hub_points")
+}
+
+model SupportTicket {
+  id            String   @id @default(cuid())
+  userId        String
+  bookingType   String?
+  bookingId     String?
+  category      String
+  subject       String
+  status        String   @default("OPEN")
+  priority      String   @default("NORMAL")
+  assignedAdminId String?
+  closedAt      DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation("SupportTicketCreator", fields: [userId], references: [id], onDelete: Restrict)
+  messages      SupportMessage[]
+
+  @@index([userId, status, createdAt])
+  @@index([status, priority, createdAt])
+  @@index([bookingType, bookingId])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id          String   @id @default(cuid())
+  ticketId    String
+  authorId    String
+  body        String
+  internal    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User     @relation("SupportMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt])
+  @@map("support_messages")
 }
 
 model AuthSession {
