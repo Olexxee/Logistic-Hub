@@ -38,3 +38,16 @@ export function validateCancelBooking(req, _res, next) {
     return next();
   } catch (error) { return next(error); }
 }
+
+export function validateSupportListQuery(req, _res, next) {
+  const schema = z.object({
+    status: z.enum(["OPEN", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "RESOLVED", "CLOSED"]).optional(),
+    priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).optional(),
+    cursor: z.string().trim().min(1).max(128).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  }).strict();
+  const parsed = schema.safeParse(req.query);
+  if (!parsed.success) return next(new ValidationError("The support list query is invalid."));
+  req.validated = { ...(req.validated ?? {}), query: parsed.data };
+  return next();
+}
