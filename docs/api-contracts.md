@@ -59,6 +59,13 @@ Error responses must not expose stack traces, provider secrets, raw database err
 
 Authentication, ride-booking, webhook, assignment, verification and admin contracts will be added in their respective foundation passes before those modules are implemented.
 
+## Resource visibility and privacy
+
+- Sender booking details are visible only to the booking owner and authorized support/admin roles.
+- Driver offer cards include parcel category/size and pickup/destination details needed to assess a job, but do not expose recipient phone/name before a confirmed assignment and payment.
+- Fare-offer summaries use a public display name and operational profile fields, not the driver's legal identity or settlement account details.
+- Provider references, internal settlement routing and raw webhook payloads are never returned to client-facing payment responses.
+
 ## Geography and maps
 
 - State codes use ISO 3166-2 format for Nigeria (for example, `NG-LA` for Lagos); country codes use ISO 3166-1 alpha-2 (for example, `NG`). LGA codes must come from a reviewed reference source; do not fabricate codes.
