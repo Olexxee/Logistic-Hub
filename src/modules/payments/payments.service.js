@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual, createHash } from "node:crypt
 import { env } from "../../config/env.js";
 import { ServiceUnavailableError, ConflictError, ForbiddenError } from "../../shared/http/app-error.js";
 import { createPaymentsRepository } from "./payments.repository.js";
+import { createNotificationsService } from "../notifications/notifications.service.js";
 
 function safeProviderPayload(data) {
   return {
@@ -20,6 +21,7 @@ function signatureMatches(rawBody, signature, secret) {
 
 export function createPaymentsService({ prismaClient, repository, config = env, fetchImpl = fetch, clock = () => new Date() }) {
   const db = repository ?? createPaymentsRepository({ prismaClient });
+  const notifications = prismaClient ? createNotificationsService({ prismaClient }) : null;
 
   async function paystackRequest(path, body) {
     const response = await fetchImpl(`https://api.paystack.co${path}`, {
@@ -241,7 +243,7 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
         }
         const amountMinor = BigInt(data.amount);
         const fee = data.fees == null ? 0n : BigInt(data.fees);
-        return db.processSuccessfulWebhook({
+        const result = await db.processSuccessfulWebhook({
           reference: data.reference,
           amountMinor,
           currency: String(data.currency ?? ""),
@@ -249,6 +251,30 @@ export function createPaymentsService({ prismaClient, repository, config = env, 
           payload: { event: event.event, reference: data.reference, status: data.status, fees: data.fees ?? null },
           now: clock(),
         });
+        if (!result.duplicate && notifications && result.customerId && result.driverUserId) {
+          const amountLabel = `${result.amountMinor} ${result.currency}`;
+          await Promise.allSettled([
+            notifications.createAndDeliver({
+              userId: result.customerId,
+              type: "PAYMENT_CONFIRMED",
+              title: "Payment confirmed",
+              body: `Payment for booking ${result.publicReference} is confirmed. Your assigned driver can now proceed to pickup.`,
+              data: { bookingId: result.bookingId, bookingType: result.bookingType, paymentAttemptId: result.paymentAttemptId, amountMinor: result.amountMinor, currency: result.currency },
+              deliveryKey: `payment-confirmed-customer-${result.paymentAttemptId}`,
+              emailSubject: "Your Logistic Hub payment is confirmed",
+            }),
+            notifications.createAndDeliver({
+              userId: result.driverUserId,
+              type: "PAYMENT_CONFIRMED",
+              title: "Booking payment confirmed",
+              body: `Payment for booking ${result.publicReference} (${amountLabel}) is confirmed. You may proceed to pickup. Driver payout remains subject to completion and payout processing.`,
+              data: { bookingId: result.bookingId, bookingType: result.bookingType, assignmentId: result.assignmentId, paymentAttemptId: result.paymentAttemptId },
+              deliveryKey: `payment-confirmed-driver-${result.paymentAttemptId}`,
+              emailSubject: "A Logistic Hub booking is paid and ready for pickup",
+            }),
+          ]);
+        }
+        return result;
       }
       if (event.event === "charge.failed") {
         if (typeof data.reference !== "string") throw new ConflictError("The payment webhook reference is invalid.", "PAYMENT_WEBHOOK_INVALID");
