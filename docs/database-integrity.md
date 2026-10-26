@@ -1,116 +1,47 @@
-# Database Integrity and SQL Migration Requirements
+# Database Integrity and Migration Strategy
 
-The Prisma schema is the relational starting point. The following integrity rules cannot all be expressed by Prisma's declarative schema and must be added through versioned SQL migrations. Review SQL against the generated PostgreSQL enum/table names after the first migration is generated.
+## Current state
 
-## 1. Polymorphic booking references
+- `prisma/schema.prisma` is the declarative relational model.
+- `prisma/constraints/foundation.sql` contains supplemental PostgreSQL checks and partial unique indexes that Prisma cannot represent fully.
+- `prisma/migrations/20261026121500_initial_foundation/migration.sql` is the committed initial migration.
+- `prisma/migrations/migration_lock.toml` records PostgreSQL as the migration provider.
+- `prisma/constraints/foundation.sql` is the initial supplemental-constraint snapshot included verbatim at the end of the initial migration. It is not a separate deployable migration.
+- CI applies the committed migration chain to a disposable PostgreSQL 16 database with `prisma migrate deploy`, checks migration status and Prisma schema drift, and exercises the database constraints.
+- The migration has been tested against a disposable CI database only. It has **not** been applied to staging or production.
 
-The current MVP schema uses nullable parcel/ride foreign keys on shared tables such as `driver_offers`, `driver_assignments`, `payment_attempts` and `driver_payouts`.
+## Geography invariants
 
-Exactly one booking foreign key must be present:
+A service zone has a required state and an optional LGA. If an LGA is supplied, its state must equal the service zone's state. The Prisma relation uses a composite foreign key to `lgas(id, stateId)`; PostgreSQL enforces the pair rather than relying on application code alone.
 
-```sql
-ALTER TABLE "driver_offers"
-  ADD CONSTRAINT "driver_offers_exactly_one_booking"
-  CHECK (("parcelBookingId" IS NOT NULL)::int + ("rideBookingId" IS NOT NULL)::int = 1);
+Parcel and ride bookings record both `pickupServiceZoneId` and `destinationServiceZoneId`. Both zone IDs reference `service_zones` independently, so the service layer must also confirm that both zones are active for the requested service and that the route is allowed by the operating policy.
 
-ALTER TABLE "driver_assignments"
-  ADD CONSTRAINT "driver_assignments_exactly_one_booking"
-  CHECK (("parcelBookingId" IS NOT NULL)::int + ("rideBookingId" IS NOT NULL)::int = 1);
+Country codes should use ISO 3166-1 alpha-2. Nigerian state codes should use ISO 3166-2 subdivision codes such as `NG-LA`. LGA codes must be imported from a reviewed source; an LGA code is nullable until a reliable canonical identifier is established.
 
-ALTER TABLE "payment_attempts"
-  ADD CONSTRAINT "payment_attempts_exactly_one_booking"
-  CHECK (("parcelBookingId" IS NOT NULL)::int + ("rideBookingId" IS NOT NULL)::int = 1);
+## Supplemental database constraints
 
-ALTER TABLE "driver_payouts"
-  ADD CONSTRAINT "driver_payouts_exactly_one_booking"
-  CHECK (("parcelBookingId" IS NOT NULL)::int + ("rideBookingId" IS NOT NULL)::int = 1);
-```
+The initial migration's supplemental SQL applies the following safeguards:
 
-The same pattern can be applied to `booking_events`, `ledger_entries` and `verification_tokens` only if their business rules require exactly one booking. Ledger entries may be platform-level entries without a booking, so define that policy deliberately rather than applying the constraint indiscriminately.
+- Exactly one parcel/ride booking reference for driver offers, assignments, payment attempts, payouts, verification tokens and booking events.
+- At most one booking type reference on ledger entries; platform-level ledger entries may have neither.
+- At most one active assignment per booking and one active job per driver.
+- An assignment in `AWAITING_PAYMENT` must have a payment-reservation expiry; accepted driver fares and submitted fare proposals must be positive.
+- Driver service radius must be positive, rating must be between 0 and 5, job counters and location accuracy must be non-negative, and service-availability windows must be valid.
+- Positive payment, ledger-entry and payout amounts; non-negative fare/pricing amounts; and consistent accepted booking totals.
+- Payment split allocations are either entirely absent or complete, linked to a driver settlement account, accompanied by a routing snapshot, non-negative, and equal to the expected payment amount.
+- Latitude/longitude bounds on driver locations, parcel/ride endpoints and hub points.
+- Valid pricing-rule amount/version/effective-window values.
 
-Longer-term alternative: use separate parcel and ride offer/assignment tables, sharing service-layer interfaces. This gives stronger relational typing at the cost of some duplication. Do not keep the nullable-key approach without the CHECK constraints.
+The database cannot, with a row-level CHECK alone, guarantee that multiple ledger entries in a journal balance or that a payment amount matches a related booking's quote. Those invariants must be enforced in a single transaction by the payment/ledger service, with unique idempotency/source keys and reconciliation tests.
 
-## 2. One active assignment per booking and driver
+## Migration process
 
-The initial MVP allows one active assignment per booking and one active job per driver. A completed/cancelled/failed assignment is historical and must not block future work.
+1. Treat the initial migration as immutable once merged. Do not edit its SQL to represent later schema changes.
+2. For every schema or integrity change, create a new timestamped directory under `prisma/migrations` and include the matching SQL. Any change to the initial constraint snapshot must be reviewed carefully; later changes belong in a new migration, not by rewriting history.
+3. CI runs `prisma migrate deploy` against an empty disposable PostgreSQL 16 database and checks `prisma migrate status`.
+4. CI verifies Prisma schema drift and runs PostgreSQL integrity tests against the migrated database.
+5. Review generated SQL, foreign keys, indexes, enum changes, data migration requirements and recovery strategy before staging.
+6. Keep PostGIS/spatial indexes in a separate migration when the target database supports the required extension.
+7. Apply the migration chain to staging only after review. Production migration execution requires separate explicit approval.
 
-Illustrative PostgreSQL partial unique indexes:
-
-```sql
-CREATE UNIQUE INDEX "driver_assignments_one_active_parcel_booking"
-  ON "driver_assignments" ("parcelBookingId")
-  WHERE "parcelBookingId" IS NOT NULL
-    AND status NOT IN ('COMPLETED', 'CANCELLED', 'FAILED');
-
-CREATE UNIQUE INDEX "driver_assignments_one_active_ride_booking"
-  ON "driver_assignments" ("rideBookingId")
-  WHERE "rideBookingId" IS NOT NULL
-    AND status NOT IN ('COMPLETED', 'CANCELLED', 'FAILED');
-
-CREATE UNIQUE INDEX "driver_assignments_one_active_job_per_driver"
-  ON "driver_assignments" ("driverProfileId")
-  WHERE status NOT IN ('COMPLETED', 'CANCELLED', 'FAILED');
-```
-
-Confirm the enum type and column identifiers generated by Prisma before applying. Keep this policy configurable only through a deliberate migration; allowing multi-job batching later requires an explicit capacity model rather than simply dropping the index.
-
-## 3. Amount and ledger constraints
-
-Add row-level checks:
-
-```sql
-ALTER TABLE "ledger_entries"
-  ADD CONSTRAINT "ledger_entries_positive_amount"
-  CHECK ("amountMinor" > 0);
-
-ALTER TABLE "payment_attempts"
-  ADD CONSTRAINT "payment_attempts_positive_amount"
-  CHECK ("amountMinor" > 0);
-
-ALTER TABLE "driver_payouts"
-  ADD CONSTRAINT "driver_payouts_positive_amount"
-  CHECK ("amountMinor" > 0);
-
-ALTER TABLE "parcel_bookings"
-  ADD CONSTRAINT "parcel_bookings_nonnegative_amounts"
-  CHECK (
-    "driverFareMinor" >= 0
-    AND "connectionFeeMinor" >= 0
-    AND "otherChargesMinor" >= 0
-    AND "customerPayableMinor" =
-      "driverFareMinor" + "connectionFeeMinor" + "otherChargesMinor"
-  );
-```
-
-Apply the corresponding total invariant to rides. If pricing allows a zero driver fare for a specific supported case, explicitly document it; otherwise enforce a positive driver fare.
-
-A row-level CHECK cannot guarantee that the sum of multiple ledger entries in a journal balances. Journal posting must run in a database transaction, validate debit/credit totals, use a unique journal/source key, and post only once. Consider a dedicated journal header table with a unique idempotency key and status `DRAFT/POSTED`; only the ledger service should be able to post it. Posted journals are immutable and corrected by compensating journals.
-
-## 4. Booking and verification constraints
-
-- Add unique idempotency keys for payment provider events and matching jobs.
-- Add a unique constraint on provider event ID/reference where the provider supplies one.
-- Ensure QR/PIN token hashes are unique.
-- A verification token is consumed with a conditional update requiring `status = ACTIVE` and `expiresAt > now()`; the handover event and booking transition commit in the same transaction.
-- Add a CHECK that exactly one booking reference is present on a verification token.
-- Add indexes for status/createdAt operational queues.
-- Add constraints or service-layer validation that latitude is between -90 and 90 and longitude between -180 and 180.
-- Restrict direct UPDATE/DELETE access to financial history at the database/application permission level where feasible.
-
-## 5. Geospatial index
-
-The initial Prisma schema stores latitude and longitude as decimals. For efficient nearby-driver matching, add a PostGIS geography/geometry column through a SQL migration (or use a maintained generated point column) and create a GiST index. Keep source coordinates validated and synchronise the point column transactionally. Use parameterized raw SQL for spatial queries; never concatenate user-provided coordinates into SQL.
-
-A simple btree index on latitude/longitude is not a substitute for a geospatial index at scale.
-
-## 6. Migration procedure
-
-1. Generate the first migration from the Prisma schema.
-2. Review the generated SQL and database identifiers.
-3. Add integrity SQL to a separate migration after the base tables/enums exist.
-4. Run migrations against a disposable development database.
-5. Run `prisma validate` and `prisma generate`.
-6. Run integration tests for all constraints and race conditions.
-7. Verify migration rollback/forward strategy before staging or production deployment.
-
-Do not apply the illustrative SQL blindly; validate generated identifiers and enum types first.
+Passing `prisma validate` or `prisma generate` alone is not proof that PostgreSQL constraints or migrations work. The CI migration path now exercises the committed SQL rather than constructing an untracked baseline.

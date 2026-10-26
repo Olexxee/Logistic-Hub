@@ -1,18 +1,21 @@
 # Backend API Contracts
 
-**Status:** Initial contract baseline; only the root metadata route and health route are implemented. Business endpoints below are planned, not available yet.
+**Status:** Initial contract baseline. The root metadata and health routes are implemented. All other routes in the OpenAPI document are planned contracts, not available endpoints.
 
-## Decisions
+The machine-readable contract is [`openapi.yaml`](openapi.yaml). Treat it as the source of truth for request/response shapes. Update the spec and contract tests together whenever a contract changes.
 
-- Implement backend APIs first. Do not start client applications until the request/response contracts and lifecycle transitions are stable.
-- Use a versioned prefix: `/api/v1`.
+## Stable API rules
+
+- Prefix application endpoints with `/api/v1`.
 - Use JSON request/response bodies and ISO-8601 UTC timestamps.
-- Return monetary values as integer minor units (NGN kobo), serialized as decimal strings when values can exceed JavaScript's safe integer range. Never use floating-point currency.
-- Never accept client-authoritative booking status, payment status, assigned driver, verification status, payout status, or ledger entries.
-- Use explicit idempotency keys for retriable state-changing operations.
-- Keep driver fare, fixed platform connection fee, and other disclosed charges separate.
-- Driver fare must be negotiated and explicitly accepted by the sender before payment begins.
-- Payments remain disabled until the project owner explicitly approves implementation and activation.
+- Serialize every monetary amount as a decimal string containing integer minor units (NGN kobo). Never use floating-point currency or send naira decimal values to payment endpoints.
+- Use `Idempotency-Key` for state-changing operations that clients may retry. The same key and same logical request must return the same result; reusing a key for a different request must return a conflict.
+- Never accept client-authoritative booking/payment status, assignment ownership, pricing snapshots, payment amount, provider reference, settlement destination, split configuration, verification state or ledger entries.
+- Keep the agreed driver fare, fixed platform connection fee and other disclosed charges separate in the internal price snapshot.
+- The sender must explicitly accept one unexpired driver fare proposal before a payment attempt can be initialized.
+- Validate both pickup and destination service-zone IDs against current service availability. A state, LGA or zone existing in the reference database does not mean that service is enabled there.
+- Maps credentials remain server-side. Normalize provider responses before returning them.
+- Payment endpoints remain disabled until the project owner explicitly approves implementation and activation.
 
 ## Response envelope
 
@@ -38,48 +41,65 @@ Error:
 }
 ```
 
-Error responses must not expose stack traces, provider secrets, raw database errors, or sensitive personal data. Validation errors may include field paths and safe messages.
+Error responses must not expose stack traces, provider secrets, raw database errors or sensitive personal data. Validation errors may include safe field paths and messages.
 
-## Implemented routes
+## Current implementation status
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/` | API name, version and health-route location |
-| GET | `/api/v1/health` | Process health; does not yet prove database readiness |
+| Method | Path | Status | Purpose |
+|---|---|---|---|
+| GET | `/` | Implemented | API metadata |
+| GET | `/api/v1/health` | Implemented | Process health; does not yet prove database readiness |
+| GET | `/api/v1/service-zones` | Planned | Active zones and service availability |
+| POST | `/api/v1/maps/geocode` | Planned | Normalize an address to candidate coordinates |
+| POST | `/api/v1/maps/routes` | Planned | Return normalized distance and ETA |
+| POST | `/api/v1/parcel-bookings` | Planned | Create a draft parcel booking |
+| GET | `/api/v1/parcel-bookings/{bookingId}` | Planned | Read owner-visible booking details and lifecycle state |
+| GET | `/api/v1/parcel-bookings/{bookingId}/offers` | Planned | List fare proposals for the booking sender |
+| GET | `/api/v1/driver/offers` | Planned | List current offers for the authenticated driver |
+| POST | `/api/v1/driver/offers/{offerId}/propose-fare` | Planned | Driver submits a fare proposal |
+| POST | `/api/v1/parcel-bookings/{bookingId}/accept-fare` | Planned | Sender accepts one valid fare proposal |
+| POST | `/api/v1/payments` | Planned and disabled | Initialize payment after fare acceptance |
+| GET | `/api/v1/payments/{paymentAttemptId}` | Planned and disabled | Read server-verified payment status |
+| POST | `/api/v1/webhooks/paystack` | Planned and disabled | Receive signature-verified provider events |
 
-## Planned API groups
+Authentication, ride-booking, assignment, verification and admin contracts remain outside this initial parcel-flow baseline and must be specified before their modules or client applications are built.
 
-These are contract targets, not implemented routes:
+## Resource visibility and privacy
 
-| Group | Initial responsibilities |
-|---|---|
-| `/auth` | Registration, login, refresh/revocation, phone/email verification |
-| `/service-zones` | Active zones and service availability for supported Lagos LGAs |
-| `/parcel-bookings` | Create draft, request matching, inspect booking and event timeline |
-| `/driver/offers` | View eligible offers, propose/accept/decline fare, expire offers |
-| `/parcel-bookings/:id/accept-fare` | Sender explicitly accepts one valid driver offer |
-| `/payments` | Initialize and verify payment only after accepted fare; disabled until approval |
-| `/driver/assignments` | Assignment lifecycle and custody milestones |
-| `/verification` | Single-use pickup QR/PIN verification |
-| `/admin` | Service-zone configuration, verification, audit and support operations |
+- Sender booking details are visible only to the booking owner and authorized support/admin roles.
+- Driver offer cards include parcel category/size and pickup/destination details needed to assess a job, but do not expose recipient phone/name before a confirmed assignment and payment.
+- Fare-offer summaries use a public display name and operational profile fields, not the driver's legal identity or settlement account details.
+- Provider references, internal settlement routing and raw webhook payloads are never returned to client-facing payment responses.
+
+## Geography and maps
+
+- State codes use ISO 3166-2 format for Nigeria (for example, `NG-LA` for Lagos); country codes use ISO 3166-1 alpha-2 (for example, `NG`). LGA codes must come from a reviewed reference source; do not fabricate codes.
+- A booking records both `pickupServiceZoneId` and `destinationServiceZoneId`. Both ends must be covered by an active service zone for the requested service. This permits cross-zone and cross-state routes without treating a single zone as the whole journey.
+- Geocoding produces a candidate address/coordinate, not service eligibility. Verify that the selected coordinates are consistent with the chosen zone and operational policy.
+- Route distance and ETA are estimates, not fare guarantees. Pricing rules and negotiated fare are authoritative.
+- Map endpoints must be authenticated where appropriate, rate-limited, and bounded to control provider spend. Provider API keys must never be sent to clients.
 
 ## Fare acceptance and payment sequence
 
-1. Sender creates a parcel booking with valid route, contact and parcel details.
-2. Backend checks that the pickup zone and parcel service are active.
-3. Matching sends eligible drivers a privacy-minimized offer.
-4. Drivers may propose a fare. A proposal has an expiry and immutable history.
+1. Sender creates a draft parcel booking with pickup/destination addresses, coordinates and both service-zone IDs.
+2. Backend validates both zones and parcel-service availability.
+3. Matching offers the job to eligible drivers using fresh location data, service coverage and availability.
+4. Drivers submit fare proposals. Each proposal has server-controlled expiry and immutable history.
 5. Sender accepts exactly one unexpired proposal.
-6. In a database transaction, the backend snapshots the agreed driver fare, fixed connection fee and disclosed additional charges; it reserves the selected driver with an `AWAITING_PAYMENT` assignment and withdraws competing offers.
-7. Only then may the payment module initialize a payment attempt. It must use an idempotency key and a server-calculated amount.
-8. Only verified provider success for the expected reference, amount and currency confirms the assignment and allows fulfilment to proceed.
-9. Expired or failed payment must release the temporary reservation safely and return the booking to matching or a terminal state according to the explicit policy.
+6. In a database transaction, the backend snapshots the agreed driver fare, fixed connection fee, other disclosed charges, pricing-rule version and customer payable amount. It reserves the selected driver in `AWAITING_PAYMENT` and withdraws competing offers.
+7. Only then may payment initialization run. The client submits the booking reference and idempotency key—not the amount, platform fee, subaccount, provider reference or split values.
+8. The backend builds a server-controlled, versioned Paystack split configuration using an eligible driver settlement destination. The driver allocation plus platform allocation must equal the expected customer amount; provider fees are tracked separately.
+9. Only a verified provider success for the expected reference, amount and currency confirms payment and allows fulfilment to proceed.
+10. Failed/expired payment releases the temporary reservation idempotently and returns the booking to matching or a terminal state according to the policy.
 
-## Contract stability gate for clients
+Paystack split payments are not escrow. Split routing, settlement timing, provider fees, refunds and driver-account eligibility must be confirmed against the actual merchant account before implementation is approved.
 
-Before client work starts, the backend must have:
-- OpenAPI documentation for implemented endpoints and their error envelopes.
-- Request/response schemas and lifecycle transition tests.
-- Auth/authorization and ownership rules.
+## Client readiness gate
+
+Client applications should not be built against draft assumptions. Before client work starts, the backend must have:
+- OpenAPI contracts reviewed and request/response schemas validated.
+- Authentication, authorization and ownership rules.
+- Lifecycle transition tests.
 - Idempotency and concurrency tests for fare acceptance, assignment reservation and payment callbacks.
-- A documented API base URL and environment configuration.
+- PostgreSQL constraint tests and a reviewed initial migration.
+- A documented API base URL and per-environment configuration.

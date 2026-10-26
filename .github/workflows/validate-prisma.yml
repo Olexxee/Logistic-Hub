@@ -1,7 +1,7 @@
-name: Validate Prisma Schema
+name: Validate Prisma Schema and PostgreSQL Constraints
 
 concurrency:
-  group: prisma-validation-${{ github.ref }}
+  group: prisma-validation-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 on:
@@ -21,6 +21,24 @@ permissions:
 jobs:
   prisma-validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: logistic_hub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d logistic_hub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
+      PAYMENTS_ENABLED: "false"
+      RUN_POSTGRES_INTEGRITY_TESTS: "true"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -29,17 +47,20 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Validate Prisma schema
         run: npm run db:validate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
       - name: Generate Prisma Client
         run: npm run db:generate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
-      - name: Run API contract smoke tests
+      - name: Validate OpenAPI contracts
+        run: npm run api:validate
+      - name: Validate initial migration constraint snapshot
+        run: npm run db:validate-initial-migration
+      - name: Apply committed migrations to disposable PostgreSQL
+        run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - name: Check migration history status
+        run: npx prisma migrate status --schema prisma/schema.prisma
+      - name: Check schema drift against disposable PostgreSQL
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - name: Run API and PostgreSQL integrity tests
         run: npm test
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
-          PAYMENTS_ENABLED: "false"

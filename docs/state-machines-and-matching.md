@@ -10,7 +10,7 @@ The persisted booking lifecycle is separate from payment, dispute and refund lif
 
 | From | To | Actor | Guard |
 |---|---|---|---|
-| DRAFT | MATCHING | Sender/server | Required parcel, route and contact fields are valid; service is enabled in the pickup zone |
+| DRAFT | MATCHING | Sender/server | Required parcel, route and contact fields are valid; pickup and destination are covered by active zones with parcel service enabled |
 | MATCHING | AWAITING_CUSTOMER_ACCEPTANCE | Driver/server | Driver submits a fare proposal and the offer is still active |
 | AWAITING_CUSTOMER_ACCEPTANCE | MATCHING | Sender/server | Sender declines or lets the proposed fare expire; another offer may be considered |
 | AWAITING_CUSTOMER_ACCEPTANCE | AWAITING_PAYMENT | Sender/server | Sender explicitly accepts one driver's fare; the agreed fare and separate fixed connection fee are snapshotted |
@@ -44,7 +44,7 @@ Use the separate `RideStatus` enum and a distinct transition function. A typical
 `DRAFT → MATCHING → AWAITING_CUSTOMER_ACCEPTANCE → AWAITING_PAYMENT → PAYMENT_PENDING → DRIVER_ASSIGNED → DRIVER_EN_ROUTE → DRIVER_ARRIVED → PICKUP_VERIFICATION_PENDING → TRIP_IN_PROGRESS → TRIP_COMPLETION_PENDING → COMPLETED`
 
 Ride-specific guards:
-- Driver and vehicle are eligible for the active jurisdiction and ride service.
+- Pickup and destination are covered by active zones with ride service enabled; driver and vehicle are eligible for the applicable jurisdictions and service.
 - Passenger pickup PIN is valid, unused and tied to the assigned driver/trip.
 - A trip cannot start before pickup is verified.
 - A driver cannot self-approve a safety incident or override a payment.
@@ -53,7 +53,7 @@ Ride-specific guards:
 
 ## 3. Assignment lifecycle and concurrency
 
-An offer is not a confirmed assignment. A driver's fare proposal must be explicitly accepted by the sender before payment. After sender acceptance, reserve the selected driver with an assignment in `AWAITING_PAYMENT`; do not expose the booking as confirmed until payment is verified. Expired or failed payment releases the reservation safely so matching can resume.
+An offer is not a confirmed assignment. Each booking stores pickup and destination service zones; both ends must be active for the requested service before matching. A driver's fare proposal must be explicitly accepted by the sender before payment. After sender acceptance, reserve the selected driver with an assignment in `AWAITING_PAYMENT`; do not expose the booking as confirmed until payment is verified. Expired or failed payment releases the reservation safely so matching can resume.
 
 Acceptance transaction:
 1. Lock or conditionally update the booking row.
