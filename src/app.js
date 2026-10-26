@@ -17,6 +17,7 @@ import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
+import { createPersistentRateLimit } from "./modules/security/rate-limit.middleware.js";
 
 export const app = express();
 
@@ -26,6 +27,7 @@ const allowedOrigins = env.CORS_ORIGINS
   .filter(Boolean);
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
 app.use(express.json({ limit: "1mb" }));
@@ -46,7 +48,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api/v1/health", healthRouter);
-app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/auth", createPersistentRateLimit({ namespace: "auth", limit: 30, windowMs: 15 * 60 * 1000 }), authRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
 app.use("/api/v1/drivers", driversRouter);
