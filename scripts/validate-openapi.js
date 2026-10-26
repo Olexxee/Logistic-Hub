@@ -26,6 +26,8 @@ const implementedOperations = new Set([
   "PATCH /notifications/{notificationId}/read",
   "POST /notifications/read-all",
   "GET /hub-points",
+  "POST /ride-bookings",
+  "GET /ride-bookings/{rideBookingId}",
   "GET /drivers/me",
   "POST /drivers/onboarding",
   "PATCH /drivers/availability",
