@@ -324,8 +324,10 @@ model ServiceZone {
   lga         LGA?     @relation(fields: [lgaId, stateId], references: [id, stateId], onDelete: Restrict)
   availability ServiceAvailability[]
   coverage    DriverCoverage[]
-  parcelBookings ParcelBooking[]
-  rideBookings RideBooking[]
+  pickupParcelBookings     ParcelBooking[] @relation("ParcelPickupZone")
+  destinationParcelBookings ParcelBooking[] @relation("ParcelDestinationZone")
+  pickupRideBookings       RideBooking[] @relation("RidePickupZone")
+  destinationRideBookings RideBooking[] @relation("RideDestinationZone")
   hubPoints   HubPoint[]
   pricingRules PricingRule[]
   createdAt   DateTime @default(now())
@@ -398,7 +400,8 @@ model ParcelBooking {
   id                      String        @id @default(cuid())
   publicReference         String        @unique
   senderId                String
-  serviceZoneId           String
+  pickupServiceZoneId     String
+  destinationServiceZoneId String
   status                  BookingStatus @default(DRAFT)
   paymentStatus           PaymentStatus @default(INITIALIZED)
   currency                String        @default("NGN")
@@ -431,7 +434,8 @@ model ParcelBooking {
   updatedAt               DateTime      @updatedAt
 
   sender                  User          @relation("ParcelSender", fields: [senderId], references: [id], onDelete: Restrict)
-  serviceZone             ServiceZone   @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  pickupServiceZone       ServiceZone   @relation("ParcelPickupZone", fields: [pickupServiceZoneId], references: [id], onDelete: Restrict)
+  destinationServiceZone  ServiceZone   @relation("ParcelDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   offers                  DriverOffer[]
   assignments             DriverAssignment[]
   paymentAttempts         PaymentAttempt[]
@@ -441,7 +445,8 @@ model ParcelBooking {
   payouts                 DriverPayout[]
 
   @@index([senderId, createdAt])
-  @@index([serviceZoneId, status, createdAt])
+  @@index([pickupServiceZoneId, status, createdAt])
+  @@index([destinationServiceZoneId, status, createdAt])
   @@index([status, paymentStatus, createdAt])
   @@map("parcel_bookings")
 }
@@ -450,7 +455,8 @@ model RideBooking {
   id                    String        @id @default(cuid())
   publicReference       String        @unique
   passengerId           String
-  serviceZoneId         String
+  pickupServiceZoneId   String
+  destinationServiceZoneId String
   status                RideStatus    @default(DRAFT)
   paymentStatus         PaymentStatus @default(INITIALIZED)
   currency              String        @default("NGN")
@@ -473,7 +479,8 @@ model RideBooking {
   updatedAt             DateTime      @updatedAt
 
   passenger             User          @relation("RidePassenger", fields: [passengerId], references: [id], onDelete: Restrict)
-  serviceZone           ServiceZone   @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  pickupServiceZone     ServiceZone   @relation("RidePickupZone", fields: [pickupServiceZoneId], references: [id], onDelete: Restrict)
+  destinationServiceZone ServiceZone  @relation("RideDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   offers                DriverOffer[]
   assignments           DriverAssignment[]
   paymentAttempts       PaymentAttempt[]
@@ -483,7 +490,8 @@ model RideBooking {
   verificationTokens    VerificationToken[]
 
   @@index([passengerId, createdAt])
-  @@index([serviceZoneId, status, createdAt])
+  @@index([pickupServiceZoneId, status, createdAt])
+  @@index([destinationServiceZoneId, status, createdAt])
   @@map("ride_bookings")
 }
 
