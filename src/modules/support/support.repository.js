@@ -26,6 +26,7 @@ export function createSupportRepository({ prismaClient }) {
       });
     },
     findTicket(id) { return prismaClient.supportTicket.findUnique({ where: { id } }); },
+    findSupportAgent(id) { return prismaClient.user.findFirst({ where: { id, role: { in: ["ADMIN", "SUPPORT"] }, status: "ACTIVE" }, select: { id: true } }); }
     updateTicket(id, data) { return prismaClient.supportTicket.update({ where: { id }, data }); },
     async cancelBooking({ bookingType, bookingId, userId, reason, now }) {
       return prismaClient.$transaction(async (tx) => {
