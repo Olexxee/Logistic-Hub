@@ -52,6 +52,7 @@ export function createSupportService({ prismaClient, repository, clock = () => n
       const result = await db.cancelBooking({ bookingType, bookingId, userId: user.id, reason, now: clock() });
       if (result.kind === "NOT_FOUND") throw new NotFoundError("The booking was not found.");
       if (result.kind === "FORBIDDEN") throw new ForbiddenError("You cannot cancel this booking.");
+      if (result.kind === "PAYMENT_PENDING") throw new ConflictError("Payment is still being verified. Wait for the result, then submit a cancellation request if needed.", "PAYMENT_PENDING_CANNOT_CANCEL");
       if (result.kind === "CONFLICT") throw new ConflictError("The booking cannot be cancelled in its current state.", "CANCELLATION_STATE_CONFLICT");
       return result;
     },
