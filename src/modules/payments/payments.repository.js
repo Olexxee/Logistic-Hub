@@ -83,10 +83,24 @@ export function createPaymentsRepository({ prismaClient }) {
         return { attempt, booking, ownerId };
       });
     },
-    updateInitialization({ id, status, providerPayload, failedAt }) {
-      return prismaClient.paymentAttempt.update({
-        where: { id },
-        data: { status, providerPayload, ...(failedAt ? { failedAt } : {}) },
+    async updateInitialization({ id, status, providerPayload, failedAt }) {
+      if (status !== "FAILED") {
+        return prismaClient.paymentAttempt.update({
+          where: { id },
+          data: { status, providerPayload, ...(failedAt ? { failedAt } : {}) },
+        });
+      }
+      return prismaClient.$transaction(async (tx) => {
+        const attempt = await tx.paymentAttempt.update({
+          where: { id },
+          data: { status, providerPayload, ...(failedAt ? { failedAt } : {}) },
+        });
+        if (attempt.rideBookingId) {
+          await tx.rideBooking.updateMany({ where: { id: attempt.rideBookingId, status: "PAYMENT_PENDING", paymentStatus: "PENDING" }, data: { status: "AWAITING_PAYMENT", paymentStatus: "FAILED" } });
+        } else if (attempt.parcelBookingId) {
+          await tx.parcelBooking.updateMany({ where: { id: attempt.parcelBookingId, status: "PAYMENT_PENDING", paymentStatus: "PENDING" }, data: { status: "AWAITING_PAYMENT", paymentStatus: "FAILED" } });
+        }
+        return attempt;
       });
     },
     async processSuccessfulWebhook({ reference, amountMinor, currency, providerFeeMinor, payload, now }) {
