@@ -146,6 +146,13 @@ enum PayoutStatus {
   REVERSED
 }
 
+enum SettlementAccountStatus {
+  PENDING
+  ACTIVE
+  RESTRICTED
+  DISABLED
+}
+
 enum HubPointStatus {
   PENDING
   ACTIVE
@@ -197,9 +204,30 @@ model DriverProfile {
   offers               DriverOffer[]
   assignments          DriverAssignment[]
   payouts              DriverPayout[]
+  settlementAccounts   DriverSettlementAccount[]
 
   @@index([verificationStatus, isOnline, isAvailable])
   @@map("driver_profiles")
+}
+
+model DriverSettlementAccount {
+  id                 String                 @id @default(cuid())
+  driverProfileId    String
+  provider           String                 @default("PAYSTACK")
+  externalAccountRef String
+  status             SettlementAccountStatus @default(PENDING)
+  currency           String                 @default("NGN")
+  verifiedAt         DateTime?
+  metadata            Json?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  driverProfile       DriverProfile          @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([driverProfileId, provider])
+  @@unique([provider, externalAccountRef])
+  @@index([status, provider])
+  @@map("driver_settlement_accounts")
 }
 
 model Vehicle {
@@ -518,6 +546,9 @@ model PaymentAttempt {
   amountMinor         BigInt
   currency            String        @default("NGN")
   providerFeeMinor    BigInt?
+  driverSettlementMinor BigInt?
+  platformSettlementMinor BigInt?
+  settlementRoutingSnapshot Json?
   providerPayload     Json?
   initializedAt       DateTime      @default(now())
   verifiedAt          DateTime?
