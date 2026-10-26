@@ -33,6 +33,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+  /health/ready:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Check database readiness
+      security: []
+      x-implementation-status: implemented
+      responses:
+        '200':
+          description: PostgreSQL readiness confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [database]
+                    properties:
+                      database: { const: ok }
+        '503':
+          description: PostgreSQL is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /service-zones:
     get:
       tags: [Geography]
