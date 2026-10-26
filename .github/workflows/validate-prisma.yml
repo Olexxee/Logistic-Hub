@@ -52,6 +52,8 @@ jobs:
         run: npm run db:validate
       - name: Generate Prisma Client
         run: npm run db:generate
+      - name: Validate OpenAPI contracts
+        run: npm run api:validate
       - name: Generate disposable baseline SQL
         run: npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/logistic-hub-base.sql
       - name: Apply generated schema to disposable PostgreSQL
