@@ -26,6 +26,9 @@ export function createRateLimitRepository({ prismaClient }) {
         RETURNING "request_count" AS count, "expires_at" AS "expiresAt"
       `;
       const row = rows[0];
+      if (Number(row.count) % 25 === 0) {
+        await prismaClient.rateLimitBucket.deleteMany({ where: { expiresAt: { lt: now } } });
+      }
       return {
         allowed: Number(row.count) <= limit,
         remaining: Math.max(0, limit - Number(row.count)),
