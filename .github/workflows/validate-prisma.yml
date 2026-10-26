@@ -1,4 +1,4 @@
-name: Validate Prisma Schema
+name: Validate Prisma Schema and PostgreSQL Constraints
 
 concurrency:
   group: prisma-validation-${{ github.ref }}
@@ -21,6 +21,24 @@ permissions:
 jobs:
   prisma-validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: logistic_hub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d logistic_hub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
+      PAYMENTS_ENABLED: "false"
+      RUN_POSTGRES_INTEGRITY_TESTS: "true"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -32,14 +50,15 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Validate Prisma schema
         run: npm run db:validate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
       - name: Generate Prisma Client
         run: npm run db:generate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
-      - name: Run API contract smoke tests
+      - name: Generate disposable baseline SQL
+        run: npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/logistic-hub-base.sql
+      - name: Apply generated schema to disposable PostgreSQL
+        run: npx prisma db execute --file /tmp/logistic-hub-base.sql --schema prisma/schema.prisma
+      - name: Apply supplemental PostgreSQL constraints
+        run: npx prisma db execute --file prisma/constraints/foundation.sql --schema prisma/schema.prisma
+      - name: Check schema drift against disposable PostgreSQL
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - name: Run API and PostgreSQL integrity tests
         run: npm test
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/logistic_hub?schema=public
-          PAYMENTS_ENABLED: "false"
