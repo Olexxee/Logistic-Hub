@@ -486,6 +486,7 @@ model RideBooking {
   tripStartedAt         DateTime?
   completedAt           DateTime?
   cancelledAt           DateTime?
+  cancellationReason    String?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
