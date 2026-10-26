@@ -179,6 +179,7 @@ model User {
   assignments   DriverAssignment[]
   notifications Notification[]
   authActionTokens AuthActionToken[]
+  authSessions AuthSession[]
 
   @@index([role, status])
   @@map("users")
@@ -723,6 +724,36 @@ model HubPoint {
 
   @@index([serviceZoneId, status])
   @@map("hub_points")
+}
+
+model AuthSession {
+  id                String   @id @default(cuid())
+  userId            String
+  refreshTokenHash  String   @unique
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  rotatedFromId     String?
+  lastUsedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model AuthRateLimitBucket {
+  key               String   @id
+  windowStartedAt   DateTime
+  requestCount      Int      @default(0)
+  blockedUntil       DateTime?
+  updatedAt         DateTime @updatedAt
+
+  @@index([blockedUntil])
+  @@index([updatedAt])
+  @@map("auth_rate_limit_buckets")
 }
 
 enum AuthTokenPurpose {
