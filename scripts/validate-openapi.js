@@ -22,6 +22,9 @@ const implementedOperations = new Set([
   "POST /driver/offers/{offerId}/propose-fare",
   "POST /parcel-bookings/{bookingId}/accept-fare",
   "POST /parcel-bookings/{bookingId}/request-matching",
+  "GET /notifications",
+  "PATCH /notifications/{notificationId}/read",
+  "POST /notifications/read-all",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",

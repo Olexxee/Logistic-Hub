@@ -17,6 +17,7 @@ tags:
   - name: Parcel bookings
   - name: Driver offers
   - name: Payments
+  - name: Notifications
   - name: Webhooks
 paths:
   /health:
@@ -351,6 +352,61 @@ paths:
       responses:
         '200':
           description: Current account profile.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List notifications for the authenticated account
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Notification page and unread count for the authenticated account.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notifications/{notificationId}/read:
+    patch:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Mark one owned notification as read
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: notificationId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Notification marked read; repeated requests are safe.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Mark all notifications for the authenticated account as read
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Number of unread notifications marked read.
         '401':
           $ref: '#/components/responses/Unauthorized'
   /parcel-bookings:

@@ -10,6 +10,7 @@ import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js"
 import { mapsRouter } from "./modules/maps/maps.routes.js";
 import { parcelBookingsRouter } from "./modules/parcels/parcel-bookings.routes.js";
 import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
+import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -46,5 +47,6 @@ app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1", dispatchRouter);
+app.use("/api/v1/notifications", notificationsRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
