@@ -957,6 +957,7 @@ components:
         expiresAt:
           type: string
           format: date-time
+      description: Quote reservation expiry while the customer completes payment; it is distinct from the original driver offer expiry.
     PaymentInitialization:
       type: object
       required: [id, status, amountMinor, currency]
