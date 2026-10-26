@@ -960,6 +960,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /ride-bookings:
+    post:
+      tags: [Passenger rides]
+      operationId: createRideBooking
+      summary: Create an idempotent passenger ride draft
+      description: The ride is not dispatched and no payment is collected until a driver fare is proposed and explicitly accepted by the passenger.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Ride draft created.
+        '200':
+          description: Existing ride returned for an identical idempotent retry.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Service zone, pricing or idempotency conflict.
+  /ride-bookings/{rideBookingId}:
+    get:
+      tags: [Passenger rides]
+      operationId: getRideBooking
+      summary: Get a ride booking visible to the authenticated passenger
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: rideBookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Ride booking details.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /payments:
     post:
       tags: [Payments]
