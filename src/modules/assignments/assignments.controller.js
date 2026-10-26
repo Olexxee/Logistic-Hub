@@ -12,6 +12,10 @@ export function createAssignmentsController({ service }) {
       success: true,
       data: await service.verifyCode({ assignmentId: req.validated.params.assignmentId, code: req.validated.body.code, user: req.user }),
     }),
+    startParcelTransit: async (req, res) => res.status(200).json({
+      success: true,
+      data: await service.startParcelTransit({ assignmentId: req.validated.params.assignmentId, user: req.user }),
+    }),
     markArrivedAtDestination: async (req, res) => res.status(200).json({
       success: true,
       data: await service.markArrivedAtDestination({ assignmentId: req.validated.params.assignmentId, user: req.user }),
