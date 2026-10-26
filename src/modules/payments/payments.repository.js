@@ -239,7 +239,7 @@ export function createPaymentsRepository({ prismaClient }) {
           await tx.refund.update({ where: { id: refund.id }, data: { status: "FAILED", failureReason: "Provider reported refund failure.", providerPayload: payload, processedAt: now } });
           return { duplicate: false, refundId: refund.id, status: "FAILED" };
         }
-        const payout = await tx.driverPayout.findFirst({ where: { status: "PAID", ...(refund.rideBookingId ? { rideBookingId: refund.rideBookingId } : { parcelBookingId: refund.parcelBookingId }) } });
+        const payout = await tx.driverPayout.findFirst({ where: { status: { in: ["PENDING", "ELIGIBLE", "PROCESSING", "PAID"] }, ...(refund.rideBookingId ? { rideBookingId: refund.rideBookingId } : { parcelBookingId: refund.parcelBookingId }) } });
         if (payout) throw conflict("The driver has already been paid. This refund requires manual financial review.", "PAYOUT_ALREADY_SETTLED");
         const attempt = refund.paymentAttempt;
         const isRide = Boolean(refund.rideBookingId);
