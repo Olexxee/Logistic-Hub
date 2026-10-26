@@ -15,6 +15,12 @@ import { createDriversService } from "./drivers.service.js";
 
 const idSchema = z.string().trim().min(1).max(128);
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
+}
+
 function validationError(res, issues) {
   return res.status(400).json({
     success: false,
@@ -88,6 +94,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
         if (account?.email) {
           try {
             const approved = result.verificationStatus === "VERIFIED";
+            const safeName = escapeHtml(account.fullName);
             await email.send({
               to: account.email,
               subject: approved ? "Your Logistic Hub driver profile is verified" : "Update on your Logistic Hub driver application",
@@ -95,8 +102,8 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
                 ? `Hello ${account.fullName}, your driver profile has been verified. You can go online when your vehicle and service coverage are eligible.`
                 : `Hello ${account.fullName}, your driver application was not approved. Please contact support if you need clarification.`,
               html: approved
-                ? `<p>Hello ${account.fullName},</p><p>Your driver profile has been verified. You can go online when your vehicle and service coverage are eligible.</p>`
-                : `<p>Hello ${account.fullName},</p><p>Your driver application was not approved. Please contact support if you need clarification.</p>`,
+                ? `<p>Hello ${safeName},</p><p>Your driver profile has been verified. You can go online when your vehicle and service coverage are eligible.</p>`
+                : `<p>Hello ${safeName},</p><p>Your driver application was not approved. Please contact support if you need clarification.</p>`,
               idempotencyKey: `driver-verification-${result.id}-${result.verificationStatus.toLowerCase()}`,
               tags: [{ name: "category", value: "driver-verification" }],
             });
