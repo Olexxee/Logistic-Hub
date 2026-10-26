@@ -12,7 +12,7 @@ export function persistentRateLimit({
   keyGenerator = (req) => req.ip ?? req.socket?.remoteAddress ?? "unknown",
   clock = () => new Date(),
 } = {}) {
-  return asyncWrapper(async (req, _res, next) => {
+  return asyncWrapper(async (req, res, next) => {
     const identity = String(keyGenerator(req) || "unknown");
     const key = createHash("sha256").update(`${namespace}:${identity}`).digest("hex");
     const now = clock();
@@ -46,7 +46,7 @@ export function persistentRateLimit({
 
     if (!result.allowed) {
       const retryAfter = Math.max(1, Math.ceil((result.retryAfterMs ?? blockMs) / 1000));
-      req.res?.setHeader?.("Retry-After", String(retryAfter));
+      res.setHeader("Retry-After", String(retryAfter));
       throw new TooManyRequestsError();
     }
     req.rateLimit = { remaining: result.remaining };
