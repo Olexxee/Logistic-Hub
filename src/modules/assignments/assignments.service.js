@@ -1,126 +1,14 @@
-import { randomInt } from "node:crypto";
-import { hashOpaqueToken } from "../auth/auth.crypto.js";
+import { createHash, randomInt } from "node:crypto";
 import { createAssignmentsRepository } from "./assignments.repository.js";
-import { ForbiddenError, NotFoundError, ConflictError } from "../../shared/http/app-error.js";
-
-const ACTIVE_STATUSES = new Set(["ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"]);
-const ACTIONS = new Set(["RIDE_PICKUP", "RIDE_COMPLETION", "PARCEL_PICKUP", "PARCEL_DELIVERY"]);
-
-export function createAssignmentsService({ prismaClient, repository, clock = () => new Date() }) {
-  const db = repository ?? createAssignmentsRepository({ prismaClient });
-
-  async function requireContext(id) {
-    const assignment = await db.findContext(id);
-    if (!assignment) throw new NotFoundError("The assignment was not found.");
-    if (Boolean(assignment.rideBookingId) === Boolean(assignment.parcelBookingId)) {
-      throw new ConflictError("The assignment has an invalid booking association.", "ASSIGNMENT_BOOKING_INVALID");
-    }
-    return assignment;
-  }
-  function isCustomer(assignment, userId) {
-    return assignment.rideBooking ? assignment.rideBooking.passengerId === userId : assignment.parcelBooking.senderId === userId;
-  }
-  function isDriver(assignment, userId) {
-    return assignment.driverProfile.userId === userId;
-  }
-
-  return {
-    async issueVerificationCode({ assignmentId, user }) {
-      const assignment = await requireContext(assignmentId);
-      if (!isCustomer(assignment, user.id)) throw new ForbiddenError("Only the booking customer can request a verification code.");
-      if (assignment.paymentStatus !== "SUCCEEDED" && (assignment.rideBooking?.paymentStatus ?? assignment.parcelBooking?.paymentStatus) !== "SUCCEEDED") {
-        throw new ConflictError("Verification codes are available only after payment is confirmed.", "PAYMENT_NOT_CONFIRMED");
-      }
-      let action;
-      if (assignment.rideBooking) {
-        if (assignment.status === "ARRIVED_AT_PICKUP") action = "RIDE_PICKUP";
-        else if (assignment.status === "ARRIVED_AT_DESTINATION") action = "RIDE_COMPLETION";
-      } else {
-        if (assignment.status === "ARRIVED_AT_PICKUP") action = "PARCEL_PICKUP";
-        else if (assignment.status === "ARRIVED_AT_DESTINATION") action = "PARCEL_DELIVERY";
-      }
-      if (!action) throw new ConflictError("A verification code is not available at this assignment stage.", "VERIFICATION_STAGE_INVALID");
-      const code = String(randomInt(0, 100_000_000)).padStart(8, "0");
-      const now = clock();
-      const token = await db.createVerification({
-        assignment,
-        action,
-        tokenHash: hashOpaqueToken(code),
-        expiresAt: new Date(now.getTime() + 10 * 60 * 1000),
-      });
-      return { assignmentId, action, code, expiresAt: token.expiresAt };
-    },
-
-    async markArrivedAtPickup({ assignmentId, user }) {
-      const assignment = await requireContext(assignmentId);
-      if (!isDriver(assignment, user.id)) throw new ForbiddenError("Only the assigned driver can update this assignment.");
-      if (assignment.paymentStatus !== "SUCCEEDED" && (assignment.rideBooking?.paymentStatus ?? assignment.parcelBooking?.paymentStatus) !== "SUCCEEDED") {
-        throw new ConflictError("The assignment cannot start before payment is confirmed.", "PAYMENT_NOT_CONFIRMED");
-      }
-      const changed = await db.markArrivedAtPickup({ assignment, actorUserId: user.id, now: clock() });
-      if (!changed) throw new ConflictError("The assignment is not awaiting pickup.", "ASSIGNMENT_STATE_CONFLICT");
-      return { assignmentId, status: "ARRIVED_AT_PICKUP" };
-    },
-
-    async verifyCode({ assignmentId, code, user }) {
-      const assignment = await requireContext(assignmentId);
-      if (!isDriver(assignment, user.id)) throw new ForbiddenError("Only the assigned driver can verify this code.");
-      if (!/^[0-9]{8}$/.test(code)) throw new ConflictError("The verification code is invalid or expired.", "INVALID_VERIFICATION_CODE");
-      let action;
-      if (assignment.rideBooking && assignment.status === "ARRIVED_AT_PICKUP") action = "RIDE_PICKUP";
-      else if (assignment.rideBooking && assignment.status === "ARRIVED_AT_DESTINATION") action = "RIDE_COMPLETION";
-      else if (assignment.parcelBooking && assignment.status === "ARRIVED_AT_PICKUP") action = "PARCEL_PICKUP";
-      else if (assignment.parcelBooking && assignment.status === "ARRIVED_AT_DESTINATION") action = "PARCEL_DELIVERY";
-      if (!action) throw new ConflictError("The assignment is not awaiting verification.", "VERIFICATION_STAGE_INVALID");
-      const result = await db.consumeCodeAndTransition({
-        assignment,
-        tokenHash: hashOpaqueToken(code),
-        action,
-        actorUserId: user.id,
-        now: clock(),
-      });
-      if (!result.ok) throw new ConflictError("The verification code is invalid, expired, or no longer applicable.", result.reason);
-      return { assignmentId, status: result.status };
-    },
-
-    async startParcelTransit({ assignmentId, user }) {
-      const assignment = await requireContext(assignmentId);
-      if (!isDriver(assignment, user.id)) throw new ForbiddenError("Only the assigned driver can update this assignment.");
-      if (!assignment.parcelBooking || assignment.status !== "PICKUP_CONFIRMED") {
-        throw new ConflictError("Only a parcel assignment with verified pickup can enter transit.", "ASSIGNMENT_STATE_CONFLICT");
-      }
-      const changed = await db.startParcelTransit({ assignment, actorUserId: user.id, now: clock() });
-      if (!changed) throw new ConflictError("Assignment state changed before the update could be applied.", "ASSIGNMENT_STATE_CONFLICT");
-      return { assignmentId, status: "IN_PROGRESS" };
-    },
-
-    async markArrivedAtDestination({ assignmentId, user }) {
-      const assignment = await requireContext(assignmentId);
-      if (!isDriver(assignment, user.id)) throw new ForbiddenError("Only the assigned driver can update this assignment.");
-      if (!ACTIVE_STATUSES.has(assignment.status) || assignment.status !== "IN_PROGRESS") {
-        throw new ConflictError("The assignment is not in progress.", "ASSIGNMENT_STATE_CONFLICT");
-      }
-      const changed = await db.markArrivedAtDestination({ assignment, actorUserId: user.id, now: clock() });
-      if (!changed) throw new ConflictError("The assignment changed before the update could be applied.", "ASSIGNMENT_STATE_CONFLICT");
-      return { assignmentId, status: "ARRIVED_AT_DESTINATION" };
-    },
-
-    async getVisibleLocation({ assignmentId, user }) {
-      const assignment = await requireContext(assignmentId);
-      if (!isDriver(assignment, user.id) && !isCustomer(assignment, user.id)) {
-        throw new ForbiddenError("You do not have permission to view this driver's location.");
-      }
-      if (!ACTIVE_STATUSES.has(assignment.status)) {
-        throw new ConflictError("Driver location is available only during an active assignment.", "LOCATION_NOT_AVAILABLE");
-      }
-      const location = await db.latestLocation(assignment.driverProfileId);
-      if (!location || clock().getTime() - new Date(location.recordedAt).getTime() > 2 * 60 * 1000) return null;
-      return {
-        latitude: String(location.latitude),
-        longitude: String(location.longitude),
-        accuracyMeters: location.accuracyMeters == null ? null : String(location.accuracyMeters),
-        recordedAt: location.recordedAt,
-      };
-    },
-  };
+import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
+export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
+ const repository=createAssignmentsRepository(prismaClient);
+ return {
+  async markArrived({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_PICKUP",now:clock()});if(result?.conflict)throw new ConflictError("Assignment is not in a state that allows arrival at pickup.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
+  async startTrip({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"IN_PROGRESS",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified before starting the trip.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
+  async markDestination({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_DESTINATION",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified and the trip started before arriving at destination.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
+  async issueCode({assignmentId,user,action}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");const booking=a.parcelBooking||a.rideBooking;const ownerId=a.parcelBooking?booking.senderId:booking.passengerId;if(user.id!==ownerId)throw new ForbiddenError("Only the booking owner can request a verification code.");const code=String(randomInt(0,1000000)).padStart(6,"0");const result=await repository.issueCode({assignment:a,action,tokenHash:createHash("sha256").update(code).digest("hex"),expiresAt:new Date(clock().getTime()+10*60_000),now:clock()});if(!result)throw new ConflictError("Assignment is no longer active.");if(result.conflict)throw new ConflictError("The driver must arrive at the relevant stop before a code can be issued.","ASSIGNMENT_STATE_CONFLICT");return {assignmentId,action,code,expiresInSeconds:600,note:"Share this one-time code only with your assigned driver."};},
+  async verifyCode({assignmentId,userId,action,code}){const result=await repository.verifyCode({assignmentId,driverUserId:userId,action,tokenHash:createHash("sha256").update(code).digest("hex"),now:clock()});if(!result)throw new NotFoundError("Assignment not found.");if(result.forbidden)throw new ForbiddenError();if(result.invalid)throw new ConflictError("The verification code is invalid or expired.","INVALID_VERIFICATION_CODE");if(result.conflict)throw new ConflictError("Assignment is not in the state required for this verification.","ASSIGNMENT_STATE_CONFLICT");return result;},
+  async location({assignmentId,user}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");const booking=a.parcelBooking||a.rideBooking;const ownerId=a.parcelBooking?booking.senderId:booking.passengerId;if(user.id!==ownerId&&!["ADMIN","SUPPORT"].includes(user.role))throw new ForbiddenError();if(!["ACCEPTED","ARRIVED_AT_PICKUP","PICKUP_CONFIRMED","IN_PROGRESS","ARRIVED_AT_DESTINATION"].includes(a.status))throw new ConflictError("Driver location is visible only during an active, paid assignment.","TRACKING_NOT_AVAILABLE");const loc=await repository.findOwnerLocation({assignment:a,now:clock()});return loc?{latitude:loc.latitude.toString(),longitude:loc.longitude.toString(),accuracyMeters:loc.accuracyMeters?.toString()??null,recordedAt:loc.recordedAt}:null;},
+ };
 }

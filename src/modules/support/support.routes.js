@@ -1,22 +1,10 @@
-import { Router } from "express";
-import { prisma } from "../../db/prisma.js";
-import { asyncWrapper } from "../../shared/http/async-wrapper.js";
-import { requireAuth, requireRole } from "../auth/auth.middleware.js";
-import { createSupportService } from "./support.service.js";
-import { createSupportController } from "./support.controller.js";
-import { validateCancelBooking, validateCreateSupportTicket, validateSupportListQuery, validateSupportTicketUpdate } from "./support.validators.js";
-
-export function createSupportRouter({ prismaClient = prisma } = {}) {
-  const router = Router();
-  const service = createSupportService({ prismaClient });
-  const controller = createSupportController({ service });
-  const requireSupport = requireRole("ADMIN", "SUPPORT");
-  router.post("/tickets", requireAuth, validateCreateSupportTicket, asyncWrapper(controller.create));
-  router.get("/tickets/mine", requireAuth, validateSupportListQuery, asyncWrapper(controller.mine));
-  router.get("/tickets/admin", requireAuth, requireSupport, validateSupportListQuery, asyncWrapper(controller.adminList));
-  router.patch("/tickets/admin/:ticketId", requireAuth, requireSupport, validateSupportTicketUpdate, asyncWrapper(controller.update));
-  router.post("/ride-bookings/:bookingId/cancel", requireAuth, validateCancelBooking, asyncWrapper(controller.cancel));
-  router.post("/parcel-bookings/:bookingId/cancel", requireAuth, validateCancelBooking, asyncWrapper(controller.cancel));
-  return router;
-}
-export const supportRouter = createSupportRouter();
+import {Router} from "express";
+import {z} from "zod";
+import {prisma} from "../../db/prisma.js";
+import {requireAuth,requireRole} from "../auth/auth.middleware.js";
+import {validate} from "../../shared/http/validate.js";
+import {createSupportService} from "./support.service.js";
+import {createSupportController} from "./support.controller.js";
+import {createTicketSchema,updateTicketSchema} from "./support.schemas.js";
+export function createSupportRouter({prismaClient=prisma}={}){const r=Router();const c=createSupportController(createSupportService({prismaClient}));const id=z.object({ticketId:z.string().trim().min(1).max(128)});r.post("/tickets",requireAuth,validate(createTicketSchema),c.create);r.get("/tickets/mine",requireAuth,c.mine);r.get("/admin/tickets",requireAuth,requireRole("ADMIN","SUPPORT"),c.adminList);r.patch("/admin/tickets/:ticketId",requireAuth,requireRole("ADMIN","SUPPORT"),validate(id,"params"),validate(updateTicketSchema),c.update);return r;}
+export const supportRouter=createSupportRouter();

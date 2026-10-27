@@ -203,10 +203,7 @@ model User {
   assignments   DriverAssignment[]
   notifications Notification[]
   authActionTokens AuthActionToken[]
-  authSessions     AuthSession[]
-  supportTicketsOpened SupportTicket[] @relation("SupportRequester")
-  supportTicketsAssigned SupportTicket[] @relation("SupportAssignee")
-  refundRequests Refund[] @relation("RefundRequester")
+  authSessions AuthSession[]
 
   @@index([role, status])
   @@map("users")
@@ -514,6 +511,7 @@ model RideBooking {
   tripStartedAt         DateTime?
   completedAt           DateTime?
   cancelledAt           DateTime?
+  cancellationReason    String?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
@@ -617,7 +615,7 @@ model PaymentAttempt {
   rideBooking         RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
   driverSettlementAccount DriverSettlementAccount? @relation(fields: [driverSettlementAccountId], references: [id], onDelete: Restrict)
   ledgerEntries       LedgerEntry[]
-  refunds             Refund[]
+  refundRequests      RefundRequest[]
 
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
@@ -802,20 +800,15 @@ model Notification {
   @@map("notifications")
 }
 
-
 model AuthSession {
-  id               String    @id @default(cuid())
-  userId           String    @map("user_id")
-  refreshTokenHash String    @unique @map("refresh_token_hash")
-  expiresAt        DateTime  @map("expires_at")
-  revokedAt        DateTime? @map("revoked_at")
-  lastUsedAt       DateTime? @map("last_used_at")
-  userAgent        String?   @map("user_agent")
-  ipHash           String?   @map("ip_hash")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt, expiresAt])
   @@index([expiresAt])
@@ -823,70 +816,74 @@ model AuthSession {
 }
 
 model RateLimitBucket {
-  key              String   @id
-  windowStartedAt  DateTime @map("window_started_at")
-  requestCount     Int      @default(0) @map("request_count")
-  expiresAt        DateTime @map("expires_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  key             String   @id
+  count           Int      @default(0)
+  windowStartedAt DateTime
+  windowEndsAt    DateTime
+  updatedAt       DateTime @updatedAt
 
-  @@index([expiresAt])
+  @@index([windowEndsAt])
   @@map("rate_limit_buckets")
 }
 
+model ProviderWebhookEvent {
+  id             String   @id @default(cuid())
+  provider       String
+  providerEventId String
+  eventType      String
+  payloadHash    String
+  processedAt    DateTime?
+  processingError String?
+  receivedAt     DateTime @default(now())
 
-model Refund {
-  id                String       @id @default(cuid())
-  paymentAttemptId  String
-  requestedByUserId String
-  parcelBookingId   String?
-  rideBookingId     String?
-  amountMinor       BigInt
-  currency          String       @default("NGN")
-  reason            String
-  status            RefundStatus @default(REQUESTED)
-  idempotencyKey    String       @unique
-  providerReference String?      @unique
-  providerPayload   Json?
-  failureReason     String?
-  requestedAt       DateTime     @default(now())
-  processedAt       DateTime?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-
-  paymentAttempt    PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
-  requestedBy       User           @relation("RefundRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
-  parcelBooking     ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
-  rideBooking       RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
-
-  @@index([status, requestedAt])
-  @@index([paymentAttemptId, status])
-  @@map("refunds")
+  @@unique([provider, providerEventId])
+  @@index([provider, processedAt, receivedAt])
+  @@map("provider_webhook_events")
 }
 
 model SupportTicket {
-  id                String               @id @default(cuid())
-  publicReference   String               @unique
-  requesterId       String
-  assignedToUserId  String?
-  parcelBookingId   String?
-  rideBookingId     String?
-  category          String
-  subject           String
-  description       String
-  status            SupportTicketStatus  @default(OPEN)
-  priority          SupportTicketPriority @default(NORMAL)
-  resolution        String?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  closedAt          DateTime?
+  id          String   @id @default(cuid())
+  publicReference String @unique
+  customerId  String
+  assignedToUserId String?
+  bookingType String?
+  bookingId   String?
+  category    String
+  subject     String
+  description String
+  status      String   @default("OPEN")
+  priority    String   @default("NORMAL")
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  requester         User                 @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: Restrict)
-  assignedTo        User?                @relation("SupportAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  parcelBooking     ParcelBooking?       @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
-  rideBooking       RideBooking?         @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
-
-  @@index([requesterId, status, createdAt])
+  @@index([customerId, status, createdAt])
   @@index([status, priority, createdAt])
   @@index([assignedToUserId, status])
   @@map("support_tickets")
+}
+
+model RefundRequest {
+  id                 String   @id @default(cuid())
+  publicReference    String   @unique
+  paymentAttemptId   String
+  amountMinor        BigInt
+  currency           String   @default("NGN")
+  reason             String
+  status             String   @default("PENDING_REVIEW")
+  requestedByUserId  String
+  reviewedByUserId   String?
+  providerReference  String?  @unique
+  idempotencyKey     String   @unique
+  providerResponse   Json?
+  reviewedAt         DateTime?
+  processedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  paymentAttempt     PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([paymentAttemptId, status])
+  @@map("refund_requests")
 }

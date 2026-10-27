@@ -15,7 +15,6 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().optional().default(""),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   PAYSTACK_SECRET_KEY: z.string().optional().default(""),
-  PAYSTACK_CALLBACK_URL: z.string().url().optional().default("http://localhost:3000/payment/return"),
 });
 
 const parsed = envSchema.safeParse(process.env);

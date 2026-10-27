@@ -10,7 +10,8 @@ import {
   verifyPassword,
 } from "./auth.crypto.js";
 import { createAuthMiddleware } from "./auth.middleware.js";
-import { createAuthSessionService } from "./auth-session.service.js";
+import { createAuthSessionsService } from "./auth-sessions.service.js";
+import { createPersistentRateLimit } from "../../shared/http/rate-limit.middleware.js";
 
 const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(160),
@@ -59,9 +60,9 @@ export function createAuthRouter({
 } = {}) {
   const router = Router();
   const { requireAuth } = createAuthMiddleware({ prismaClient, secret });
-  const sessions = createAuthSessionService({ prismaClient, secret });
+  const authRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-write", limit: 10, windowMs: 15 * 60_000 });
 
-  router.post("/register", async (req, res, next) => {
+  router.post("/register", authRateLimit, async (req, res, next) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
     if (!email.configured) {
@@ -185,7 +186,7 @@ export function createAuthRouter({
     }
   });
 
-  router.post("/login", async (req, res, next) => {
+  router.post("/login", authRateLimit, async (req, res, next) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
 
@@ -211,11 +212,11 @@ export function createAuthRouter({
           error: { code: "ACCOUNT_NOT_ACTIVE", message: "Verify your email before signing in." },
         });
       }
-      const tokens = await sessions.issue(user, { userAgent: req.get("user-agent") });
+      const sessionTokens = await createAuthSessionsService({ prismaClient, secret }).issue(user);
       return res.status(200).json({
         success: true,
         data: {
-          ...tokens,
+          ...sessionTokens,
           user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
         },
       });
@@ -224,7 +225,7 @@ export function createAuthRouter({
     }
   });
 
-  router.post("/password/forgot", async (req, res, next) => {
+  router.post("/password/forgot", authRateLimit, async (req, res, next) => {
     const parsed = forgotPasswordSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
 
@@ -271,7 +272,7 @@ export function createAuthRouter({
     }
   });
 
-  router.post("/password/reset", async (req, res, next) => {
+  router.post("/password/reset", authRateLimit, async (req, res, next) => {
     const parsed = resetPasswordSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
     const tokenHash = hashOpaqueToken(parsed.data.token);
@@ -302,6 +303,7 @@ export function createAuthRouter({
         });
         if (update.count !== 1) return false;
         await tx.user.update({ where: { id: token.userId }, data: { passwordHash } });
+        await tx.authSession.updateMany({ where: { userId: token.userId, revokedAt: null }, data: { revokedAt: now } });
         await tx.authActionToken.updateMany({
           where: { userId: token.userId, purpose: "PASSWORD_RESET", consumedAt: null },
           data: { consumedAt: now },

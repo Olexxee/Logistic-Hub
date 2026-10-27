@@ -1,5 +1,3 @@
-export function asyncWrapper(handler) {
-  return function wrappedAsyncHandler(req, res, next) {
-    Promise.resolve().then(() => handler(req, res, next)).catch(next);
-  };
-}
+export const asyncWrapper = (handler) => function wrappedAsyncHandler(req, res, next) {
+  return Promise.resolve(handler(req, res, next)).catch(next);
+};

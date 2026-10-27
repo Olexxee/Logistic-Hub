@@ -1,198 +1,60 @@
-function stateConflict(message) {
-  const error = new Error(message);
-  error.statusCode = 409;
-  error.code = "ASSIGNMENT_STATE_CONFLICT";
-  return error;
-}
-
-export function createAssignmentsRepository({ prismaClient }) {
-  if (!prismaClient) throw new Error("A Prisma client is required.");
-  const contextInclude = {
-    driverProfile: { select: { id: true, userId: true } },
-    rideBooking: { select: { id: true, passengerId: true, status: true, paymentStatus: true, publicReference: true } },
-    parcelBooking: { select: { id: true, senderId: true, status: true, paymentStatus: true, publicReference: true } },
-  };
-  return {
-    findContext(id, tx = prismaClient) {
-      return tx.driverAssignment.findUnique({ where: { id }, include: contextInclude });
-    },
-    createVerification({ assignment, action, tokenHash, expiresAt }, tx = prismaClient) {
-      return tx.$transaction(async (inner) => {
-        await inner.verificationToken.updateMany({
-          where: {
-            status: "ACTIVE",
-            action,
-            ...(assignment.rideBookingId ? { rideBookingId: assignment.rideBookingId } : { parcelBookingId: assignment.parcelBookingId }),
-          },
-          data: { status: "REVOKED" },
-        });
-        return inner.verificationToken.create({
-          data: {
-            action,
-            tokenHash,
-            expiresAt,
-            ...(assignment.rideBookingId ? { rideBookingId: assignment.rideBookingId } : { parcelBookingId: assignment.parcelBookingId }),
-          },
-          select: { id: true, expiresAt: true },
-        });
-      });
-    },
-    async updateAssignmentStatus({ id, from, to, timestampField, now }, tx = prismaClient) {
-      return tx.driverAssignment.updateMany({
-        where: { id, status: from },
-        data: { status: to, ...(timestampField ? { [timestampField]: now } : {}) },
-      });
-    },
-    async markArrivedAtPickup({ assignment, actorUserId, now }) {
-      return prismaClient.$transaction(async (tx) => {
-        const updated = await tx.driverAssignment.updateMany({
-          where: { id: assignment.id, status: "ACCEPTED" },
-          data: { status: "ARRIVED_AT_PICKUP" },
-        });
-        if (updated.count !== 1) throw stateConflict("Assignment state changed concurrently.");
-        const booking = assignment.rideBooking ?? assignment.parcelBooking;
-        const isRide = Boolean(assignment.rideBookingId);
-        await tx.bookingEvent.create({
-          data: {
-            ...(isRide ? { rideBookingId: booking.id } : { parcelBookingId: booking.id }),
-            actorUserId,
-            eventType: "DRIVER_ARRIVED_AT_PICKUP",
-            fromStatus: isRide ? "DRIVER_ASSIGNED" : "DRIVER_ASSIGNED",
-            toStatus: "PICKUP_VERIFICATION_PENDING",
-            metadata: { assignmentId: assignment.id },
-          },
-        });
-        const bookingChanged = isRide
-          ? await tx.rideBooking.updateMany({ where: { id: booking.id, status: "DRIVER_ASSIGNED", paymentStatus: "SUCCEEDED" }, data: { status: "PICKUP_VERIFICATION_PENDING" } })
-          : await tx.parcelBooking.updateMany({ where: { id: booking.id, status: "DRIVER_ASSIGNED", paymentStatus: "SUCCEEDED" }, data: { status: "PICKUP_VERIFICATION_PENDING" } });
-        if (bookingChanged.count !== 1) throw stateConflict("Booking is not in a paid, driver-assigned state.");
-        return true;
-      });
-    },
-    async consumeCodeAndTransition({ assignment, tokenHash, action, actorUserId, now }) {
-      return prismaClient.$transaction(async (tx) => {
-        const token = await tx.verificationToken.findFirst({
-          where: {
-            tokenHash, action, status: "ACTIVE", expiresAt: { gt: now },
-            ...(assignment.rideBookingId ? { rideBookingId: assignment.rideBookingId } : { parcelBookingId: assignment.parcelBookingId }),
-          },
-        });
-        if (!token) return { ok: false, reason: "INVALID_CODE" };
-        const consumed = await tx.verificationToken.updateMany({
-          where: { id: token.id, status: "ACTIVE", expiresAt: { gt: now } },
-          data: { status: "CONSUMED", consumedAt: now, consumedByUserId: actorUserId },
-        });
-        if (consumed.count !== 1) return { ok: false, reason: "INVALID_CODE" };
-
-        const isRide = Boolean(assignment.rideBookingId);
-        const booking = isRide ? assignment.rideBooking : assignment.parcelBooking;
-        let assignmentFrom;
-        let assignmentTo;
-        let bookingFrom;
-        let bookingTo;
-        let timestampField;
-        if (action === "RIDE_PICKUP" || action === "PARCEL_PICKUP") {
-          assignmentFrom = "ARRIVED_AT_PICKUP";
-          assignmentTo = isRide ? "IN_PROGRESS" : "PICKUP_CONFIRMED";
-          bookingFrom = "PICKUP_VERIFICATION_PENDING";
-          bookingTo = isRide ? "TRIP_IN_PROGRESS" : "PICKED_UP";
-          timestampField = isRide ? "startedAt" : "pickupAt";
-        } else {
-          assignmentFrom = "ARRIVED_AT_DESTINATION";
-          assignmentTo = "COMPLETED";
-          bookingFrom = isRide ? "TRIP_COMPLETION_PENDING" : "DELIVERY_VERIFICATION_PENDING";
-          bookingTo = "COMPLETED";
-          timestampField = "completedAt";
-        }
-        const changed = await tx.driverAssignment.updateMany({
-          where: { id: assignment.id, status: assignmentFrom },
-          data: { status: assignmentTo, [timestampField]: now, ...(assignmentTo === "COMPLETED" ? { completedAt: now } : {}) },
-        });
-        if (changed.count !== 1) throw stateConflict("Assignment state changed concurrently.");
-        const bookingChanged = isRide
-          ? await tx.rideBooking.updateMany({
-              where: { id: booking.id, status: bookingFrom, paymentStatus: "SUCCEEDED" },
-              data: {
-                status: bookingTo,
-                ...(bookingTo === "TRIP_IN_PROGRESS" ? { tripStartedAt: now } : {}),
-                ...(bookingTo === "COMPLETED" ? { completedAt: now } : {}),
-              },
-            })
-          : await tx.parcelBooking.updateMany({
-              where: { id: booking.id, status: bookingFrom, paymentStatus: "SUCCEEDED" },
-              data: {
-                status: bookingTo,
-                ...(bookingTo === "PICKED_UP" ? { pickedUpAt: now } : {}),
-                ...(bookingTo === "COMPLETED" ? { completedAt: now } : {}),
-              },
-            });
-        if (bookingChanged.count !== 1) throw stateConflict("Booking state changed concurrently.");
-        await tx.bookingEvent.create({
-          data: {
-            ...(isRide ? { rideBookingId: booking.id } : { parcelBookingId: booking.id }),
-            actorUserId,
-            eventType: action === "RIDE_PICKUP" || action === "PARCEL_PICKUP" ? "PICKUP_VERIFIED" : "DELIVERY_VERIFIED",
-            fromStatus: bookingFrom,
-            toStatus: bookingTo,
-            metadata: { assignmentId: assignment.id, verificationTokenId: token.id },
-          },
-        });
-        return { ok: true, status: bookingTo };
-      });
-    },
-    async markArrivedAtDestination({ assignment, actorUserId, now }) {
-      return prismaClient.$transaction(async (tx) => {
-        const updated = await tx.driverAssignment.updateMany({
-          where: { id: assignment.id, status: "IN_PROGRESS" },
-          data: { status: "ARRIVED_AT_DESTINATION" },
-        });
-        if (updated.count !== 1) return false;
-        const isRide = Boolean(assignment.rideBookingId);
-        const booking = isRide ? assignment.rideBooking : assignment.parcelBooking;
-        const from = isRide ? "TRIP_IN_PROGRESS" : "IN_TRANSIT";
-        const to = isRide ? "TRIP_COMPLETION_PENDING" : "DELIVERY_VERIFICATION_PENDING";
-        const bookingChanged = isRide
-          ? await tx.rideBooking.updateMany({ where: { id: booking.id, status: from, paymentStatus: "SUCCEEDED" }, data: { status: to } })
-          : await tx.parcelBooking.updateMany({ where: { id: booking.id, status: from, paymentStatus: "SUCCEEDED" }, data: { status: to } });
-        if (bookingChanged.count !== 1) throw stateConflict("Booking is not in the expected active state.");
-        await tx.bookingEvent.create({
-          data: {
-            ...(isRide ? { rideBookingId: booking.id } : { parcelBookingId: booking.id }),
-            actorUserId,
-            eventType: "DRIVER_ARRIVED_AT_DESTINATION",
-            fromStatus: from,
-            toStatus: to,
-            metadata: { assignmentId: assignment.id },
-          },
-        });
-        return true;
-      });
-    },
-    async latestLocation(driverProfileId) {
-      return prismaClient.driverLocation.findFirst({
-        where: { driverProfileId },
-        orderBy: { recordedAt: "desc" },
-        select: { latitude: true, longitude: true, accuracyMeters: true, recordedAt: true },
-      });
-    },
-
-    async startParcelTransit({ assignment, actorUserId, now }) {
-      return prismaClient.$transaction(async (tx) => {
-        const updated = await tx.driverAssignment.updateMany({
-          where: { id: assignment.id, status: "PICKUP_CONFIRMED", parcelBookingId: { not: null } },
-          data: { status: "IN_PROGRESS", startedAt: now },
-        });
-        if (updated.count !== 1) throw stateConflict("Parcel assignment is not ready to enter transit.");
-        const bookingChanged = await tx.parcelBooking.updateMany({
-          where: { id: assignment.parcelBookingId, status: "PICKED_UP", paymentStatus: "SUCCEEDED" },
-          data: { status: "IN_TRANSIT" },
-        });
-        if (bookingChanged.count !== 1) throw stateConflict("Parcel booking is not in the picked-up state.");
-        await tx.bookingEvent.create({
-          data: { parcelBookingId: assignment.parcelBookingId, actorUserId, eventType: "PARCEL_IN_TRANSIT", fromStatus: "PICKED_UP", toStatus: "IN_TRANSIT", metadata: { assignmentId: assignment.id } },
-        });
-        return true;
-      });
-    },
-  };
+import { prisma } from "../../db/prisma.js";
+export function createAssignmentsRepository(prismaClient = prisma) {
+ return {
+  findAssignment(id) { return prismaClient.driverAssignment.findUnique({where:{id},include:{driverProfile:{select:{id:true,userId:true}},parcelBooking:true,rideBooking:true}}); },
+  findOwnerLocation({assignment,now}) {
+   const booking=assignment.parcelBooking||assignment.rideBooking;
+   return prismaClient.driverLocation.findFirst({where:{driverProfileId:assignment.driverProfileId,recordedAt:{gte:new Date(now.getTime()-2*60*1000)}},orderBy:{recordedAt:"desc"},select:{latitude:true,longitude:true,accuracyMeters:true,recordedAt:true}});
+  },
+  issueCode({assignment,action,tokenHash,expiresAt,now}) {
+   return prismaClient.$transaction(async tx=>{
+    const fresh=await tx.driverAssignment.findUnique({where:{id:assignment.id},include:{parcelBooking:true,rideBooking:true}});
+    if(!fresh||fresh.status==="COMPLETED"||fresh.status==="CANCELLED")return null;
+    const booking=fresh.parcelBooking||fresh.rideBooking;
+    const ownerId=fresh.parcelBooking?booking.senderId:booking.passengerId;
+    if(action==="PICKUP"&&fresh.status!=="ARRIVED_AT_PICKUP")return {conflict:true};
+    if(action==="DELIVERY"&&fresh.status!=="ARRIVED_AT_DESTINATION")return {conflict:true};
+    await tx.verificationToken.updateMany({where:{...(fresh.parcelBookingId?{parcelBookingId:fresh.parcelBookingId}:{rideBookingId:fresh.rideBookingId}),action:action==="PICKUP"?(fresh.parcelBookingId?"PARCEL_PICKUP":"RIDE_PICKUP"):(fresh.parcelBookingId?"PARCEL_DELIVERY":"RIDE_COMPLETION"),status:"ACTIVE"},data:{status:"REVOKED"}});
+    await tx.verificationToken.create({data:{...(fresh.parcelBookingId?{parcelBookingId:fresh.parcelBookingId}:{rideBookingId:fresh.rideBookingId}),action:action==="PICKUP"?(fresh.parcelBookingId?"PARCEL_PICKUP":"RIDE_PICKUP"):"PARCEL_DELIVERY",tokenHash,status:"ACTIVE",expiresAt}});
+    return {ownerId,bookingId:booking.id,publicReference:booking.publicReference};
+   });
+  },
+  transition({assignmentId,driverUserId,nextStatus,now}) {
+   return prismaClient.$transaction(async tx=>{
+    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true}});
+    if(!a)return null;
+    if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
+    const allowed={ACCEPTED:["ARRIVED_AT_PICKUP"],ARRIVED_AT_PICKUP:[],PICKUP_CONFIRMED:["IN_PROGRESS"],IN_PROGRESS:["ARRIVED_AT_DESTINATION"],ARRIVED_AT_DESTINATION:[]};
+    if(!(allowed[a.status]||[]).includes(nextStatus))return {conflict:true,status:a.status};
+    const updated=await tx.driverAssignment.update({where:{id:a.id},data:{status:nextStatus,...(nextStatus==="ARRIVED_AT_PICKUP"?{pickupAt:now}:{}),...(nextStatus==="IN_PROGRESS"?{startedAt:now}:{}),...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
+    if(a.parcelBookingId) await tx.parcelBooking.update({where:{id:a.parcelBookingId},data:{status:nextStatus==="ARRIVED_AT_PICKUP"?"PICKUP_VERIFICATION_PENDING":nextStatus==="IN_PROGRESS"?"IN_TRANSIT":nextStatus==="ARRIVED_AT_DESTINATION"?"DELIVERY_VERIFICATION_PENDING":nextStatus==="COMPLETED"?"COMPLETED":a.parcelBooking.status,...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
+    if(a.rideBookingId) await tx.rideBooking.update({where:{id:a.rideBookingId},data:{status:nextStatus==="ARRIVED_AT_PICKUP"?"DRIVER_ARRIVED":nextStatus==="IN_PROGRESS"?"TRIP_IN_PROGRESS":nextStatus==="ARRIVED_AT_DESTINATION"?"TRIP_COMPLETION_PENDING":nextStatus==="COMPLETED"?"COMPLETED":a.rideBooking.status,...(nextStatus==="IN_PROGRESS"?{tripStartedAt:now}:{}),...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
+    await tx.bookingEvent.create({data:{...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),actorUserId:driverUserId,eventType:"ASSIGNMENT_STATUS_CHANGED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id}}});
+    if(nextStatus==="COMPLETED") await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true,completedJobs:{increment:1}}});
+    return {id:updated.id,status:updated.status,updatedAt:updated.updatedAt};
+   });
+  },
+  verifyCode({assignmentId,driverUserId,action,tokenHash,now}) {
+   return prismaClient.$transaction(async tx=>{
+    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true}});
+    if(!a)return null;
+    if(a.driverProfile.userId!==driverUserId)return {forbidden:true};
+    const isParcel=Boolean(a.parcelBookingId);const booking=a.parcelBooking||a.rideBooking;
+    const tokenAction=action==="PICKUP"?(isParcel?"PARCEL_PICKUP":"RIDE_PICKUP"):(isParcel?"PARCEL_DELIVERY":"RIDE_COMPLETION");
+    const token=await tx.verificationToken.findFirst({where:{...(isParcel?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),action:tokenAction,tokenHash,status:"ACTIVE",expiresAt:{gt:now}}});
+    if(!token)return {invalid:true};
+    const expected=action==="PICKUP"?"ARRIVED_AT_PICKUP":"ARRIVED_AT_DESTINATION";
+    if(a.status!==expected)return {conflict:true,status:a.status};
+    const consumed=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now}},data:{status:"CONSUMED",consumedAt:now,consumedByUserId:driverUserId}});
+    if(consumed.count!==1)return {invalid:true};
+    const nextStatus=action==="PICKUP"?"PICKUP_CONFIRMED":"COMPLETED";
+    await tx.driverAssignment.update({where:{id:a.id},data:{status:nextStatus,...(action==="PICKUP"?{pickupAt:now}:{completedAt:now})}});
+    if(isParcel) await tx.parcelBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"PICKED_UP":"COMPLETED",...(action==="PICKUP"?{pickedUpAt:now}:{completedAt:now})}});
+    else await tx.rideBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"TRIP_IN_PROGRESS":"COMPLETED",...(action==="PICKUP"?{tripStartedAt:now}:{completedAt:now})}});
+    await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:driverUserId,eventType:action==="PICKUP"?"PICKUP_VERIFIED":"COMPLETION_VERIFIED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id}}});
+    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true,completedJobs:{increment:1}}});await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
+    return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):"COMPLETED",verifiedAt:now};
+   });
+  },
+ };
 }

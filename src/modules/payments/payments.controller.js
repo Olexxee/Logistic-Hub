@@ -1,21 +1,2 @@
-export function createPaymentsController({ service }) {
-  return {
-    initialize: async (req, res) => res.status(201).json({
-      success: true,
-      data: await service.initialize({
-        serviceType: req.validated.body.serviceType,
-        bookingId: req.validated.body.bookingId,
-        user: req.user,
-        idempotencyKey: req.validated.idempotencyKey,
-      }),
-    }),
-    webhook: async (req, res) => {
-      const result = await service.handleWebhook({
-        rawBody: req.rawBody,
-        signature: req.get("x-paystack-signature"),
-        event: req.body,
-      });
-      return res.status(200).json({ success: true, data: result });
-    },
-  };
-}
+import { asyncWrapper } from "../../shared/http/async-wrapper.js";
+export function createPaymentsController(service){return {initialize:asyncWrapper(async(req,res)=>{const data=await service.initialize({...req.body,userId:req.user.id,idempotencyKey:req.get("Idempotency-Key")});res.status(201).json({success:true,data});}),webhook:asyncWrapper(async(req,res)=>{const data=await service.handleWebhook({payload:req.body,rawBody:req.rawBody,signature:req.get("x-paystack-signature")});res.status(200).json({success:true,data});})};}
