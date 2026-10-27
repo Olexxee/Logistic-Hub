@@ -39,7 +39,7 @@ function encodeJson(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-export function signAccessToken({ userId, role, secret, now = Date.now() }) {
+export function signAccessToken({ userId, role, secret, sessionId, now = Date.now() }) {
   if (typeof secret !== "string" || Buffer.byteLength(secret) < 32) {
     const error = new Error("Authentication is not configured.");
     error.code = "AUTH_NOT_CONFIGURED";
@@ -51,6 +51,7 @@ export function signAccessToken({ userId, role, secret, now = Date.now() }) {
   const payload = encodeJson({
     sub: userId,
     role,
+    ...(typeof sessionId === "string" ? { sid: sessionId } : {}),
     iat: issuedAt,
     exp: issuedAt + ACCESS_TOKEN_TTL_SECONDS,
   });
@@ -79,6 +80,7 @@ export function verifyAccessToken(token, secret, now = Date.now()) {
     const decodedPayload = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (decodedHeader.alg !== "HS256" || decodedHeader.typ !== "JWT") return null;
     if (typeof decodedPayload.sub !== "string" || typeof decodedPayload.role !== "string") return null;
+    if (decodedPayload.sid !== undefined && typeof decodedPayload.sid !== "string") return null;
     if (!Number.isInteger(decodedPayload.exp) || decodedPayload.exp <= Math.floor(now / 1000)) return null;
     return decodedPayload;
   } catch {

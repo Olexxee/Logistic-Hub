@@ -1,22 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
+import { createParcelBookingsRepository } from "./parcel-bookings.repository.js";
+import { ConflictError, ForbiddenError } from "../../shared/http/app-error.js";
 
-const ACTIVE_PARCEL_AVAILABILITY = (now) => ({
-  serviceType: "PARCEL_DELIVERY",
-  isEnabled: true,
-  AND: [
-    { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-    { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-  ],
-});
-
-function requestHash(input) {
-  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
-}
-
-function publicReference() {
-  return `LH-PCL-${randomBytes(6).toString("hex").toUpperCase()}`;
-}
-
+function requestHash(input) { return createHash("sha256").update(JSON.stringify(input)).digest("hex"); }
+function publicReference() { return `LH-PCL-${randomBytes(6).toString("hex").toUpperCase()}`; }
 function serializeBooking(booking) {
   return {
     id: booking.id,
@@ -49,65 +36,31 @@ function serializeBooking(booking) {
   };
 }
 
-export function createParcelBookingsService({ prismaClient, clock = () => new Date() }) {
-  if (!prismaClient) throw new Error("A Prisma client is required.");
-
+export function createParcelBookingsService({ prismaClient, repository, clock = () => new Date() }) {
+  const db = repository ?? createParcelBookingsRepository({ prismaClient });
   async function findExistingByIdempotencyKey(key, hash, senderId) {
-    const existing = await prismaClient.parcelBooking.findUnique({ where: { idempotencyKey: key } });
+    const existing = await db.findByIdempotencyKey(key);
     if (!existing) return null;
     if (existing.senderId !== senderId || existing.idempotencyPayloadHash !== hash) {
-      const error = new Error("The Idempotency-Key was already used with a different request.");
-      error.statusCode = 409;
-      error.code = "IDEMPOTENCY_CONFLICT";
-      throw error;
+      throw new ConflictError("The Idempotency-Key was already used with a different request.", "IDEMPOTENCY_CONFLICT");
     }
     return { booking: serializeBooking(existing), replay: true };
   }
-
   return {
     async createDraft({ senderId, idempotencyKey, input }) {
       const hash = requestHash(input);
       const existing = await findExistingByIdempotencyKey(idempotencyKey, hash, senderId);
       if (existing) return existing;
-
       const now = clock();
       const zoneIds = [...new Set([input.pickupServiceZoneId, input.destinationServiceZoneId])];
-      const zones = await prismaClient.serviceZone.findMany({
-        where: {
-          id: { in: zoneIds },
-          isActive: true,
-          state: { isActive: true, country: { isActive: true } },
-          availability: { some: ACTIVE_PARCEL_AVAILABILITY(now) },
-        },
-        select: { id: true },
-      });
+      const zones = await db.findActiveParcelZones(zoneIds, now);
       if (zones.length !== zoneIds.length) {
-        const error = new Error("One or both requested zones are not active for parcel delivery.");
-        error.statusCode = 409;
-        error.code = "SERVICE_ZONE_UNAVAILABLE";
-        throw error;
+        throw new ConflictError("One or both requested zones are not active for parcel delivery.", "SERVICE_ZONE_UNAVAILABLE");
       }
-
-      const pricingRules = await prismaClient.pricingRule.findMany({
-        where: {
-          serviceType: "PARCEL_DELIVERY",
-          isActive: true,
-          effectiveFrom: { lte: now },
-          AND: [
-            { OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }] },
-            { OR: [{ serviceZoneId: input.pickupServiceZoneId }, { serviceZoneId: null }] },
-          ],
-        },
-        orderBy: { effectiveFrom: "desc" },
-      });
+      const pricingRules = await db.findApplicablePricingRules(input.pickupServiceZoneId, now);
       const pricingRule = pricingRules.find((rule) => rule.serviceZoneId === input.pickupServiceZoneId)
         ?? pricingRules.find((rule) => rule.serviceZoneId == null);
-      if (!pricingRule) {
-        const error = new Error("Parcel pricing is not configured for the pickup zone.");
-        error.statusCode = 409;
-        error.code = "PRICING_UNAVAILABLE";
-        throw error;
-      }
+      if (!pricingRule) throw new ConflictError("Parcel pricing is not configured for the pickup zone.", "PRICING_UNAVAILABLE");
 
       const bookingData = {
         publicReference: publicReference(),
@@ -148,21 +101,10 @@ export function createParcelBookingsService({ prismaClient, clock = () => new Da
           calculation: "The driver fare is proposed separately and must be accepted by the sender before payment.",
         },
       };
-
       try {
-        const booking = await prismaClient.$transaction(async (tx) => {
-          const created = await tx.parcelBooking.create({ data: bookingData });
-          await tx.bookingEvent.create({
-            data: {
-              parcelBookingId: created.id,
-              actorUserId: senderId,
-              eventType: "PARCEL_BOOKING_CREATED",
-              fromStatus: null,
-              toStatus: "DRAFT",
-              metadata: { publicReference: created.publicReference },
-            },
-          });
-          return created;
+        const booking = await db.createWithEvent(bookingData, {
+          actorUserId: senderId,
+          metadata: { publicReference: bookingData.publicReference, pricingRuleId: pricingRule.id },
         });
         return { booking: serializeBooking(booking), replay: false };
       } catch (error) {
@@ -173,16 +115,11 @@ export function createParcelBookingsService({ prismaClient, clock = () => new Da
         throw error;
       }
     },
-
     async getVisibleBooking({ bookingId, user }) {
-      const booking = await prismaClient.parcelBooking.findUnique({ where: { id: bookingId } });
+      const booking = await db.findById(bookingId);
       if (!booking) return null;
-      const privileged = ["ADMIN", "SUPPORT"].includes(user.role);
-      if (!privileged && booking.senderId !== user.id) {
-        const error = new Error("You do not have permission to view this booking.");
-        error.statusCode = 403;
-        error.code = "FORBIDDEN";
-        throw error;
+      if (!["ADMIN", "SUPPORT"].includes(user.role) && booking.senderId !== user.id) {
+        throw new ForbiddenError("You do not have permission to view this booking.");
       }
       return serializeBooking(booking);
     },

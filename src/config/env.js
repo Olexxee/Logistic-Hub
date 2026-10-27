@@ -45,7 +45,7 @@ if (parsed.data.NODE_ENV === "production" && parsed.data.JWT_ACCESS_SECRET.lengt
 
 if (parsed.data.PAYMENTS_ENABLED) {
   throw new Error(
-    "PAYMENTS_ENABLED=true is blocked until the project owner explicitly approves payment implementation and deployment.",
+    "PAYMENTS_ENABLED=true is blocked until the project owner explicitly approves live payment activation and deployment.",
   );
 }
 

@@ -21,8 +21,13 @@ import { cancellationsRouter } from "./modules/cancellations/cancellations.route
 import { financeRouter } from "./modules/finance/finance.routes.js";
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
+import { assignmentsRouter } from "./modules/assignments/assignments.routes.js";
+import { paymentsRouter } from "./modules/payments/payments.routes.js";
+import { financialRouter } from "./modules/payments/financial.routes.js";
+import { supportRouter } from "./modules/support/support.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
+import { createPersistentRateLimit } from "./modules/security/rate-limit.middleware.js";
 
 export const app = express();
 
@@ -58,6 +63,10 @@ app.use("/api/v1/auth/sessions", authSessionsRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
 app.use("/api/v1/drivers", driversRouter);
+app.use("/api/v1/assignments", requireAuth, assignmentsRouter);
+app.use("/api/v1/payments", paymentsRouter);
+app.use("/api/v1/payments", financialRouter);
+app.use("/api/v1/support", supportRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);

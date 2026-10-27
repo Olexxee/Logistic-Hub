@@ -147,6 +147,29 @@ enum PayoutStatus {
   REVERSED
 }
 
+enum RefundStatus {
+  REQUESTED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REJECTED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
 enum SettlementAccountStatus {
   PENDING
   ACTIVE
@@ -450,6 +473,8 @@ model ParcelBooking {
   events                  BookingEvent[]
   ledgerEntries           LedgerEntry[]
   payouts                 DriverPayout[]
+  refunds                 Refund[]
+  supportTickets          SupportTicket[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
@@ -499,6 +524,8 @@ model RideBooking {
   events                BookingEvent[]
   ledgerEntries         LedgerEntry[]
   payouts               DriverPayout[]
+  refunds               Refund[]
+  supportTickets        SupportTicket[]
   verificationTokens    VerificationToken[]
 
   @@index([passengerId, createdAt])
@@ -651,6 +678,7 @@ model DriverPayout {
   providerReference String?      @unique
   idempotencyKey    String       @unique
   failureReason     String?
+  providerPayload   Json?
   requestedAt       DateTime     @default(now())
   processedAt       DateTime?
   createdAt         DateTime     @default(now())
