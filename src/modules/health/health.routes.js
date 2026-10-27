@@ -2,7 +2,7 @@ import { Router } from "express";
 import { env } from "../../config/env.js";
 import { prisma } from "../../db/prisma.js";
 
-const SERVICE_NAME = "logistic-hub-api";
+const SERVICE_NAME = "logistic-hub-api";\nconst DATABASE_PROBE_TIMEOUT_MS = 2_000;\n\nasync function probeDatabase(prismaClient) {\n  let timeoutId;\n  try {\n    await Promise.race([\n      prismaClient.$queryRaw\`SELECT 1\`,\n      new Promise((_, reject) => {\n        timeoutId = setTimeout(() => reject(Object.assign(new Error("Database probe timed out"), { code: "DB_PROBE_TIMEOUT" })), DATABASE_PROBE_TIMEOUT_MS);\n        timeoutId.unref?.();\n      }),\n    ]);\n  } finally {\n    if (timeoutId) clearTimeout(timeoutId);\n  }\n}
 
 function healthPayload(status, extra = {}) {
   return {
@@ -35,7 +35,7 @@ export function createHealthRouter({ prismaClient = prisma } = {}) {
     const checkStartedAt = Date.now();
 
     try {
-      await prismaClient.$queryRaw`SELECT 1`;
+      await probeDatabase(prismaClient);
       const databaseLatencyMs = Date.now() - checkStartedAt;
 
       return res.status(200).json(healthPayload("ready", {
