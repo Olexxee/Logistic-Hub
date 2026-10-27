@@ -47,6 +47,16 @@ app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 app.use(pinoHttp({
   genReqId: () => randomUUID(),
+  serializers: {
+    req: (req) => ({
+      id: req.id,
+      method: req.method,
+      // Query strings can contain one-time tokens or personal data.
+      url: req.url?.split("?")[0],
+      remoteAddress: req.remoteAddress,
+      remotePort: req.remotePort,
+    }),
+  },
   redact: [
     "req.headers.authorization",
     "req.headers.cookie",
@@ -59,10 +69,15 @@ app.use(pinoHttp({
     if (res.statusCode >= 400) return "warn";
     return "info";
   },
-  customReceivedMessage: (req) => `HTTP request started: ${req.method} ${req.url}`,
-  customSuccessMessage: (req, res) => `HTTP request completed: ${req.method} ${req.url} (${res.statusCode})`,
-  customErrorMessage: (req, res, error) => `HTTP request failed: ${req.method} ${req.url} (${res.statusCode}): ${error?.message ?? "unknown error"}`,
+  customReceivedMessage: (req) => `HTTP request started: ${req.method} ${req.url?.split("?")[0]}`,
+  customSuccessMessage: (req, res) => `HTTP request completed: ${req.method} ${req.url?.split("?")[0]} (${res.statusCode})`,
+  customErrorMessage: (req, res, error) => `HTTP request failed: ${req.method} ${req.url?.split("?")[0]} (${res.statusCode}): ${error?.message ?? "unknown error"}`,
 }));
+
+app.use((req, res, next) => {
+  res.setHeader("X-Request-ID", req.id);
+  next();
+});
 
 app.get("/", (_req, res) => {
   res.status(200).json({
