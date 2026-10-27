@@ -7,7 +7,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 let shutdownPromise;
 
 function log(level, event, details = {}) {
-  console[level](JSON.stringify({
+  const writer = level === "fatal" ? console.error : (console[level] ?? console.log);\n  writer(JSON.stringify({
     timestamp: new Date().toISOString(),
     level,
     service: "logistic-hub-api",
