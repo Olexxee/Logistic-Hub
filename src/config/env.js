@@ -14,6 +14,7 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().url().optional().default("http://localhost:3000"),
   JWT_ACCESS_SECRET: z.string().optional().default(""),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  PAYSTACK_SECRET_KEY: z.string().optional().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);

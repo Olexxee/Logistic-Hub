@@ -115,6 +115,7 @@ enum VerificationAction {
   PARCEL_PICKUP
   PARCEL_DELIVERY
   RIDE_PICKUP
+  RIDE_COMPLETION
 }
 
 enum VerificationTokenStatus {
@@ -179,6 +180,7 @@ model User {
   assignments   DriverAssignment[]
   notifications Notification[]
   authActionTokens AuthActionToken[]
+  authSessions AuthSession[]
 
   @@index([role, status])
   @@map("users")
@@ -484,6 +486,7 @@ model RideBooking {
   tripStartedAt         DateTime?
   completedAt           DateTime?
   cancelledAt           DateTime?
+  cancellationReason    String?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
@@ -585,6 +588,7 @@ model PaymentAttempt {
   rideBooking         RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Restrict)
   driverSettlementAccount DriverSettlementAccount? @relation(fields: [driverSettlementAccountId], references: [id], onDelete: Restrict)
   ledgerEntries       LedgerEntry[]
+  refundRequests      RefundRequest[]
 
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
@@ -766,4 +770,92 @@ model Notification {
   @@index([userId, readAt, createdAt])
   @@index([emailStatus, createdAt])
   @@map("notifications")
+}
+
+model AuthSession {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model RateLimitBucket {
+  key             String   @id
+  count           Int      @default(0)
+  windowStartedAt DateTime
+  windowEndsAt    DateTime
+  updatedAt       DateTime @updatedAt
+
+  @@index([windowEndsAt])
+  @@map("rate_limit_buckets")
+}
+
+model ProviderWebhookEvent {
+  id             String   @id @default(cuid())
+  provider       String
+  providerEventId String
+  eventType      String
+  payloadHash    String
+  processedAt    DateTime?
+  processingError String?
+  receivedAt     DateTime @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([provider, processedAt, receivedAt])
+  @@map("provider_webhook_events")
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  publicReference String @unique
+  customerId  String
+  assignedToUserId String?
+  bookingType String?
+  bookingId   String?
+  category    String
+  subject     String
+  description String
+  status      String   @default("OPEN")
+  priority    String   @default("NORMAL")
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId, status, createdAt])
+  @@index([status, priority, createdAt])
+  @@index([assignedToUserId, status])
+  @@map("support_tickets")
+}
+
+model RefundRequest {
+  id                 String   @id @default(cuid())
+  publicReference    String   @unique
+  paymentAttemptId   String
+  amountMinor        BigInt
+  currency           String   @default("NGN")
+  reason             String
+  status             String   @default("PENDING_REVIEW")
+  requestedByUserId  String
+  reviewedByUserId   String?
+  providerReference  String?  @unique
+  idempotencyKey     String   @unique
+  providerResponse   Json?
+  reviewedAt         DateTime?
+  processedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  paymentAttempt     PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([paymentAttemptId, status])
+  @@map("refund_requests")
 }

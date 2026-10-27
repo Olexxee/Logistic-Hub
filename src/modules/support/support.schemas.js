@@ -1,0 +1,3 @@
+import { z } from "zod";
+export const createTicketSchema=z.object({bookingType:z.enum(["PARCEL","RIDE"]).optional(),bookingId:z.string().trim().min(1).max(128).optional(),category:z.enum(["PAYMENT","DELIVERY","DRIVER","ACCOUNT","REFUND","OTHER"]),subject:z.string().trim().min(5).max(160),description:z.string().trim().min(10).max(5000)}).strict();
+export const updateTicketSchema=z.object({status:z.enum(["OPEN","IN_PROGRESS","WAITING_FOR_CUSTOMER","RESOLVED","CLOSED"]),priority:z.enum(["LOW","NORMAL","HIGH","URGENT"]).optional(),resolution:z.string().trim().min(5).max(5000).optional(),assignedToUserId:z.string().trim().min(1).max(128).nullable().optional()}).strict();
