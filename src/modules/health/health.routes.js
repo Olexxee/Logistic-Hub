@@ -2,38 +2,84 @@ import { Router } from "express";
 import { env } from "../../config/env.js";
 import { prisma } from "../../db/prisma.js";
 
+const SERVICE_NAME = "logistic-hub-api";
+const DATABASE_PROBE_TIMEOUT_MS = 2_000;
+
+async function probeDatabase(prismaClient) {
+  let timeoutId;
+  try {
+    await Promise.race([
+      prismaClient.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(Object.assign(new Error("Database probe timed out"), { code: "DB_PROBE_TIMEOUT" })), DATABASE_PROBE_TIMEOUT_MS);
+        timeoutId.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function healthPayload(status, extra = {}) {
+  return {
+    success: true,
+    data: {
+      service: SERVICE_NAME,
+      status,
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      ...extra,
+    },
+  };
+}
+
 export function createHealthRouter({ prismaClient = prisma } = {}) {
   const router = Router();
 
-  router.get("/", (_req, res) => {
-    res.status(200).json({
-      success: true,
-      data: {
-        service: "logistic-hub-api",
-        status: "ok",
-        environment: env.NODE_ENV,
-        paymentsEnabled: env.PAYMENTS_ENABLED,
-        timestamp: new Date().toISOString(),
-      },
-    });
+  // Liveness confirms that the Node process is running; it intentionally does not
+  // depend on external services so orchestrators do not restart a healthy process
+  // merely because the database is temporarily unavailable.
+  router.get(["/", "/live"], (_req, res) => {
+    return res.status(200).json(healthPayload("ok", {
+      environment: env.NODE_ENV,
+      paymentsEnabled: env.PAYMENTS_ENABLED,
+    }));
   });
 
-  router.get("/ready", async (_req, res) => {
+  // Readiness confirms the API can serve requests that require the database.
+  router.get("/ready", async (req, res) => {
+    const checkStartedAt = Date.now();
+
     try {
-      await prismaClient.$queryRaw`SELECT 1`;
-      return res.status(200).json({
-        success: true,
-        data: {
-          service: "logistic-hub-api",
-          status: "ready",
-          dependencies: { database: "ok" },
-          timestamp: new Date().toISOString(),
+      await probeDatabase(prismaClient);
+      const databaseLatencyMs = Date.now() - checkStartedAt;
+
+      return res.status(200).json(healthPayload("ready", {
+        dependencies: {
+          database: {
+            status: "ok",
+            latencyMs: databaseLatencyMs,
+          },
         },
-      });
+      }));
     } catch (error) {
-      _req.log?.warn({ err: error }, "Database readiness check failed");
+      req.log?.warn({
+        dependency: "database",
+        errorName: error?.name,
+        errorCode: error?.code,
+        latencyMs: Date.now() - checkStartedAt,
+      }, "Readiness check failed");
+
       return res.status(503).json({
         success: false,
+        data: {
+          service: SERVICE_NAME,
+          status: "not_ready",
+          dependencies: {
+            database: { status: "unavailable" },
+          },
+          timestamp: new Date().toISOString(),
+        },
         error: {
           code: "DEPENDENCY_UNAVAILABLE",
           message: "A required service is temporarily unavailable.",
