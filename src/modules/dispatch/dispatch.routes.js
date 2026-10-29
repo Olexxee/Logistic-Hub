@@ -4,7 +4,7 @@ import { prisma } from "../../db/prisma.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { createDispatchService } from "./dispatch.service.js";
 import { createNotificationsService } from "../notifications/notifications.service.js";
-import { acceptFareSchema, listDriverOffersQuerySchema, proposeFareSchema } from "./dispatch.schemas.js";
+import { acceptFareSchema, proposeFareSchema } from "./dispatch.schemas.js";
 import { idempotencyKeySchema } from "../parcels/parcel-bookings.schemas.js";
 
 const idSchema = z.string().trim().min(1).max(128);
@@ -75,11 +75,9 @@ export function createDispatchRouter({ prismaClient = prisma } = {}) {
   });
 
   router.get("/driver/offers", requireAuth, requireDriver, async (req, res, next) => {
-    const parsed = listDriverOffersQuerySchema.safeParse(req.query);
-    if (!parsed.success) return validationError(res, parsed.error.issues);
     try {
-      const result = await service.listDriverOffers({ userId: req.user.id, ...parsed.data });
-      return res.status(200).json({ success: true, data: result.data, page: { nextCursor: result.nextCursor } });
+      const offers = await service.listDriverOffers({ userId: req.user.id });
+      return res.status(200).json({ success: true, data: offers });
     } catch (error) {
       return next(error);
     }
