@@ -135,13 +135,17 @@ function quoteView(q) {
   };
 }
 
-export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
+export function createPartnerPricingRouter({
+  prismaClient = prisma,
+  authMiddleware = requireAuth,
+  adminMiddleware = requireRole("ADMIN"),
+} = {}) {
   const router = Router();
-  const admin = requireRole("ADMIN");
+  const admin = adminMiddleware;
 
   // Admins can issue a versioned quote. Manual transport charges require an explicit reason;
   // no fallback price is inferred when no contracted rate exists.
-  router.post("/admin/parcel-bookings/:bookingId/quotes", requireAuth, admin, async (req, res, next) => {
+  router.post("/admin/parcel-bookings/:bookingId/quotes", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.bookingId);
     if (!parsedId.success) return invalid(res, parsedId.error.issues);
     const parsed = quoteInput.safeParse(req.body);
@@ -219,7 +223,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.get("/parcel-bookings/:bookingId/quotes", requireAuth, async (req, res, next) => {
+  router.get("/parcel-bookings/:bookingId/quotes", authMiddleware, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.bookingId);
     if (!parsedId.success) return invalid(res, parsedId.error.issues);
     try {
@@ -235,7 +239,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.post("/parcel-bookings/:bookingId/quotes/:quoteId/accept", requireAuth, async (req, res, next) => {
+  router.post("/parcel-bookings/:bookingId/quotes/:quoteId/accept", authMiddleware, async (req, res, next) => {
     const bookingId = id.safeParse(req.params.bookingId);
     const quoteId = id.safeParse(req.params.quoteId);
     if (!bookingId.success || !quoteId.success) return invalid(res, [...(bookingId.success ? [] : bookingId.error.issues), ...(quoteId.success ? [] : quoteId.error.issues)]);
@@ -290,7 +294,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.post("/parcel-bookings/:bookingId/quotes/:quoteId/reject", requireAuth, async (req, res, next) => {
+  router.post("/parcel-bookings/:bookingId/quotes/:quoteId/reject", authMiddleware, async (req, res, next) => {
     const bookingId = id.safeParse(req.params.bookingId);
     const quoteId = id.safeParse(req.params.quoteId);
     if (!bookingId.success || !quoteId.success) return invalid(res, [...(bookingId.success ? [] : bookingId.error.issues), ...(quoteId.success ? [] : quoteId.error.issues)]);
@@ -324,7 +328,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.get("/admin/transport-partners", requireAuth, admin, async (req, res, next) => {
+  router.get("/admin/transport-partners", authMiddleware, admin, async (req, res, next) => {
     try {
       const partners = await prismaClient.transportPartner.findMany({
         orderBy: [{ createdAt: "desc" }],
@@ -334,7 +338,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.post("/admin/transport-partners", requireAuth, admin, async (req, res, next) => {
+  router.post("/admin/transport-partners", authMiddleware, admin, async (req, res, next) => {
     const parsed = partnerInput.safeParse(req.body);
     if (!parsed.success) return invalid(res, parsed.error.issues);
     try {
@@ -343,7 +347,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.patch("/admin/transport-partners/:partnerId/status", requireAuth, admin, async (req, res, next) => {
+  router.patch("/admin/transport-partners/:partnerId/status", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.partnerId);
     const parsed = partnerStatusInput.safeParse(req.body);
     if (!parsedId.success || !parsed.success) {
@@ -368,7 +372,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.post("/admin/transport-partners/:partnerId/agreements", requireAuth, admin, async (req, res, next) => {
+  router.post("/admin/transport-partners/:partnerId/agreements", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.partnerId);
     const parsed = agreementInput.safeParse(req.body);
     if (!parsedId.success || !parsed.success) {
@@ -394,7 +398,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.post("/admin/partner-agreements/:agreementId/activate", requireAuth, admin, async (req, res, next) => {
+  router.post("/admin/partner-agreements/:agreementId/activate", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.agreementId);
     if (!parsedId.success) return invalid(res, parsedId.error.issues);
     try {
@@ -437,7 +441,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.patch("/admin/partner-agreements/:agreementId/status", requireAuth, admin, async (req, res, next) => {
+  router.patch("/admin/partner-agreements/:agreementId/status", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.agreementId);
     const parsed = agreementStatusInput.safeParse(req.body);
     if (!parsedId.success || !parsed.success) {
@@ -461,7 +465,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.post("/admin/partner-agreements/:agreementId/rate-cards", requireAuth, admin, async (req, res, next) => {
+  router.post("/admin/partner-agreements/:agreementId/rate-cards", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.agreementId);
     const parsed = rateCardInput.safeParse(req.body);
     if (!parsedId.success || !parsed.success) {
@@ -491,7 +495,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
-  router.post("/admin/partner-rate-cards/:rateCardId/rates", requireAuth, admin, async (req, res, next) => {
+  router.post("/admin/partner-rate-cards/:rateCardId/rates", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.rateCardId);
     const parsed = partnerRateInput.safeParse(req.body);
     if (!parsedId.success || !parsed.success) {
@@ -526,7 +530,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
   // Publishing is the only path that makes a draft rate card selectable for quotes.
   // Publishing requires a verified, active partner and an active agreement; one active
   // version per agreement is retained to prevent overlapping rate-card selection.
-  router.post("/admin/partner-rate-cards/:rateCardId/publish", requireAuth, admin, async (req, res, next) => {
+  router.post("/admin/partner-rate-cards/:rateCardId/publish", authMiddleware, admin, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.rateCardId);
     if (!parsedId.success) return invalid(res, parsedId.error.issues);
     try {
