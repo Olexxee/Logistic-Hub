@@ -1417,67 +1417,13 @@ paths:
               additionalProperties: false
               required: [code]
               properties:
-                code: { type: string, pattern: '^[0-9]{8}    post:
-      tags: [Payments]
-      operationId: initializePayment
-      summary: Initialize payment for an accepted parcel quote
-      description: |
-        Planned and disabled until the owner approves implementation. The request
-        contains no amount, fee, split destination or provider reference. The server
-        computes all amounts and uses a versioned split-routing configuration.
-      x-implementation-status: planned-disabled
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [bookingType, bookingId]
-              properties:
-                bookingType:
-                  type: string
-                  const: PARCEL
-                bookingId:
-                  type: string
-                  minLength: 1
+                code: { type: string, pattern: '^[0-9]{8}$' }
       responses:
-        '202':
-          description: Payment attempt initialized with provider checkout details.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [success, data]
-                properties:
-                  success:
-                    const: true
-                  data:
-                    $ref: '#/components/schemas/PaymentInitialization'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: No accepted quote, payment already in progress, or booking is not payable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          description: Payment processing is disabled or provider is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        '200': { description: Verification succeeded and the assignment advanced. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Assignment is not awaiting verification or the code is invalid, expired, or already consumed. }
   /assignments/{assignmentId}/start-transit:
     post:
       tags: [Assignments]
