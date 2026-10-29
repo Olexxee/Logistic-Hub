@@ -70,6 +70,7 @@ Error responses must not expose stack traces, provider secrets, raw database err
 | GET | `/api/v1/notifications` | Implemented | List the caller's notifications and unread count |
 | PATCH | `/api/v1/notifications/{notificationId}/read` | Implemented | Mark an owned notification as read |
 | POST | `/api/v1/notifications/read-all` | Implemented | Mark all caller notifications as read |
+| GET | `/api/v1/parcel-bookings` | Implemented | List caller-visible parcel bookings with pagination and optional status filtering |
 | POST | `/api/v1/parcel-bookings` | Implemented | Create an idempotent draft parcel booking with a fixed connection-fee snapshot |
 | GET | `/api/v1/parcel-bookings/{bookingId}` | Implemented | Read owner-visible booking details and lifecycle state |
 | POST | `/api/v1/parcel-bookings/{bookingId}/request-matching` | Implemented | Fan out offers to verified drivers covering both service zones |
