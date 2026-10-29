@@ -2,6 +2,15 @@ import { NotFoundError } from "../../shared/http/app-error.js";
 
 export function createParcelBookingsController({ service, notifications }) {
   return {
+    list: async (req, res) => {
+      const result = await service.listVisibleBookings({
+        user: req.user,
+        page: req.validated.query.page,
+        limit: req.validated.query.limit,
+        status: req.validated.query.status,
+      });
+      return res.status(200).json({ success: true, data: result });
+    },
     create: async (req, res) => {
       const result = await service.createDraft({
         senderId: req.user.id,
