@@ -256,6 +256,56 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     } catch (error) { return next(error); }
   });
 
+  // Publishing is the only path that makes a draft rate card selectable for quotes.
+  // Publishing requires a verified, active partner and an active agreement; one active
+  // version per agreement is retained to prevent overlapping rate-card selection.
+  router.post("/admin/partner-rate-cards/:rateCardId/publish", requireAuth, admin, async (req, res, next) => {
+    const parsedId = id.safeParse(req.params.rateCardId);
+    if (!parsedId.success) return invalid(res, parsedId.error.issues);
+    try {
+      const result = await prismaClient.$transaction(async (tx) => {
+        const now = new Date();
+        const card = await tx.partnerRateCard.findUnique({
+          where: { id: parsedId.data },
+          include: { agreement: { include: { partner: true } }, rates: { where: { isActive: true } } },
+        });
+        if (!card) return { notFound: true };
+        if (card.status !== "DRAFT") return { conflict: "Only draft rate cards can be published." };
+        if (
+          card.agreement.status !== "ACTIVE" ||
+          card.agreement.effectiveFrom > now ||
+          (card.agreement.effectiveUntil && card.agreement.effectiveUntil <= now) ||
+          card.agreement.partner.status !== "ACTIVE" ||
+          card.agreement.partner.verificationStatus !== "VERIFIED"
+        ) return { ineligible: true };
+        if (card.effectiveFrom > now || (card.effectiveUntil && card.effectiveUntil <= now)) {
+          return { invalidDates: true };
+        }
+        if (card.rates.length === 0) return { empty: true };
+
+        await tx.partnerRateCard.updateMany({
+          where: { agreementId: card.agreementId, status: "ACTIVE", id: { not: card.id } },
+          data: { status: "RETIRED" },
+        });
+        const published = await tx.partnerRateCard.update({
+          where: { id: card.id },
+          data: { status: "ACTIVE", publishedAt: now },
+          select: {
+            id: true, agreementId: true, version: true, status: true, currency: true,
+            effectiveFrom: true, effectiveUntil: true, publishedAt: true, updatedAt: true,
+          },
+        });
+        return { card: published };
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Partner rate card not found." } });
+      if (result.conflict) return res.status(409).json({ success: false, error: { code: "RATE_CARD_NOT_DRAFT", message: result.conflict } });
+      if (result.ineligible) return res.status(409).json({ success: false, error: { code: "PARTNER_AGREEMENT_INELIGIBLE", message: "The partner must be active and verified, and the agreement must be active and in date." } });
+      if (result.invalidDates) return res.status(409).json({ success: false, error: { code: "RATE_CARD_OUTSIDE_EFFECTIVE_DATES", message: "The rate card is not currently within its effective dates." } });
+      if (result.empty) return res.status(409).json({ success: false, error: { code: "RATE_CARD_HAS_NO_ACTIVE_RATES", message: "Add at least one active rate before publishing this rate card." } });
+      return res.status(200).json({ success: true, data: { rateCard: result.card } });
+    } catch (error) { return next(error); }
+  });
+
   return router;
 }
 
