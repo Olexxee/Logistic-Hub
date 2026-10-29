@@ -123,5 +123,24 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
       }
       return serializeBooking(booking);
     },
+    async listVisibleBookings({ user, page, limit, status }) {
+      const includeAll = ["ADMIN", "SUPPORT"].includes(user.role);
+      const result = await db.listVisible({
+        senderId: user.id,
+        includeAll,
+        status,
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+      return {
+        items: result.items.map(serializeBooking),
+        pagination: {
+          page,
+          limit,
+          total: result.total,
+          totalPages: Math.ceil(result.total / limit),
+        },
+      };
+    },
   };
 }
