@@ -1741,6 +1741,35 @@ paths:
         '200': { description: Cancellation applied or routed for review. }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Booking state prevents cancellation. }
+  /admin/partner-rate-cards/{rateCardId}/publish:
+    post:
+      tags: [Admin]
+      operationId: publishPartnerRateCard
+      summary: Publish an eligible draft partner rate card
+      description: Requires an active, verified transport partner, an active agreement, current effective dates, and at least one active rate. Replaces the agreement's previously active rate card; accepted quote snapshots remain unchanged.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rateCardId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Rate card published and previous active version retired.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Rate card or its partner agreement is not eligible for publication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/parcel-bookings/{bookingId}/quotes:
     post:
       tags: [Admin]
