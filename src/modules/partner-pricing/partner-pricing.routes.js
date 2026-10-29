@@ -45,7 +45,6 @@ function quoteView(q) {
 export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
   const router = Router();
   const admin = requireRole("ADMIN");
-  const supportOrAdmin = requireRole("ADMIN", "SUPPORT");
 
   // Admins can issue a versioned quote. Manual transport charges require an explicit reason;
   // no fallback price is inferred when no contracted rate exists.
@@ -95,6 +94,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
         const destination = BigInt(input.destinationDeliveryChargeMinor);
         const platform = BigInt(input.platformChargeMinor);
         const other = BigInt(input.otherChargesMinor);
+        if (transport <= 0n) return { invalidTransport: true };
         const total = transport + collection + handling + destination + platform + other;
         const previous = await tx.shipmentQuote.findFirst({
           where: { parcelBookingId: booking.id }, orderBy: { version: "desc" }, select: { version: true },
@@ -132,6 +132,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
       if (result.conflict) return res.status(409).json({ success: false, error: { code: "BOOKING_NOT_QUOTABLE", message: result.conflict } });
       if (result.invalidRate) return res.status(409).json({ success: false, error: { code: "PARTNER_RATE_UNAVAILABLE", message: "The selected rate is not active for this route and service." } });
+      if (result.invalidTransport) return res.status(400).json({ success: false, error: { code: "INVALID_TRANSPORT_CHARGE", message: "Transport charge must be greater than zero." } });
       return res.status(201).json({ success: true, data: { quote: quoteView(result.quote) } });
     } catch (error) { return next(error); }
   });
@@ -160,7 +161,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
       const result = await prismaClient.$transaction(async (tx) => {
         const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId.data } });
         if (!booking) return { notFound: true };
-        if (booking.senderId !== req.user.id && !["ADMIN", "SUPPORT"].includes(req.user.role)) return { forbidden: true };
+        if (booking.senderId !== req.user.id) return { forbidden: true };
         const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
         if (!quote) return { quoteNotFound: true };
         const now = new Date();
@@ -216,14 +217,27 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
     try {
       const booking = await prismaClient.parcelBooking.findUnique({ where: { id: bookingId.data }, select: { id: true, senderId: true } });
       if (!booking) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
-      if (booking.senderId !== req.user.id && !["ADMIN", "SUPPORT"].includes(req.user.role)) {
+      if (booking.senderId !== req.user.id) {
         return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot reject this quote." } });
       }
-      const updated = await prismaClient.shipmentQuote.updateMany({
-        where: { id: quoteId.data, parcelBookingId: booking.id, status: "OFFERED", expiresAt: { gt: new Date() } },
-        data: { status: "REJECTED" },
+      const result = await prismaClient.$transaction(async (tx) => {
+        const now = new Date();
+        const updated = await tx.shipmentQuote.updateMany({
+          where: { id: quoteId.data, parcelBookingId: booking.id, status: "OFFERED", expiresAt: { gt: now } },
+          data: { status: "REJECTED" },
+        });
+        if (updated.count !== 1) return false;
+        await tx.bookingEvent.create({
+          data: {
+            parcelBookingId: booking.id,
+            actorUserId: req.user.id,
+            eventType: "SHIPMENT_QUOTE_REJECTED",
+            metadata: { quoteId: quoteId.data, reason: parsed.data.reason },
+          },
+        });
+        return true;
       });
-      if (updated.count !== 1) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_REJECTABLE", message: "Quote is no longer available." } });
+      if (!result) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_REJECTABLE", message: "Quote is no longer available." } });
       return res.status(200).json({ success: true, data: { rejected: true } });
     } catch (error) { return next(error); }
   });
