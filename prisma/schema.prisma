@@ -1115,7 +1115,7 @@ model ShipmentQuote {
   parcelBooking    ParcelBooking     @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
   partnerAgreement PartnerAgreement? @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
   partnerRate      PartnerRate?      @relation(fields: [partnerRateId], references: [id], onDelete: Restrict)
-  acceptedByUser   User?             @relation("ShipmentQuoteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  acceptedByUser   User?             @relation("ShipmentQuoteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
 
   @@unique([parcelBookingId, version])
   @@index([parcelBookingId, status, expiresAt])
