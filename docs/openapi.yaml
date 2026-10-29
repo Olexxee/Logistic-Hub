@@ -1741,6 +1741,120 @@ paths:
         '200': { description: Cancellation applied or routed for review. }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Booking state prevents cancellation. }
+  /admin/parcel-bookings/{bookingId}/quotes:
+    post:
+      tags: [Admin]
+      operationId: createShipmentQuote
+      summary: Issue a versioned quote for a parcel booking
+      description: Contracted partner rates are preferred. A manual transport charge requires an explicit reason and administrator authorization. Payment remains disabled.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                partnerRateId: { type: string, minLength: 1, maxLength: 128 }
+                transportChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                collectionChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                hubHandlingChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                destinationDeliveryChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                platformChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                otherChargesMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                expiresInMinutes: { type: integer, minimum: 5, maximum: 10080, default: 1440 }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '201': { description: Quote created with immutable input and charge snapshots. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Booking is terminal or selected partner rate is not currently eligible. }
+  /parcel-bookings/{bookingId}/quotes:
+    get:
+      tags: [Parcel bookings]
+      operationId: listShipmentQuotes
+      summary: List quotes for an owned parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Quotes ordered newest version first. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /parcel-bookings/{bookingId}/quotes/{quoteId}/accept:
+    post:
+      tags: [Parcel bookings]
+      operationId: acceptShipmentQuote
+      summary: Accept one unexpired quote for an owned booking
+      description: Acceptance is transactional, snapshots the total, supersedes competing offers and moves the booking to awaiting payment. Payment itself remains disabled.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: quoteId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Accepted quote and persisted booking price snapshot. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Quote expired, already decided, or no longer available. }
+  /parcel-bookings/{bookingId}/quotes/{quoteId}/reject:
+    post:
+      tags: [Parcel bookings]
+      operationId: rejectShipmentQuote
+      summary: Reject an unexpired quote for an owned booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: quoteId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200': { description: Quote rejected. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Quote is no longer available. }
   /payments:
     post:
       tags: [Payments]
