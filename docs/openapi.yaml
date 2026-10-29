@@ -1864,6 +1864,37 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Agreement or partner is not eligible for activation. }
+  /admin/partner-agreements/{agreementId}/status:
+    patch:
+      tags: [Admin]
+      operationId: updatePartnerAgreementStatus
+      summary: Suspend or terminate an agreement, or mark it expired
+      description: Activation must use the dedicated activation endpoint; terminal expired and terminated agreements cannot be changed.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: { type: string, enum: [ACTIVE, SUSPENDED, EXPIRED, TERMINATED] }
+      responses:
+        '200': { description: Agreement status updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Agreement is terminal or activation checks are required. }
   /admin/partner-agreements/{agreementId}/rate-cards:
     post:
       tags: [Admin]
