@@ -34,7 +34,7 @@ const partnerStatusInput = z.object({
 const agreementInput = z.object({
   reference: z.string().trim().min(2).max(100),
   currency: z.string().trim().length(3).default("NGN"),
-  effectiveFrom: z.coerce.date().optional(),
+  effectiveFrom: z.coerce.date().default(() => new Date()),
   effectiveUntil: z.coerce.date().optional(),
   volumeCommitment: z.record(z.string(), z.unknown()).optional(),
   serviceStandards: z.record(z.string(), z.unknown()).optional(),
@@ -48,7 +48,7 @@ const agreementStatusInput = z.object({
 }).strict();
 const rateCardInput = z.object({
   currency: z.string().trim().length(3).default("NGN"),
-  effectiveFrom: z.coerce.date().optional(),
+  effectiveFrom: z.coerce.date().default(() => new Date()),
   effectiveUntil: z.coerce.date().optional(),
 }).strict().refine((v) => !v.effectiveUntil || !v.effectiveFrom || v.effectiveUntil > v.effectiveFrom, {
   message: "effectiveUntil must be later than effectiveFrom.",
@@ -382,7 +382,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
           partnerId: partner.id,
           reference: parsed.data.reference,
           currency: parsed.data.currency.toUpperCase(),
-          effectiveFrom: parsed.data.effectiveFrom ?? new Date(),
+          effectiveFrom: parsed.data.effectiveFrom,
           effectiveUntil: parsed.data.effectiveUntil,
           volumeCommitment: parsed.data.volumeCommitment,
           serviceStandards: parsed.data.serviceStandards,
