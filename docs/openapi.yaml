@@ -1820,7 +1820,12 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Quote expired, already decided, or no longer available. }
+        '409':
+          description: Quote expired, already decided, or no longer available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /parcel-bookings/{bookingId}/quotes/{quoteId}/reject:
     post:
       tags: [Parcel bookings]
