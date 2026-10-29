@@ -1,30 +1,27 @@
 ALTER TABLE "ride_bookings" ADD COLUMN IF NOT EXISTS "cancellationReason" TEXT;
 ALTER TYPE "VerificationAction" ADD VALUE IF NOT EXISTS 'RIDE_COMPLETION';
 
-CREATE TABLE "auth_sessions" (
-  "id" TEXT NOT NULL,
-  "userId" TEXT NOT NULL,
-  "tokenHash" TEXT NOT NULL,
-  "expiresAt" TIMESTAMP(3) NOT NULL,
-  "revokedAt" TIMESTAMP(3),
-  "lastUsedAt" TIMESTAMP(3),
-  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "auth_sessions_pkey" PRIMARY KEY ("id")
-);
-CREATE UNIQUE INDEX "auth_sessions_tokenHash_key" ON "auth_sessions"("tokenHash");
-CREATE INDEX "auth_sessions_userId_revokedAt_expiresAt_idx" ON "auth_sessions"("userId", "revokedAt", "expiresAt");
-CREATE INDEX "auth_sessions_expiresAt_idx" ON "auth_sessions"("expiresAt");
-ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Normalize the tables created by the preceding persistent-rate-limit migration
+-- to the Prisma field names used by the current schema. Do not recreate them.
+ALTER TABLE "auth_sessions" RENAME COLUMN "user_id" TO "userId";
+ALTER TABLE "auth_sessions" RENAME COLUMN "refresh_token_hash" TO "tokenHash";
+ALTER TABLE "auth_sessions" RENAME COLUMN "expires_at" TO "expiresAt";
+ALTER TABLE "auth_sessions" RENAME COLUMN "revoked_at" TO "revokedAt";
+ALTER TABLE "auth_sessions" RENAME COLUMN "last_used_at" TO "lastUsedAt";
+ALTER TABLE "auth_sessions" RENAME COLUMN "user_agent" TO "userAgent";
+ALTER TABLE "auth_sessions" RENAME COLUMN "ip_hash" TO "ipHash";
+ALTER TABLE "auth_sessions" RENAME COLUMN "created_at" TO "createdAt";
+ALTER TABLE "auth_sessions" RENAME COLUMN "updated_at" TO "updatedAt";
+ALTER INDEX "auth_sessions_refresh_token_hash_key" RENAME TO "auth_sessions_tokenHash_key";
+ALTER INDEX "auth_sessions_user_id_revoked_at_expires_at_idx" RENAME TO "auth_sessions_userId_revokedAt_expiresAt_idx";
+ALTER INDEX "auth_sessions_expires_at_idx" RENAME TO "auth_sessions_expiresAt_idx";
+ALTER TABLE "auth_sessions" RENAME CONSTRAINT "auth_sessions_user_id_fkey" TO "auth_sessions_userId_fkey";
 
-CREATE TABLE "rate_limit_buckets" (
-  "key" TEXT NOT NULL,
-  "count" INTEGER NOT NULL DEFAULT 0,
-  "windowStartedAt" TIMESTAMP(3) NOT NULL,
-  "windowEndsAt" TIMESTAMP(3) NOT NULL,
-  "updatedAt" TIMESTAMP(3) NOT NULL,
-  CONSTRAINT "rate_limit_buckets_pkey" PRIMARY KEY ("key")
-);
-CREATE INDEX "rate_limit_buckets_windowEndsAt_idx" ON "rate_limit_buckets"("windowEndsAt");
+ALTER TABLE "rate_limit_buckets" RENAME COLUMN "request_count" TO "count";
+ALTER TABLE "rate_limit_buckets" RENAME COLUMN "window_started_at" TO "windowStartedAt";
+ALTER TABLE "rate_limit_buckets" RENAME COLUMN "expires_at" TO "windowEndsAt";
+ALTER TABLE "rate_limit_buckets" RENAME COLUMN "updated_at" TO "updatedAt";
+ALTER INDEX "rate_limit_buckets_expires_at_idx" RENAME TO "rate_limit_buckets_windowEndsAt_idx";
 
 CREATE TABLE "provider_webhook_events" (
   "id" TEXT NOT NULL,

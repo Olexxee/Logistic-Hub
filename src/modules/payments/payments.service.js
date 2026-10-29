@@ -4,9 +4,7 @@ import { createPaymentsRepository } from "./payments.repository.js";
 import { createNotificationsService } from "../notifications/notifications.service.js";
 import { ServiceUnavailableError, ConflictError } from "../../shared/http/app-error.js";
 
-export function createPaymentsService({ prismaClient, secretKey = env.PAYSTACK_SECRET_KEY, enabled = env.PAYMENTS_ENABLED, fetchImpl = fetch } = {}) {
-  const repository = createPaymentsRepository(prismaClient);
-  const notifications = createNotificationsService({ prismaClient });
+export function createPaymentsService({ prismaClient, repository = createPaymentsRepository(prismaClient), notifications = createNotificationsService({ prismaClient }), secretKey = env.PAYSTACK_SECRET_KEY, enabled = env.PAYMENTS_ENABLED, fetchImpl = fetch } = {}) {
   return {
     async initialize({ bookingType, bookingId, userId, idempotencyKey }) {
       if (!enabled) throw new ServiceUnavailableError("Online payments are disabled until the project owner approves activation.", "PAYMENTS_DISABLED");
