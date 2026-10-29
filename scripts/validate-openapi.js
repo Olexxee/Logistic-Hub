@@ -48,6 +48,7 @@ const implementedOperations = new Set([
   "PATCH /admin/transport-partners/{partnerId}/status",
   "POST /admin/transport-partners/{partnerId}/agreements",
   "POST /admin/partner-agreements/{agreementId}/activate",
+  "PATCH /admin/partner-agreements/{agreementId}/status",
   "POST /admin/partner-agreements/{agreementId}/rate-cards",
   "POST /admin/partner-rate-cards/{rateCardId}/rates",
   "POST /admin/parcel-bookings/{bookingId}/quotes",
