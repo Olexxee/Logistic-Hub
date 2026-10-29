@@ -161,7 +161,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
       return offers.map(serializeOffer);
     },
 
-    async listDriverOffers({ userId, cursor, limit }) {
+    async listDriverOffers({ userId }) {
       const profile = await prismaClient.driverProfile.findUnique({
         where: { userId },
         select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
@@ -194,22 +194,15 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           },
         },
         orderBy: { createdAt: "desc" },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
 
-      const hasMore = offers.length > limit;
-      const page = hasMore ? offers.slice(0, limit) : offers;
-      return {
-        data: page.map((offer) => ({
-          id: offer.id,
-          currency: offer.currency,
-          expiresAt: offer.expiresAt,
-          createdAt: offer.createdAt,
-          booking: offer.parcelBooking,
-        })),
-        nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
-      };
+      return offers.map((offer) => ({
+        id: offer.id,
+        currency: offer.currency,
+        expiresAt: offer.expiresAt,
+        createdAt: offer.createdAt,
+        booking: offer.parcelBooking,
+      }));
     },
 
     async proposeParcelFare({ offerId, userId, proposedFareMinor, idempotencyKey }) {
