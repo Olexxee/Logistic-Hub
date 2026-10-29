@@ -39,6 +39,7 @@ const implementedOperations = new Set([
   "PATCH /support/tickets/admin/{ticketId}",
   "POST /support/ride-bookings/{bookingId}/cancel",
   "POST /support/parcel-bookings/{bookingId}/cancel",
+  "GET /parcel-bookings",
   "POST /parcel-bookings",
   "GET /parcel-bookings/{bookingId}",
   "GET /parcel-bookings/{bookingId}/offers",

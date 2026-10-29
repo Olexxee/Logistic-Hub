@@ -50,5 +50,20 @@ export function createParcelBookingsRepository({ prismaClient }) {
     findById(id) {
       return prismaClient.parcelBooking.findUnique({ where: { id } });
     },
+    listVisible({ senderId, includeAll, status, skip, take }) {
+      const where = {
+        ...(includeAll ? {} : { senderId }),
+        ...(status ? { status } : {}),
+      };
+      return Promise.all([
+        prismaClient.parcelBooking.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip,
+          take,
+        }),
+        prismaClient.parcelBooking.count({ where }),
+      ]).then(([items, total]) => ({ items, total }));
+    },
   };
 }
