@@ -1211,7 +1211,20 @@ paths:
               additionalProperties: false
               required: [refreshToken]
               properties:
-                refreshToken: { type: string, pattern: '^[a-fA-F0-9]{64}
+                refreshToken: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+      responses:
+        '200':
+          description: Rotated refresh token and new bearer access token.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /payments/initialize:
+    post:
+      tags: [Payments]
+      operationId: initializePayment
       summary: Initialize payment for an accepted parcel quote
       description: |
         Planned and disabled until the owner approves implementation. The request
