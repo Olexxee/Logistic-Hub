@@ -24,6 +24,27 @@ export function isPositiveMinorAmount(value) {
   return /^(?:[1-9][0-9]{0,14})$/.test(String(value));
 }
 
+export function buildPartnerRateEligibilityWhere(booking, now = new Date()) {
+  return {
+    isActive: true,
+    originServiceZoneId: booking.pickupServiceZoneId,
+    destinationServiceZoneId: booking.destinationServiceZoneId,
+    serviceType: "PARCEL_DELIVERY",
+    parcelCategory: booking.parcelCategory,
+    rateCard: {
+      status: "ACTIVE",
+      effectiveFrom: { lte: now },
+      AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
+      agreement: {
+        status: "ACTIVE",
+        effectiveFrom: { lte: now },
+        partner: { status: "ACTIVE", verificationStatus: "VERIFIED" },
+        AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
+      },
+    },
+  };
+}
+
 function invalid(res, issues) {
   return res.status(400).json({ success: false, error: {
     code: "VALIDATION_ERROR", message: "One or more fields are invalid.",
@@ -74,20 +95,8 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
         if (input.partnerRateId) {
           rate = await tx.partnerRate.findFirst({
             where: {
-              id: input.partnerRateId, isActive: true,
-              originServiceZoneId: booking.pickupServiceZoneId,
-              destinationServiceZoneId: booking.destinationServiceZoneId,
-              serviceType: "PARCEL_DELIVERY",
-              parcelCategory: booking.parcelCategory,
-              rateCard: {
-                status: "ACTIVE", effectiveFrom: { lte: new Date() },
-                AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: new Date() } }] }],
-                agreement: {
-                  status: "ACTIVE", effectiveFrom: { lte: new Date() },
-                  partner: { status: "ACTIVE", verificationStatus: "VERIFIED" },
-                  AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: new Date() } }] }],
-                },
-              },
+              id: input.partnerRateId,
+              ...buildPartnerRateEligibilityWhere(booking),
             },
             include: { rateCard: { include: { agreement: true } } },
           });
