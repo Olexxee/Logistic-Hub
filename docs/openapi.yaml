@@ -1741,6 +1741,201 @@ paths:
         '200': { description: Cancellation applied or routed for review. }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Booking state prevents cancellation. }
+  /admin/transport-partners:
+    get:
+      tags: [Admin]
+      operationId: listTransportPartners
+      summary: List transport partners for administration
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Partner records and agreement counts. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin]
+      operationId: createTransportPartner
+      summary: Create a pending transport partner
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [displayName]
+              properties:
+                displayName: { type: string, minLength: 2, maxLength: 160 }
+                legalName: { type: string, maxLength: 200 }
+                contactName: { type: string, maxLength: 160 }
+                contactEmail: { type: string, format: email, maxLength: 254 }
+                contactPhone: { type: string, minLength: 7, maxLength: 32 }
+      responses:
+        '201': { description: Partner created in pending and unverified state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/transport-partners/{partnerId}/status:
+    patch:
+      tags: [Admin]
+      operationId: updateTransportPartnerStatus
+      summary: Update partner status and verification status
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: { type: string, enum: [PENDING, ACTIVE, SUSPENDED, CLOSED] }
+                verificationStatus: { type: string, enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED] }
+      responses:
+        '200': { description: Updated partner status. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Status transition is not eligible. }
+  /admin/transport-partners/{partnerId}/agreements:
+    post:
+      tags: [Admin]
+      operationId: createPartnerAgreement
+      summary: Create a draft commercial agreement for a transport partner
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reference]
+              properties:
+                reference: { type: string, minLength: 2, maxLength: 100 }
+                currency: { type: string, minLength: 3, maxLength: 3, default: NGN }
+                effectiveFrom: { type: string, format: date-time }
+                effectiveUntil: { type: string, format: date-time }
+                volumeCommitment: { type: object, additionalProperties: true }
+                serviceStandards: { type: object, additionalProperties: true }
+                custodyClaimsTerms: { type: object, additionalProperties: true }
+      responses:
+        '201': { description: Draft agreement created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/partner-agreements/{agreementId}/activate:
+    post:
+      tags: [Admin]
+      operationId: activatePartnerAgreement
+      summary: Activate a draft agreement for an active verified partner
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Agreement activated. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Agreement or partner is not eligible for activation. }
+  /admin/partner-agreements/{agreementId}/rate-cards:
+    post:
+      tags: [Admin]
+      operationId: createPartnerRateCard
+      summary: Create a versioned draft rate card under an agreement
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                currency: { type: string, minLength: 3, maxLength: 3, default: NGN }
+                effectiveFrom: { type: string, format: date-time }
+                effectiveUntil: { type: string, format: date-time }
+      responses:
+        '201': { description: Versioned draft rate card created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Agreement status does not allow rate-card creation. }
+  /admin/partner-rate-cards/{rateCardId}/rates:
+    post:
+      tags: [Admin]
+      operationId: addPartnerRate
+      summary: Add a route-specific transport rate to a draft rate card
+      description: Only active service zones and positive integer minor-unit charges are accepted.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rateCardId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [originServiceZoneId, destinationServiceZoneId, parcelCategory, transportChargeMinor]
+              properties:
+                originServiceZoneId: { type: string, minLength: 1, maxLength: 128 }
+                destinationServiceZoneId: { type: string, minLength: 1, maxLength: 128 }
+                serviceType: { $ref: '#/components/schemas/ServiceType', default: PARCEL_DELIVERY }
+                parcelCategory: { type: string, minLength: 2, maxLength: 80 }
+                minWeightGrams: { type: integer, minimum: 0, default: 0 }
+                maxWeightGrams: { type: integer, minimum: 1 }
+                maxLengthMm: { type: integer, minimum: 1 }
+                maxWidthMm: { type: integer, minimum: 1 }
+                maxHeightMm: { type: integer, minimum: 1 }
+                transportChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                estimatedTransitMinutes: { type: integer, minimum: 1 }
+      responses:
+        '201': { description: Route rate added to the draft rate card. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Rate card is not a draft or a route zone is inactive. }
   /admin/partner-rate-cards/{rateCardId}/publish:
     post:
       tags: [Admin]
