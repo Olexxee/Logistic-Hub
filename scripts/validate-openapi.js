@@ -42,6 +42,7 @@ const implementedOperations = new Set([
   "GET /parcel-bookings",
   "POST /parcel-bookings",
   "GET /parcel-bookings/{bookingId}",
+  "POST /admin/partner-rate-cards/{rateCardId}/publish",
   "POST /admin/parcel-bookings/{bookingId}/quotes",
   "GET /parcel-bookings/{bookingId}/quotes",
   "POST /parcel-bookings/{bookingId}/quotes/{quoteId}/accept",
