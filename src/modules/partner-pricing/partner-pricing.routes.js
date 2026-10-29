@@ -78,6 +78,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
               originServiceZoneId: booking.pickupServiceZoneId,
               destinationServiceZoneId: booking.destinationServiceZoneId,
               serviceType: "PARCEL_DELIVERY",
+              parcelCategory: booking.parcelCategory,
               rateCard: {
                 status: "ACTIVE", effectiveFrom: { lte: new Date() },
                 AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: new Date() } }] }],
