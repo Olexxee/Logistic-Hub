@@ -82,7 +82,7 @@ export function createRideDispatchService({ prismaClient, clock = () => new Date
       return offers.map(serializeOffer);
     },
 
-    async listDriverOffers({ userId, cursor, limit }) {
+    async listDriverOffers({ userId }) {
       const profile = await prismaClient.driverProfile.findUnique({
         where: { userId }, select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
       });
@@ -100,14 +100,8 @@ export function createRideDispatchService({ prismaClient, clock = () => new Date
           pickupServiceZoneId: true, destinationServiceZoneId: true, vehicleType: true, currency: true,
         } } },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        take: limit + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
-      const hasMore = offers.length > limit;
-      const page = hasMore ? offers.slice(0, limit) : offers;
-      return {
-        data: page.map((offer) => ({ id: offer.id, expiresAt: offer.expiresAt, createdAt: offer.createdAt, ride: offer.rideBooking })),
-        nextCursor: hasMore ? page.at(-1)?.id ?? null : null,
-      };
+      return offers.map((offer) => ({ id: offer.id, expiresAt: offer.expiresAt, createdAt: offer.createdAt, ride: offer.rideBooking }));
     },
 
     async proposeFare({ offerId, userId, proposedFareMinor, idempotencyKey }) {
