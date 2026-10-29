@@ -155,29 +155,6 @@ enum PayoutStatus {
   REVERSED
 }
 
-enum RefundStatus {
-  REQUESTED
-  PROCESSING
-  SUCCEEDED
-  FAILED
-  REJECTED
-}
-
-enum SupportTicketStatus {
-  OPEN
-  IN_PROGRESS
-  WAITING_FOR_CUSTOMER
-  RESOLVED
-  CLOSED
-}
-
-enum SupportTicketPriority {
-  LOW
-  NORMAL
-  HIGH
-  URGENT
-}
-
 enum SettlementAccountStatus {
   PENDING
   ACTIVE
@@ -190,6 +167,35 @@ enum HubPointStatus {
   ACTIVE
   SUSPENDED
   CLOSED
+}
+
+enum PartnerStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum PartnerAgreementStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  TERMINATED
+}
+
+enum PartnerRateCardStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum ShipmentQuoteStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  SUPERSEDED
 }
 
 enum AuthTokenPurpose {
@@ -221,6 +227,7 @@ model User {
   notifications    Notification[]
   authActionTokens AuthActionToken[]
   authSessions     AuthSession[]
+  acceptedShipmentQuotes ShipmentQuote[] @relation("ShipmentQuoteAcceptedBy")
 
   @@index([role, status])
   @@map("users")
@@ -249,7 +256,10 @@ model AuthSession {
   expiresAt  DateTime
   revokedAt  DateTime?
   lastUsedAt DateTime?
+  userAgent  String?
+  ipHash     String?
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -441,6 +451,8 @@ model ServiceZone {
   destinationRideBookings  RideBooking[]         @relation("RideDestinationZone")
   hubPoints                HubPoint[]
   pricingRules             PricingRule[]
+  partnerRateOrigins       PartnerRate[] @relation("PartnerRateOriginZone")
+  partnerRateDestinations  PartnerRate[] @relation("PartnerRateDestinationZone")
 
   @@unique([stateId, code])
   @@index([stateId, isActive])
@@ -591,6 +603,7 @@ model ParcelBooking {
   payouts                DriverPayout[]
   refunds                RefundRequest[]
   supportTickets         SupportTicket[]
+  quotes                 ShipmentQuote[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
@@ -957,4 +970,136 @@ model ProviderWebhookEvent {
   @@unique([provider, providerEventId])
   @@index([provider, processedAt, receivedAt])
   @@map("provider_webhook_events")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TRANSPORT PARTNERS & CONTRACTED RATES
+// ═════════════════════════════════════════════════════════════════════════════
+
+model TransportPartner {
+  id                 String             @id @default(cuid())
+  displayName        String
+  legalName          String?
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
+  status             PartnerStatus      @default(PENDING)
+  verificationStatus VerificationStatus @default(NOT_SUBMITTED)
+  verifiedAt         DateTime?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  agreements PartnerAgreement[]
+
+  @@index([status, verificationStatus])
+  @@map("transport_partners")
+}
+
+model PartnerAgreement {
+  id                 String                 @id @default(cuid())
+  partnerId          String
+  reference          String                 @unique
+  status             PartnerAgreementStatus @default(DRAFT)
+  currency           String                 @default("NGN")
+  effectiveFrom      DateTime               @default(now())
+  effectiveUntil     DateTime?
+  volumeCommitment   Json?
+  serviceStandards   Json?
+  custodyClaimsTerms Json?
+  approvedAt         DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  partner   TransportPartner   @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  rateCards PartnerRateCard[]
+  quotes    ShipmentQuote[]
+
+  @@index([partnerId, status, effectiveFrom])
+  @@index([status, effectiveFrom, effectiveUntil])
+  @@map("partner_agreements")
+}
+
+model PartnerRateCard {
+  id             String                @id @default(cuid())
+  agreementId    String
+  version        Int
+  status         PartnerRateCardStatus @default(DRAFT)
+  currency       String                @default("NGN")
+  effectiveFrom  DateTime              @default(now())
+  effectiveUntil DateTime?
+  publishedAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  agreement PartnerAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  rates     PartnerRate[]
+
+  @@unique([agreementId, version])
+  @@index([status, effectiveFrom, effectiveUntil])
+  @@map("partner_rate_cards")
+}
+
+model PartnerRate {
+  id                      String      @id @default(cuid())
+  rateCardId              String
+  originServiceZoneId     String
+  destinationServiceZoneId String
+  serviceType             ServiceType @default(PARCEL_DELIVERY)
+  parcelCategory          String
+  minWeightGrams          Int         @default(0)
+  maxWeightGrams          Int?
+  maxLengthMm             Int?
+  maxWidthMm              Int?
+  maxHeightMm             Int?
+  transportChargeMinor    BigInt
+  estimatedTransitMinutes Int?
+  isActive                Boolean     @default(true)
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  rateCard             PartnerRateCard @relation(fields: [rateCardId], references: [id], onDelete: Restrict)
+  originServiceZone    ServiceZone     @relation("PartnerRateOriginZone", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
+  destinationServiceZone ServiceZone    @relation("PartnerRateDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
+  quotes               ShipmentQuote[]
+
+  @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, isActive], map: "partner_rates_originServiceZoneId_destinationServiceZoneId_serv")
+  @@index([rateCardId, isActive])
+  @@map("partner_rates")
+}
+
+model ShipmentQuote {
+  id                            String              @id @default(cuid())
+  parcelBookingId               String
+  version                       Int
+  status                        ShipmentQuoteStatus @default(OFFERED)
+  partnerAgreementId            String?
+  partnerRateId                 String?
+  currency                      String              @default("NGN")
+  transportChargeMinor          BigInt
+  collectionChargeMinor         BigInt              @default(0)
+  hubHandlingChargeMinor        BigInt              @default(0)
+  destinationDeliveryChargeMinor BigInt              @default(0)
+  platformChargeMinor           BigInt              @default(0)
+  otherChargesMinor             BigInt              @default(0)
+  totalCustomerChargeMinor      BigInt
+  chargeBreakdown               Json
+  inputSnapshot                 Json
+  expiresAt                     DateTime
+  offeredAt                     DateTime            @default(now())
+  acceptedAt                    DateTime?
+  acceptedByUserId              String?
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+
+  parcelBooking    ParcelBooking     @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  partnerAgreement PartnerAgreement? @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
+  partnerRate      PartnerRate?      @relation(fields: [partnerRateId], references: [id], onDelete: Restrict)
+  acceptedByUser   User?             @relation("ShipmentQuoteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([parcelBookingId, version])
+  @@index([parcelBookingId, status, expiresAt])
+  @@index([partnerAgreementId])
+  @@index([partnerRateId])
+  @@map("shipment_quotes")
 }

@@ -22,7 +22,7 @@ test("database readiness returns ready when PostgreSQL responds", async () => {
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.data.status, "ready");
-    assert.equal(body.data.dependencies.database, "ok");
+    assert.equal(body.data.dependencies.database.status, "ok");
   });
 });
 
