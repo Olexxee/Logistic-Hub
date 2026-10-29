@@ -182,6 +182,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
         await tx.parcelBooking.update({
           where: { id: booking.id },
           data: {
+            driverFareMinor: quote.transportChargeMinor,
             customerPayableMinor: quote.totalCustomerChargeMinor,
             connectionFeeMinor: quote.platformChargeMinor,
             otherChargesMinor: quote.otherChargesMinor + quote.collectionChargeMinor + quote.hubHandlingChargeMinor + quote.destinationDeliveryChargeMinor,
