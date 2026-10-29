@@ -269,8 +269,12 @@ export function createPartnerPricingRouter({
           where: { parcelBookingId: booking.id, id: { not: quote.id }, status: "OFFERED" },
           data: { status: "SUPERSEDED" },
         });
-        await tx.parcelBooking.update({
-          where: { id: booking.id },
+        const bookingUpdate = await tx.parcelBooking.updateMany({
+          where: {
+            id: booking.id,
+            senderId: req.user.id,
+            status: { in: ["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"] },
+          },
           data: {
             driverFareMinor: quote.transportChargeMinor,
             customerPayableMinor: quote.totalCustomerChargeMinor,
@@ -287,6 +291,12 @@ export function createPartnerPricingRouter({
             status: "AWAITING_PAYMENT",
           },
         });
+        if (bookingUpdate.count !== 1) {
+          const error = new Error("The booking has already moved beyond quote acceptance.");
+          error.statusCode = 409;
+          error.code = "BOOKING_NOT_QUOTABLE";
+          throw error;
+        }
         await tx.bookingEvent.create({
           data: {
             parcelBookingId: booking.id,
@@ -309,7 +319,15 @@ export function createPartnerPricingRouter({
       if (result.forbidden) return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot accept this quote." } });
       if (result.conflict) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_ACCEPTABLE", message: "This quote is no longer available or has expired." } });
       return res.status(200).json({ success: true, data: { quote: quoteView(result.quote) } });
-    } catch (error) { return next(error); }
+    } catch (error) {
+      if (error.statusCode === 409) {
+        return res.status(409).json({ success: false, error: {
+          code: error.code ?? "QUOTE_NOT_ACCEPTABLE",
+          message: error.message ?? "This quote is no longer available or has expired.",
+        } });
+      }
+      return next(error);
+    }
   });
 
   router.post("/parcel-bookings/:bookingId/quotes/:quoteId/reject", authMiddleware, async (req, res, next) => {
