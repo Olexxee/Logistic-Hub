@@ -104,6 +104,14 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     assert.equal(second.status, 201);
 
     activeUserId = sender.id;
+    await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "IN_TRANSIT" } });
+    const blockedLateAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    assert.equal(blockedLateAcceptance.status, 409);
+    assert.equal(blockedLateAcceptance.json.error.code, "QUOTE_NOT_ACCEPTABLE");
+    const stillOffered = await prisma.shipmentQuote.findUnique({ where: { id: second.json.data.quote.id } });
+    assert.equal(stillOffered.status, "OFFERED");
+
+    await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "DRAFT" } });
     const accepted = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.json.data.quote.status, "ACCEPTED");
