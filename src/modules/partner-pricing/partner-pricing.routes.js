@@ -43,6 +43,9 @@ const agreementInput = z.object({
   message: "effectiveUntil must be later than effectiveFrom.",
   path: ["effectiveUntil"],
 });
+const agreementStatusInput = z.object({
+  status: z.enum(["ACTIVE", "SUSPENDED", "EXPIRED", "TERMINATED"]),
+}).strict();
 const rateCardInput = z.object({
   currency: z.string().trim().length(3).default("NGN"),
   effectiveFrom: z.coerce.date().optional(),
@@ -353,9 +356,6 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
       if (parsed.data.status === "ACTIVE" && nextVerification !== "VERIFIED") {
         return res.status(409).json({ success: false, error: { code: "PARTNER_NOT_VERIFIED", message: "A partner must be verified before activation." } });
       }
-      if (nextVerification === "VERIFIED" && parsed.data.status !== "ACTIVE" && currentPartner.status !== "ACTIVE") {
-        return res.status(409).json({ success: false, error: { code: "PARTNER_NOT_ACTIVE", message: "Activate the partner in a separate step after verification." } });
-      }
       const partner = await prismaClient.transportPartner.update({
         where: { id: parsedId.data },
         data: {
@@ -434,6 +434,30 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
         return res.status(409).json({ success: false, error: { code, message } });
       }
       return res.status(200).json({ success: true, data: { agreement: result.agreement } });
+    } catch (error) { return next(error); }
+  });
+
+  router.patch("/admin/partner-agreements/:agreementId/status", requireAuth, admin, async (req, res, next) => {
+    const parsedId = id.safeParse(req.params.agreementId);
+    const parsed = agreementStatusInput.safeParse(req.body);
+    if (!parsedId.success || !parsed.success) {
+      return invalid(res, [...(parsedId.success ? [] : parsedId.error.issues), ...(parsed.success ? [] : parsed.error.issues)]);
+    }
+    try {
+      const agreement = await prismaClient.partnerAgreement.findUnique({
+        where: { id: parsedId.data }, include: { partner: true },
+      });
+      if (!agreement) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Partner agreement not found." } });
+      if (agreement.status === "TERMINATED" || agreement.status === "EXPIRED") {
+        return res.status(409).json({ success: false, error: { code: "AGREEMENT_TERMINAL", message: "Expired or terminated agreements cannot be changed." } });
+      }
+      if (parsed.data.status === "ACTIVE") {
+        return res.status(409).json({ success: false, error: { code: "USE_ACTIVATION_ENDPOINT", message: "Use the agreement activation endpoint to enforce partner and effective-date checks." } });
+      }
+      const updated = await prismaClient.partnerAgreement.update({
+        where: { id: agreement.id }, data: { status: parsed.data.status },
+      });
+      return res.status(200).json({ success: true, data: { agreement: updated } });
     } catch (error) { return next(error); }
   });
 
