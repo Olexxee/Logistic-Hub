@@ -116,6 +116,15 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
       where: { parcelBookingId: booking.id, eventType: "SHIPMENT_QUOTE_REJECTED" },
     });
     assert.equal(persistedEvent.metadata.reason, "Customer declines this price");
+    const acceptedEvent = await prisma.bookingEvent.findFirst({
+      where: { parcelBookingId: booking.id, eventType: "SHIPMENT_QUOTE_ACCEPTED" },
+    });
+    assert.ok(acceptedEvent);
+    assert.equal(acceptedEvent.actorUserId, sender.id);
+    assert.equal(acceptedEvent.fromStatus, "DRAFT");
+    assert.equal(acceptedEvent.toStatus, "AWAITING_PAYMENT");
+    assert.equal(acceptedEvent.metadata.quoteId, second.json.data.quote.id);
+    assert.equal(acceptedEvent.metadata.totalCustomerChargeMinor, "1500");
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
     if (booking) {
