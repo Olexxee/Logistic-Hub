@@ -1063,7 +1063,7 @@ model PartnerRate {
   destinationServiceZone ServiceZone    @relation("PartnerRateDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   quotes               ShipmentQuote[]
 
-  @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, isActive])
+  @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, isActive], map: "partner_rates_originServiceZoneId_destinationServiceZoneId_serv")
   @@index([rateCardId, isActive])
   @@map("partner_rates")
 }
