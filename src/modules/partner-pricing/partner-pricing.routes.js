@@ -45,6 +45,23 @@ export function buildPartnerRateEligibilityWhere(booking, now = new Date()) {
   };
 }
 
+export function getRateCardPublishBlocker(card, now = new Date()) {
+  if (card.status !== "DRAFT") return "NOT_DRAFT";
+  const agreement = card.agreement;
+  if (
+    agreement.status !== "ACTIVE" ||
+    agreement.effectiveFrom > now ||
+    (agreement.effectiveUntil && agreement.effectiveUntil <= now) ||
+    agreement.partner.status !== "ACTIVE" ||
+    agreement.partner.verificationStatus !== "VERIFIED"
+  ) return "PARTNER_AGREEMENT_INELIGIBLE";
+  if (card.effectiveFrom > now || (card.effectiveUntil && card.effectiveUntil <= now)) {
+    return "OUTSIDE_EFFECTIVE_DATES";
+  }
+  if (card.rates.length === 0) return "NO_ACTIVE_RATES";
+  return null;
+}
+
 function invalid(res, issues) {
   return res.status(400).json({ success: false, error: {
     code: "VALIDATION_ERROR", message: "One or more fields are invalid.",
@@ -270,18 +287,8 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
           include: { agreement: { include: { partner: true } }, rates: { where: { isActive: true } } },
         });
         if (!card) return { notFound: true };
-        if (card.status !== "DRAFT") return { conflict: "Only draft rate cards can be published." };
-        if (
-          card.agreement.status !== "ACTIVE" ||
-          card.agreement.effectiveFrom > now ||
-          (card.agreement.effectiveUntil && card.agreement.effectiveUntil <= now) ||
-          card.agreement.partner.status !== "ACTIVE" ||
-          card.agreement.partner.verificationStatus !== "VERIFIED"
-        ) return { ineligible: true };
-        if (card.effectiveFrom > now || (card.effectiveUntil && card.effectiveUntil <= now)) {
-          return { invalidDates: true };
-        }
-        if (card.rates.length === 0) return { empty: true };
+        const blocker = getRateCardPublishBlocker(card, now);
+        if (blocker) return { blocker };
 
         await tx.partnerRateCard.updateMany({
           where: { agreementId: card.agreementId, status: "ACTIVE", id: { not: card.id } },
@@ -298,10 +305,16 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
         return { card: published };
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Partner rate card not found." } });
-      if (result.conflict) return res.status(409).json({ success: false, error: { code: "RATE_CARD_NOT_DRAFT", message: result.conflict } });
-      if (result.ineligible) return res.status(409).json({ success: false, error: { code: "PARTNER_AGREEMENT_INELIGIBLE", message: "The partner must be active and verified, and the agreement must be active and in date." } });
-      if (result.invalidDates) return res.status(409).json({ success: false, error: { code: "RATE_CARD_OUTSIDE_EFFECTIVE_DATES", message: "The rate card is not currently within its effective dates." } });
-      if (result.empty) return res.status(409).json({ success: false, error: { code: "RATE_CARD_HAS_NO_ACTIVE_RATES", message: "Add at least one active rate before publishing this rate card." } });
+      const publishErrors = {
+        NOT_DRAFT: ["RATE_CARD_NOT_DRAFT", "Only draft rate cards can be published."],
+        PARTNER_AGREEMENT_INELIGIBLE: ["PARTNER_AGREEMENT_INELIGIBLE", "The partner must be active and verified, and the agreement must be active and in date."],
+        OUTSIDE_EFFECTIVE_DATES: ["RATE_CARD_OUTSIDE_EFFECTIVE_DATES", "The rate card is not currently within its effective dates."],
+        NO_ACTIVE_RATES: ["RATE_CARD_HAS_NO_ACTIVE_RATES", "Add at least one active rate before publishing this rate card."],
+      };
+      if (result.blocker) {
+        const [code, message] = publishErrors[result.blocker];
+        return res.status(409).json({ success: false, error: { code, message } });
+      }
       return res.status(200).json({ success: true, data: { rateCard: result.card } });
     } catch (error) { return next(error); }
   });
