@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { idempotencyKeySchema } from "../parcels/parcel-bookings.schemas.js";
-import { acceptFareSchema, listDriverOffersQuerySchema, proposeFareSchema } from "../dispatch/dispatch.schemas.js";
+import { acceptFareSchema, proposeFareSchema } from "../dispatch/dispatch.schemas.js";
 import { createRideDispatchService } from "./ride-dispatch.service.js";
 import { createNotificationsService } from "../notifications/notifications.service.js";
 
@@ -65,11 +65,9 @@ export function createRideDispatchRouter({ prismaClient = prisma } = {}) {
   });
 
   router.get("/driver/ride-offers", requireAuth, requireDriver, async (req, res, next) => {
-    const query = listDriverOffersQuerySchema.safeParse(req.query);
-    if (!query.success) return validationError(res, query.error.issues);
     try {
-      const result = await service.listDriverOffers({ userId: req.user.id, ...query.data });
-      return res.status(200).json({ success: true, data: result.data, page: { nextCursor: result.nextCursor } });
+      const offers = await service.listDriverOffers({ userId: req.user.id });
+      return res.status(200).json({ success: true, data: offers });
     } catch (error) { return next(error); }
   });
 

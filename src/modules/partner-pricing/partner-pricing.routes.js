@@ -160,8 +160,8 @@ export function createPartnerPricingRouter({
       const result = await prismaClient.$transaction(async (tx) => {
         const booking = await tx.parcelBooking.findUnique({ where: { id: parsedId.data } });
         if (!booking) return { notFound: true };
-        if (["COMPLETED", "CANCELLED", "FAILED"].includes(booking.status)) {
-          return { conflict: "A quote cannot be issued for a terminal booking." };
+        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
+          return { conflict: "A quote can only be issued before payment or dispatch has started." };
         }
         let rate = null;
         if (input.partnerRateId) {
@@ -248,6 +248,9 @@ export function createPartnerPricingRouter({
         const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId.data } });
         if (!booking) return { notFound: true };
         if (booking.senderId !== req.user.id) return { forbidden: true };
+        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
+          return { conflict: true };
+        }
         const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
         if (!quote) return { quoteNotFound: true };
         const now = new Date();
@@ -266,8 +269,12 @@ export function createPartnerPricingRouter({
           where: { parcelBookingId: booking.id, id: { not: quote.id }, status: "OFFERED" },
           data: { status: "SUPERSEDED" },
         });
-        await tx.parcelBooking.update({
-          where: { id: booking.id },
+        const bookingUpdate = await tx.parcelBooking.updateMany({
+          where: {
+            id: booking.id,
+            senderId: req.user.id,
+            status: { in: ["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"] },
+          },
           data: {
             driverFareMinor: quote.transportChargeMinor,
             customerPayableMinor: quote.totalCustomerChargeMinor,
@@ -284,6 +291,27 @@ export function createPartnerPricingRouter({
             status: "AWAITING_PAYMENT",
           },
         });
+        if (bookingUpdate.count !== 1) {
+          const error = new Error("The booking has already moved beyond quote acceptance.");
+          error.statusCode = 409;
+          error.code = "BOOKING_NOT_QUOTABLE";
+          throw error;
+        }
+        await tx.bookingEvent.create({
+          data: {
+            parcelBookingId: booking.id,
+            actorUserId: req.user.id,
+            eventType: "SHIPMENT_QUOTE_ACCEPTED",
+            fromStatus: booking.status,
+            toStatus: "AWAITING_PAYMENT",
+            metadata: {
+              quoteId: quote.id,
+              quoteVersion: quote.version,
+              totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
+              currency: quote.currency,
+            },
+          },
+        });
         return { quote: await tx.shipmentQuote.findUnique({ where: { id: quote.id } }) };
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
@@ -291,7 +319,15 @@ export function createPartnerPricingRouter({
       if (result.forbidden) return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot accept this quote." } });
       if (result.conflict) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_ACCEPTABLE", message: "This quote is no longer available or has expired." } });
       return res.status(200).json({ success: true, data: { quote: quoteView(result.quote) } });
-    } catch (error) { return next(error); }
+    } catch (error) {
+      if (error.statusCode === 409) {
+        return res.status(409).json({ success: false, error: {
+          code: error.code ?? "QUOTE_NOT_ACCEPTABLE",
+          message: error.message ?? "This quote is no longer available or has expired.",
+        } });
+      }
+      return next(error);
+    }
   });
 
   router.post("/parcel-bookings/:bookingId/quotes/:quoteId/reject", authMiddleware, async (req, res, next) => {
