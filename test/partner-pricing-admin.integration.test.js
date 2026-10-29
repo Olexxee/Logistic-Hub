@@ -19,6 +19,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
   let country;
   let state;
   let zone;
+  let destinationZone;
   let partner;
   let agreement;
   let rateCard;
@@ -28,6 +29,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     country = await prisma.country.create({ data: { code: `T${tag}`, name: `Admin Test Country ${tag}` } });
     state = await prisma.state.create({ data: { countryId: country.id, code: `S${tag}`, name: `Admin Test State ${tag}` } });
     zone = await prisma.serviceZone.create({ data: { stateId: state.id, code: `Z${tag}`, name: `Admin Test Zone ${tag}`, isActive: true } });
+    destinationZone = await prisma.serviceZone.create({ data: { stateId: state.id, code: `D${tag}`, name: `Admin Test Destination Zone ${tag}`, isActive: true } });
 
     const app = express();
     app.use(express.json());
@@ -110,7 +112,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
       method: "POST",
       body: {
         originServiceZoneId: zone.id,
-        destinationServiceZoneId: zone.id,
+        destinationServiceZoneId: destinationZone.id,
         serviceType: "PARCEL_DELIVERY",
         parcelCategory: "BOX",
         minWeightGrams: 0,
@@ -145,6 +147,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     if (rateCard) await prisma.partnerRateCard.deleteMany({ where: { id: rateCard.id } });
     if (agreement) await prisma.partnerAgreement.deleteMany({ where: { id: agreement.id } });
     if (partner) await prisma.transportPartner.deleteMany({ where: { id: partner.id } });
+    if (destinationZone) await prisma.serviceZone.deleteMany({ where: { id: destinationZone.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
     if (state) await prisma.state.deleteMany({ where: { id: state.id } });
     if (country) await prisma.country.deleteMany({ where: { id: country.id } });
