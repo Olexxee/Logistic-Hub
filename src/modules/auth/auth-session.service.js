@@ -1,11 +1,10 @@
 import { createOpaqueToken, hashOpaqueToken, signAccessToken } from "./auth.crypto.js";
-import { UnauthorizedError } from "../../shared/http/app-error.js";
+import { AuthenticationError } from "../../shared/http/app-error.js";
 import { createAuthSessionRepository } from "./auth-session.repository.js";
 
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-export function createAuthSessionService({ prismaClient, secret, clock = () => new Date() }) {
-  const repository = createAuthSessionRepository({ prismaClient });
+export function createAuthSessionService({ prismaClient, repository = createAuthSessionRepository({ prismaClient }), secret, clock = () => new Date() }) {
 
   async function issue(user, metadata = {}) {
     const refreshToken = createOpaqueToken();
@@ -29,16 +28,16 @@ export function createAuthSessionService({ prismaClient, secret, clock = () => n
 
   async function refresh(rawToken) {
     if (typeof rawToken !== "string" || !/^[a-f0-9]{64}$/i.test(rawToken)) {
-      throw new UnauthorizedError("The refresh token is invalid or expired.");
+      throw new AuthenticationError("The refresh token is invalid or expired.", "UNAUTHORIZED");
     }
     const now = clock();
     const oldHash = hashOpaqueToken(rawToken);
     const session = await repository.findActiveByRefreshHash(oldHash, now);
-    if (!session) throw new UnauthorizedError("The refresh token is invalid or expired.");
+    if (!session) throw new AuthenticationError("The refresh token is invalid or expired.", "UNAUTHORIZED");
     const user = await repository.findUserForSession(session.userId);
     if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) {
       await repository.revoke({ id: session.id, userId: session.userId, now });
-      throw new UnauthorizedError("The account is not active.");
+      throw new AuthenticationError("The account is not active.", "UNAUTHORIZED");
     }
     const newRaw = createOpaqueToken();
     const expiresAt = new Date(now.getTime() + REFRESH_TTL_MS);
@@ -49,7 +48,7 @@ export function createAuthSessionService({ prismaClient, secret, clock = () => n
       expiresAt,
       now,
     });
-    if (rotated.count !== 1) throw new UnauthorizedError("The refresh token has already been used.");
+    if (rotated.count !== 1) throw new AuthenticationError("The refresh token has already been used.", "UNAUTHORIZED");
     const access = signAccessToken({ userId: user.id, role: user.role, sessionId: session.id, secret });
     return {
       accessToken: access.token,
