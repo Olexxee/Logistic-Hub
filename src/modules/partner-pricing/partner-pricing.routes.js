@@ -20,6 +20,10 @@ const quoteInput = z.object({
 });
 const rejectionInput = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
 
+export function isPositiveMinorAmount(value) {
+  return /^(?:[1-9][0-9]{0,14})$/.test(String(value));
+}
+
 function invalid(res, issues) {
   return res.status(400).json({ success: false, error: {
     code: "VALIDATION_ERROR", message: "One or more fields are invalid.",
@@ -94,7 +98,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
         const destination = BigInt(input.destinationDeliveryChargeMinor);
         const platform = BigInt(input.platformChargeMinor);
         const other = BigInt(input.otherChargesMinor);
-        if (transport <= 0n) return { invalidTransport: true };
+        if (!isPositiveMinorAmount(transport)) return { invalidTransport: true };
         const total = transport + collection + handling + destination + platform + other;
         const previous = await tx.shipmentQuote.findFirst({
           where: { parcelBookingId: booking.id }, orderBy: { version: "desc" }, select: { version: true },
