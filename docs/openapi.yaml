@@ -624,6 +624,62 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
   /parcel-bookings:
+    get:
+      tags: [Parcel bookings]
+      operationId: listParcelBookings
+      summary: List parcel bookings visible to the authenticated user
+      description: |
+        Customers receive only their own bookings. Admin and support roles may list
+        all bookings. Results are ordered newest first and paginated; the optional
+        status filter is applied server-side.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
+      responses:
+        '200':
+          description: Page of bookings visible to the caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items, pagination]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ParcelBookingCreated'
+                      pagination:
+                        type: object
+                        required: [page, limit, total, totalPages]
+                        properties:
+                          page: { type: integer, minimum: 1 }
+                          limit: { type: integer, minimum: 1, maximum: 100 }
+                          total: { type: integer, minimum: 0 }
+                          totalPages: { type: integer, minimum: 0 }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [Parcel bookings]
       operationId: createParcelBooking
