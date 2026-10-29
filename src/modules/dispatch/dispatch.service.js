@@ -60,6 +60,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             status: "MATCHING",
             offersCreated,
             offersExpireAt: latest._max.expiresAt,
+            replay: true,
           };
         }
         if (booking.status !== "DRAFT") {
@@ -237,6 +238,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             proposedFareMinor: offer.proposedFareMinor?.toString() ?? proposedFareMinor,
             currency: offer.currency,
             status: offer.status,
+            replay: true,
           };
         }
         if (offer.proposedFareMinor != null) {
