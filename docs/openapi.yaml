@@ -1423,7 +1423,7 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Assignment is not awaiting verification or the code is invalid, expired, or already consumed. }
+        '409': { description: "Assignment is not awaiting verification or the code is invalid, expired, or already consumed." }
   /assignments/{assignmentId}/start-transit:
     post:
       tags: [Assignments]
