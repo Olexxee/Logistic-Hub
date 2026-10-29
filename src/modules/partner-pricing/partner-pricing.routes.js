@@ -160,8 +160,8 @@ export function createPartnerPricingRouter({
       const result = await prismaClient.$transaction(async (tx) => {
         const booking = await tx.parcelBooking.findUnique({ where: { id: parsedId.data } });
         if (!booking) return { notFound: true };
-        if (["COMPLETED", "CANCELLED", "FAILED"].includes(booking.status)) {
-          return { conflict: "A quote cannot be issued for a terminal booking." };
+        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
+          return { conflict: "A quote can only be issued before payment or dispatch has started." };
         }
         let rate = null;
         if (input.partnerRateId) {
@@ -248,6 +248,9 @@ export function createPartnerPricingRouter({
         const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId.data } });
         if (!booking) return { notFound: true };
         if (booking.senderId !== req.user.id) return { forbidden: true };
+        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
+          return { conflict: true };
+        }
         const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
         if (!quote) return { quoteNotFound: true };
         const now = new Date();
@@ -282,6 +285,21 @@ export function createPartnerPricingRouter({
               acceptedAt: now.toISOString(),
             },
             status: "AWAITING_PAYMENT",
+          },
+        });
+        await tx.bookingEvent.create({
+          data: {
+            parcelBookingId: booking.id,
+            actorUserId: req.user.id,
+            eventType: "SHIPMENT_QUOTE_ACCEPTED",
+            fromStatus: booking.status,
+            toStatus: "AWAITING_PAYMENT",
+            metadata: {
+              quoteId: quote.id,
+              quoteVersion: quote.version,
+              totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
+              currency: quote.currency,
+            },
           },
         });
         return { quote: await tx.shipmentQuote.findUnique({ where: { id: quote.id } }) };
