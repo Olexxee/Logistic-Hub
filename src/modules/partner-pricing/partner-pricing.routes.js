@@ -179,6 +179,23 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
           where: { parcelBookingId: booking.id, id: { not: quote.id }, status: "OFFERED" },
           data: { status: "SUPERSEDED" },
         });
+        await tx.parcelBooking.update({
+          where: { id: booking.id },
+          data: {
+            customerPayableMinor: quote.totalCustomerChargeMinor,
+            connectionFeeMinor: quote.platformChargeMinor,
+            otherChargesMinor: quote.otherChargesMinor + quote.collectionChargeMinor + quote.hubHandlingChargeMinor + quote.destinationDeliveryChargeMinor,
+            pricingSnapshot: {
+              quoteId: quote.id,
+              quoteVersion: quote.version,
+              currency: quote.currency,
+              totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
+              chargeBreakdown: quote.chargeBreakdown,
+              acceptedAt: now.toISOString(),
+            },
+            status: "AWAITING_PAYMENT",
+          },
+        });
         return { quote: await tx.shipmentQuote.findUnique({ where: { id: quote.id } }) };
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
@@ -203,7 +220,7 @@ export function createPartnerPricingRouter({ prismaClient = prisma } = {}) {
       }
       const updated = await prismaClient.shipmentQuote.updateMany({
         where: { id: quoteId.data, parcelBookingId: booking.id, status: "OFFERED", expiresAt: { gt: new Date() } },
-        data: { status: "REJECTED", chargeBreakdown: { rejectionReason: parsed.data.reason } },
+        data: { status: "REJECTED" },
       });
       if (updated.count !== 1) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_REJECTABLE", message: "Quote is no longer available." } });
       return res.status(200).json({ success: true, data: { rejected: true } });
