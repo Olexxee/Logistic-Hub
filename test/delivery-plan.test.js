@@ -58,6 +58,8 @@ function transaction({ zones, hubs }) {
 }
 
 test("cross-state quote creates ordered pickup, trunk and final-mile legs when suitable hubs exist", async () => {
+  const incompatibleHub = hub("wrong_parcel_type", "zone_ogun", 6.81, 3.51);
+  incompatibleHub.acceptedParcelTypes = ["DOCUMENT"];
   const { tx, created } = transaction({
     zones: [
       { id: "zone_lagos", stateId: "NG-LA" },
@@ -67,7 +69,7 @@ test("cross-state quote creates ordered pickup, trunk and final-mile legs when s
       hub("origin_hub_near", "zone_lagos", 6.525, 3.38),
       hub("origin_hub_far", "zone_lagos", 6.7, 3.6),
       hub("destination_hub", "zone_ogun", 6.81, 3.51),
-      hub("wrong_parcel_type", "zone_ogun", 6.81, 3.51).acceptedParcelTypes = ["DOCUMENT"],
+      incompatibleHub,
     ],
   });
   const plan = await createMultiLegPlan({
