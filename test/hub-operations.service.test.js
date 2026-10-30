@@ -361,3 +361,23 @@ test("hub cannot release a parcel without a received inventory record", async ()
   );
   assert.equal(calls.assignmentUpdates.length, 0);
 });
+
+
+test("hub dispatch release checks active membership before reading parcel state", async () => {
+  const { db } = setup({
+    hubPointOperator: {
+      findUnique: async () => ({ hubPointId: "hub-1", userId: "hub-user-1", isActive: false }),
+    },
+    deliveryLeg: {
+      findUnique: async () => { throw new Error("unauthorized caller must not read delivery leg"); },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.createHubHandover({
+      hubPointId: "hub-1", deliveryLegId: "leg-1", toPartyType: "DRIVER",
+      toPartyId: "driver-1", conditionAtRelease: "Sealed",
+    }, "hub-user-1"),
+    error => error.statusCode === 403,
+  );
+});
