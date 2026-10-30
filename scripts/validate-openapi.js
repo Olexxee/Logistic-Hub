@@ -78,6 +78,12 @@ const implementedOperations = new Set([
   "PATCH /drivers/admin/{driverProfileId}/verification",
   "PATCH /drivers/admin/vehicles/{vehicleId}/verification",
   "PUT /drivers/admin/coverage",
+  "GET /drivers/admin/drivers",
+  "GET /drivers/admin/vehicles",
+  "GET /hub-points/admin",
+  "POST /hub-points/admin",
+  "PATCH /hub-points/admin/{hubPointId}",
+  "PATCH /hub-points/admin/{hubPointId}/status",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
