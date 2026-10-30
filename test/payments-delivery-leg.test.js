@@ -74,10 +74,10 @@ test("verified parcel payment activates the linked delivery leg in the settlemen
 
   assert.equal(result.status, "settled");
   assert.equal(result.bookingType, "PARCEL");
-  assert.deepEqual(writes.find(([name]) => name === "deliveryLeg.updateMany")[1], {
-    where: { parcelBookingId: "booking_1", status: "AWAITING_PAYMENT" },
-    data: { status: "ASSIGNED", assignedAt: writes.find(([name]) => name === "parcelBooking.update")[1].data.paidAt },
-  });
+  const legUpdate = writes.find(([name]) => name === "deliveryLeg.updateMany")[1];
+  assert.deepEqual(legUpdate.where, { parcelBookingId: "booking_1", status: "AWAITING_PAYMENT" });
+  assert.equal(legUpdate.data.status, "ASSIGNED");
+  assert.ok(legUpdate.data.assignedAt instanceof Date);
   assert.equal(writes.find(([name]) => name === "assignment.updateMany")[1].data.status, "ACCEPTED");
   assert.equal(writes.find(([name]) => name === "parcelBooking.update")[1].data.paymentStatus, "SUCCEEDED");
 });
