@@ -58,7 +58,11 @@ test("driver arrival moves the linked delivery leg to pickup verification pendin
   const tx = {
     driverAssignment: {
       findUnique: async () => assignment,
-      update: async ({ data }) => ({ id: assignment.id, status: data.status, updatedAt: now }),
+      updateMany: async ({ where, data }) => {
+        assert.deepEqual(where, { id: assignment.id, status: assignment.status });
+        assert.equal(data.status, "ARRIVED_AT_PICKUP");
+        return { count: 1 };
+      },
     },
     deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
     parcelBooking: { update: async () => ({}) },
@@ -131,7 +135,11 @@ test("starting the trip records the delivery leg transit start timestamp", async
   const tx = {
     driverAssignment: {
       findUnique: async () => assignment,
-      update: async ({ data }) => ({ id: assignment.id, status: data.status, updatedAt: now }),
+      updateMany: async ({ where, data }) => {
+        assert.deepEqual(where, { id: assignment.id, status: assignment.status });
+        assert.equal(data.status, "IN_PROGRESS");
+        return { count: 1 };
+      },
     },
     deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
     parcelBooking: { update: async () => ({}) },
