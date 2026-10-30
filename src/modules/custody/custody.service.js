@@ -107,8 +107,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         await repo.createAudit({
           actorUserId, entityType: "USER_PHONE_VERIFICATION", entityId: userId,
           action: verified ? "USER_PHONE_VERIFIED_BY_ADMIN" : "USER_PHONE_VERIFICATION_REVOKED",
-          before: { phoneVerifiedAt: user.phoneVerifiedAt },
-          after: { phoneVerifiedAt, verificationMethod, reason },
+          before: { phoneVerifiedAt: user.phoneVerifiedAt?.toISOString() ?? null },
+          after: { phoneVerifiedAt: phoneVerifiedAt?.toISOString() ?? null, verificationMethod, reason },
           reason,
         }, tx);
         return { user: { id: updated.id, phoneVerifiedAt: updated.phoneVerifiedAt }, replay: false };
