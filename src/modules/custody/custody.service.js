@@ -258,6 +258,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           if (hasAnyDimension && !hasAllDimensions) {
             throw fail(409, "HUB_INTAKE_DIMENSIONS_INCOMPLETE", "Provide all three positive parcel dimensions in millimetres, or leave all dimensions blank.");
           }
+          await repo.lockHubCapacity(handover.toPartyId, tx);
           const hub = await repo.findHubIntakeConfig(handover.toPartyId, tx);
           if (!hub || hub.status !== "ACTIVE") throw fail(409, "HUB_NOT_ACTIVE", "The receiving hub is not active.");
           const acceptedTypes = Array.isArray(hub.acceptedParcelTypes) ? hub.acceptedParcelTypes : [];
@@ -265,7 +266,6 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             throw fail(409, "HUB_PARCEL_TYPE_NOT_ACCEPTED", "This hub does not accept the parcel category on this booking.");
           }
           const capacity = hub.capacityConfig && typeof hub.capacityConfig === "object" ? hub.capacityConfig : {};
-          await repo.lockHubCapacity(hub.id, tx);
           const currentCount = await repo.countReceivedHubIntakes(hub.id, tx);
           if (Number.isInteger(capacity.maxParcels) && currentCount >= capacity.maxParcels) {
             throw fail(409, "HUB_PARCEL_CAPACITY_EXCEEDED", "The hub has reached its active parcel capacity.");
