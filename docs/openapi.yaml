@@ -1532,7 +1532,7 @@ paths:
       tags: [Payments]
       operationId: initializePaystackPayment
       summary: Initialize a server-calculated payment after fare acceptance
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1665,7 +1665,7 @@ paths:
       responses:
         '200': { description: All sessions revoked. }
         '401': { $ref: '#/components/responses/Unauthorized' }
-  /assignments/{assignmentId}/verification-code:
+  /assignments/{assignmentId}/verification-codes:
     post:
       tags: [Assignments]
       operationId: issueAssignmentVerificationCode
@@ -1683,7 +1683,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment is not at a verification stage. }
-  /assignments/{assignmentId}/arrived-at-pickup:
+  /assignments/{assignmentId}/arrived:
     post:
       tags: [Assignments]
       operationId: markAssignmentArrivedAtPickup
@@ -1701,7 +1701,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment or payment state conflict. }
-  /assignments/{assignmentId}/verify-code:
+  /assignments/{assignmentId}/verify:
     post:
       tags: [Assignments]
       operationId: verifyAssignmentCode
@@ -1730,7 +1730,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: "Assignment is not awaiting verification or the code is invalid, expired, or already consumed." }
-  /assignments/{assignmentId}/start-transit:
+  /assignments/{assignmentId}/start:
     post:
       tags: [Assignments]
       operationId: startParcelTransit
@@ -1748,7 +1748,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment is not ready for transit. }
-  /assignments/{assignmentId}/arrived-at-destination:
+  /assignments/{assignmentId}/destination-arrived:
     post:
       tags: [Assignments]
       operationId: markAssignmentArrivedAtDestination
@@ -1766,7 +1766,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment state conflict. }
-  /assignments/{assignmentId}/driver-location:
+  /assignments/{assignmentId}/location:
     get:
       tags: [Assignments]
       operationId: getAssignmentDriverLocation
@@ -1784,12 +1784,12 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: No recent location is available. }
-  /payments/webhook:
+  /payments/webhook/paystack:
     post:
       tags: [Webhooks]
       operationId: receivePaystackPaymentWebhook
       summary: Verify and process Paystack charge, refund and transfer events
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security: []
       parameters:
         - in: header
@@ -1810,7 +1810,7 @@ paths:
       tags: [Payments]
       operationId: requestBookingRefund
       summary: Request a refund for a booking awaiting cancellation review
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1837,7 +1837,7 @@ paths:
       tags: [Payments]
       operationId: listRefundRequests
       summary: List refund requests for support and finance operators
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       responses:
@@ -1848,7 +1848,7 @@ paths:
       tags: [Payments]
       operationId: processRefundRequest
       summary: Initiate a Paystack refund for an approved request
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1866,7 +1866,7 @@ paths:
       tags: [Payments]
       operationId: requestDriverPayout
       summary: Request payout for a completed booking using a verified recipient
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1892,7 +1892,7 @@ paths:
       tags: [Payments]
       operationId: listDriverPayouts
       summary: List driver payouts for support and finance operators
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       responses:
@@ -1903,7 +1903,7 @@ paths:
       tags: [Payments]
       operationId: reconcilePaystackPayment
       summary: Compare a local payment attempt with Paystack's verified transaction
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1921,7 +1921,7 @@ paths:
       tags: [Payments]
       operationId: reconcilePaystackPayout
       summary: Compare a local payout with Paystack's verified transfer
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -2030,7 +2030,7 @@ paths:
       tags: [Support]
       operationId: requestParcelCancellation
       summary: Cancel an eligible unpaid parcel or request post-payment review
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
