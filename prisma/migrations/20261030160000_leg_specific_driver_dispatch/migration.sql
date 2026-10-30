@@ -8,12 +8,12 @@ ALTER TABLE "delivery_legs"
   ADD COLUMN "fareAcceptancePayloadHash" TEXT;
 
 ALTER TABLE "driver_offers"
-  ADD CONSTRAINT "driver_offers_delivery_leg_id_fkey"
+  ADD CONSTRAINT "driver_offers_deliveryLegId_fkey"
   FOREIGN KEY ("deliveryLegId") REFERENCES "delivery_legs"("id")
   ON DELETE CASCADE ON UPDATE CASCADE;
 
-CREATE INDEX "driver_offers_delivery_leg_id_status_expires_at_idx"
+CREATE INDEX "driver_offers_deliveryLegId_status_expiresAt_idx"
   ON "driver_offers"("deliveryLegId", "status", "expiresAt");
 
-CREATE UNIQUE INDEX "delivery_legs_fare_acceptance_idempotency_key_key"
+CREATE UNIQUE INDEX "delivery_legs_fareAcceptanceIdempotencyKey_key"
   ON "delivery_legs"("fareAcceptanceIdempotencyKey");
