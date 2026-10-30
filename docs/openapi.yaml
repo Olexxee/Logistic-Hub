@@ -2713,7 +2713,7 @@ paths:
         '401': { description: Authentication required. }
         '403': { description: Administrator access required. }
         '404': { description: Delivery leg not found. }
-        '409': { description: Leg, payment or partner agreement is not eligible. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /partner/assignments:
     get:
       tags: [Partner execution]
@@ -2827,7 +2827,7 @@ paths:
       security: [{ bearerAuth: [] }]
       x-implementation-status: implemented
       responses:
-        '200': { description: Recent handovers for the authenticated sender, driver, hub operator or partner member. }
+        '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /custody/handovers:
     post:
@@ -2872,7 +2872,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Delivery leg or booking not found. }
-        '409': { description: Payment, leg state, party eligibility or existing pending handover prevents initiation. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /custody/handovers/{handoverId}/decision:
     post:
       tags: [Delivery legs]
@@ -2911,7 +2911,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Handover not found. }
-        '409': { description: Handover is expired, already decided, or recipient verification is unavailable. }
+        '409': { $ref: '#/components/responses/Conflict' }
 
 
   /admin/operational-cases:
@@ -2928,7 +2928,7 @@ paths:
         - { name: cursor, in: query, schema: { type: string } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
       responses:
-        '200': { description: Operational cases ordered by priority and age, with a cursor for the next page. }
+        '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2961,7 +2961,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Operational case not found. }
-        '409': { description: Invalid state transition, missing resolution, or ineligible assignee. }
+        '409': { $ref: '#/components/responses/Conflict' }
 
 components:
   securitySchemes:
@@ -3011,6 +3011,19 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: The request conflicts with the current resource state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Success:
+      description: The request completed successfully.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
     RateLimited:
       description: Rate limit exceeded.
       content:
