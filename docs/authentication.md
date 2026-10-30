@@ -18,7 +18,7 @@
 - Email-action tokens are cryptographically random, stored as SHA-256 hashes, purpose-scoped and expiring. Tokens are consumed atomically to prevent replay.
 - Access tokens are HS256-signed with a server-side secret, carry the session ID, and expire after 15 minutes. Protected requests re-check account status and session revocation against the database.
 - Refresh tokens are cryptographically random, stored only as SHA-256 hashes, expire after 30 days, and rotate atomically on use. Reuse of a rotated token is rejected.
-- The refresh token is sent only through an HttpOnly cookie (`__Host-lh_refresh` in production); it is never included in JSON responses. The cookie is Secure, host-only, Path=/, SameSite=None in production, and SameSite=Lax in local development.
+- The refresh token is sent only through an HttpOnly cookie (`__Host-lh_refresh` in production); it is never included in JSON responses. The cookie is Secure, host-only, Path=/, SameSite=Lax in all environments.
 - Login, refresh, and logout browser requests require an allowlisted Origin and the `X-Auth-CSRF: 1` custom header. CORS allows credentials only for configured `CORS_ORIGINS`.
 - Password reset revokes every active session and consumes outstanding password-reset tokens.
 - New accounts are always created as CUSTOMER/PENDING. Clients cannot choose roles or status.
