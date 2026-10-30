@@ -469,6 +469,26 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       return { items, nextCursor: hasMore ? items.at(-1).id : null };
     },
 
+    async createDriverHubHandover({ assignmentId, conditionAtRelease, evidence }, userId) {
+      const assignment = await repo.findDriverAssignmentForCustody(assignmentId);
+      if (!assignment) return { notFound: true };
+      if (assignment.driverProfile.userId !== userId) throw forbidden();
+      if (assignment.status !== "ARRIVED_AT_DESTINATION") return { blocker: "DRIVER_NOT_ARRIVED_AT_HUB" };
+      const hubPointId = assignment.deliveryLeg?.destinationHubPointId;
+      if (!hubPointId) return { blocker: "DELIVERY_LEG_HAS_NO_DESTINATION_HUB" };
+      return this.createHandover({
+        parcelBookingId: assignment.parcelBookingId,
+        deliveryLegId: assignment.deliveryLegId,
+        hubPointId,
+        fromPartyType: "DRIVER",
+        fromPartyId: assignment.driverProfileId,
+        toPartyType: "HUB",
+        toPartyId: hubPointId,
+        conditionAtRelease,
+        evidence,
+      }, userId);
+    },
+
     async createHubHandover({ hubPointId, deliveryLegId, toPartyType, toPartyId, conditionAtRelease, evidence }, userId) {
       const leg = await repo.findBookingLeg(deliveryLegId);
       if (!leg) return { notFound: true };
