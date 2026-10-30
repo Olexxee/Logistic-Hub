@@ -61,7 +61,7 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
         updateMany: async () => ({ count: 1 }),
       },
       serviceZone: {
-        findMany: async (query) => { zoneQuery = query; return [{ id: "zone_pickup" }, { id: "zone_destination" }]; },
+        findMany: async (query) => { zoneQuery = query; return [{ id: "zone_pickup", stateId: "lagos" }, { id: "zone_destination", stateId: "lagos" }]; },
       },
       driverProfile: {
         findMany: async (query) => {
@@ -94,6 +94,7 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
   assert.deepEqual(createdOffers.map((offer) => offer.driverProfileId), ["nearby"]);
   assert.equal(result.offersCreated, 1);
   assert.deepEqual(zoneQuery.where.id.in, ["zone_pickup", "zone_destination"]);
+  assert.deepEqual(zoneQuery.select, { id: true, stateId: true });
   assert.equal(zoneQuery.where.availability.some.serviceType, "PARCEL_DELIVERY");
   assert.equal(zoneQuery.where.availability.some.isEnabled, true);
   assert.deepEqual(driverQuery.where.lastLocationAt, {
@@ -105,6 +106,36 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
     take: 1,
     select: { latitude: true, longitude: true, recordedAt: true },
   });
+});
+
+test("cross-state parcel routes cannot enter direct local-driver matching", async () => {
+  const booking = {
+    id: "booking_cross_state",
+    senderId: "sender_cross_state",
+    status: "DRAFT",
+    currency: "NGN",
+    pickupServiceZoneId: "lagos_zone",
+    destinationServiceZoneId: "ogun_zone",
+    pickupLatitude: 6.5244,
+    pickupLongitude: 3.3792,
+  };
+  const prismaClient = {
+    $transaction: (callback) => callback({
+      parcelBooking: { findUnique: async () => booking },
+      serviceZone: {
+        findMany: async () => [
+          { id: "lagos_zone", stateId: "NG-LA" },
+          { id: "ogun_zone", stateId: "NG-OG" },
+        ],
+      },
+      driverProfile: { findMany: async () => { throw new Error("Driver matching must not run for cross-state routes."); } },
+    }),
+  };
+  const service = createDispatchService({ prismaClient, clock: () => now });
+  await assert.rejects(
+    service.requestParcelMatching({ bookingId: booking.id, user: { id: booking.senderId, role: "CUSTOMER" } }),
+    (error) => error.code === "PARTNER_QUOTE_REQUIRED" && error.statusCode === 409,
+  );
 });
 
 test("driver offer cards expose service-zone names, not precise pickup or destination addresses", async () => {
