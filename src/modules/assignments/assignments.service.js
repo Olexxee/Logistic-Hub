@@ -4,6 +4,60 @@ import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/
 export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
  const repository=createAssignmentsRepository(prismaClient);
  return {
+  async listMine({userId,page=1,limit=20}){
+   const result=await repository.listDriverAssignments({userId,skip:(page-1)*limit,take:limit});
+   return {
+    items:result.items.map(assignment=>({
+     id:assignment.id,
+     status:assignment.status,
+     agreedFareMinor:assignment.agreedFareMinor.toString(),
+     currency:assignment.currency,
+     acceptedAt:assignment.acceptedAt,
+     pickupAt:assignment.pickupAt,
+     startedAt:assignment.startedAt,
+     completedAt:assignment.completedAt,
+     failureReason:assignment.failureReason,
+     createdAt:assignment.createdAt,
+     updatedAt:assignment.updatedAt,
+     booking:{
+      id:assignment.parcelBooking.id,
+      publicReference:assignment.parcelBooking.publicReference,
+      status:assignment.parcelBooking.status,
+      paymentStatus:assignment.parcelBooking.paymentStatus,
+      pickupAddress:assignment.parcelBooking.pickupAddress,
+      pickupInstructions:assignment.parcelBooking.pickupInstructions,
+      destinationAddress:assignment.parcelBooking.destinationAddress,
+      recipientName:assignment.parcelBooking.recipientName,
+      recipientPhone:assignment.parcelBooking.recipientPhone,
+      parcelCategory:assignment.parcelBooking.parcelCategory,
+      parcelDescription:assignment.parcelBooking.parcelDescription,
+      parcelSize:assignment.parcelBooking.parcelSize,
+      handlingInstructions:assignment.parcelBooking.handlingInstructions,
+     },
+     deliveryLeg:assignment.deliveryLeg?{
+      id:assignment.deliveryLeg.id,
+      sequence:assignment.deliveryLeg.sequence,
+      type:assignment.deliveryLeg.type,
+      status:assignment.deliveryLeg.status,
+      origin:{
+       serviceZone:assignment.deliveryLeg.originServiceZone,
+       hub:assignment.deliveryLeg.originHubPoint,
+       address:assignment.deliveryLeg.originHubPoint?.address??assignment.parcelBooking.pickupAddress,
+       latitude:assignment.deliveryLeg.originLatitude?.toString()??assignment.parcelBooking.pickupLatitude.toString(),
+       longitude:assignment.deliveryLeg.originLongitude?.toString()??assignment.parcelBooking.pickupLongitude.toString(),
+      },
+      destination:{
+       serviceZone:assignment.deliveryLeg.destinationServiceZone,
+       hub:assignment.deliveryLeg.destinationHubPoint,
+       address:assignment.deliveryLeg.destinationHubPoint?.address??assignment.parcelBooking.destinationAddress,
+       latitude:assignment.deliveryLeg.destinationLatitude?.toString()??assignment.parcelBooking.destinationLatitude.toString(),
+       longitude:assignment.deliveryLeg.destinationLongitude?.toString()??assignment.parcelBooking.destinationLongitude.toString(),
+      },
+     }:null,
+    })),
+    pagination:{page,limit,total:result.total,totalPages:Math.ceil(result.total/limit)},
+   };
+  },
   async markArrived({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_PICKUP",now:clock()});if(result?.conflict)throw new ConflictError("Assignment is not in a state that allows arrival at pickup.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
   async startTrip({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"IN_PROGRESS",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified before starting the trip.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
   async markDestination({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_DESTINATION",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified and the trip started before arriving at destination.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
