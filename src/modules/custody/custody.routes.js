@@ -25,6 +25,11 @@ const hubDispatchQuerySchema = z.object({
   cursor: id.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
+const driverHubHandoverSchema = z.object({
+  assignmentId: id,
+  conditionAtRelease: z.string().trim().min(2).max(500),
+  evidence: evidenceSchema,
+}).strict();
 const createHubHandoverSchema = z.object({
   hubPointId: id,
   deliveryLegId: id,
@@ -120,6 +125,7 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
     req.validatedQuery = parsed.data;
     return next();
   }, asyncWrapper(controller.listHubDispatchable));
+  router.post("/driver/hub-handovers", authMiddleware, validate(driverHubHandoverSchema), asyncWrapper(controller.createDriverHubHandover));
   router.post("/hub-operations/handovers", authMiddleware, validate(createHubHandoverSchema), asyncWrapper(controller.createHubHandover));
   router.post("/hub-operations/handovers/:handoverId/decision", authMiddleware, validateParams, validate(handoverDecisionSchema), asyncWrapper(controller.decideHubHandover));
   router.post("/hub-operations/cases", authMiddleware, validate(hubExceptionSchema), asyncWrapper(controller.reportHubException));
