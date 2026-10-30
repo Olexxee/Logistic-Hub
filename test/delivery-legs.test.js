@@ -208,6 +208,7 @@ test("verified recipient handover completes the linked delivery leg in the same 
     parcelBooking: { id: "booking_2", senderId: "sender_2", publicReference: "LH-PCL-2" },
     rideBooking: null,
     status: "ARRIVED_AT_DESTINATION",
+    deliveryLeg: { id: "leg_2", sequence: 1 },
     agreedFareMinor: 2500n,
     currency: "NGN",
   };
@@ -220,7 +221,10 @@ test("verified recipient handover completes the linked delivery leg in the same 
       findFirst: async (query) => { tokenQuery = query; return { id: "token_1" }; },
       updateMany: async () => ({ count: 1 }),
     },
-    deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
+    deliveryLeg: {
+      update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; },
+      findFirst: async () => null,
+    },
     parcelBooking: { update: async () => ({}) },
     bookingEvent: { create: async () => ({}) },
     driverProfile: { update: async () => ({}) },
