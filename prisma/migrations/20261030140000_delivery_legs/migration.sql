@@ -47,7 +47,7 @@ CREATE UNIQUE INDEX "delivery_legs_parcelBookingId_sequence_key"
 CREATE INDEX "delivery_legs_status_plannedAt_idx"
   ON "delivery_legs"("status", "plannedAt");
 
-CREATE INDEX "delivery_legs_originServiceZoneId_destinationServiceZoneId_status_idx"
+CREATE INDEX "delivery_legs_route_status_idx"
   ON "delivery_legs"("originServiceZoneId", "destinationServiceZoneId", "status");
 
 CREATE INDEX "driver_assignments_deliveryLegId_status_idx"
