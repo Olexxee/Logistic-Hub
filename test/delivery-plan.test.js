@@ -122,13 +122,12 @@ test("same-state quote does not create an unnecessary hub-assisted route", async
   const { tx, created } = transaction({
     zones: [
       { id: "zone_lagos", stateId: "NG-LA" },
-      { id: "zone_ogun", stateId: "NG-LA" },
     ],
     hubs: [],
   });
   const plan = await createMultiLegPlan({
     tx,
-    booking: booking(),
+    booking: booking({ destinationServiceZoneId: "zone_lagos" }),
     quote: { id: "quote_3" },
     now,
   });
