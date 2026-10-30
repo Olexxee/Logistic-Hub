@@ -212,7 +212,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
-    async confirmHandover({ handoverId, userId, conditionAtReceipt, evidence, rejectReason }) {
+    async confirmHandover({ handoverId, userId, conditionAtReceipt, evidence, rejectReason, weightGrams, lengthMm, widthMm, heightMm }) {
       return repo.transaction(async tx => {
         await requireActiveUser(tx, userId);
         const handover = await repo.findHandover(handoverId, tx);
@@ -249,6 +249,53 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           }, tx);
           return { handover: updated, operationalCase };
         }
+        if (handover.toPartyType === "HUB") {
+          if (!Number.isInteger(weightGrams) || weightGrams <= 0) {
+            throw fail(409, "HUB_INTAKE_WEIGHT_REQUIRED", "A positive measured parcel weight in grams is required before a hub can confirm intake.");
+          }
+          const hasAnyDimension = [lengthMm, widthMm, heightMm].some(value => value !== undefined);
+          const hasAllDimensions = [lengthMm, widthMm, heightMm].every(value => Number.isInteger(value) && value > 0);
+          if (hasAnyDimension && !hasAllDimensions) {
+            throw fail(409, "HUB_INTAKE_DIMENSIONS_INCOMPLETE", "Provide all three positive parcel dimensions in millimetres, or leave all dimensions blank.");
+          }
+          const hub = await repo.findHubIntakeConfig(handover.toPartyId, tx);
+          if (!hub || hub.status !== "ACTIVE") throw fail(409, "HUB_NOT_ACTIVE", "The receiving hub is not active.");
+          const acceptedTypes = Array.isArray(hub.acceptedParcelTypes) ? hub.acceptedParcelTypes : [];
+          if (acceptedTypes.length && !acceptedTypes.includes(handover.parcelBooking.parcelCategory)) {
+            throw fail(409, "HUB_PARCEL_TYPE_NOT_ACCEPTED", "This hub does not accept the parcel category on this booking.");
+          }
+          const capacity = hub.capacityConfig && typeof hub.capacityConfig === "object" ? hub.capacityConfig : {};
+          const currentCount = await repo.countReceivedHubIntakes(hub.id, tx);
+          if (Number.isInteger(capacity.maxParcels) && currentCount >= capacity.maxParcels) {
+            throw fail(409, "HUB_PARCEL_CAPACITY_EXCEEDED", "The hub has reached its active parcel capacity.");
+          }
+          const totals = await repo.aggregateReceivedHubIntakes(hub.id, tx);
+          const currentWeight = Number(totals._sum.weightGrams ?? 0);
+          if (Number.isInteger(capacity.maxWeightGrams) && currentWeight + weightGrams > capacity.maxWeightGrams) {
+            throw fail(409, "HUB_WEIGHT_CAPACITY_EXCEEDED", "Receiving this parcel would exceed the hub's configured weight capacity.");
+          }
+          let volumeCm3 = null;
+          if (hasAllDimensions) volumeCm3 = Math.ceil((lengthMm * widthMm * heightMm) / 1000);
+          if (Number.isInteger(capacity.maxVolumeCm3)) {
+            if (volumeCm3 === null) throw fail(409, "HUB_INTAKE_DIMENSIONS_REQUIRED", "This hub requires parcel dimensions to enforce its configured volume capacity.");
+            const currentVolume = Number(totals._sum.volumeCm3 ?? 0);
+            if (currentVolume + volumeCm3 > capacity.maxVolumeCm3) {
+              throw fail(409, "HUB_VOLUME_CAPACITY_EXCEEDED", "Receiving this parcel would exceed the hub's configured volume capacity.");
+            }
+          }
+          await repo.createHubIntakeRecord({
+            parcelBookingId: handover.parcelBookingId,
+            deliveryLegId: handover.deliveryLegId,
+            hubPointId: handover.toPartyId,
+            receivedByUserId: userId,
+            status: "RECEIVED",
+            weightGrams,
+            ...(hasAllDimensions ? { lengthMm, widthMm, heightMm, volumeCm3 } : {}),
+            conditionAtReceipt: conditionAtReceipt ?? handover.conditionAtRelease,
+            evidence: evidence ?? handover.evidence ?? undefined,
+          }, tx);
+        }
+
         const updated = await repo.updateHandover(handoverId, {
           status: "CONFIRMED", confirmedByUserId: userId, confirmedAt: clock(),
           conditionAtReceipt: conditionAtReceipt ?? handover.conditionAtRelease,
@@ -256,6 +303,12 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         }, tx);
 
         const confirmedLeg = await repo.findBookingLeg(handover.deliveryLegId, tx);
+
+        if (handover.fromPartyType === "HUB" && ["DRIVER", "TRANSPORT_PARTNER"].includes(handover.toPartyType)) {
+          const intake = await repo.findReceivedHubIntake(handover.parcelBookingId, handover.fromPartyId, tx);
+          if (!intake) throw fail(409, "HUB_INTAKE_REQUIRED", "The hub cannot release a parcel that has no active intake record.");
+          await repo.updateHubIntakeRecord(intake.id, { status: "RELEASED", releasedAt: clock() }, tx);
+        }
 
         // Hub release to a driver is the pickup custody confirmation for that assignment.
         if (handover.fromPartyType === "HUB" && handover.toPartyType === "DRIVER"
@@ -432,6 +485,17 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
+    async listHubIntakes({ userId, status = "RECEIVED", hubPointId, cursor, limit = 25 }) {
+      const memberships = await repo.findHubOperatorsForUser(userId);
+      const hubIds = memberships.map(item => item.hubPointId);
+      if (!hubIds.length) throw forbidden();
+      if (hubPointId && !hubIds.includes(hubPointId)) throw forbidden();
+      const rows = await repo.listHubIntakes(hubPointId ? [hubPointId] : hubIds, { status, cursor, limit });
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      return { items, nextCursor: hasMore ? items.at(-1).id : null };
+    },
+
     async listHubHandovers({ userId, direction = "incoming", status, hubPointId, cursor, limit = 25 }) {
       const memberships = await repo.findHubOperatorsForUser(userId);
       const hubIds = memberships.map(item => item.hubPointId);
@@ -501,6 +565,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       const leg = await repo.findBookingLeg(deliveryLegId);
       if (!leg) return { notFound: true };
       if (leg.originHubPointId !== hubPointId) return { blocker: "HUB_NOT_LEG_ORIGIN" };
+      const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, hubPointId);
+      if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
       if (toPartyType === "DRIVER") {
         const assignment = leg.assignments.find(item => item.driverProfileId === toPartyId && item.status === "ARRIVED_AT_PICKUP");
         if (!assignment) return { blocker: "DRIVER_NOT_ARRIVED_AT_HUB" };
