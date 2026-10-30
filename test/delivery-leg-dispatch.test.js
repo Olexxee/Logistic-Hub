@@ -140,7 +140,10 @@ test("customer acceptance reserves one driver and creates an awaiting-payment le
       findUnique: async () => offer,
       updateMany: async () => ({ count: 1 }),
     },
-    driverProfile: { updateMany: async () => ({ count: 1 }) },
+    driverProfile: {
+      findFirst: async () => validDriver("profile_1"),
+      updateMany: async () => ({ count: 1 }),
+    },
     driverAssignment: { create: async (args) => { assignment = args; return { id: "assignment_1" }; } },
     bookingEvent: { create: async () => ({}) },
   };
