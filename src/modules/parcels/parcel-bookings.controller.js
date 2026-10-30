@@ -7,7 +7,7 @@ export function createParcelBookingsController({ service, notifications }) {
         user: req.user,
         page: req.validated.query.page,
         limit: req.validated.query.limit,
-        status: req.validated.query.status,
+        ...req.validated.query,
       });
       return res.status(200).json({ success: true, data: result });
     },
