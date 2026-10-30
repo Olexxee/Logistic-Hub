@@ -34,6 +34,7 @@ export function buildPartnerRateEligibilityWhere(booking, now = new Date()) {
     parcelCategory: booking.parcelCategory,
     rateCard: {
       status: "ACTIVE",
+      currency: booking.currency,
       effectiveFrom: { lte: now },
       AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
       agreement: {
