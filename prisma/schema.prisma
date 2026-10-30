@@ -129,6 +129,7 @@ enum DeliveryLegType {
 
 enum DeliveryLegStatus {
   PLANNED
+  READY_FOR_ASSIGNMENT
   AWAITING_PAYMENT
   ASSIGNED
   PICKUP_VERIFICATION_PENDING
@@ -541,6 +542,8 @@ model HubPoint {
   updatedAt           DateTime       @updatedAt
 
   serviceZone ServiceZone @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  originDeliveryLegs DeliveryLeg[] @relation("DeliveryLegOriginHub")
+  destinationDeliveryLegs DeliveryLeg[] @relation("DeliveryLegDestinationHub")
 
   @@index([serviceZoneId, status])
   @@map("hub_points")
@@ -763,6 +766,12 @@ model DeliveryLeg {
   status                 DeliveryLegStatus @default(PLANNED)
   originServiceZoneId    String
   destinationServiceZoneId String
+  originHubPointId        String?
+  destinationHubPointId   String?
+  originLatitude          Decimal? @db.Decimal(10, 7)
+  originLongitude         Decimal? @db.Decimal(10, 7)
+  destinationLatitude     Decimal? @db.Decimal(10, 7)
+  destinationLongitude    Decimal? @db.Decimal(10, 7)
   plannedAt              DateTime?
   assignedAt             DateTime?
   pickedUpAt             DateTime?
@@ -777,6 +786,8 @@ model DeliveryLeg {
   parcelBooking     ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
   originServiceZone ServiceZone   @relation("DeliveryLegOriginZone", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
   destinationServiceZone ServiceZone @relation("DeliveryLegDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
+  originHubPoint HubPoint? @relation("DeliveryLegOriginHub", fields: [originHubPointId], references: [id], onDelete: Restrict)
+  destinationHubPoint HubPoint? @relation("DeliveryLegDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
   assignments       DriverAssignment[]
   verificationTokens VerificationToken[]
 
