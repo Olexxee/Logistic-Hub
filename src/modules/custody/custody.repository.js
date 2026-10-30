@@ -113,6 +113,9 @@ export function createCustodyRepository({ prismaClient }) {
         },
       });
     },
+    lockHubCapacity(hubPointId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "hub_points" WHERE "id" = ${hubPointId} FOR UPDATE`;
+    },
     findHubIntakeConfig(hubPointId, tx = prismaClient) {
       return tx.hubPoint.findUnique({
         where: { id: hubPointId },
