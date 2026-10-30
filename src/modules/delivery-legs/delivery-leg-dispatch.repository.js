@@ -46,6 +46,9 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
         },
         select: {
           id: true,
+          verificationStatus: true,
+          isOnline: true,
+          isAvailable: true,
           serviceRadiusMeters: true,
           lastLocationAt: true,
           locations: {
