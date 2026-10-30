@@ -49,6 +49,8 @@ These are genuine API discovery/operations gaps, not UI tasks to work around wit
 
 ## Contract corrections in this PR
 
+This is a targeted correction of the high-impact mismatches identified in the audit, not proof that every OpenAPI operation has full route-to-spec parity. The existing OpenAPI document is large and still requires a systematic route-by-route comparison of every method, payload, response and authorization rule. Treat the gap register below as the current frontend gate; do not infer endpoint availability solely from an OpenAPI path.
+
 - Assignment route paths now match the Express router: `verification-codes`, `arrived`, `verify`, `start`, `destination-arrived`, and `location`.
 - Assignment verification schemas now specify `action` and a six-digit code; issue-code requests specify `action`.
 - Paystack webhook path is documented as `/payments/webhook/paystack`.
