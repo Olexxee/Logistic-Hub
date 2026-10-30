@@ -82,6 +82,42 @@ test("driver arrival moves the linked delivery leg to pickup verification pendin
   });
 });
 
+test("concurrent assignment transition loses the compare-and-set without changing the delivery leg", async () => {
+  let legWriteCount = 0;
+  let eventWriteCount = 0;
+  const assignment = {
+    id: "assignment_race",
+    deliveryLegId: "leg_race",
+    parcelBookingId: "booking_race",
+    rideBookingId: null,
+    driverProfileId: "driver_profile_race",
+    driverProfile: { userId: "driver_user_race" },
+    parcelBooking: { id: "booking_race", status: "DRIVER_ASSIGNED" },
+    rideBooking: null,
+    status: "ACCEPTED",
+  };
+  const tx = {
+    driverAssignment: {
+      findUnique: async () => assignment,
+      updateMany: async () => ({ count: 0 }),
+    },
+    deliveryLeg: { update: async () => { legWriteCount += 1; return {}; } },
+    parcelBooking: { update: async () => ({}) },
+    bookingEvent: { create: async () => { eventWriteCount += 1; return {}; } },
+  };
+  const repository = createAssignmentsRepository({ $transaction: (callback) => callback(tx) });
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_race",
+    nextStatus: "ARRIVED_AT_PICKUP",
+    now,
+  });
+
+  assert.deepEqual(result, { conflict: true, status: "ACCEPTED" });
+  assert.equal(legWriteCount, 0);
+  assert.equal(eventWriteCount, 0);
+});
+
 test("pickup verification records parcel pickup separately from transit start", async () => {
   const legUpdates = [];
   const assignment = {
