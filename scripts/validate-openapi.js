@@ -79,6 +79,8 @@ const implementedOperations = new Set([
   "PATCH /drivers/admin/vehicles/{vehicleId}/verification",
   "PUT /drivers/admin/coverage",
   "GET /drivers/admin/drivers",
+  "PATCH /drivers/admin/drivers/{driverProfileId}/status",
+  "GET /drivers/admin/drivers/{driverProfileId}/audit",
   "GET /drivers/admin/vehicles",
   "GET /hub-points/admin",
   "POST /hub-points/admin",
