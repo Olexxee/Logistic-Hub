@@ -197,3 +197,35 @@ test("hub receipt of an arrived driver activates the next planned leg", async ()
   assert.equal(updates.some(item => item.data.status === "READY_FOR_ASSIGNMENT"), true);
   assert.equal(calls.events[0].eventType, "HUB_DESTINATION_CUSTODY_CONFIRMED");
 });
+
+
+test("hub intake rejects a parcel that exceeds configured aggregate weight capacity", async () => {
+  const handover = {
+    id: "handover-capacity", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "driver-user-1", fromPartyType: "DRIVER", fromPartyId: "driver-1",
+    toPartyType: "HUB", toPartyId: "hub-2", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+  };
+  const { db, calls } = setup({
+    custodyHandover: { findUnique: async () => handover, update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }) },
+    hubPoint: { findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", acceptedParcelTypes: null, capacityConfig: { maxWeightGrams: 500 } }) },
+    deliveryLeg: { findUnique: async () => ({
+      ...leg, status: "DELIVERY_VERIFICATION_PENDING", sequence: 1,
+      destinationHubPointId: "hub-2",
+      assignments: [{ id: "driver-assignment-1", driverProfileId: "driver-1", status: "ARRIVED_AT_DESTINATION", driverProfile: { id: "driver-1", userId: "driver-user-1" } }],
+    }) },
+    driverAssignment: { findFirst: async () => ({ id: "driver-assignment-1", status: "ARRIVED_AT_DESTINATION", driverProfileId: "driver-1", agreedFareMinor: 25000n, currency: "NGN" }), updateMany: async () => ({ count: 1 }) },
+    hubIntakeRecord: {
+      findFirst: async () => null,
+      count: async () => 1,
+      aggregate: async () => ({ _sum: { weightGrams: 400, volumeCm3: 0 } }),
+      create: async ({ data }) => { calls.handovers.push(data); return { id: "intake-new", ...data }; },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Parcel intact", weightGrams: 200 }),
+    error => error.statusCode === 409 && error.code === "HUB_WEIGHT_CAPACITY_EXCEEDED",
+  );
+  assert.equal(calls.handovers.length, 0);
+});
