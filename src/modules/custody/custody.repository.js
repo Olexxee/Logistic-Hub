@@ -107,7 +107,7 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.deliveryLeg.findMany({
         where: {
           originHubPointId: { in: hubPointIds },
-          status: { in: ["ASSIGNED", "READY_FOR_ASSIGNMENT"] },
+          status: { in: ["ASSIGNED", "READY_FOR_ASSIGNMENT", "PICKUP_VERIFICATION_PENDING"] },
           parcelBooking: { is: { paymentStatus: "SUCCEEDED" } },
           OR: [
             { assignments: { some: { status: "ARRIVED_AT_PICKUP" } } },
