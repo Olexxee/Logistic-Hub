@@ -297,6 +297,100 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
+    async listHubHandovers({ userId, direction = "incoming", status, hubPointId, cursor, limit = 25 }) {
+      const memberships = await repo.findHubOperatorsForUser(userId);
+      const hubIds = memberships.map(item => item.hubPointId);
+      if (!hubIds.length) throw forbidden();
+      if (hubPointId && !hubIds.includes(hubPointId)) throw forbidden();
+      const scopedHubIds = hubPointId ? [hubPointId] : hubIds;
+      const rows = await repo.listHubHandovers(scopedHubIds, { direction, status, cursor, limit });
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      return { items, nextCursor: hasMore ? items.at(-1).id : null };
+    },
+
+    async listHubDispatchable({ userId, hubPointId, cursor, limit = 25 }) {
+      const memberships = await repo.findHubOperatorsForUser(userId);
+      const hubIds = memberships.map(item => item.hubPointId);
+      if (!hubIds.length) throw forbidden();
+      if (hubPointId && !hubIds.includes(hubPointId)) throw forbidden();
+      const scopedHubIds = hubPointId ? [hubPointId] : hubIds;
+      const rows = await repo.findDispatchableLegs(scopedHubIds, { cursor, limit });
+      const hasMore = rows.length > limit;
+      const items = (hasMore ? rows.slice(0, limit) : rows).map(leg => ({
+        id: leg.id,
+        parcelBookingId: leg.parcelBookingId,
+        sequence: leg.sequence,
+        type: leg.type,
+        status: leg.status,
+        parcelBooking: leg.parcelBooking,
+        originServiceZone: leg.originServiceZone,
+        destinationServiceZone: leg.destinationServiceZone,
+        originHubPoint: leg.originHubPoint,
+        destinationHubPoint: leg.destinationHubPoint,
+        eligibleRecipients: [
+          ...leg.assignments.map(assignment => ({
+            partyType: "DRIVER", partyId: assignment.driverProfileId,
+            displayName: assignment.driverProfile.user.fullName, assignmentId: assignment.id,
+          })),
+          ...leg.partnerAssignments.map(assignment => ({
+            partyType: "TRANSPORT_PARTNER", partyId: assignment.partnerId,
+            displayName: assignment.partner.displayName, assignmentId: assignment.id,
+          })),
+        ],
+      }));
+      return { items, nextCursor: hasMore ? items.at(-1).id : null };
+    },
+
+    async createHubHandover({ hubPointId, deliveryLegId, toPartyType, toPartyId, conditionAtRelease, evidence }, userId) {
+      const leg = await repo.findBookingLeg(deliveryLegId);
+      if (!leg) return { notFound: true };
+      if (leg.originHubPointId !== hubPointId) return { blocker: "HUB_NOT_LEG_ORIGIN" };
+      if (toPartyType === "DRIVER") {
+        const assignment = leg.assignments.find(item => item.driverProfileId === toPartyId && item.status === "ARRIVED_AT_PICKUP");
+        if (!assignment) return { blocker: "DRIVER_NOT_ARRIVED_AT_HUB" };
+      } else if (toPartyType === "TRANSPORT_PARTNER") {
+        const assignment = leg.partnerAssignments.find(item => item.partnerId === toPartyId && item.status === "ACCEPTED");
+        if (!assignment) return { blocker: "PARTNER_NOT_READY_FOR_HANDOVER" };
+      } else {
+        return { blocker: "INVALID_HANDOVER_RECIPIENT" };
+      }
+      return this.createHandover({
+        parcelBookingId: leg.parcelBookingId,
+        deliveryLegId: leg.id,
+        hubPointId,
+        fromPartyType: "HUB",
+        fromPartyId: hubPointId,
+        toPartyType,
+        toPartyId,
+        conditionAtRelease,
+        evidence,
+      }, userId);
+    },
+
+    async reportHubException({ hubPointId, deliveryLegId, type, priority = "NORMAL", title, description, evidence }, userId) {
+      return repo.transaction(async tx => {
+        await requireActiveUser(tx, userId);
+        const membership = await repo.findHubOperator(hubPointId, userId, tx);
+        if (!membership?.isActive) throw forbidden();
+        const leg = await repo.findBookingLeg(deliveryLegId, tx);
+        if (!leg || ![leg.originHubPointId, leg.destinationHubPointId].includes(hubPointId)) return { notFound: true };
+        if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
+        const operationalCase = await repo.createOperationalCase({
+          publicReference: "CASE-" + randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase(),
+          type, status: "OPEN", priority,
+          parcelBookingId: leg.parcelBookingId, deliveryLegId: leg.id, hubPointId,
+          reportedByUserId: userId, title, description, evidence: evidence ?? undefined,
+        }, tx);
+        await repo.createAudit({
+          actorUserId: userId, entityType: "OPERATIONAL_CASE", entityId: operationalCase.id,
+          action: "HUB_OPERATIONAL_EXCEPTION_REPORTED",
+          after: { hubPointId, deliveryLegId, type, priority, publicReference: operationalCase.publicReference },
+        }, tx);
+        return { operationalCase };
+      });
+    },
+
     async listMyHandovers(userId) {
       const [hubs, partners, drivers] = await Promise.all([
         repo.findHubOperatorsForUser(userId),
