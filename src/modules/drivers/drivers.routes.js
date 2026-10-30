@@ -12,6 +12,7 @@ import {
   vehicleVerificationSchema,
 } from "./drivers.schemas.js";
 import { createDriversService } from "./drivers.service.js";
+import { createDriversAdminRouter } from "./drivers.admin.routes.js";
 
 const idSchema = z.string().trim().min(1).max(128);
 
@@ -37,6 +38,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
   const service = createDriversService({ prismaClient });
   const requireAdmin = roleMiddleware("ADMIN");
   const requireDriver = roleMiddleware("DRIVER");
+  router.use("/admin", createDriversAdminRouter({ prismaClient, authMiddleware, roleMiddleware }));
 
   router.get("/me", authMiddleware, async (req, res, next) => {
     try {
