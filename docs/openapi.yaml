@@ -2359,7 +2359,20 @@ paths:
                 expiresInMinutes: { type: integer, minimum: 5, maximum: 10080, default: 1440 }
                 reason: { type: string, maxLength: 500 }
       responses:
-        '201': { description: Quote created with immutable input and charge snapshots. }
+        '201':
+          description: Quote created with immutable input and charge snapshots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [quote]
+                    properties:
+                      quote: { $ref: '#/components/schemas/ShipmentQuoteResource' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2379,7 +2392,16 @@ paths:
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Quotes ordered newest version first. }
+        '200':
+          description: Quotes ordered newest version first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/ShipmentQuoteList' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2402,7 +2424,16 @@ paths:
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Accepted quote and persisted booking price snapshot; repeated acceptance by the same sender replays the accepted result. }
+        '200':
+          description: Accepted quote and persisted booking price snapshot; repeated acceptance by the same sender replays the accepted result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/ShipmentQuoteAcceptance' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2440,7 +2471,21 @@ paths:
               properties:
                 reason: { type: string, minLength: 3, maxLength: 500 }
       responses:
-        '200': { description: Quote rejected; repeated rejection replays successfully. }
+        '200':
+          description: Quote rejected; repeated rejection replays successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [rejected, replay]
+                    properties:
+                      rejected: { type: boolean, const: true }
+                      replay: { type: boolean }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -4569,6 +4614,79 @@ components:
       pattern: '^[0-9]+$'
       description: Non-negative integer minor units serialized as a decimal string.
       examples: ['430000']
+    ShipmentQuoteResource:
+      type: object
+      required: [id, parcelBookingId, version, status, partnerAgreementId, partnerRateId, currency, transportChargeMinor, collectionChargeMinor, hubHandlingChargeMinor, destinationDeliveryChargeMinor, platformChargeMinor, otherChargesMinor, totalCustomerChargeMinor, chargeBreakdown, expiresAt, offeredAt, acceptedAt]
+      properties:
+        id: { type: string }
+        parcelBookingId: { type: string }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [OFFERED, ACCEPTED, REJECTED, EXPIRED, SUPERSEDED] }
+        partnerAgreementId: { type: [string, 'null'] }
+        partnerRateId: { type: [string, 'null'] }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        transportChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+        collectionChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+        hubHandlingChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+        destinationDeliveryChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+        platformChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+        otherChargesMinor: { $ref: '#/components/schemas/MinorAmount' }
+        totalCustomerChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+        chargeBreakdown:
+          type: object
+          additionalProperties: true
+          description: Immutable itemized charge snapshot; all monetary values are decimal strings in minor units.
+        expiresAt: { type: string, format: date-time }
+        offeredAt: { type: string, format: date-time }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+    ShipmentQuoteList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ShipmentQuoteResource' }
+    ShipmentRoutePlan:
+      type: object
+      required: [routeMode, legs]
+      properties:
+        routeMode: { type: string, enum: [LOCAL_DIRECT, HUB_ASSISTED, END_TO_END] }
+        originHub:
+          oneOf:
+            - type: object
+              required: [id, name]
+              properties: { id: { type: string }, name: { type: string } }
+            - type: 'null'
+        destinationHub:
+          oneOf:
+            - type: object
+              required: [id, name]
+              properties: { id: { type: string }, name: { type: string } }
+            - type: 'null'
+        legs:
+          type: array
+          items:
+            type: object
+            required: [id, sequence, type, status, originServiceZoneId, destinationServiceZoneId, originHubPointId, destinationHubPointId]
+            properties:
+              id: { type: string }
+              sequence: { type: integer, minimum: 1 }
+              type: { type: string, enum: [DIRECT, LOCAL_PICKUP, HUB_TRANSFER, INTERSTATE_TRANSPORT, FINAL_MILE] }
+              status: { type: string, enum: [PLANNED, READY_FOR_ASSIGNMENT, AWAITING_PAYMENT, ASSIGNED, PICKUP_VERIFICATION_PENDING, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, FAILED, CANCELLED] }
+              originServiceZoneId: { type: string }
+              destinationServiceZoneId: { type: string }
+              originHubPointId: { type: [string, 'null'] }
+              destinationHubPointId: { type: [string, 'null'] }
+    ShipmentQuoteAcceptance:
+      type: object
+      required: [quote, routePlan, replay]
+      properties:
+        quote: { $ref: '#/components/schemas/ShipmentQuoteResource' }
+        routePlan:
+          oneOf:
+            - $ref: '#/components/schemas/ShipmentRoutePlan'
+            - type: 'null'
+        replay: { type: boolean }
     PositiveMinorAmount:
       type: string
       pattern: '^[1-9][0-9]*$'
