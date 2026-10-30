@@ -265,6 +265,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             throw fail(409, "HUB_PARCEL_TYPE_NOT_ACCEPTED", "This hub does not accept the parcel category on this booking.");
           }
           const capacity = hub.capacityConfig && typeof hub.capacityConfig === "object" ? hub.capacityConfig : {};
+          await repo.lockHubCapacity(hub.id, tx);
           const currentCount = await repo.countReceivedHubIntakes(hub.id, tx);
           if (Number.isInteger(capacity.maxParcels) && currentCount >= capacity.maxParcels) {
             throw fail(409, "HUB_PARCEL_CAPACITY_EXCEEDED", "The hub has reached its active parcel capacity.");
