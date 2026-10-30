@@ -35,6 +35,7 @@ function setup(overrides = {}) {
     driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [], update: async () => ({}) },
     transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }) },
     transportPartnerMember: { findUnique: async () => ({ isActive: true }), findMany: async () => [] },
+    hubIntakeRecord: { findFirst: async () => ({ id: "hub-intake-1" }), count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async ({ data }) => ({ id: "hub-intake-1", ...data }), update: async ({ where, data }) => ({ id: where.id, ...data }) },
     custodyHandover: {
       findFirst: async () => null,
       findUnique: async () => null,
