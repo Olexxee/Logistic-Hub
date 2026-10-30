@@ -227,6 +227,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         await repo.lockHandover(handoverId, tx);
         const handover = await repo.findHandover(handoverId, tx);
         if (!handover) return { notFound: true };
+        await repo.lockDeliveryLeg(handover.deliveryLegId, tx);
         if (handover.status !== "PENDING_CONFIRMATION") return { blocker: "HANDOVER_NOT_PENDING" };
         if (handover.expiresAt && handover.expiresAt <= clock()) {
           await repo.updateHandover(handoverId, { status: "EXPIRED" }, tx);
@@ -318,6 +319,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const confirmedLeg = await repo.findBookingLeg(handover.deliveryLegId, tx);
 
         if (handover.fromPartyType === "HUB" && ["DRIVER", "TRANSPORT_PARTNER"].includes(handover.toPartyType)) {
+          const blockingCase = await repo.findBlockingHubOperationalCase(handover.deliveryLegId, tx);
+          if (blockingCase) throw fail(409, "HUB_OPERATIONAL_CASE_OPEN", "This parcel has an unresolved operational exception. Resolve or close the case before releasing custody.");
           const intake = await repo.findReceivedHubIntake(handover.parcelBookingId, handover.fromPartyId, tx);
           if (!intake) throw fail(409, "HUB_INTAKE_REQUIRED", "The hub cannot release a parcel that has no active intake record.");
           await repo.updateHubIntakeRecord(intake.id, { status: "RELEASED", releasedAt: clock() }, tx);
@@ -611,6 +614,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!membership?.isActive) throw forbidden();
         const hub = await repo.findHubForParty(hubPointId, tx);
         if (!hub || hub.status !== "ACTIVE") return { notFound: true };
+        await repo.lockDeliveryLeg(deliveryLegId, tx);
         const leg = await repo.findBookingLeg(deliveryLegId, tx);
         if (!leg || ![leg.originHubPointId, leg.destinationHubPointId].includes(hubPointId)) return { notFound: true };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
