@@ -27,6 +27,7 @@ import { partnerPricingRouter } from "./modules/partner-pricing/partner-pricing.
 import { partnerExecutionRouter } from "./modules/partner-execution/partner-execution.routes.js";
 import { custodyRouter } from "./modules/custody/custody.routes.js";
 import { operationalCasesRouter } from "./modules/operational-cases/operational-cases.routes.js";
+import { partnerSettlementRouter } from "./modules/partner-settlement/partner-settlement.routes.js";
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { auditRouter } from "./modules/audit/audit.routes.js";
@@ -124,5 +125,6 @@ app.use("/api/v1", partnerPricingRouter);
 app.use("/api/v1", partnerExecutionRouter);
 app.use("/api/v1", custodyRouter);
 app.use("/api/v1", operationalCasesRouter);
+app.use("/api/v1", partnerSettlementRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

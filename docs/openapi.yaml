@@ -18,6 +18,7 @@ tags:
   - name: Driver offers
   - name: Delivery legs
   - name: Partner execution
+  - name: Partner settlement
   - name: Payments
   - name: Drivers
   - name: Admin
@@ -2961,6 +2962,227 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Operational case not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /partner/payables:
+    get:
+      tags: [Partner settlement]
+      operationId: listMyPartnerPayables
+      summary: List payables for the authenticated user's active verified partners
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING_APPROVAL, APPROVED, IN_BATCH, RECONCILED, DISPUTED, VOIDED] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/partner-payables:
+    get:
+      tags: [Admin]
+      operationId: listPartnerPayables
+      summary: List partner payables for review
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING_APPROVAL, APPROVED, IN_BATCH, RECONCILED, DISPUTED, VOIDED] } }
+        - { name: partnerId, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/partner-payables/{payableId}/approve:
+    patch:
+      tags: [Admin]
+      operationId: approvePartnerPayable
+      summary: Approve an internally generated partner payable
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: payableId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Payable not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/partner-payables/{payableId}/adjustments:
+    post:
+      tags: [Admin]
+      operationId: createPartnerPayableAdjustment
+      summary: Request an immutable payable adjustment
+      description: A different administrator must approve the adjustment. Payables already in a settlement batch or reconciled cannot be adjusted.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: payableId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type, amountMinor, reason]
+              properties:
+                type: { type: string, enum: [INCREASE, DECREASE, REVERSAL] }
+                amountMinor: { type: string, minLength: 1, maxLength: 18, description: Positive integer minor units. }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/partner-payable-adjustments/{adjustmentId}/approve:
+    patch:
+      tags: [Admin]
+      operationId: approvePartnerPayableAdjustment
+      summary: Approve and apply a payable adjustment
+      description: The approving administrator must differ from the administrator who created the adjustment.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: adjustmentId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Adjustment not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/transport-partners/{partnerId}/settlement-batches:
+    post:
+      tags: [Partner settlement]
+      operationId: createPartnerSettlementBatch
+      summary: Create a draft settlement batch from approved unbatched payables
+      description: The API derives batch totals and line-item amounts from approved payable records. Client-supplied totals are not accepted.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [periodStart, periodEnd]
+              properties:
+                periodStart: { type: string, format: date-time }
+                periodEnd: { type: string, format: date-time }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/partner-settlement-batches:
+    get:
+      tags: [Partner settlement]
+      operationId: listPartnerSettlementBatches
+      summary: List partner settlement batches and reconciliation history
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [DRAFT, APPROVED, RECONCILIATION_REQUIRED, RECONCILED, VOIDED] } }
+        - { name: partnerId, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/partner-settlement-batches/{batchId}/approve:
+    patch:
+      tags: [Partner settlement]
+      operationId: approvePartnerSettlementBatch
+      summary: Approve a draft partner settlement batch
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Batch not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/partner-settlement-batches/{batchId}/reconcile:
+    post:
+      tags: [Partner settlement]
+      operationId: reconcilePartnerSettlementBatch
+      summary: Record an evidence-backed settlement reconciliation result
+      description: MATCHED requires the exact expected batch amount and an external statement or transfer reference. VARIANCE and DISPUTED outcomes keep payables disputed. This records internal reconciliation only; it does not initiate or confirm a provider payout.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [outcome, actualAmountMinor]
+              properties:
+                outcome: { type: string, enum: [MATCHED, VARIANCE, DISPUTED] }
+                actualAmountMinor: { type: string, minLength: 1, maxLength: 18 }
+                externalReference: { type: string, minLength: 3, maxLength: 200 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, DOCUMENT], default: DOCUMENT }
+                      note: { type: string, maxLength: 300 }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Batch not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/users/{userId}/phone-verification:
+    patch:
+      tags: [Admin]
+      operationId: setUserPhoneVerification
+      summary: Record or revoke an administrator-reviewed user phone verification
+      description: This endpoint records an off-platform verification result such as a callback or in-person check. It does not send an SMS or generate an OTP.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [verified, verificationMethod, reason]
+              properties:
+                verified: { type: boolean }
+                verificationMethod: { type: string, enum: [CALLBACK, IN_PERSON, DOCUMENT_REVIEW, ADMIN_REVOCATION] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: User not found. }
         '409': { $ref: '#/components/responses/Conflict' }
 
 components:

@@ -104,6 +104,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const now = clock();
         if (!agreement || agreement.partnerId !== partnerId ||
           agreement.status !== "ACTIVE" ||
+          agreement.currency !== acceptedQuote.currency ||
           agreement.partner.status !== "ACTIVE" ||
           agreement.partner.verificationStatus !== "VERIFIED" ||
           agreement.effectiveFrom > now ||

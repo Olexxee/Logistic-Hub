@@ -21,7 +21,20 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
 
   async function validateParty(tx, { type, id, userId, booking, leg, actor = false }) {
     if (type === "RECIPIENT") {
-      throw fail(409, "RECIPIENT_VERIFICATION_UNAVAILABLE", "Recipient custody confirmation is unavailable until a verified recipient identity or OTP channel is implemented.");
+      const recipient = await repo.findUser(id, tx);
+      const normalizePhone = value => {
+        const digits = String(value ?? "").replace(/\D/g, "");
+        if (digits.length === 13 && digits.startsWith("234")) return `0${digits.slice(3)}`;
+        if (digits.length === 10) return `0${digits}`;
+        return digits;
+      };
+      const phoneMatches = normalizePhone(recipient?.phone) !== ""
+        && normalizePhone(recipient?.phone) === normalizePhone(booking.recipientPhone);
+      if (!recipient || recipient.status !== "ACTIVE" || !recipient.phoneVerifiedAt || !phoneMatches) {
+        throw fail(409, "RECIPIENT_VERIFICATION_REQUIRED", "Recipient must have an active account with a verified phone number matching the booking recipient phone.");
+      }
+      if (actor && recipient.id !== userId) throw forbidden();
+      return;
     }
     if (type === "SENDER") {
       const valid = id === booking.senderId;
@@ -71,10 +84,37 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     if (type === "SENDER" && id === userId) return true;
     if (type === "HUB") return Boolean((await repo.findHubOperator(id, userId, tx))?.isActive);
     if (type === "TRANSPORT_PARTNER") return Boolean((await repo.findPartnerMembership(id, userId, tx))?.isActive);
+    if (type === "RECIPIENT" && id === userId) {
+      const recipient = await repo.findUser(id, tx);
+      return Boolean(recipient?.status === "ACTIVE" && recipient.phoneVerifiedAt);
+    }
     return false;
   }
 
   return {
+    async setRecipientPhoneVerification({ userId, verified, verificationMethod, reason, actorUserId }) {
+      return repo.transaction(async tx => {
+        const user = await repo.findUser(userId, tx);
+        if (!user) return { notFound: true };
+        if (user.status !== "ACTIVE") return { blocker: "USER_NOT_ACTIVE" };
+        if (verified && !user.phone) return { blocker: "USER_PHONE_REQUIRED" };
+        const currentlyVerified = Boolean(user.phoneVerifiedAt);
+        if (currentlyVerified === verified) {
+          return { user: { id: user.id, phoneVerifiedAt: user.phoneVerifiedAt }, replay: true };
+        }
+        const phoneVerifiedAt = verified ? clock() : null;
+        const updated = await repo.setUserPhoneVerification(userId, phoneVerifiedAt, tx);
+        await repo.createAudit({
+          actorUserId, entityType: "USER_PHONE_VERIFICATION", entityId: userId,
+          action: verified ? "USER_PHONE_VERIFIED_BY_ADMIN" : "USER_PHONE_VERIFICATION_REVOKED",
+          before: { phoneVerifiedAt: user.phoneVerifiedAt?.toISOString() ?? null },
+          after: { phoneVerifiedAt: phoneVerifiedAt?.toISOString() ?? null, verificationMethod, reason },
+          reason,
+        }, tx);
+        return { user: { id: updated.id, phoneVerifiedAt: updated.phoneVerifiedAt }, replay: false };
+      });
+    },
+
     async addHubOperator({ hubPointId, userId, role = "OPERATOR", actorUserId }) {
       return repo.transaction(async tx => {
         const hub = await repo.findHub(hubPointId, tx);
@@ -118,6 +158,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!leg || leg.parcelBookingId !== input.parcelBookingId) return { notFound: true };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
         if (["COMPLETED", "FAILED", "CANCELLED"].includes(leg.status)) return { blocker: "LEG_TERMINAL" };
+        if (input.fromPartyType === "TRANSPORT_PARTNER"
+          && !leg.partnerAssignments.some(item => item.partnerId === input.fromPartyId && item.status === "IN_TRANSIT")) {
+          throw fail(409, "PARTNER_ASSIGNMENT_NOT_IN_TRANSIT", "A transport partner can release custody only after its assignment has started.");
+        }
         await validateParty(tx, { type: input.fromPartyType, id: input.fromPartyId, userId, booking: leg.parcelBooking, leg, actor: true });
         await validateParty(tx, { type: input.toPartyType, id: input.toPartyId, userId, booking: leg.parcelBooking, leg });
         if (input.fromPartyType === input.toPartyType && input.fromPartyId === input.toPartyId) {
@@ -198,6 +242,52 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           conditionAtReceipt: conditionAtReceipt ?? handover.conditionAtRelease,
           evidence: evidence ?? handover.evidence ?? undefined,
         }, tx);
+
+        // A partner interstate leg is complete only when its destination hub confirms custody.
+        if (handover.fromPartyType === "TRANSPORT_PARTNER" && handover.toPartyType === "HUB") {
+          const leg = await repo.findBookingLeg(handover.deliveryLegId, tx);
+          if (leg?.destinationHubPointId === handover.toPartyId) {
+            const assignment = await tx.partnerDeliveryAssignment.findFirst({
+              where: { deliveryLegId: handover.deliveryLegId, partnerId: handover.fromPartyId, status: "IN_TRANSIT" },
+            });
+            if (assignment) {
+              const completedAt = clock();
+              const changed = await tx.partnerDeliveryAssignment.updateMany({
+                where: { id: assignment.id, status: "IN_TRANSIT" },
+                data: { status: "COMPLETED", completedAt },
+              });
+              if (changed.count === 1) {
+                const legChanged = await tx.deliveryLeg.updateMany({
+                  where: { id: handover.deliveryLegId, status: "IN_TRANSIT" },
+                  data: { status: "COMPLETED", completedAt },
+                });
+                if (legChanged.count !== 1) {
+                  throw fail(409, "PARTNER_LEG_COMPLETION_CONFLICT", "The delivery leg is no longer in transit and partner completion cannot be recorded.");
+                }
+                const payable = await tx.partnerPayable.upsert({
+                  where: { partnerDeliveryAssignmentId: assignment.id },
+                  create: {
+                    partnerId: assignment.partnerId,
+                    partnerDeliveryAssignmentId: assignment.id,
+                    agreementId: assignment.agreementId,
+                    deliveryLegId: assignment.deliveryLegId,
+                    sourceChargeMinor: assignment.agreedTransportChargeMinor,
+                    amountMinor: assignment.agreedTransportChargeMinor,
+                    currency: assignment.currency,
+                  },
+                  update: {},
+                });
+                await repo.createAudit({
+                  actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT",
+                  entityId: assignment.id, action: "PARTNER_EXECUTION_COMPLETED_AND_PAYABLE_CREATED",
+                  before: { status: assignment.status },
+                  after: { status: "COMPLETED", payableId: payable.id, amountMinor: payable.amountMinor.toString(), currency: payable.currency },
+                }, tx);
+              }
+            }
+          }
+        }
+
         await repo.createAudit({
           actorUserId: userId, entityType: "CUSTODY_HANDOVER", entityId: handoverId,
           action: "CUSTODY_HANDOVER_CONFIRMED",

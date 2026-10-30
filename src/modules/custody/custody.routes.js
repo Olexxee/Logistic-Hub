@@ -18,6 +18,15 @@ const operatorSchema = z.object({
   role: z.enum(["MANAGER", "OPERATOR"]).default("OPERATOR"),
 }).strict();
 const operatorStatusSchema = z.object({ isActive: z.boolean() }).strict();
+const phoneVerificationSchema = z.object({
+  verified: z.boolean(),
+  verificationMethod: z.enum(["CALLBACK", "IN_PERSON", "DOCUMENT_REVIEW", "ADMIN_REVOCATION"]),
+  reason: z.string().trim().min(5).max(1000),
+}).strict().refine(value => value.verified
+  ? value.verificationMethod !== "ADMIN_REVOCATION"
+  : value.verificationMethod === "ADMIN_REVOCATION", {
+  message: "Verification method must match the requested verification action.",
+});
 const createHandoverSchema = z.object({
   parcelBookingId: id,
   deliveryLegId: id,
@@ -61,6 +70,7 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
   const controller = createCustodyController(service);
   const admin = roleMiddleware("ADMIN");
 
+  router.patch("/admin/users/:userId/phone-verification", authMiddleware, admin, validateParams, validate(phoneVerificationSchema), asyncWrapper(controller.setRecipientPhoneVerification));
   router.post("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, validate(operatorSchema), asyncWrapper(controller.addHubOperator));
   router.patch("/admin/hub-points/:hubPointId/operators/:operatorId", authMiddleware, admin, validateParams, validate(operatorStatusSchema), asyncWrapper(controller.setHubOperatorStatus));
   router.get("/custody/handovers/mine", authMiddleware, asyncWrapper(controller.listMyHandovers));
