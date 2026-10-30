@@ -31,6 +31,12 @@ test("driver pickup eligibility requires a fresh location inside the configured 
     recordedAt: new Date(now.getTime() - 6 * 60_000),
     lastLocationAt: new Date(now.getTime() - 6 * 60_000),
   }), pickup, now), false);
+  assert.equal(isDriverWithinPickupRadius(driver("future-profile-time", {
+    lastLocationAt: new Date(now.getTime() + 60_000),
+  }), pickup, now), false);
+  assert.equal(isDriverWithinPickupRadius(driver("future-record-time", {
+    recordedAt: new Date(now.getTime() + 60_000),
+  }), pickup, now), false);
   assert.equal(isDriverWithinPickupRadius({ id: "missing", serviceRadiusMeters: 5000, lastLocationAt: now, locations: [] }, pickup, now), false);
 });
 
@@ -92,6 +98,7 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
   assert.equal(zoneQuery.where.availability.some.isEnabled, true);
   assert.deepEqual(driverQuery.where.lastLocationAt, {
     gte: new Date(now.getTime() - 5 * 60_000),
+    lte: now,
   });
   assert.deepEqual(driverQuery.select.locations, {
     orderBy: { recordedAt: "desc" },
