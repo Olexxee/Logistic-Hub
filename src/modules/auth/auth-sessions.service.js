@@ -34,6 +34,11 @@ export function createAuthSessionsService({ prismaClient, secret, clock = () => 
       const result = await repository.revoke({ tokenHash: hashOpaqueToken(rawToken), now: clock() });
       return { revoked: result.count > 0 };
     },
-    revokeAll(userId) { return repository.revokeAllForUser({ userId, now: clock() }).then((result) => ({ revokedCount: result.count })); },
+    async revokeSession({ sessionId, userId }) {
+      if (!sessionId || !userId) return { revoked: false };
+      const result = await repository.revokeById({ id: sessionId, userId, now: clock() });
+      return { revoked: result.count > 0 };
+    },
+    revokeAllForUser(userId) { return repository.revokeAllForUser({ userId, now: clock() }).then((result) => ({ revokedCount: result.count })); },
   };
 }
