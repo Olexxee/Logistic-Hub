@@ -736,6 +736,38 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Hub or its service zone is not operationally eligible. }
+  /hub-points/admin/{hubPointId}/operator-verification:
+    patch:
+      tags: [Admin]
+      operationId: reviewHubOperatorVerification
+      summary: Review hub operator verification
+      description: An administrator records a verification decision; only VERIFIED operators satisfy hub activation readiness.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: hubPointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [verificationStatus]
+              properties:
+                verificationStatus: { type: string, enum: [PENDING, VERIFIED, REJECTED, EXPIRED] }
+                notes: { type: string, maxLength: 500 }
+      responses:
+        '200': { description: Operator verification review saved. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Closed hubs cannot be reviewed. }
   /notifications:
     get:
       tags: [Notifications]
