@@ -189,7 +189,7 @@ test("hub receipt of an arrived driver activates the next planned leg", async ()
   });
   db.deliveryLeg.updateMany = async ({ where, data }) => { updates.push({ where, data }); return { count: 1 }; };
   const service = createCustodyService({ prismaClient: db, clock: () => now });
-  const result = await service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed and intact" });
+  const result = await service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed and intact", weightGrams: 700 });
   assert.equal(result.handover.status, "CONFIRMED");
   assert.equal(calls.assignmentUpdates[0].data.status, "COMPLETED");
   assert.equal(updates.some(item => item.data.status === "COMPLETED"), true);
