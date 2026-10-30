@@ -3213,25 +3213,13 @@ paths:
     post:
       tags: [Authentication]
       operationId: refreshAuthSessionCompatibility
-      summary: Compatibility alias for refresh-token rotation
-      description: Prefer POST /auth/refresh for all new clients. This legacy alias remains mounted temporarily.
+      summary: Retired JSON refresh-token compatibility endpoint
+      description: This endpoint no longer accepts JSON refresh tokens and returns 410. Use POST /auth/refresh with the HttpOnly refresh cookie.
       deprecated: true
       x-implementation-status: implemented
       security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [refreshToken]
-              properties:
-                refreshToken: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
       responses:
-        '200': { description: Rotated refresh token and new bearer access token. }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '410': { description: Endpoint retired; use the canonical HttpOnly-cookie refresh route. }
   /auth/sessions/revoke:
     post:
       tags: [Authentication]
