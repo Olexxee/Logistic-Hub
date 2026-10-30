@@ -1149,7 +1149,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Booking state conflict or no eligible drivers.
+          description: Booking state conflict, no eligible drivers, unavailable service zone, or cross-state route requiring a transport-partner quote.
           content:
             application/json:
               schema:
