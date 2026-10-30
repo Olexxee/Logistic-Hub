@@ -2392,11 +2392,13 @@ paths:
     post:
       tags: [Payments]
       operationId: initializePayment
-      summary: Initialize payment for an accepted parcel quote
+      summary: Initialize payment for an accepted driver fare booking
       description: |
         Planned and disabled until the owner approves implementation. The request
         contains no amount, fee, split destination or provider reference. The server
         computes all amounts and uses a versioned split-routing configuration.
+        Partner shipment quotes are not payable through this operation until a
+        partner-specific assignment and settlement path is implemented.
       x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
