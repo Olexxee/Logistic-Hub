@@ -1179,10 +1179,10 @@ model SupportTicket {
 
 model RateLimitBucket {
   key             String   @id
-  count           Int      @default(0)
-  windowStartedAt DateTime
-  windowEndsAt    DateTime
-  updatedAt       DateTime @updatedAt
+  count           Int      @default(0) @map("request_count")
+  windowStartedAt DateTime @map("window_started_at")
+  windowEndsAt    DateTime @map("expires_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@index([windowEndsAt])
   @@map("rate_limit_buckets")
