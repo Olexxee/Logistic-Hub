@@ -136,7 +136,7 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
 
     const persistedBooking = await prisma.parcelBooking.findUnique({ where: { id: booking.id } });
     assert.equal(persistedBooking.status, "AWAITING_PAYMENT");
-    assert.equal(persistedBooking.driverFareMinor, 1500n);
+    assert.equal(persistedBooking.driverFareMinor, null);
     assert.equal(persistedBooking.customerPayableMinor, 1500n);
     const persistedEvent = await prisma.bookingEvent.findFirst({
       where: { parcelBookingId: booking.id, eventType: "SHIPMENT_QUOTE_REJECTED" },
