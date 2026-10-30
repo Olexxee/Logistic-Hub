@@ -220,13 +220,42 @@ enum ShipmentQuoteStatus {
   SUPERSEDED
 }
 
-enum PartnerAssignmentStatus { 
+enum PartnerAssignmentStatus {
   ASSIGNED
   ACCEPTED
   IN_TRANSIT
   COMPLETED
   FAILED
   CANCELLED
+}
+
+enum PartnerPayableStatus {
+  PENDING_APPROVAL
+  APPROVED
+  IN_BATCH
+  RECONCILED
+  DISPUTED
+  VOIDED
+}
+
+enum PartnerSettlementBatchStatus {
+  DRAFT
+  APPROVED
+  RECONCILIATION_REQUIRED
+  RECONCILED
+  VOIDED
+}
+
+enum PartnerReconciliationOutcome {
+  MATCHED
+  VARIANCE
+  DISPUTED
+}
+
+enum PartnerPayableAdjustmentType {
+  INCREASE
+  DECREASE
+  REVERSAL
 }
 
 enum CustodyPartyType {
@@ -321,6 +350,12 @@ model User {
   authActionTokens AuthActionToken[]
   authSessions     AuthSession[]
   acceptedShipmentQuotes ShipmentQuote[] @relation("ShipmentQuoteAcceptedBy")
+  approvedPartnerPayables PartnerPayable[] @relation("PartnerPayableApprover")
+  createdPartnerPayableAdjustments PartnerPayableAdjustment[] @relation("PartnerPayableAdjustmentCreator")
+  approvedPartnerPayableAdjustments PartnerPayableAdjustment[] @relation("PartnerPayableAdjustmentApprover")
+  approvedPartnerSettlementBatches PartnerSettlementBatch[] @relation("PartnerSettlementBatchApprover")
+  reconciledPartnerSettlementBatches PartnerSettlementBatch[] @relation("PartnerSettlementBatchReconciler")
+  partnerSettlementReconciliations PartnerSettlementReconciliation[] @relation("PartnerSettlementReconciliationActor")
 
   @@index([role, status])
   @@map("users")
@@ -869,6 +904,7 @@ model DeliveryLeg {
   offers             DeliveryLegOffer[]
   verificationTokens VerificationToken[]
   partnerAssignments PartnerDeliveryAssignment[]
+  partnerPayables PartnerPayable[]
   custodyHandovers   CustodyHandover[]
   operationalCases   OperationalCase[]
 
@@ -1179,6 +1215,8 @@ model TransportPartner {
   members TransportPartnerMember[]
   deliveryAssignments PartnerDeliveryAssignment[]
   operationalCases OperationalCase[]
+  payables PartnerPayable[]
+  settlementBatches PartnerSettlementBatch[]
 
   @@index([status, verificationStatus])
   @@map("transport_partners")
@@ -1203,6 +1241,7 @@ model PartnerAgreement {
   rateCards PartnerRateCard[]
   quotes    ShipmentQuote[]
   deliveryAssignments PartnerDeliveryAssignment[]
+  payables PartnerPayable[]
 
   @@index([partnerId, status, effectiveFrom])
   @@index([status, effectiveFrom, effectiveUntil])
@@ -1372,6 +1411,7 @@ model PartnerDeliveryAssignment {
   partner     TransportPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   agreement   PartnerAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
   assignedBy  User?            @relation("PartnerDeliveryAssignmentAssigner", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+  payable     PartnerPayable?
 
   @@index([deliveryLegId, status])
   @@index([partnerId, status, assignedAt])
@@ -1455,3 +1495,121 @@ model OperationalCase {
 }
 
 
+
+
+model PartnerPayable {
+  id                          String               @id @default(cuid())
+  partnerId                   String
+  partnerDeliveryAssignmentId String               @unique
+  agreementId                 String
+  deliveryLegId               String
+  sourceChargeMinor           BigInt
+  amountMinor                 BigInt
+  currency                    String
+  status                      PartnerPayableStatus @default(PENDING_APPROVAL)
+  generatedAt                 DateTime             @default(now())
+  approvedByUserId            String?
+  approvedAt                  DateTime?
+  reconciledAt                DateTime?
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @updatedAt
+
+  partner     TransportPartner          @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  assignment  PartnerDeliveryAssignment @relation(fields: [partnerDeliveryAssignmentId], references: [id], onDelete: Restrict)
+  agreement   PartnerAgreement          @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  deliveryLeg DeliveryLeg               @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  approvedBy  User?                     @relation("PartnerPayableApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  adjustments PartnerPayableAdjustment[]
+  batchItem   PartnerSettlementBatchItem?
+
+  @@index([partnerId, status, generatedAt])
+  @@index([agreementId, generatedAt])
+  @@index([deliveryLegId])
+  @@map("partner_payables")
+}
+
+model PartnerPayableAdjustment {
+  id               String                       @id @default(cuid())
+  payableId        String
+  type             PartnerPayableAdjustmentType
+  amountMinor      BigInt
+  reason           String
+  idempotencyKey   String                       @unique
+  createdByUserId  String
+  approvedByUserId String?
+  approvedAt       DateTime?
+  appliedAt        DateTime?
+  createdAt        DateTime                     @default(now())
+
+  payable   PartnerPayable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  createdBy User           @relation("PartnerPayableAdjustmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedBy User?         @relation("PartnerPayableAdjustmentApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([payableId, createdAt])
+  @@index([approvedAt, appliedAt])
+  @@map("partner_payable_adjustments")
+}
+
+model PartnerSettlementBatch {
+  id                     String                       @id @default(cuid())
+  partnerId              String
+  reference              String                       @unique
+  idempotencyKey         String                       @unique
+  currency               String
+  periodStart            DateTime
+  periodEnd              DateTime
+  totalAmountMinor       BigInt
+  status                 PartnerSettlementBatchStatus @default(DRAFT)
+  approvedByUserId       String?
+  approvedAt             DateTime?
+  reconciledByUserId     String?
+  reconciledAt           DateTime?
+  externalReference      String?
+  reconciliationOutcome PartnerReconciliationOutcome?
+  reconciledAmountMinor  BigInt?
+  evidence               Json?
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+
+  partner      TransportPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  approvedBy   User?            @relation("PartnerSettlementBatchApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  reconciledBy User?            @relation("PartnerSettlementBatchReconciler", fields: [reconciledByUserId], references: [id], onDelete: Restrict)
+  items        PartnerSettlementBatchItem[]
+  reconciliations PartnerSettlementReconciliation[]
+
+  @@index([partnerId, currency, status, periodStart, periodEnd])
+  @@map("partner_settlement_batches")
+}
+
+model PartnerSettlementBatchItem {
+  id          String   @id @default(cuid())
+  batchId     String
+  payableId   String   @unique
+  amountMinor BigInt
+  createdAt   DateTime @default(now())
+
+  batch   PartnerSettlementBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  payable PartnerPayable         @relation(fields: [payableId], references: [id], onDelete: Restrict)
+
+  @@index([batchId])
+  @@map("partner_settlement_batch_items")
+}
+
+model PartnerSettlementReconciliation {
+  id                  String                       @id @default(cuid())
+  batchId             String
+  actorUserId         String
+  outcome             PartnerReconciliationOutcome
+  expectedAmountMinor BigInt
+  actualAmountMinor   BigInt
+  externalReference   String?
+  evidence            Json?
+  note                String?
+  createdAt           DateTime                     @default(now())
+
+  batch PartnerSettlementBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  actor User                   @relation("PartnerSettlementReconciliationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([batchId, createdAt])
+  @@map("partner_settlement_reconciliations")
+}

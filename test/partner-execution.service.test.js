@@ -31,7 +31,7 @@ test("partner assignment uses the accepted contracted quote and is audited trans
     },
     partnerAgreement: {
       findUnique: async () => ({
-        id: "agreement-1", partnerId: "partner-1", status: "ACTIVE",
+        id: "agreement-1", partnerId: "partner-1", status: "ACTIVE", currency: "NGN",
         effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), effectiveUntil: null,
         partner: { id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" },
       }),

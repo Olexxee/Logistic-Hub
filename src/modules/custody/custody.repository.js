@@ -5,7 +5,7 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.hubPoint.findUnique({ where: { id: hubPointId }, select: { id: true, status: true, name: true } });
     },
     findUser(userId, tx = prismaClient) {
-      return tx.user.findUnique({ where: { id: userId }, select: { id: true, status: true, role: true, emailVerifiedAt: true } });
+      return tx.user.findUnique({ where: { id: userId }, select: { id: true, status: true, role: true, emailVerifiedAt: true, phone: true, phoneVerifiedAt: true } });
     },
     findHubOperator(hubPointId, userId, tx = prismaClient) {
       return tx.hubPointOperator.findUnique({ where: { hubPointId_userId: { hubPointId, userId } } });
@@ -73,7 +73,10 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.operationalAuditEvent.create({ data });
     },
     listMyHandovers(userId, hubIds, partnerIds, driverIds, tx = prismaClient) {
-      const parties = [{ fromPartyType: "SENDER", fromPartyId: userId }, { toPartyType: "SENDER", toPartyId: userId }];
+      const parties = [
+        { fromPartyType: "SENDER", fromPartyId: userId }, { toPartyType: "SENDER", toPartyId: userId },
+        { fromPartyType: "RECIPIENT", fromPartyId: userId }, { toPartyType: "RECIPIENT", toPartyId: userId },
+      ];
       for (const id of hubIds) parties.push({ OR: [{ fromPartyType: "HUB", fromPartyId: id }, { toPartyType: "HUB", toPartyId: id }] });
       for (const id of partnerIds) parties.push({ OR: [{ fromPartyType: "TRANSPORT_PARTNER", fromPartyId: id }, { toPartyType: "TRANSPORT_PARTNER", toPartyId: id }] });
       for (const id of driverIds) parties.push({ OR: [{ fromPartyType: "DRIVER", fromPartyId: id }, { toPartyType: "DRIVER", toPartyId: id }] });
