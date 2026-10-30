@@ -533,6 +533,55 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/drivers:
+    get:
+      tags: [Admin]
+      operationId: listAdminDrivers
+      summary: List driver onboarding and operational profiles
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: verificationStatus
+          schema: { type: string, enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED] }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200': { description: Paginated driver profiles with account, vehicle and service coverage summaries. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /drivers/admin/vehicles:
+    get:
+      tags: [Admin]
+      operationId: listAdminDriverVehicles
+      summary: List driver vehicles for verification and operations review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: verificationStatus
+          schema: { type: string, enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED] }
+        - in: query
+          name: isActive
+          schema: { type: boolean }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200': { description: Paginated vehicles with owning driver and account summaries. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /hub-points:
     get:
       tags: [Hub points]
