@@ -57,6 +57,8 @@ export function createParcelBookingsRepository({ prismaClient }) {
         include: {
           originServiceZone: { select: { id: true, name: true } },
           destinationServiceZone: { select: { id: true, name: true } },
+          originHubPoint: { select: { id: true, name: true } },
+          destinationHubPoint: { select: { id: true, name: true } },
           assignments: {
             orderBy: { createdAt: "desc" },
             take: 1,

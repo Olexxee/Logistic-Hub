@@ -21,7 +21,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
   },
   transition({assignmentId,driverUserId,nextStatus,now}) {
    return prismaClient.$transaction(async tx=>{
-    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true}});
+    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
     const allowed={ACCEPTED:["ARRIVED_AT_PICKUP"],ARRIVED_AT_PICKUP:[],PICKUP_CONFIRMED:["IN_PROGRESS"],IN_PROGRESS:["ARRIVED_AT_DESTINATION"],ARRIVED_AT_DESTINATION:[]};
@@ -47,7 +47,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
   },
   verifyCode({assignmentId,driverUserId,action,tokenHash,now}) {
    return prismaClient.$transaction(async tx=>{
-    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true}});
+    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId)return {forbidden:true};
     const isParcel=Boolean(a.parcelBookingId);const booking=a.parcelBooking||a.rideBooking;
@@ -60,12 +60,37 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(consumed.count!==1)return {invalid:true};
     const nextStatus=action==="PICKUP"?"PICKUP_CONFIRMED":"COMPLETED";
     await tx.driverAssignment.update({where:{id:a.id},data:{status:nextStatus,...(action==="PICKUP"?{pickupAt:now}:{completedAt:now})}});
-    if(a.deliveryLegId) await tx.deliveryLeg.update({where:{id:a.deliveryLegId},data:{status:action==="PICKUP"?"IN_TRANSIT":"COMPLETED",...(action==="PICKUP"?{pickedUpAt:now}:{completedAt:now})}});
-    if(isParcel) await tx.parcelBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"PICKED_UP":"COMPLETED",...(action==="PICKUP"?{pickedUpAt:now}:{completedAt:now})}});
+    let nextDeliveryLegId = null;
+    let finalDeliveryLeg = true;
+    if(a.deliveryLegId) {
+     await tx.deliveryLeg.update({where:{id:a.deliveryLegId},data:{status:action==="PICKUP"?"IN_TRANSIT":"COMPLETED",...(action==="PICKUP"?{pickedUpAt:now}:{completedAt:now})}});
+     if(action==="DELIVERY") {
+      const nextLeg = await tx.deliveryLeg.findFirst({
+       where:{parcelBookingId:booking.id,sequence:{gt:a.deliveryLeg.sequence}},
+       orderBy:{sequence:"asc"},
+       select:{id:true,status:true},
+      });
+      if(nextLeg) {
+       const activated = await tx.deliveryLeg.updateMany({
+        where:{id:nextLeg.id,status:"PLANNED"},
+        data:{status:"READY_FOR_ASSIGNMENT"},
+       });
+       if(activated.count!==1) {
+        throw Object.assign(new Error("The next delivery leg is not ready to be activated."),{statusCode:409,code:"DELIVERY_LEG_SEQUENCE_CONFLICT"});
+       }
+       nextDeliveryLegId = nextLeg.id;
+       finalDeliveryLeg = false;
+      }
+     }
+    }
+    if(isParcel) await tx.parcelBooking.update({where:{id:booking.id},data:{
+     status:action==="PICKUP"?"PICKED_UP":finalDeliveryLeg?"COMPLETED":"IN_TRANSIT",
+     ...(action==="PICKUP"?{pickedUpAt:now}:finalDeliveryLeg?{completedAt:now}:{}),
+    }});
     else await tx.rideBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"TRIP_IN_PROGRESS":"COMPLETED",...(action==="PICKUP"?{tripStartedAt:now}:{completedAt:now})}});
-    await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:driverUserId,eventType:action==="PICKUP"?"PICKUP_VERIFIED":"COMPLETION_VERIFIED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id}}});
+    await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:driverUserId,eventType:action==="PICKUP"?"PICKUP_VERIFIED":"COMPLETION_VERIFIED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id,...(a.deliveryLegId?{deliveryLegId:a.deliveryLegId}:{}),...(nextDeliveryLegId?{nextDeliveryLegId}:{})}}});
     if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true,completedJobs:{increment:1}}});await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
-    return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):"COMPLETED",verifiedAt:now};
+    return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):isParcel?(finalDeliveryLeg?"COMPLETED":"IN_TRANSIT"):"COMPLETED",nextDeliveryLegId,verifiedAt:now};
    });
   },
  };

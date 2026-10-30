@@ -195,6 +195,64 @@ test("starting the trip records the delivery leg transit start timestamp", async
   });
 });
 
+test("completing a non-final leg activates only the next leg and keeps the booking in transit", async () => {
+  const legUpdates = [];
+  let bookingUpdate;
+  let bookingEvent;
+  const assignment = {
+    id: "assignment_first_leg",
+    deliveryLegId: "leg_first",
+    deliveryLeg: { id: "leg_first", sequence: 1 },
+    parcelBookingId: "booking_multi",
+    rideBookingId: null,
+    driverProfileId: "driver_profile_first",
+    driverProfile: { userId: "driver_user_first" },
+    parcelBooking: { id: "booking_multi", senderId: "sender_multi", publicReference: "LH-PCL-MULTI" },
+    rideBooking: null,
+    status: "ARRIVED_AT_DESTINATION",
+    agreedFareMinor: 1800n,
+    currency: "NGN",
+  };
+  const tx = {
+    driverAssignment: { findUnique: async () => assignment, update: async () => ({}) },
+    verificationToken: {
+      findFirst: async () => ({ id: "token_first_leg" }),
+      updateMany: async () => ({ count: 1 }),
+    },
+    deliveryLeg: {
+      update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; },
+      findFirst: async () => ({ id: "leg_trunk", status: "PLANNED" }),
+      updateMany: async ({ where, data }) => {
+        legUpdates.push({ where, data });
+        return { count: 1 };
+      },
+    },
+    parcelBooking: { update: async ({ data }) => { bookingUpdate = data; return {}; } },
+    bookingEvent: { create: async ({ data }) => { bookingEvent = data; return {}; } },
+    driverProfile: { update: async () => ({}) },
+    driverPayout: { upsert: async () => ({}) },
+  };
+  const repository = createAssignmentsRepository({ $transaction: (callback) => callback(tx) });
+  const result = await repository.verifyCode({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_first",
+    action: "DELIVERY",
+    tokenHash: "first-leg-token-hash",
+    now,
+  });
+
+  assert.equal(result.status, "COMPLETED");
+  assert.equal(result.bookingStatus, "IN_TRANSIT");
+  assert.equal(result.nextDeliveryLegId, "leg_trunk");
+  assert.deepEqual(legUpdates[1], {
+    where: { id: "leg_trunk", status: "PLANNED" },
+    data: { status: "READY_FOR_ASSIGNMENT" },
+  });
+  assert.equal(bookingUpdate.status, "IN_TRANSIT");
+  assert.equal("completedAt" in bookingUpdate, false);
+  assert.equal(bookingEvent.metadata.nextDeliveryLegId, "leg_trunk");
+});
+
 test("verified recipient handover completes the linked delivery leg in the same transaction", async () => {
   const legUpdates = [];
   let tokenQuery;
@@ -208,6 +266,7 @@ test("verified recipient handover completes the linked delivery leg in the same 
     parcelBooking: { id: "booking_2", senderId: "sender_2", publicReference: "LH-PCL-2" },
     rideBooking: null,
     status: "ARRIVED_AT_DESTINATION",
+    deliveryLeg: { id: "leg_2", sequence: 1 },
     agreedFareMinor: 2500n,
     currency: "NGN",
   };
@@ -220,7 +279,10 @@ test("verified recipient handover completes the linked delivery leg in the same 
       findFirst: async (query) => { tokenQuery = query; return { id: "token_1" }; },
       updateMany: async () => ({ count: 1 }),
     },
-    deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
+    deliveryLeg: {
+      update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; },
+      findFirst: async () => null,
+    },
     parcelBooking: { update: async () => ({}) },
     bookingEvent: { create: async () => ({}) },
     driverProfile: { update: async () => ({}) },

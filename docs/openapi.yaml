@@ -2762,11 +2762,27 @@ components:
           enum: [DIRECT, LOCAL_PICKUP, HUB_TRANSFER, INTERSTATE_TRANSPORT, FINAL_MILE]
         status:
           type: string
-          enum: [PLANNED, AWAITING_PAYMENT, ASSIGNED, PICKUP_VERIFICATION_PENDING, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, FAILED, CANCELLED]
+          enum: [PLANNED, READY_FOR_ASSIGNMENT, AWAITING_PAYMENT, ASSIGNED, PICKUP_VERIFICATION_PENDING, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, FAILED, CANCELLED]
         origin:
           $ref: '#/components/schemas/ServiceZoneSummary'
         destination:
           $ref: '#/components/schemas/ServiceZoneSummary'
+        originHub:
+          oneOf:
+            - type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+            - type: 'null'
+        destinationHub:
+          oneOf:
+            - type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+            - type: 'null'
         plannedAt: { type: string, format: date-time, nullable: true }
         assignedAt: { type: string, format: date-time, nullable: true }
         pickedUpAt: { type: string, format: date-time, nullable: true }
