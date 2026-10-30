@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { emailService } from "../../shared/email/email.service.js";
-import { authMiddleware, requireRole } from "../auth/auth.middleware.js";
+import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import {
   driverAvailabilitySchema,
   driverCoverageSchema,
@@ -32,7 +32,7 @@ function validationError(res, issues) {
   });
 }
 
-export function createDriversRouter({ prismaClient = prisma, email = emailService, authMiddleware = authMiddleware, roleMiddleware = requireRole } = {}) {
+export function createDriversRouter({ prismaClient = prisma, email = emailService, authMiddleware = requireAuth, roleMiddleware = requireRole } = {}) {
   const router = Router();
   const service = createDriversService({ prismaClient });
   const requireAdmin = roleMiddleware("ADMIN");
