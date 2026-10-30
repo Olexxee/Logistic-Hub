@@ -67,14 +67,19 @@ paths:
                         type: object
                         required: [database]
                         properties:
-                          database: { const: ok }
+                          database:
+                            type: object
+                            required: [status, latencyMs]
+                            properties:
+                              status: { type: string, const: ok }
+                              latencyMs: { type: integer, minimum: 0 }
                       timestamp: { type: string, format: date-time }
         '503':
           description: PostgreSQL is unavailable.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ReadinessErrorResponse'
   /service-zones:
     get:
       tags: [Geography]
@@ -4509,6 +4514,33 @@ components:
             availability:
               type: array
               items: { $ref: '#/components/schemas/ServiceAvailabilityResource' }
+    ReadinessErrorResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { const: false }
+        data:
+          type: object
+          required: [service, status, dependencies, timestamp]
+          properties:
+            service: { type: string, const: logistic-hub-api }
+            status: { type: string, const: not_ready }
+            dependencies:
+              type: object
+              required: [database]
+              properties:
+                database:
+                  type: object
+                  required: [status]
+                  properties:
+                    status: { type: string, const: unavailable }
+            timestamp: { type: string, format: date-time }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, const: DEPENDENCY_UNAVAILABLE }
+            message: { type: string }
     HealthResponse:
       type: object
       required: [success, data]
