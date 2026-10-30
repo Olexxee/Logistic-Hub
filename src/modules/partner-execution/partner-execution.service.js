@@ -31,7 +31,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) {
           return { blocker: "USER_NOT_ACTIVE" };
         }
-        if (!["CUSTOMER", "PARTNER_OPERATOR"].includes(user.role)) {
+        if (!["CUSTOMER", "PARTNER_OPERATOR", "HUB_OPERATOR"].includes(user.role)) {
           return { blocker: "USER_ROLE_CONFLICT" };
         }
         const member = await tx.transportPartnerMember.upsert({
@@ -39,12 +39,12 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           create: { partnerId, userId, role, isActive: true },
           update: { role, isActive: true },
         });
-        if (user.role !== "PARTNER_OPERATOR") {
+        if (user.role === "CUSTOMER") {
           await tx.user.update({ where: { id: userId }, data: { role: "PARTNER_OPERATOR" } });
         }
         await tx.operationalAuditEvent.create({ data: {
           actorUserId, entityType: "TRANSPORT_PARTNER_MEMBER", entityId: member.id,
-          action: "PARTNER_MEMBER_ACTIVATED", before: { userRole: user.role }, after: { partnerId, userId, role, isActive: true, userRole: "PARTNER_OPERATOR" },
+          action: "PARTNER_MEMBER_ACTIVATED", before: { userRole: user.role }, after: { partnerId, userId, role, isActive: true, userRole: user.role === "CUSTOMER" ? "PARTNER_OPERATOR" : user.role },
         } });
         return { member };
       });
@@ -60,9 +60,12 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const activeMemberships = await tx.transportPartnerMember.count({
           where: { userId: member.userId, isActive: true },
         });
-        if (!activeMemberships) {
+        const activeHubMemberships = await tx.hubPointOperator.count({
+          where: { userId: member.userId, isActive: true },
+        });
+        if (!activeMemberships && !activeHubMemberships) {
           await tx.user.updateMany({
-            where: { id: member.userId, role: "PARTNER_OPERATOR" },
+            where: { id: member.userId, role: { in: ["PARTNER_OPERATOR", "HUB_OPERATOR"] } },
             data: { role: "CUSTOMER" },
           });
         }

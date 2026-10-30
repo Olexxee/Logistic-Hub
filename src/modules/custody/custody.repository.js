@@ -1,0 +1,88 @@
+export function createCustodyRepository({ prismaClient }) {
+  return {
+    transaction(work) { return prismaClient.$transaction(work); },
+    findHub(hubPointId, tx = prismaClient) {
+      return tx.hubPoint.findUnique({ where: { id: hubPointId }, select: { id: true, status: true, name: true } });
+    },
+    findUser(userId, tx = prismaClient) {
+      return tx.user.findUnique({ where: { id: userId }, select: { id: true, status: true, role: true, emailVerifiedAt: true } });
+    },
+    findHubOperator(hubPointId, userId, tx = prismaClient) {
+      return tx.hubPointOperator.findUnique({ where: { hubPointId_userId: { hubPointId, userId } } });
+    },
+    findHubOperatorsForUser(userId, tx = prismaClient) {
+      return tx.hubPointOperator.findMany({ where: { userId, isActive: true, hubPoint: { status: "ACTIVE" } }, select: { hubPointId: true } });
+    },
+    findHubOperatorById(hubPointId, operatorId, tx = prismaClient) {
+      return tx.hubPointOperator.findFirst({ where: { id: operatorId, hubPointId } });
+    },
+    upsertHubOperator(data, tx = prismaClient) {
+      return tx.hubPointOperator.upsert({
+        where: { hubPointId_userId: { hubPointId: data.hubPointId, userId: data.userId } },
+        create: data,
+        update: { role: data.role, isActive: true },
+      });
+    },
+    updateHubOperator(id, isActive, tx = prismaClient) {
+      return tx.hubPointOperator.update({ where: { id }, data: { isActive } });
+    },
+    countActiveHubMemberships(userId, tx = prismaClient) {
+      return tx.hubPointOperator.count({ where: { userId, isActive: true } });
+    },
+    setUserRole(userId, role, tx = prismaClient) {
+      return tx.user.update({ where: { id: userId }, data: { role } });
+    },
+    findBookingLeg(deliveryLegId, tx = prismaClient) {
+      return tx.deliveryLeg.findUnique({
+        where: { id: deliveryLegId },
+        include: {
+          parcelBooking: { select: { id: true, senderId: true, paymentStatus: true, status: true, recipientName: true, recipientPhone: true } },
+          assignments: { where: { status: { notIn: ["CANCELLED", "FAILED", "COMPLETED"] } }, include: { driverProfile: { select: { id: true, userId: true } } } },
+          partnerAssignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, select: { partnerId: true, status: true } },
+        },
+      });
+    },
+    findHubForParty(id, tx = prismaClient) {
+      return tx.hubPoint.findUnique({ where: { id }, select: { id: true, status: true } });
+    },
+    findDriverForParty(id, tx = prismaClient) {
+      return tx.driverProfile.findUnique({ where: { id }, select: { id: true, userId: true, verificationStatus: true } });
+    },
+    findPartnerForParty(id, tx = prismaClient) {
+      return tx.transportPartner.findUnique({ where: { id }, select: { id: true, status: true, verificationStatus: true } });
+    },
+    findPartnerMembership(partnerId, userId, tx = prismaClient) {
+      return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
+    },
+    findHandover(id, tx = prismaClient) {
+      return tx.custodyHandover.findUnique({ where: { id }, include: { deliveryLeg: true, parcelBooking: true } });
+    },
+    findPendingHandover(deliveryLegId, tx = prismaClient) {
+      return tx.custodyHandover.findFirst({ where: { deliveryLegId, status: "PENDING_CONFIRMATION" } });
+    },
+    createHandover(data, tx = prismaClient) {
+      return tx.custodyHandover.create({ data });
+    },
+    updateHandover(id, data, tx = prismaClient) {
+      return tx.custodyHandover.update({ where: { id }, data });
+    },
+    createOperationalCase(data, tx = prismaClient) {
+      return tx.operationalCase.create({ data });
+    },
+    createAudit(data, tx = prismaClient) {
+      return tx.operationalAuditEvent.create({ data });
+    },
+    listMyHandovers(userId, hubIds, partnerIds, driverIds, tx = prismaClient) {
+      const parties = [{ fromPartyType: "SENDER", fromPartyId: userId }, { toPartyType: "SENDER", toPartyId: userId }];
+      for (const id of hubIds) parties.push({ OR: [{ fromPartyType: "HUB", fromPartyId: id }, { toPartyType: "HUB", toPartyId: id }] });
+      for (const id of partnerIds) parties.push({ OR: [{ fromPartyType: "TRANSPORT_PARTNER", fromPartyId: id }, { toPartyType: "TRANSPORT_PARTNER", toPartyId: id }] });
+      for (const id of driverIds) parties.push({ OR: [{ fromPartyType: "DRIVER", fromPartyId: id }, { toPartyType: "DRIVER", toPartyId: id }] });
+      return tx.custodyHandover.findMany({
+        where: { OR: parties },
+        include: { deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } } },
+        orderBy: [{ initiatedAt: "desc" }, { id: "desc" }],
+        take: 100,
+      });
+    },
+  };
+}

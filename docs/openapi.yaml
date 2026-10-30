@@ -2713,7 +2713,7 @@ paths:
         '401': { description: Authentication required. }
         '403': { description: Administrator access required. }
         '404': { description: Delivery leg not found. }
-        '409': { description: Leg, payment or partner agreement is not eligible. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /partner/assignments:
     get:
       tags: [Partner execution]
@@ -2765,6 +2765,204 @@ paths:
         '404': { description: Assignment not found. }
         '409': { description: Assignment is not ready to start. }
 
+
+  /admin/hub-points/{hubPointId}/operators:
+    post:
+      tags: [Hub points, Admin]
+      operationId: addHubPointOperator
+      summary: Add or reactivate a verified user as a hub operator
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [userId]
+              properties:
+                userId: { type: string, minLength: 1 }
+                role: { type: string, enum: [MANAGER, OPERATOR], default: OPERATOR }
+      responses:
+        '201': { description: Hub operator membership created or reactivated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub not found. }
+        '409': { description: User is inactive or has an incompatible role. }
+  /admin/hub-points/{hubPointId}/operators/{operatorId}:
+    patch:
+      tags: [Hub points, Admin]
+      operationId: setHubPointOperatorStatus
+      summary: Activate or suspend a hub operator membership
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: path, required: true, schema: { type: string } }
+        - { name: operatorId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties:
+                isActive: { type: boolean }
+      responses:
+        '200': { description: Hub operator membership status updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub operator not found. }
+  /custody/handovers/mine:
+    get:
+      tags: [Delivery legs]
+      operationId: listMyCustodyHandovers
+      summary: List custody handovers associated with the authenticated user's parties
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /custody/handovers:
+    post:
+      tags: [Delivery legs]
+      operationId: initiateCustodyHandover
+      summary: Initiate a custody transfer for a paid delivery leg
+      description: The authenticated releasing party creates a pending handover. Custody is not transferred until the authenticated receiving party confirms. Recipient-party confirmation is intentionally unavailable until recipient identity verification is implemented.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [parcelBookingId, deliveryLegId, fromPartyType, fromPartyId, toPartyType, toPartyId, conditionAtRelease]
+              properties:
+                parcelBookingId: { type: string }
+                deliveryLegId: { type: string }
+                hubPointId: { type: string }
+                fromPartyType: { type: string, enum: [SENDER, DRIVER, HUB, TRANSPORT_PARTNER] }
+                fromPartyId: { type: string }
+                toPartyType: { type: string, enum: [SENDER, DRIVER, HUB, TRANSPORT_PARTNER] }
+                toPartyId: { type: string }
+                conditionAtRelease: { type: string, minLength: 2, maxLength: 500 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '201': { description: Pending custody handover created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Delivery leg or booking not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /custody/handovers/{handoverId}/decision:
+    post:
+      tags: [Delivery legs]
+      operationId: decideCustodyHandover
+      summary: Confirm or reject a pending custody handover as the receiving party
+      description: A rejection creates a high-priority FAILED_HANDOVER operational case in the same database transaction. A confirmation records the receiving actor and receipt condition.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: handoverId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                conditionAtReceipt: { type: string, minLength: 2, maxLength: 500 }
+                rejectReason: { type: string, minLength: 3, maxLength: 1000 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '200': { description: Handover confirmed or rejected; rejection includes the created operational case. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Handover not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+
+  /admin/operational-cases:
+    get:
+      tags: [Admin]
+      operationId: listOperationalCases
+      summary: List operational exceptions for admin triage
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [OPEN, TRIAGED, IN_PROGRESS, RESOLVED, CLOSED] } }
+        - { name: type, in: query, schema: { type: string, enum: [FAILED_HANDOVER, DAMAGED_PARCEL, MISSING_PARCEL, FAILED_DELIVERY, PARTNER_DELAY, ROUTE_DISRUPTION, PRICING_EXCEPTION, CUSTOMER_DISPUTE, OTHER] } }
+        - { name: priority, in: query, schema: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/operational-cases/{caseId}:
+    patch:
+      tags: [Admin]
+      operationId: updateOperationalCase
+      summary: Triage, assign, prioritize, resolve or close an operational case
+      description: Case transitions are enforced as OPEN to TRIAGED to IN_PROGRESS to RESOLVED to CLOSED. A resolution summary is mandatory before resolution. Assignees must be active, verified ADMIN or SUPPORT users.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                status: { type: string, enum: [OPEN, TRIAGED, IN_PROGRESS, RESOLVED, CLOSED] }
+                priority: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL] }
+                assignedToUserId: { type: string, nullable: true }
+                resolution: { type: string, minLength: 3, maxLength: 2000 }
+      responses:
+        '200': { description: Operational case updated and audited. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Operational case not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2813,6 +3011,19 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: The request conflicts with the current resource state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Success:
+      description: The request completed successfully.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
     RateLimited:
       description: Rate limit exceeded.
       content:
