@@ -57,7 +57,7 @@ test("listMine returns only the authenticated driver's paid parcel assignments",
   const prismaClient = {
     driverAssignment: {
       findMany: async (args) => { captured = args; return [fixture]; },
-      count: async (args) => { assert.deepEqual(args, captured.where); return 21; },
+      count: async (args) => { assert.deepEqual(args, { where: captured.where }); return 21; },
     },
   };
   const service = createAssignmentsService({ prismaClient, clock: () => new Date("2026-10-30T12:00:00.000Z") });
