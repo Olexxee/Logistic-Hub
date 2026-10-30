@@ -113,12 +113,55 @@ export function createCustodyRepository({ prismaClient }) {
         },
       });
     },
+    findHubIntakeConfig(hubPointId, tx = prismaClient) {
+      return tx.hubPoint.findUnique({
+        where: { id: hubPointId },
+        select: { id: true, status: true, acceptedParcelTypes: true, capacityConfig: true },
+      });
+    },
+    countReceivedHubIntakes(hubPointId, tx = prismaClient) {
+      return tx.hubIntakeRecord.count({ where: { hubPointId, status: "RECEIVED" } });
+    },
+    aggregateReceivedHubIntakes(hubPointId, tx = prismaClient) {
+      return tx.hubIntakeRecord.aggregate({
+        where: { hubPointId, status: "RECEIVED" },
+        _sum: { weightGrams: true, volumeCm3: true },
+      });
+    },
+    createHubIntakeRecord(data, tx = prismaClient) {
+      return tx.hubIntakeRecord.create({ data });
+    },
+    findReceivedHubIntake(parcelBookingId, hubPointId, tx = prismaClient) {
+      return tx.hubIntakeRecord.findFirst({
+        where: { parcelBookingId, hubPointId, status: "RECEIVED" },
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+      });
+    },
+    updateHubIntakeRecord(id, data, tx = prismaClient) {
+      return tx.hubIntakeRecord.update({ where: { id }, data });
+    },
+    listHubIntakes(hubPointIds, { status = "RECEIVED", cursor, limit = 25 } = {}, tx = prismaClient) {
+      return tx.hubIntakeRecord.findMany({
+        where: { hubPointId: { in: hubPointIds }, ...(status ? { status } : {}) },
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true,
+          status: true, weightGrams: true, lengthMm: true, widthMm: true, heightMm: true,
+          volumeCm3: true, conditionAtReceipt: true, evidence: true, receivedAt: true, releasedAt: true,
+          parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true } },
+          deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+          hubPoint: { select: { id: true, name: true, address: true } },
+        },
+      });
+    },
     findDispatchableLegs(hubPointIds, { cursor, limit = 25 } = {}, tx = prismaClient) {
       return tx.deliveryLeg.findMany({
         where: {
           originHubPointId: { in: hubPointIds },
           status: { in: ["ASSIGNED", "READY_FOR_ASSIGNMENT", "PICKUP_VERIFICATION_PENDING"] },
-          parcelBooking: { is: { paymentStatus: "SUCCEEDED" } },
+          parcelBooking: { is: { paymentStatus: "SUCCEEDED", hubIntakeRecords: { some: { hubPointId: { in: hubPointIds }, status: "RECEIVED" } } } },
           OR: [
             { assignments: { some: { status: "ARRIVED_AT_PICKUP" } } },
             { partnerAssignments: { some: { status: "ACCEPTED" } } },
