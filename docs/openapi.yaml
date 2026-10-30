@@ -17,6 +17,7 @@ tags:
   - name: Parcel bookings
   - name: Driver offers
   - name: Delivery legs
+  - name: Partner execution
   - name: Payments
   - name: Drivers
   - name: Admin
@@ -2611,6 +2612,158 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/transport-partners/{partnerId}/members:
+    post:
+      tags: [Partner execution, Admin]
+      operationId: addTransportPartnerMember
+      summary: Add an active user to a transport partner
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [userId]
+              properties:
+                userId: { type: string }
+                role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER], default: OPERATIONS }
+      responses:
+        '201': { description: Partner membership created or reactivated. }
+        '400': { description: Invalid membership input. }
+        '401': { description: Authentication required. }
+        '403': { description: Administrator access required. }
+        '404': { description: Partner not found. }
+        '409': { description: User is inactive or has an incompatible role. }
+  /admin/transport-partners/{partnerId}/members/{memberId}:
+    patch:
+      tags: [Partner execution, Admin]
+      operationId: setTransportPartnerMemberStatus
+      summary: Activate or suspend a transport partner member
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: memberId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties:
+                isActive: { type: boolean }
+      responses:
+        '200': { description: Membership status updated. }
+        '400': { description: Invalid membership input. }
+        '401': { description: Authentication required. }
+        '403': { description: Administrator access required. }
+        '404': { description: Membership not found. }
+  /admin/delivery-legs/{legId}/partner-assignment:
+    post:
+      tags: [Partner execution, Admin]
+      operationId: assignDeliveryLegToTransportPartner
+      summary: Assign a paid interstate delivery leg to its contracted partner
+      description: Uses the accepted partner quote and active agreement as the immutable agreed transport charge. The operation is idempotent.
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: legId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [partnerId]
+              properties:
+                partnerId: { type: string }
+      responses:
+        '201': { description: Partner assignment created. }
+        '200': { description: Idempotent replay of the original assignment. }
+        '400': { description: Invalid request or missing idempotency key. }
+        '401': { description: Authentication required. }
+        '403': { description: Administrator access required. }
+        '404': { description: Delivery leg not found. }
+        '409': { description: Leg, payment or partner agreement is not eligible. }
+  /partner/assignments:
+    get:
+      tags: [Partner execution]
+      operationId: listMyPartnerDeliveryAssignments
+      summary: List assignments for the authenticated partner member
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      responses:
+        '200': { description: Partner delivery assignments. }
+        '401': { description: Authentication required. }
+        '403': { description: Active partner membership required. }
+  /partner/assignments/{assignmentId}/accept:
+    post:
+      tags: [Partner execution]
+      operationId: acceptPartnerDeliveryAssignment
+      summary: Accept an assigned interstate delivery leg
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Assignment accepted or idempotently replayed. }
+        '401': { description: Authentication required. }
+        '403': { description: Active partner membership required. }
+        '404': { description: Assignment not found. }
+        '409': { description: Assignment is not in an acceptable state. }
+  /partner/assignments/{assignmentId}/start:
+    post:
+      tags: [Partner execution]
+      operationId: startPartnerDeliveryAssignment
+      summary: Mark an accepted partner assignment as in transit
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Assignment started or idempotently replayed. }
+        '401': { description: Authentication required. }
+        '403': { description: Active partner membership required. }
+        '404': { description: Assignment not found. }
+        '409': { description: Assignment is not ready to start. }
+
 components:
   securitySchemes:
     bearerAuth:
