@@ -215,7 +215,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
     async setCoverage(input) {
       const zone = await prismaClient.serviceZone.findUnique({ where: { id: input.serviceZoneId }, include: { state: { include: { country: true } }, availability: { where: { serviceType: input.serviceType, isEnabled: true } } } });
       if (!zone) return null;
-      if (!zone.isActive || !zone.state?.isActive || !zone.state.country?.isActive || zone.availability.length === 0) throw conflict("SERVICE_ZONE_NOT_ELIGIBLE", "Coverage requires an active zone, state, country, and matching service availability.");
+      if (input.isEnabled && (!zone.isActive || !zone.state?.isActive || !zone.state.country?.isActive || zone.availability.length === 0)) throw conflict("SERVICE_ZONE_NOT_ELIGIBLE", "Coverage requires an active zone, state, country, and matching service availability.");
       const profile = await prismaClient.driverProfile.findUnique({ where: { id: input.driverProfileId }, select: { id: true } });
       if (!profile) return null;
       return prismaClient.driverCoverage.upsert({
