@@ -94,16 +94,39 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
     async setAvailability({ userId, input }) {
       const profile = await prismaClient.driverProfile.findUnique({
         where: { userId },
-        include: { vehicles: true, coverage: true },
+        include: {
+          vehicles: true,
+          coverage: {
+            where: { isEnabled: true },
+            include: {
+              serviceZone: {
+                include: {
+                  state: { include: { country: true } },
+                  availability: true,
+                },
+              },
+            },
+          },
+        },
       });
       if (!profile || profile.verificationStatus !== "VERIFIED") {
         throw forbidden("Driver verification must be completed before going online.");
       }
       if (input.isAvailable) {
+        const now = clock();
         const hasActiveVehicle = profile.vehicles.some((vehicle) => vehicle.isActive && vehicle.verificationStatus === "VERIFIED");
-        const hasCoverage = profile.coverage.some((coverage) => coverage.isEnabled);
-        if (!hasActiveVehicle || !hasCoverage) {
-          throw conflict("DRIVER_NOT_READY", "At least one verified active vehicle and enabled service-zone coverage are required.");
+        const hasEligibleCoverage = profile.coverage.some((coverage) => {
+          const zone = coverage.serviceZone;
+          if (!zone?.isActive || !zone.state?.isActive || !zone.state.country?.isActive) return false;
+          return zone.availability.some((availability) =>
+            availability.serviceType === coverage.serviceType &&
+            availability.isEnabled &&
+            (!availability.startsAt || availability.startsAt <= now) &&
+            (!availability.endsAt || availability.endsAt >= now)
+          );
+        });
+        if (!hasActiveVehicle || !hasEligibleCoverage) {
+          throw conflict("DRIVER_NOT_READY", "At least one verified active vehicle and enabled coverage in an active service zone are required.");
         }
       }
       const updated = await prismaClient.driverProfile.update({
