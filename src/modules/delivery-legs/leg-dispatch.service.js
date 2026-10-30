@@ -114,7 +114,10 @@ export function createLegDispatchService({ prismaClient, clock = () => new Date(
             },
             assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
           },
-          include: { locations: { take: 1, orderBy: { recordedAt: "desc" } } },
+          include: {
+            locations: { take: 1, orderBy: { recordedAt: "desc" } },
+            coverage: { select: { serviceZoneId: true, serviceType: true, isEnabled: true } },
+          },
         });
         const pickup = {
           latitude: leg.originLatitude ?? leg.parcelBooking.pickupLatitude,
@@ -327,9 +330,10 @@ export function createLegDispatchService({ prismaClient, clock = () => new Date(
               isAvailable: true,
               user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
               vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
-              coverage: {
-                some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true },
-              },
+              AND: [
+                { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+                { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+              ],
               assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
             },
             data: { isAvailable: false },
