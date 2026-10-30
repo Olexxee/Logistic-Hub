@@ -47,7 +47,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
   },
   verifyCode({assignmentId,driverUserId,action,tokenHash,now}) {
    return prismaClient.$transaction(async tx=>{
-    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true}});
+    const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId)return {forbidden:true};
     const isParcel=Boolean(a.parcelBookingId);const booking=a.parcelBooking||a.rideBooking;
