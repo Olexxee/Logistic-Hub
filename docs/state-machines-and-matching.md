@@ -50,6 +50,8 @@ A delivery leg is one independently tracked segment of a parcel journey. The boo
 
 The first implementation supports one direct local-delivery leg per driver-matched parcel booking:
 
+Direct local-driver matching is restricted to routes whose pickup and destination service zones belong to the same state. Cross-state bookings must use the transport-partner quotation path; they cannot fall through to a direct local-driver assignment while partner-leg assignment is not yet implemented.
+
 - The sender accepts a specific driver fare; in the same transaction the system creates a DIRECT leg in AWAITING_PAYMENT and links the temporary driver assignment to that leg.
 - A successful, server-verified payment changes the leg to ASSIGNED in the same settlement transaction that activates the driver assignment.
 - Driver arrival at pickup changes the leg to PICKUP_VERIFICATION_PENDING.
