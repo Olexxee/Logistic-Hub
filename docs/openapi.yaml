@@ -2501,7 +2501,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Leg is not ready, is not locally driver-dispatchable, or has no eligible drivers. }
+        '409': { description: "Leg is not ready, is not locally driver-dispatchable, or has no eligible drivers." }
   /delivery-legs/{legId}/offers:
     get:
       tags: [Driver offers]
@@ -2544,12 +2544,12 @@ paths:
               properties:
                 offerId: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Accepted leg fare, reserved driver assignment and replay-safe response. }
+        '200': { description: "Accepted leg fare, reserved driver assignment and replay-safe response." }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Offer or leg is no longer available, or idempotency key conflicts. }
+        '409': { description: "Offer or leg is no longer available, or idempotency key conflicts." }
   /driver/delivery-leg-offers:
     get:
       tags: [Driver offers]
@@ -2590,7 +2590,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Offer expired, already answered, or idempotency key conflicts. }
+        '409': { description: "Offer expired, already answered, or idempotency key conflicts." }
 
 components:
   securitySchemes:
