@@ -6,10 +6,11 @@ export function createDiscoveryRepository(prismaClient) {
       return prismaClient.driverProfile.findUnique({ where: { userId }, select: { id: true } });
     },
 
-    listDriverAssignments({ driverProfileId, limit, statuses }) {
+    listDriverAssignments({ driverProfileId, skip, limit, statuses }) {
       return prismaClient.driverAssignment.findMany({
         where: { driverProfileId, status: { in: statuses } },
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        skip,
         take: limit,
         include: {
           parcelBooking: {
