@@ -2913,6 +2913,56 @@ paths:
         '404': { description: Handover not found. }
         '409': { description: Handover is expired, already decided, or recipient verification is unavailable. }
 
+
+  /admin/operational-cases:
+    get:
+      tags: [Admin]
+      operationId: listOperationalCases
+      summary: List operational exceptions for admin triage
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [OPEN, TRIAGED, IN_PROGRESS, RESOLVED, CLOSED] } }
+        - { name: type, in: query, schema: { type: string, enum: [FAILED_HANDOVER, DAMAGED_PARCEL, MISSING_PARCEL, FAILED_DELIVERY, PARTNER_DELAY, ROUTE_DISRUPTION, PRICING_EXCEPTION, CUSTOMER_DISPUTE, OTHER] } }
+        - { name: priority, in: query, schema: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: Operational cases ordered by priority and age, with a cursor for the next page. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/operational-cases/{caseId}:
+    patch:
+      tags: [Admin]
+      operationId: updateOperationalCase
+      summary: Triage, assign, prioritize, resolve or close an operational case
+      description: Case transitions are enforced as OPEN to TRIAGED to IN_PROGRESS to RESOLVED to CLOSED. A resolution summary is mandatory before resolution. Assignees must be active, verified ADMIN or SUPPORT users.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                status: { type: string, enum: [OPEN, TRIAGED, IN_PROGRESS, RESOLVED, CLOSED] }
+                priority: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL] }
+                assignedToUserId: { type: string, nullable: true }
+                resolution: { type: string, minLength: 3, maxLength: 2000 }
+      responses:
+        '200': { description: Operational case updated and audited. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Operational case not found. }
+        '409': { description: Invalid state transition, missing resolution, or ineligible assignee. }
+
 components:
   securitySchemes:
     bearerAuth:
