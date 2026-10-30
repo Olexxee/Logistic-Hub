@@ -704,6 +704,7 @@ model DriverOffer {
   id                          String      @id @default(cuid())
   parcelBookingId             String?
   rideBookingId               String?
+  deliveryLegId               String?
   driverProfileId             String
   status                      OfferStatus @default(OFFERED)
   proposedFareMinor           BigInt?
@@ -716,11 +717,13 @@ model DriverOffer {
 
   parcelBooking ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
   rideBooking   RideBooking?   @relation(fields: [rideBookingId],   references: [id], onDelete: Cascade)
+  deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Cascade)
   driverProfile DriverProfile  @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
 
   @@index([driverProfileId, status, expiresAt])
   @@index([parcelBookingId, status, expiresAt])
   @@index([rideBookingId, status, expiresAt])
+  @@index([deliveryLegId, status, expiresAt])
   @@map("driver_offers")
 }
 
@@ -764,6 +767,9 @@ model DeliveryLeg {
   sequence               Int
   type                   DeliveryLegType
   status                 DeliveryLegStatus @default(PLANNED)
+  driverFareMinor        BigInt?
+  fareAcceptanceIdempotencyKey String? @unique
+  fareAcceptancePayloadHash String?
   originServiceZoneId    String
   destinationServiceZoneId String
   originHubPointId        String?
@@ -789,6 +795,7 @@ model DeliveryLeg {
   originHubPoint HubPoint? @relation("DeliveryLegOriginHub", fields: [originHubPointId], references: [id], onDelete: Restrict)
   destinationHubPoint HubPoint? @relation("DeliveryLegDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
   assignments       DriverAssignment[]
+  offers            DriverOffer[]
   verificationTokens VerificationToken[]
 
   @@unique([parcelBookingId, sequence])
