@@ -50,7 +50,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(consumed.count!==1)return {invalid:true};
     const nextStatus=action==="PICKUP"?"PICKUP_CONFIRMED":"COMPLETED";
     await tx.driverAssignment.update({where:{id:a.id},data:{status:nextStatus,...(action==="PICKUP"?{pickupAt:now}:{completedAt:now})}});
-    if(a.deliveryLegId) await tx.deliveryLeg.update({where:{id:a.deliveryLegId},data:{status:action==="PICKUP"?"IN_TRANSIT":"COMPLETED",...(action==="PICKUP"?{startedAt:now}:{completedAt:now})}});
+    if(a.deliveryLegId) await tx.deliveryLeg.update({where:{id:a.deliveryLegId},data:{status:action==="PICKUP"?"IN_TRANSIT":"COMPLETED",...(action==="PICKUP"?{pickedUpAt:now}:{completedAt:now})}});
     if(isParcel) await tx.parcelBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"PICKED_UP":"COMPLETED",...(action==="PICKUP"?{pickedUpAt:now}:{completedAt:now})}});
     else await tx.rideBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"TRIP_IN_PROGRESS":"COMPLETED",...(action==="PICKUP"?{tripStartedAt:now}:{completedAt:now})}});
     await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:driverUserId,eventType:action==="PICKUP"?"PICKUP_VERIFIED":"COMPLETION_VERIFIED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id}}});
