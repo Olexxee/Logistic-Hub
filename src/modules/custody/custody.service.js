@@ -81,9 +81,9 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!hub) return { notFound: true };
         const user = await repo.findUser(userId, tx);
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
-        if (!["CUSTOMER", "HUB_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
+        if (!["CUSTOMER", "HUB_OPERATOR", "PARTNER_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
         const operator = await repo.upsertHubOperator({ hubPointId, userId, role, isActive: true }, tx);
-        if (user.role !== "HUB_OPERATOR") await repo.setUserRole(userId, "HUB_OPERATOR", tx);
+        if (user.role === "CUSTOMER") await repo.setUserRole(userId, "HUB_OPERATOR", tx);
         await repo.createAudit({
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operator.id,
           action: "HUB_OPERATOR_ACTIVATED",
@@ -100,7 +100,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!current) return { notFound: true };
         const operator = await repo.updateHubOperator(operatorId, isActive, tx);
         const activeCount = await repo.countActiveHubMemberships(current.userId, tx);
-        if (!activeCount) await tx.user.updateMany({ where: { id: current.userId, role: "HUB_OPERATOR" }, data: { role: "CUSTOMER" } });
+        const partnerCount = await tx.transportPartnerMember.count({ where: { userId: current.userId, isActive: true } });
+        if (!activeCount && !partnerCount) await tx.user.updateMany({ where: { id: current.userId, role: { in: ["HUB_OPERATOR", "PARTNER_OPERATOR"] } }, data: { role: "CUSTOMER" } });
         await repo.createAudit({
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operatorId,
           action: isActive ? "HUB_OPERATOR_ACTIVATED" : "HUB_OPERATOR_SUSPENDED",
