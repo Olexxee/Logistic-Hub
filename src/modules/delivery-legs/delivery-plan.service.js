@@ -155,3 +155,36 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
     legs,
   };
 }
+
+export async function getExistingDeliveryRoutePlan({ tx, bookingId }) {
+  const legs = await tx.deliveryLeg.findMany({
+    where: { parcelBookingId: bookingId },
+    orderBy: { sequence: "asc" },
+    include: {
+      originHubPoint: { select: { id: true, name: true } },
+      destinationHubPoint: { select: { id: true, name: true } },
+    },
+  });
+  if (legs.length === 0) return { routeMode: "LOCAL_DIRECT", originHub: null, destinationHub: null, legs: [] };
+  const hubAssisted = legs.some((leg) => leg.type === "LOCAL_PICKUP")
+    && legs.some((leg) => leg.type === "FINAL_MILE");
+  return {
+    routeMode: hubAssisted ? "HUB_ASSISTED" : "END_TO_END",
+    originHub: legs.find((leg) => leg.type === "LOCAL_PICKUP")?.destinationHubPoint
+      ?? legs.find((leg) => leg.originHubPoint)?.originHubPoint
+      ?? null,
+    destinationHub: legs.find((leg) => leg.type === "FINAL_MILE")?.originHubPoint
+      ?? legs.find((leg) => leg.destinationHubPoint)?.destinationHubPoint
+      ?? null,
+    legs: legs.map((leg) => ({
+      id: leg.id,
+      sequence: leg.sequence,
+      type: leg.type,
+      status: leg.status,
+      originServiceZoneId: leg.originServiceZoneId,
+      destinationServiceZoneId: leg.destinationServiceZoneId,
+      originHubPointId: leg.originHubPointId,
+      destinationHubPointId: leg.destinationHubPointId,
+    })),
+  };
+}
