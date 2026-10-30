@@ -13,6 +13,8 @@ function serializeDeliveryLeg(leg) {
     status: leg.status,
     origin: leg.originServiceZone,
     destination: leg.destinationServiceZone,
+    originHub: leg.originHubPoint,
+    destinationHub: leg.destinationHubPoint,
     plannedAt: leg.plannedAt,
     assignedAt: leg.assignedAt,
     pickedUpAt: leg.pickedUpAt,
