@@ -97,7 +97,7 @@ test("a user who is not the receiving driver cannot confirm a handover", async (
   };
   const { db } = tx({
     custodyHandover: { findUnique: async () => handover, update: async () => ({}), findFirst: async () => null, create: async () => ({}) },
-    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "someone-else" }), findMany: async () => [] },
+    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "someone-else", verificationStatus: "VERIFIED" }), findMany: async () => [] },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   await assert.rejects(service.confirmHandover({ handoverId: "handover-1", userId: "intruder-1" }), error => error.statusCode === 403);
