@@ -577,7 +577,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [status]
+              required: [status, reason]
               properties:
                 status: { type: string, enum: [SUSPENDED, ACTIVE] }
                 reason: { type: string, minLength: 3, maxLength: 500 }
