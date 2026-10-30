@@ -94,6 +94,12 @@ const implementedOperations = new Set([
   "POST /driver/delivery-leg-offers/{offerId}/propose-fare",
   "GET /parcel-bookings/{bookingId}/delivery-legs/{legId}/offers",
   "POST /parcel-bookings/{bookingId}/delivery-legs/{legId}/accept-fare",
+  "POST /admin/transport-partners/{partnerId}/members",
+  "PATCH /admin/transport-partners/{partnerId}/members/{memberId}",
+  "POST /admin/delivery-legs/{legId}/partner-assignment",
+  "GET /partner/assignments",
+  "POST /partner/assignments/{assignmentId}/accept",
+  "POST /partner/assignments/{assignmentId}/start",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
@@ -106,6 +112,7 @@ const idempotentMutationPaths = new Set([
   "POST /payments/initialize",
   "POST /payments/refunds/request",
   "POST /payments/payouts/request",
+  "POST /admin/delivery-legs/{legId}/partner-assignment",
 ]);
 
 try {
