@@ -17,6 +17,9 @@ export function createAuthSessionsRepository(prismaClient = prisma) {
     revoke({ tokenHash, now }) {
       return prismaClient.authSession.updateMany({ where: { tokenHash, revokedAt: null }, data: { revokedAt: now } });
     },
+    revokeById({ id, userId, now }) {
+      return prismaClient.authSession.updateMany({ where: { id, userId, revokedAt: null }, data: { revokedAt: now } });
+    },
     revokeAllForUser({ userId, now }) {
       return prismaClient.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } });
     },
