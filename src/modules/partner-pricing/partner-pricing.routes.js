@@ -114,6 +114,18 @@ export function createPartnerPricingRouter({
         if (booking.status !== "DRAFT") {
           return { conflict: "A partner quote can only be issued while the booking is still a draft." };
         }
+
+        // Serialize quote version allocation against concurrent quote creation and
+        // fulfilment-path transitions for this booking.
+        const now = new Date();
+        const bookingLock = await tx.parcelBooking.updateMany({
+          where: { id: booking.id, status: "DRAFT" },
+          data: { updatedAt: now },
+        });
+        if (bookingLock.count !== 1) {
+          return { conflict: "The booking changed while the partner quote was being issued." };
+        }
+
         let rate = null;
         if (input.partnerRateId) {
           rate = await tx.partnerRate.findFirst({
@@ -162,7 +174,7 @@ export function createPartnerPricingRouter({
             partnerAgreementId: rate?.rateCard.agreementId ?? null,
             manualQuoteReason: rate ? null : input.reason,
           },
-          expiresAt: new Date(Date.now() + input.expiresInMinutes * 60_000),
+          expiresAt: new Date(now.getTime() + input.expiresInMinutes * 60_000),
         } });
         return { quote };
       });
