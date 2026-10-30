@@ -2765,6 +2765,154 @@ paths:
         '404': { description: Assignment not found. }
         '409': { description: Assignment is not ready to start. }
 
+
+  /admin/hub-points/{hubPointId}/operators:
+    post:
+      tags: [Hub points, Admin]
+      operationId: addHubPointOperator
+      summary: Add or reactivate a verified user as a hub operator
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [userId]
+              properties:
+                userId: { type: string, minLength: 1 }
+                role: { type: string, enum: [MANAGER, OPERATOR], default: OPERATOR }
+      responses:
+        '201': { description: Hub operator membership created or reactivated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub not found. }
+        '409': { description: User is inactive or has an incompatible role. }
+  /admin/hub-points/{hubPointId}/operators/{operatorId}:
+    patch:
+      tags: [Hub points, Admin]
+      operationId: setHubPointOperatorStatus
+      summary: Activate or suspend a hub operator membership
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: path, required: true, schema: { type: string } }
+        - { name: operatorId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties:
+                isActive: { type: boolean }
+      responses:
+        '200': { description: Hub operator membership status updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub operator not found. }
+  /custody/handovers/mine:
+    get:
+      tags: [Delivery legs]
+      operationId: listMyCustodyHandovers
+      summary: List custody handovers associated with the authenticated user's parties
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      responses:
+        '200': { description: Recent handovers for the authenticated sender, driver, hub operator or partner member. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /custody/handovers:
+    post:
+      tags: [Delivery legs]
+      operationId: initiateCustodyHandover
+      summary: Initiate a custody transfer for a paid delivery leg
+      description: The authenticated releasing party creates a pending handover. Custody is not transferred until the authenticated receiving party confirms. Recipient-party confirmation is intentionally unavailable until recipient identity verification is implemented.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [parcelBookingId, deliveryLegId, fromPartyType, fromPartyId, toPartyType, toPartyId, conditionAtRelease]
+              properties:
+                parcelBookingId: { type: string }
+                deliveryLegId: { type: string }
+                hubPointId: { type: string }
+                fromPartyType: { type: string, enum: [SENDER, DRIVER, HUB, TRANSPORT_PARTNER] }
+                fromPartyId: { type: string }
+                toPartyType: { type: string, enum: [SENDER, DRIVER, HUB, TRANSPORT_PARTNER] }
+                toPartyId: { type: string }
+                conditionAtRelease: { type: string, minLength: 2, maxLength: 500 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '201': { description: Pending custody handover created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Delivery leg or booking not found. }
+        '409': { description: Payment, leg state, party eligibility or existing pending handover prevents initiation. }
+  /custody/handovers/{handoverId}/decision:
+    post:
+      tags: [Delivery legs]
+      operationId: decideCustodyHandover
+      summary: Confirm or reject a pending custody handover as the receiving party
+      description: A rejection creates a high-priority FAILED_HANDOVER operational case in the same database transaction. A confirmation records the receiving actor and receipt condition.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: handoverId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                conditionAtReceipt: { type: string, minLength: 2, maxLength: 500 }
+                rejectReason: { type: string, minLength: 3, maxLength: 1000 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '200': { description: Handover confirmed or rejected; rejection includes the created operational case. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Handover not found. }
+        '409': { description: Handover is expired, already decided, or recipient verification is unavailable. }
+
 components:
   securitySchemes:
     bearerAuth:
