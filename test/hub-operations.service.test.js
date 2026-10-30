@@ -381,3 +381,20 @@ test("hub dispatch release checks active membership before reading parcel state"
     error => error.statusCode === 403,
   );
 });
+
+
+test("hub handover creation revalidates active inventory after acquiring the delivery-leg lock", async () => {
+  const { db, calls } = setup({
+    hubIntakeRecord: { findFirst: async () => null },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.createHandover({
+    parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    fromPartyType: "HUB", fromPartyId: "hub-1",
+    toPartyType: "DRIVER", toPartyId: "driver-1",
+    conditionAtRelease: "Sealed",
+  }, "hub-user-1");
+  assert.equal(result.blocker, "HUB_INTAKE_REQUIRED");
+  assert.equal(calls.handovers.length, 0);
+  assert.equal(calls.locks.some(lock => lock.sql.includes('FROM "delivery_legs"')), true);
+});
