@@ -21,6 +21,7 @@ function tx(overrides = {}) {
     hubPointOperator: { findUnique: async () => null, findMany: async () => [], findFirst: async () => null, upsert: async ({ create }) => ({ id: "hub-operator-1", ...create }), update: async () => ({}), count: async () => 0 },
     transportPartner: { findUnique: async () => null },
     transportPartnerMember: { findUnique: async () => null, findMany: async () => [] },
+    hubIntakeRecord: { findFirst: async () => ({ id: "hub-intake-1" }), count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async ({ data }) => ({ id: "hub-intake-1", ...data }), update: async ({ where, data }) => ({ id: where.id, ...data }) },
     custodyHandover: {
       findFirst: async () => null,
       findUnique: async () => null,
