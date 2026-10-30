@@ -314,7 +314,7 @@ export function createPartnerPricingRouter({
             metadata: { quoteId: quoteId.data, reason: parsed.data.reason },
           },
         });
-        return true;
+        return { replay: false };
       });
       if (!result) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_REJECTABLE", message: "Quote is no longer available." } });
       return res.status(200).json({ success: true, data: { rejected: true, replay: result.replay === true } });
