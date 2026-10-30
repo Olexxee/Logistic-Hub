@@ -7,6 +7,7 @@ function hasOperationalDetails(hub) {
   return Boolean(
     hub.operatorName?.trim() &&
     hub.operatorPhone?.trim() &&
+    hub.operatorVerificationStatus === "VERIFIED" &&
     Array.isArray(hub.acceptedParcelTypes) && hub.acceptedParcelTypes.length > 0 &&
     openingHoursAdminSchema.safeParse(hub.openingHours).success &&
     capacityConfigAdminSchema.safeParse(hub.capacityConfig).success
@@ -49,6 +50,16 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       }
       return repository.update(id, input);
     },
+    async reviewOperator({ id, verificationStatus, notes, actorUserId }) {
+      const current = await repository.findById(id);
+      if (!current) return null;
+      if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reviewed.");
+      return prismaClient.$transaction(async tx => {
+        const updated = await tx.hubPoint.update({ where: { id }, data: { operatorVerificationStatus: verificationStatus, operatorVerifiedAt: verificationStatus === "VERIFIED" ? clock() : null, operatorVerificationNotes: notes ?? null } });
+        await tx.operationalAuditEvent.create({ data: { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_OPERATOR_VERIFICATION_REVIEWED", reason: notes ?? null, before: { operatorVerificationStatus: current.operatorVerificationStatus, operatorVerifiedAt: current.operatorVerifiedAt }, after: { operatorVerificationStatus: updated.operatorVerificationStatus, operatorVerifiedAt: updated.operatorVerifiedAt } } });
+        return updated;
+      });
+    },
     async setStatus(id, status) {
       const current = await repository.findById(id);
       if (!current) return null;
@@ -66,7 +77,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           throw conflict("HUB_ZONE_UNAVAILABLE", "The hub's service zone and parcel-delivery availability must be active before the hub can be activated.");
         }
         if (!hasOperationalDetails(current)) {
-          throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "Before activation, provide operator name and phone, valid opening hours for all weekdays, accepted parcel types, and a valid capacity configuration.");
+          throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "Before activation, provide verified operator details, valid opening hours for all weekdays, accepted parcel types, and a valid capacity configuration.");
         }
       }
       return repository.update(id, { status });
