@@ -83,7 +83,7 @@ test("cross-state quote creates ordered pickup, trunk and final-mile legs when s
   assert.equal(plan.originHub.id, "origin_hub_near");
   assert.equal(plan.destinationHub.id, "destination_hub");
   assert.deepEqual(created.map((leg) => [leg.sequence, leg.type, leg.status]), [
-    [1, "LOCAL_PICKUP", "AWAITING_PAYMENT"],
+    [1, "LOCAL_PICKUP", "READY_FOR_ASSIGNMENT"],
     [2, "INTERSTATE_TRANSPORT", "PLANNED"],
     [3, "FINAL_MILE", "PLANNED"],
   ]);
@@ -112,7 +112,7 @@ test("cross-state quote falls back to an end-to-end leg when hub coverage is inc
   assert.equal(plan.routeMode, "END_TO_END");
   assert.equal(created.length, 1);
   assert.equal(created[0].type, "INTERSTATE_TRANSPORT");
-  assert.equal(created[0].status, "AWAITING_PAYMENT");
+  assert.equal(created[0].status, "READY_FOR_ASSIGNMENT");
   assert.equal(created[0].originHubPointId, null);
   assert.equal(created[0].destinationHubPointId, null);
   assert.deepEqual(created[0].metadata, { quoteId: "quote_2", routePlanVersion: 1 });
