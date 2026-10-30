@@ -193,6 +193,7 @@ test("confirmed destination hub handover completes partner assignment and create
     },
     hubPoint: { findUnique: async () => ({ id: "hub-2", status: "ACTIVE" }) },
     hubPointOperator: { findUnique: async () => ({ hubPointId: "hub-2", userId: "hub-user-1", isActive: true }) },
+    hubIntakeRecord: { findFirst: async () => null, create: async ({ data }) => ({ id: "intake-partner-1", ...data }) },
     transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }) },
     transportPartnerMember: { findUnique: async () => ({ partnerId: "partner-1", userId: "partner-user-1", isActive: true }) },
     partnerDeliveryAssignment: {

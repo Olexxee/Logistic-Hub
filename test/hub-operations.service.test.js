@@ -184,6 +184,7 @@ test("hub receipt of an arrived driver activates the next planned leg", async ()
       updateMany: async ({ where, data }) => { updates.push({ where, data }); return { count: 1 }; },
       findFirst: async () => ({ id: "leg-2", status: "PLANNED" }),
     },
+    hubIntakeRecord: { findFirst: async () => null, create: async ({ data }) => ({ id: "intake-next-leg", ...data }) },
     driverAssignment: {
       findFirst: async () => ({ id: "driver-assignment-1", status: "ARRIVED_AT_DESTINATION", driverProfileId: "driver-1", agreedFareMinor: 25000n, currency: "NGN" }),
       updateMany: async ({ where, data }) => { calls.assignmentUpdates.push({ where, data }); return { count: 1 }; },
@@ -264,6 +265,7 @@ test("handover decisions lock and reload the handover before confirming custody"
     },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", acceptedParcelTypes: [], capacityConfig: {} }) },
     hubIntakeRecord: {
+      findFirst: async () => null,
       count: async () => 0,
       aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }),
       create: async ({ data }) => ({ id: "intake-1", ...data }),
@@ -309,7 +311,7 @@ test("hub intake rejects parcels when the active parcel-count capacity is full",
   const { db, calls } = setup({
     custodyHandover: { findUnique: async () => handover },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", acceptedParcelTypes: [], capacityConfig: { maxParcels: 1 } }) },
-    hubIntakeRecord: { count: async () => 1, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async () => { throw new Error("must not create intake"); } },
+    hubIntakeRecord: { findFirst: async () => null, count: async () => 1, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async () => { throw new Error("must not create intake"); } },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   await assert.rejects(
@@ -330,7 +332,7 @@ test("hub intake enforces configured aggregate volume capacity", async () => {
   const { db } = setup({
     custodyHandover: { findUnique: async () => handover },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", acceptedParcelTypes: [], capacityConfig: { maxVolumeCm3: 1000 } }) },
-    hubIntakeRecord: { count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 990 } }), create: async () => { throw new Error("must not create intake"); } },
+    hubIntakeRecord: { findFirst: async () => null, count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 990 } }), create: async () => { throw new Error("must not create intake"); } },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   await assert.rejects(
