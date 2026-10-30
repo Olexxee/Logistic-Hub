@@ -70,15 +70,15 @@ function serializePaymentAttempt(attempt) {
 
 export function createDiscoveryService({ prismaClient, repository = createDiscoveryRepository(prismaClient) }) {
   return {
-    async listDriverAssignments({ userId, limit }) {
+    async listDriverAssignments({ userId, page, limit }) {
       const profile = await repository.findDriverProfile(userId);
-      if (!profile) return { items: [], pagination: { limit, hasMore: false, nextCursor: null } };
-      const rows = await repository.listDriverAssignments({ driverProfileId: profile.id, limit: limit + 1, statuses: ACTIVE_DRIVER_ASSIGNMENT_STATUSES });
+      if (!profile) return { items: [], pagination: { page, limit, hasMore: false, nextPage: null } };
+      const rows = await repository.listDriverAssignments({ driverProfileId: profile.id, skip: (page - 1) * limit, limit: limit + 1, statuses: ACTIVE_DRIVER_ASSIGNMENT_STATUSES });
       const hasMore = rows.length > limit;
       const items = rows.slice(0, limit);
       return {
         items: items.map(serializeAssignment),
-        pagination: { limit, hasMore, nextCursor: hasMore ? items.at(-1)?.id ?? null : null },
+        pagination: { page, limit, hasMore, nextPage: hasMore ? page + 1 : null },
       };
     },
 
