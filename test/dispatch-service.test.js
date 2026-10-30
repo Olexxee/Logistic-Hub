@@ -189,6 +189,9 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
     driverProfile: {
       updateMany: async (args) => { writes.push(["driver", args]); return { count: 1 }; },
     },
+    deliveryLeg: {
+      create: async (args) => { writes.push(["deliveryLeg", args]); return { id: "delivery_leg_2" }; },
+    },
     driverAssignment: {
       create: async (args) => { writes.push(["assignment", args]); return { id: "assignment_2" }; },
     },
@@ -216,8 +219,14 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
   assert.equal(result.paymentExpiresAt.toISOString(), new Date(now.getTime() + 15 * 60_000).toISOString());
   assert.equal(writes.find(([kind]) => kind === "driver")[1].data.isAvailable, false);
   assert.equal(writes.find(([kind]) => kind === "booking")[1].data.status, "AWAITING_PAYMENT");
+  assert.equal(writes.find(([kind]) => kind === "deliveryLeg")[1].data.sequence, 1);
+  assert.equal(writes.find(([kind]) => kind === "deliveryLeg")[1].data.type, "DIRECT");
+  assert.equal(writes.find(([kind]) => kind === "deliveryLeg")[1].data.status, "AWAITING_PAYMENT");
+  assert.equal(writes.find(([kind]) => kind === "assignment")[1].data.deliveryLegId, "delivery_leg_2");
+  assert.equal(result.deliveryLegId, "delivery_leg_2");
   assert.equal(writes.find(([kind]) => kind === "assignment")[1].data.agreedFareMinor, 2500n);
   assert.equal(writes.find(([kind]) => kind === "assignment")[1].data.status, "AWAITING_PAYMENT");
+  assert.equal(writes.find(([kind]) => kind === "event")[1].data.metadata.deliveryLegId, "delivery_leg_2");
   assert.equal(writes.find(([kind]) => kind === "event")[1].data.eventType, "DRIVER_FARE_ACCEPTED");
 });
 
