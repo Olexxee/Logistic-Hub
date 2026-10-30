@@ -15,6 +15,7 @@ function serializeDeliveryLeg(leg) {
     destination: leg.destinationServiceZone,
     plannedAt: leg.plannedAt,
     assignedAt: leg.assignedAt,
+    pickedUpAt: leg.pickedUpAt,
     startedAt: leg.startedAt,
     completedAt: leg.completedAt,
     failureReason: leg.failureReason,
