@@ -58,7 +58,7 @@ export function createHubPointsAdminController({ prismaClient }) {
       const parsed = hubPointStatusAdminSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const hubPoint = await service.setStatus(id(req), parsed.data.status);
+        const hubPoint = await service.setStatus(id(req), parsed.data.status, req.user.id);
         if (!hubPoint) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Hub point not found." } });
         return res.status(200).json({ success: true, data: { hubPoint } });
       } catch (error) { return next(error); }
