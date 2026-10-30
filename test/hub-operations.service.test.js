@@ -184,7 +184,7 @@ test("hub receipt of an arrived driver activates the next planned leg", async ()
       updateMany: async ({ where, data }) => { updates.push({ where, data }); return { count: 1 }; },
       findFirst: async () => ({ id: "leg-2", status: "PLANNED" }),
     },
-    hubIntakeRecord: { findFirst: async () => null, create: async ({ data }) => ({ id: "intake-next-leg", ...data }) },
+    hubIntakeRecord: { findFirst: async () => null, count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async ({ data }) => ({ id: "intake-next-leg", ...data }) },
     driverAssignment: {
       findFirst: async () => ({ id: "driver-assignment-1", status: "ARRIVED_AT_DESTINATION", driverProfileId: "driver-1", agreedFareMinor: 25000n, currency: "NGN" }),
       updateMany: async ({ where, data }) => { calls.assignmentUpdates.push({ where, data }); return { count: 1 }; },
