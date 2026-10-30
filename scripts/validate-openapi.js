@@ -105,6 +105,8 @@ const implementedOperations = new Set([
   "GET /custody/handovers/mine",
   "POST /custody/handovers",
   "POST /custody/handovers/{handoverId}/decision",
+  "GET /admin/operational-cases",
+  "PATCH /admin/operational-cases/{caseId}",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
