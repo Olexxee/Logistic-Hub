@@ -149,7 +149,10 @@ test("customer acceptance reserves one driver and creates an awaiting-payment le
     acceptOfferTransaction: (callback) => callback(tx),
   };
   const service = createDeliveryLegDispatchService({
-    prismaClient: { driverAssignment: { findFirst: async () => null } },
+    prismaClient: {
+      parcelBooking: { findUnique: async () => ({ id: "booking_1", senderId: "sender_1" }) },
+      driverAssignment: { findFirst: async () => null },
+    },
     repository,
     clock: () => now,
   });
