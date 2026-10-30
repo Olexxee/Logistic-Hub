@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { createHubPointsService } from "../src/modules/hub-points/hub-points.service.js";
+import { createHubPointsAdminService } from "../src/modules/hub-points/hub-points.admin.service.js";
 import { createServiceZonesService } from "../src/modules/geography/service-zones.service.js";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRITY_TESTS === "true";
@@ -32,16 +33,17 @@ test("public geography and hub discovery expose only currently eligible operatio
     availability = await prisma.serviceAvailability.create({
       data: { serviceZoneId: zone.id, serviceType: "PARCEL_DELIVERY", isEnabled: true },
     });
-    hub = await prisma.hubPoint.create({
-      data: {
-        serviceZoneId: zone.id,
-        name: `Active Hub ${suffix}`,
-        address: "Test operational address",
-        latitude: 6.5244,
-        longitude: 3.3792,
-        status: "ACTIVE",
-      },
+    const hubAdmin = createHubPointsAdminService({ prismaClient: prisma });
+    hub = await hubAdmin.create({
+      serviceZoneId: zone.id,
+      name: `Admin Created Hub ${suffix}`,
+      address: "Test operational address",
+      latitude: 6.5244,
+      longitude: 3.3792,
     });
+    assert.equal(hub.status, "PENDING");
+    hub = await hubAdmin.setStatus(hub.id, "ACTIVE");
+    assert.equal(hub.status, "ACTIVE");
 
     const zones = await createServiceZonesService({ prismaClient: prisma }).listActive({
       countryCode,
@@ -59,6 +61,12 @@ test("public geography and hub discovery expose only currently eligible operatio
       where: { id: availability.id },
       data: { isEnabled: false },
     });
+
+    await hubAdmin.setStatus(hub.id, "SUSPENDED");
+    await assert.rejects(
+      () => hubAdmin.setStatus(hub.id, "ACTIVE"),
+      (error) => error.code === "HUB_ZONE_UNAVAILABLE",
+    );
 
     const unavailableZones = await createServiceZonesService({ prismaClient: prisma }).listActive({
       countryCode,
