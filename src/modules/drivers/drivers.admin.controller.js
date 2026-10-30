@@ -3,7 +3,7 @@ import { createDriversAdminService } from "./drivers.admin.service.js";
 import { driverAdminListSchema, vehicleAdminListSchema, driverAdminStatusSchema, driverAdminAuditSchema } from "./drivers.admin.validators.js";
 function invalid(res, issues) {
   return res.status(400).json({ success: false, error: {
-    code: "VALIDATION_ERROR", message: "One or more query parameters are invalid.",
+    code: "VALIDATION_ERROR", message: "One or more request fields are invalid.",
     details: issues.map(({ path, message }) => ({ path: path.join("."), message })),
   } });
 }
