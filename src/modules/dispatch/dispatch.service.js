@@ -21,9 +21,13 @@ export function distanceBetweenCoordinatesMeters(latitudeA, longitudeA, latitude
 export function isDriverWithinPickupRadius(driver, pickup, now = new Date()) {
   const latestLocation = driver.locations?.[0];
   if (!latestLocation || !driver.lastLocationAt || !driver.serviceRadiusMeters) return false;
-  const cutoff = now.getTime() - MAX_DRIVER_LOCATION_AGE_MS;
-  if (new Date(driver.lastLocationAt).getTime() < cutoff) return false;
-  if (new Date(latestLocation.recordedAt).getTime() < cutoff) return false;
+  const nowMs = now.getTime();
+  const cutoff = nowMs - MAX_DRIVER_LOCATION_AGE_MS;
+  const profileLocationAt = new Date(driver.lastLocationAt).getTime();
+  const recordedAt = new Date(latestLocation.recordedAt).getTime();
+  if (!Number.isFinite(profileLocationAt) || !Number.isFinite(recordedAt)) return false;
+  if (profileLocationAt < cutoff || profileLocationAt > nowMs) return false;
+  if (recordedAt < cutoff || recordedAt > nowMs) return false;
   const distance = distanceBetweenCoordinatesMeters(
     Number(latestLocation.latitude), Number(latestLocation.longitude),
     Number(pickup.latitude), Number(pickup.longitude),
@@ -120,7 +124,10 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             verificationStatus: "VERIFIED",
             isOnline: true,
             isAvailable: true,
-            lastLocationAt: { gte: new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MS) },
+            lastLocationAt: {
+              gte: new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MS),
+              lte: now,
+            },
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
             vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
             AND: [
