@@ -365,6 +365,96 @@ paths:
           description: Current account profile.
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /assignments/mine:
+    get:
+      tags: [Drivers]
+      operationId: listMyParcelAssignments
+      summary: List paid parcel assignments belonging to the authenticated driver
+      description: Returns only parcel assignments owned by the authenticated driver profile and whose booking payment is verified as succeeded. Exact pickup, destination, recipient and handling details are disclosed only after assignment and payment.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Driver-owned paid parcel assignments and pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items, pagination]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, status, agreedFareMinor, currency, booking, deliveryLeg]
+                          properties:
+                            id: { type: string }
+                            status: { type: string, enum: [AWAITING_PAYMENT, ACCEPTED, ARRIVED_AT_PICKUP, PICKUP_CONFIRMED, IN_PROGRESS, ARRIVED_AT_DESTINATION, COMPLETED, CANCELLED, FAILED] }
+                            agreedFareMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            currency: { type: string, minLength: 3, maxLength: 3 }
+                            acceptedAt: { type: [string, 'null'], format: date-time }
+                            pickupAt: { type: [string, 'null'], format: date-time }
+                            startedAt: { type: [string, 'null'], format: date-time }
+                            completedAt: { type: [string, 'null'], format: date-time }
+                            failureReason: { type: [string, 'null'] }
+                            createdAt: { type: string, format: date-time }
+                            updatedAt: { type: string, format: date-time }
+                            booking:
+                              type: object
+                              required: [id, publicReference, status, paymentStatus, pickupAddress, destinationAddress, recipientName, recipientPhone, parcelCategory, parcelSize]
+                              properties:
+                                id: { type: string }
+                                publicReference: { type: string }
+                                status: { type: string }
+                                paymentStatus: { type: string, const: SUCCEEDED }
+                                pickupAddress: { type: string }
+                                pickupInstructions: { type: [string, 'null'] }
+                                destinationAddress: { type: string }
+                                recipientName: { type: string }
+                                recipientPhone: { type: string }
+                                parcelCategory: { type: string }
+                                parcelDescription: { type: [string, 'null'] }
+                                parcelSize: { type: string }
+                                handlingInstructions: { type: [string, 'null'] }
+                            deliveryLeg:
+                              oneOf:
+                                - type: object
+                                  required: [id, sequence, type, status, origin, destination]
+                                  properties:
+                                    id: { type: string }
+                                    sequence: { type: integer, minimum: 1 }
+                                    type: { type: string }
+                                    status: { type: string }
+                                    origin: { $ref: '#/components/schemas/AssignmentLocation' }
+                                    destination: { $ref: '#/components/schemas/AssignmentLocation' }
+                                - type: 'null'
+                      pagination:
+                        type: object
+                        required: [page, limit, total, totalPages]
+                        properties:
+                          page: { type: integer, minimum: 1 }
+                          limit: { type: integer, minimum: 1, maximum: 100 }
+                          total: { type: integer, minimum: 0 }
+                          totalPages: { type: integer, minimum: 0 }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /drivers/me:
     get:
       tags: [Drivers]
@@ -4891,6 +4981,24 @@ components:
             - type: 'null'
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    AssignmentLocation:
+      type: object
+      required: [serviceZone, hub, address, latitude, longitude]
+      properties:
+        serviceZone:
+          $ref: '#/components/schemas/ServiceZoneSummary'
+        hub:
+          oneOf:
+            - type: object
+              required: [id, name, address]
+              properties:
+                id: { type: string }
+                name: { type: string }
+                address: { type: string }
+            - type: 'null'
+        address: { type: string }
+        latitude: { type: string }
+        longitude: { type: string }
     DeliveryLegAssignmentSummary:
       type: object
       required: [id, status]
