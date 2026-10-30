@@ -18,7 +18,6 @@ import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
 import { deliveryLegDispatchRouter } from "./modules/delivery-legs/delivery-leg-dispatch.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { paymentsRouter } from "./modules/payments/payments.routes.js";
-import { financialRouter } from "./modules/payments/financial.routes.js";
 import { assignmentsRouter } from "./modules/assignments/assignments.routes.js";
 import { supportRouter } from "./modules/support/support.routes.js";
 import { cancellationsRouter } from "./modules/cancellations/cancellations.routes.js";
@@ -110,6 +109,7 @@ app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
 app.use("/api/v1/drivers", driversRouter);
 app.use("/api/v1/assignments", assignmentsRouter);
+// Legacy financialRouter is intentionally not mounted. Finance operations live under /api/v1/finance.
 app.use("/api/v1/payments", paymentsRouter);
 app.use("/api/v1/support", supportRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);

@@ -1532,7 +1532,7 @@ paths:
       tags: [Payments]
       operationId: initializePaystackPayment
       summary: Initialize a server-calculated payment after fare acceptance
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1665,7 +1665,7 @@ paths:
       responses:
         '200': { description: All sessions revoked. }
         '401': { $ref: '#/components/responses/Unauthorized' }
-  /assignments/{assignmentId}/verification-code:
+  /assignments/{assignmentId}/verification-codes:
     post:
       tags: [Assignments]
       operationId: issueAssignmentVerificationCode
@@ -1678,12 +1678,22 @@ paths:
           name: assignmentId
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action: { type: string, enum: [PICKUP, DELIVERY] }
       responses:
         '201': { description: One-time code issued; expires in ten minutes. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment is not at a verification stage. }
-  /assignments/{assignmentId}/arrived-at-pickup:
+  /assignments/{assignmentId}/arrived:
     post:
       tags: [Assignments]
       operationId: markAssignmentArrivedAtPickup
@@ -1701,7 +1711,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment or payment state conflict. }
-  /assignments/{assignmentId}/verify-code:
+  /assignments/{assignmentId}/verify:
     post:
       tags: [Assignments]
       operationId: verifyAssignmentCode
@@ -1721,16 +1731,17 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [code]
+              required: [action, code]
               properties:
-                code: { type: string, pattern: '^[0-9]{8}$' }
+                action: { type: string, enum: [PICKUP, DELIVERY] }
+                code: { type: string, pattern: '^[0-9]{6}$' }
       responses:
         '200': { description: Verification succeeded and the assignment advanced. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: "Assignment is not awaiting verification or the code is invalid, expired, or already consumed." }
-  /assignments/{assignmentId}/start-transit:
+  /assignments/{assignmentId}/start:
     post:
       tags: [Assignments]
       operationId: startParcelTransit
@@ -1748,7 +1759,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment is not ready for transit. }
-  /assignments/{assignmentId}/arrived-at-destination:
+  /assignments/{assignmentId}/destination-arrived:
     post:
       tags: [Assignments]
       operationId: markAssignmentArrivedAtDestination
@@ -1766,7 +1777,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Assignment state conflict. }
-  /assignments/{assignmentId}/driver-location:
+  /assignments/{assignmentId}/location:
     get:
       tags: [Assignments]
       operationId: getAssignmentDriverLocation
@@ -1784,12 +1795,12 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: No recent location is available. }
-  /payments/webhook:
+  /payments/webhook/paystack:
     post:
       tags: [Webhooks]
       operationId: receivePaystackPaymentWebhook
       summary: Verify and process Paystack charge, refund and transfer events
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security: []
       parameters:
         - in: header
@@ -1810,7 +1821,7 @@ paths:
       tags: [Payments]
       operationId: requestBookingRefund
       summary: Request a refund for a booking awaiting cancellation review
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1837,7 +1848,7 @@ paths:
       tags: [Payments]
       operationId: listRefundRequests
       summary: List refund requests for support and finance operators
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       responses:
@@ -1848,7 +1859,7 @@ paths:
       tags: [Payments]
       operationId: processRefundRequest
       summary: Initiate a Paystack refund for an approved request
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1866,7 +1877,7 @@ paths:
       tags: [Payments]
       operationId: requestDriverPayout
       summary: Request payout for a completed booking using a verified recipient
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1892,7 +1903,7 @@ paths:
       tags: [Payments]
       operationId: listDriverPayouts
       summary: List driver payouts for support and finance operators
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       responses:
@@ -1903,7 +1914,7 @@ paths:
       tags: [Payments]
       operationId: reconcilePaystackPayment
       summary: Compare a local payment attempt with Paystack's verified transaction
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -1921,7 +1932,7 @@ paths:
       tags: [Payments]
       operationId: reconcilePaystackPayout
       summary: Compare a local payout with Paystack's verified transfer
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -2030,7 +2041,7 @@ paths:
       tags: [Support]
       operationId: requestParcelCancellation
       summary: Cancel an eligible unpaid parcel or request post-payment review
-      x-implementation-status: implemented
+      x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
       parameters:
@@ -3185,6 +3196,198 @@ paths:
         '404': { description: User not found. }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /auth/sessions/refresh:
+    post:
+      tags: [Authentication]
+      operationId: refreshAuthSessionCompatibility
+      summary: Compatibility alias for refresh-token rotation
+      description: Prefer POST /auth/refresh for all new clients. This legacy alias remains mounted temporarily.
+      deprecated: true
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+      responses:
+        '200': { description: Rotated refresh token and new bearer access token. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/sessions/revoke:
+    post:
+      tags: [Authentication]
+      operationId: revokeRefreshToken
+      summary: Revoke a refresh token
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+      responses:
+        '200': { description: Refresh token revoked. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/sessions/revoke-all:
+    post:
+      tags: [Authentication]
+      operationId: revokeAllRefreshTokens
+      summary: Revoke all refresh tokens for the authenticated account
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: All refresh tokens revoked. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /cancellations:
+    post:
+      tags: [Cancellations]
+      operationId: requestBookingCancellation
+      summary: Cancel an eligible booking or submit a post-payment cancellation request
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [bookingType, bookingId, reason]
+              properties:
+                bookingType: { type: string, enum: [PARCEL, RIDE] }
+                bookingId: { type: string, minLength: 1, maxLength: 128 }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Cancellation applied or routed for review. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /finance/refund-requests:
+    post:
+      tags: [Finance]
+      operationId: requestFinanceRefund
+      summary: Request a refund for an eligible payment attempt
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+      responses:
+        '201': { description: Refund request recorded for review. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /finance/admin/refunds:
+    get:
+      tags: [Finance]
+      operationId: listFinanceRefunds
+      summary: List refund requests for admin and support review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Refund requests. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /finance/admin/refunds/{refundId}:
+    patch:
+      tags: [Finance]
+      operationId: reviewFinanceRefund
+      summary: Approve or reject a refund request
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: refundId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundReview'
+      responses:
+        '200': { description: Refund review recorded. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /finance/admin/payouts:
+    get:
+      tags: [Finance]
+      operationId: listFinancePayouts
+      summary: List payout requests for admin and support review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Payout requests. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /finance/admin/payouts/{payoutId}/confirm-settlement:
+    patch:
+      tags: [Finance]
+      operationId: confirmFinancePayoutSettlement
+      summary: Record confirmation of an off-platform payout settlement
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: payoutId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [providerReference]
+              properties:
+                providerReference: { type: string, minLength: 3, maxLength: 128 }
+      responses:
+        '200': { description: Settlement confirmation recorded. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /finance/admin/reconciliation:
+    get:
+      tags: [Finance]
+      operationId: listFinanceReconciliation
+      summary: List financial reconciliation exceptions
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Reconciliation records. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3199,7 +3402,7 @@ components:
       description: Unique client-generated key for one logical state-changing request.
       schema:
         type: string
-        minLength: 16
+        minLength: 8
         maxLength: 128
     BookingId:
       name: bookingId
@@ -3253,6 +3456,21 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    RefundRequest:
+      type: object
+      additionalProperties: false
+      required: [paymentAttemptId, amountMinor, reason]
+      properties:
+        paymentAttemptId: { type: string, minLength: 1, maxLength: 128 }
+        amountMinor: { $ref: '#/components/schemas/PositiveMinorAmount' }
+        reason: { type: string, minLength: 10, maxLength: 1000 }
+    RefundReview:
+      type: object
+      additionalProperties: false
+      required: [decision, reviewNote]
+      properties:
+        decision: { type: string, enum: [APPROVE, REJECT] }
+        reviewNote: { type: string, minLength: 5, maxLength: 1000 }
     HealthResponse:
       type: object
       required: [success, data]
