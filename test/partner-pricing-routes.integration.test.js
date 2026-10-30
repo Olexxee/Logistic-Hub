@@ -95,6 +95,13 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
       body: { reason: "Customer declines this price" },
     });
     assert.equal(rejected.status, 200);
+    assert.equal(rejected.json.data.replay, false);
+    const rejectedReplay = await call(`/parcel-bookings/${booking.id}/quotes/${rejectedQuoteId}/reject`, {
+      method: "POST",
+      body: { reason: "Retry after network timeout" },
+    });
+    assert.equal(rejectedReplay.status, 200);
+    assert.equal(rejectedReplay.json.data.replay, true);
 
     activeUserId = adminUser.id;
     const second = await call(`/admin/parcel-bookings/${booking.id}/quotes`, {
@@ -121,6 +128,11 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     const accepted = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.json.data.quote.status, "ACCEPTED");
+    assert.equal(accepted.json.data.replay, false);
+    const acceptedReplay = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    assert.equal(acceptedReplay.status, 200);
+    assert.equal(acceptedReplay.json.data.quote.status, "ACCEPTED");
+    assert.equal(acceptedReplay.json.data.replay, true);
 
     const persistedBooking = await prisma.parcelBooking.findUnique({ where: { id: booking.id } });
     assert.equal(persistedBooking.status, "AWAITING_PAYMENT");
