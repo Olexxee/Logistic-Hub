@@ -2672,7 +2672,22 @@ components:
         additionalProperties: false
         required: [opensAt, closesAt]
         properties:
-          opensAt: { type: string, pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]      type: object
+          opensAt:
+            type: string
+            pattern: "^[0-9]{2}:[0-9]{2}$"
+          closesAt:
+            type: string
+            pattern: "^[0-9]{2}:[0-9]{2}$"
+    HubCapacityConfig:
+      type: object
+      additionalProperties: false
+      required: [maxParcels]
+      properties:
+        maxParcels: { type: integer, minimum: 1, maximum: 100000 }
+        maxWeightGrams: { type: integer, minimum: 1, maximum: 100000000 }
+        maxVolumeCm3: { type: integer, minimum: 1, maximum: 1000000000 }
+    DriverOfferResource:
+      type: object
       required: [id, status, expiresAt, serviceType, pickup, destination]
       properties:
         id:
