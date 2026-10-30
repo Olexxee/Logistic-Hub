@@ -25,7 +25,8 @@ export function createOperationalCasesRouter({ prismaClient = prisma, authMiddle
   const router = Router();
   const service = createOperationalCasesService({ prismaClient });
   const controller = createOperationalCasesController(service);
-  router.use(authMiddleware, roleMiddleware("ADMIN"));
+  // Scope authorization to this module so unrelated /api/v1 routes can still reach the not-found handler.
+  router.use("/admin/operational-cases", authMiddleware, roleMiddleware("ADMIN"));
   router.get("/admin/operational-cases", (req, res, next) => {
     const parsed = listSchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ success: false, error: {

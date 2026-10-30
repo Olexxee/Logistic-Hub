@@ -20,6 +20,8 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
   let zone;
   let sender;
   let adminUser;
+  let partner;
+  let agreement;
   let booking;
   let server;
   let activeUserId;
@@ -30,6 +32,12 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     zone = await prisma.serviceZone.create({ data: { stateId: state.id, code: `Z${tag}`, name: `Test Zone ${tag}`, isActive: true } });
     sender = await prisma.user.create({ data: { fullName: `Quote Sender ${tag}` } });
     adminUser = await prisma.user.create({ data: { fullName: `Quote Admin ${tag}`, role: "ADMIN", status: "ACTIVE" } });
+    partner = await prisma.transportPartner.create({ data: {
+      displayName: `Quote Partner ${tag}`, status: "ACTIVE", verificationStatus: "VERIFIED",
+    } });
+    agreement = await prisma.partnerAgreement.create({ data: {
+      partnerId: partner.id, reference: `QUOTE-AGREEMENT-${tag}`, status: "ACTIVE", currency: "NGN",
+    } });
     booking = await prisma.parcelBooking.create({
       data: {
         publicReference: `QUOTE-ROUTE-${tag}`,
@@ -80,7 +88,7 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     activeUserId = adminUser.id;
     const created = await call(`/admin/parcel-bookings/${booking.id}/quotes`, {
       method: "POST",
-      body: { transportChargeMinor: "1200", reason: "Approved manual test quote", expiresInMinutes: 60 },
+      body: { partnerAgreementId: agreement.id, transportChargeMinor: "1200", reason: "Approved manual test quote", expiresInMinutes: 60 },
     });
     assert.equal(created.status, 201);
     const rejectedQuoteId = created.json.data.quote.id;
@@ -107,11 +115,11 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     const [second, third] = await Promise.all([
       call(`/admin/parcel-bookings/${booking.id}/quotes`, {
         method: "POST",
-        body: { transportChargeMinor: "1500", reason: "Concurrent approved quote A", expiresInMinutes: 60 },
+        body: { partnerAgreementId: agreement.id, transportChargeMinor: "1500", reason: "Concurrent approved quote A", expiresInMinutes: 60 },
       }),
       call(`/admin/parcel-bookings/${booking.id}/quotes`, {
         method: "POST",
-        body: { transportChargeMinor: "1500", reason: "Concurrent approved quote B", expiresInMinutes: 60 },
+        body: { partnerAgreementId: agreement.id, transportChargeMinor: "1500", reason: "Concurrent approved quote B", expiresInMinutes: 60 },
       }),
     ]);
     assert.equal(second.status, 201);
@@ -172,6 +180,8 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     if (booking) await prisma.parcelBooking.deleteMany({ where: { id: booking.id } });
     if (sender) await prisma.user.deleteMany({ where: { id: sender.id } });
     if (adminUser) await prisma.user.deleteMany({ where: { id: adminUser.id } });
+    if (agreement) await prisma.partnerAgreement.deleteMany({ where: { id: agreement.id } });
+    if (partner) await prisma.transportPartner.deleteMany({ where: { id: partner.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
     if (state) await prisma.state.deleteMany({ where: { id: state.id } });
     if (country) await prisma.country.deleteMany({ where: { id: country.id } });
