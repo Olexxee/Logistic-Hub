@@ -28,6 +28,10 @@ server.on("listening", () => {
     pid: process.pid,
     nodeVersion: process.version,
   });
+
+  // Keep the HTTP process alive when PostgreSQL is unavailable so that
+  // liveness diagnostics remain reachable; readiness returns HTTP 503.
+  void checkDatabaseConnection();
 });
 
 server.on("error", (error) => {
@@ -39,6 +43,42 @@ server.on("error", (error) => {
   process.exitCode = 1;
   void shutdown("server_error", 1);
 });
+
+async function checkDatabaseConnection() {
+  const checkStartedAt = Date.now();
+  const databaseUrl = new URL(env.DATABASE_URL);
+  const databaseTarget = {
+    provider: "postgresql",
+    host: databaseUrl.hostname,
+    port: Number(databaseUrl.port || 5432),
+    database: databaseUrl.pathname.slice(1) || "unknown",
+  };
+
+  log("info", "database.connection_check.started", databaseTarget);
+
+  try {
+    // A query verifies both that Prisma can establish a connection and that
+    // PostgreSQL can execute a request. Never log DATABASE_URL or credentials.
+    await prisma.$queryRaw`SELECT 1`;
+
+    log("info", "database.connected", {
+      ...databaseTarget,
+      latencyMs: Date.now() - checkStartedAt,
+    });
+    return true;
+  } catch (error) {
+    log("error", "database.connection_failed", {
+      ...databaseTarget,
+      latencyMs: Date.now() - checkStartedAt,
+      errorName: error?.name,
+      errorCode: error?.code,
+      clientVersion: error?.clientVersion,
+      message: error?.message,
+      action: "Verify DNS resolution, outbound TCP access to the configured database host and port, DATABASE_URL credentials, and Prisma Postgres availability.",
+    });
+    return false;
+  }
+}
 
 async function shutdown(signal, exitCode = 0) {
   if (shutdownPromise) return shutdownPromise;

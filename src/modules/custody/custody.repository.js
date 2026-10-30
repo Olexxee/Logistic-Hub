@@ -57,6 +57,22 @@ export function createCustodyRepository({ prismaClient }) {
     findPartnerMembership(partnerId, userId, tx = prismaClient) {
       return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
     },
+    findDriverAssignmentForCustody(assignmentId, tx = prismaClient) {
+      return tx.driverAssignment.findUnique({
+        where: { id: assignmentId },
+        include: {
+          driverProfile: { select: { id: true, userId: true } },
+          parcelBooking: { select: { id: true, paymentStatus: true } },
+          deliveryLeg: { select: { id: true, destinationHubPointId: true } },
+        },
+      });
+    },
+    lockDeliveryLeg(deliveryLegId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "delivery_legs" WHERE "id" = ${deliveryLegId} FOR UPDATE`;
+    },
+    lockHandover(handoverId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "custody_handovers" WHERE "id" = ${handoverId} FOR UPDATE`;
+    },
     findHandover(id, tx = prismaClient) {
       return tx.custodyHandover.findUnique({ where: { id }, include: { deliveryLeg: true, parcelBooking: true } });
     },
@@ -74,6 +90,128 @@ export function createCustodyRepository({ prismaClient }) {
     },
     createAudit(data, tx = prismaClient) {
       return tx.operationalAuditEvent.create({ data });
+    },
+    listHubHandovers(hubPointIds, { direction = "incoming", status, cursor, limit = 25 } = {}, tx = prismaClient) {
+      const where = direction === "incoming"
+        ? { toPartyType: "HUB", toPartyId: { in: hubPointIds }, ...(status ? { status } : {}) }
+        : { fromPartyType: "HUB", fromPartyId: { in: hubPointIds }, ...(status ? { status } : {}) };
+      return tx.custodyHandover.findMany({
+        where,
+        orderBy: [{ initiatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true,
+          fromPartyType: true, fromPartyId: true, toPartyType: true, toPartyId: true,
+          status: true, conditionAtRelease: true, conditionAtReceipt: true, evidence: true,
+          expiresAt: true, initiatedAt: true, confirmedAt: true, rejectedAt: true, rejectionReason: true,
+          parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true, status: true } },
+          deliveryLeg: {
+            select: {
+              id: true, sequence: true, type: true, status: true,
+              originServiceZone: { select: { name: true, state: { select: { name: true } } } },
+              destinationServiceZone: { select: { name: true, state: { select: { name: true } } } },
+              originHubPoint: { select: { id: true, name: true, address: true } },
+              destinationHubPoint: { select: { id: true, name: true, address: true } },
+            },
+          },
+          hubPoint: { select: { id: true, name: true, address: true } },
+        },
+      });
+    },
+    lockHubCapacity(hubPointId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "hub_points" WHERE "id" = ${hubPointId} FOR UPDATE`;
+    },
+    findHubIntakeConfig(hubPointId, tx = prismaClient) {
+      return tx.hubPoint.findUnique({
+        where: { id: hubPointId },
+        select: { id: true, status: true, acceptedParcelTypes: true, capacityConfig: true },
+      });
+    },
+    countReceivedHubIntakes(hubPointId, tx = prismaClient) {
+      return tx.hubIntakeRecord.count({ where: { hubPointId, status: "RECEIVED" } });
+    },
+    aggregateReceivedHubIntakes(hubPointId, tx = prismaClient) {
+      return tx.hubIntakeRecord.aggregate({
+        where: { hubPointId, status: "RECEIVED" },
+        _sum: { weightGrams: true, volumeCm3: true },
+      });
+    },
+    createHubIntakeRecord(data, tx = prismaClient) {
+      return tx.hubIntakeRecord.create({ data });
+    },
+    findBlockingHubOperationalCase(deliveryLegId, tx = prismaClient) {
+      return tx.operationalCase.findFirst({
+        where: {
+          deliveryLegId,
+          status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] },
+          type: { in: ["FAILED_HANDOVER", "DAMAGED_PARCEL", "MISSING_PARCEL", "FAILED_DELIVERY", "ROUTE_DISRUPTION"] },
+        },
+        select: { id: true, type: true, status: true },
+      });
+    },
+    findReceivedHubIntake(parcelBookingId, hubPointId, tx = prismaClient) {
+      return tx.hubIntakeRecord.findFirst({
+        where: { parcelBookingId, hubPointId, status: "RECEIVED" },
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+      });
+    },
+    updateHubIntakeRecord(id, data, tx = prismaClient) {
+      return tx.hubIntakeRecord.update({ where: { id }, data });
+    },
+    listHubIntakes(hubPointIds, { status = "RECEIVED", cursor, limit = 25 } = {}, tx = prismaClient) {
+      return tx.hubIntakeRecord.findMany({
+        where: { hubPointId: { in: hubPointIds }, ...(status ? { status } : {}) },
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true,
+          status: true, weightGrams: true, lengthMm: true, widthMm: true, heightMm: true,
+          volumeCm3: true, conditionAtReceipt: true, evidence: true, receivedAt: true, releasedAt: true,
+          parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true } },
+          deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+          hubPoint: { select: { id: true, name: true, address: true } },
+        },
+      });
+    },
+    findDispatchableLegs(hubPointIds, { cursor, limit = 25 } = {}, tx = prismaClient) {
+      return tx.deliveryLeg.findMany({
+        where: {
+          originHubPointId: { in: hubPointIds },
+          status: { in: ["ASSIGNED", "READY_FOR_ASSIGNMENT", "PICKUP_VERIFICATION_PENDING"] },
+          custodyHandovers: { none: { status: "PENDING_CONFIRMATION" } },
+          operationalCases: { none: {
+            status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] },
+            type: { in: ["FAILED_HANDOVER", "DAMAGED_PARCEL", "MISSING_PARCEL", "FAILED_DELIVERY", "ROUTE_DISRUPTION"] },
+          } },
+          parcelBooking: { is: { paymentStatus: "SUCCEEDED", hubIntakeRecords: { some: { hubPointId: { in: hubPointIds }, status: "RECEIVED" } } } },
+          OR: [
+            { assignments: { some: { status: "ARRIVED_AT_PICKUP" } } },
+            { partnerAssignments: { some: { status: "ACCEPTED" } } },
+          ],
+        },
+        orderBy: [{ sequence: "asc" }, { id: "asc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, sequence: true, type: true, status: true,
+          originHubPointId: true, destinationHubPointId: true,
+          parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true } },
+          originServiceZone: { select: { name: true, state: { select: { name: true } } } },
+          destinationServiceZone: { select: { name: true, state: { select: { name: true } } } },
+          originHubPoint: { select: { id: true, name: true, address: true } },
+          destinationHubPoint: { select: { id: true, name: true, address: true } },
+          assignments: {
+            where: { status: "ARRIVED_AT_PICKUP" },
+            select: { id: true, driverProfileId: true, status: true, driverProfile: { select: { user: { select: { fullName: true } } } } },
+          },
+          partnerAssignments: {
+            where: { status: "ACCEPTED" },
+            select: { id: true, partnerId: true, status: true, partner: { select: { displayName: true } } },
+          },
+        },
+      });
     },
     listMyHandovers(userId, hubIds, partnerIds, driverIds, tx = prismaClient) {
       const parties = [

@@ -312,6 +312,12 @@ enum HubOperatorRole {
   OPERATOR
 }
 
+enum HubIntakeStatus {
+  RECEIVED
+  RELEASED
+  EXCEPTION
+}
+
 enum AuthTokenPurpose {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -356,6 +362,7 @@ model User {
   approvedPartnerSettlementBatches PartnerSettlementBatch[] @relation("PartnerSettlementBatchApprover")
   reconciledPartnerSettlementBatches PartnerSettlementBatch[] @relation("PartnerSettlementBatchReconciler")
   partnerSettlementReconciliations PartnerSettlementReconciliation[] @relation("PartnerSettlementReconciliationActor")
+  receivedHubIntakes HubIntakeRecord[] @relation("HubIntakeReceiver")
 
   @@index([role, status])
   @@map("users")
@@ -654,6 +661,7 @@ model HubPoint {
   operators HubPointOperator[]
   custodyHandovers CustodyHandover[]
   operationalCases OperationalCase[]
+  intakeRecords HubIntakeRecord[]
 
   @@index([serviceZoneId, status])
   @@map("hub_points")
@@ -749,6 +757,7 @@ model ParcelBooking {
   deliveryLegs           DeliveryLeg[]
   custodyHandovers       CustodyHandover[]
   operationalCases       OperationalCase[]
+  hubIntakeRecords       HubIntakeRecord[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
@@ -907,6 +916,7 @@ model DeliveryLeg {
   partnerPayables PartnerPayable[]
   custodyHandovers   CustodyHandover[]
   operationalCases   OperationalCase[]
+  hubIntakeRecords HubIntakeRecord[]
 
   @@unique([parcelBookingId, sequence])
   @@index([status, plannedAt])
@@ -1385,6 +1395,37 @@ model HubPointOperator {
   @@index([userId, isActive])
   @@index([hubPointId, isActive])
   @@map("hub_point_operators")
+}
+
+model HubIntakeRecord {
+  id                String          @id @default(cuid())
+  parcelBookingId   String
+  deliveryLegId     String
+  hubPointId        String
+  receivedByUserId  String
+  status            HubIntakeStatus @default(RECEIVED)
+  weightGrams       Int
+  lengthMm          Int?
+  widthMm           Int?
+  heightMm          Int?
+  volumeCm3         Int?
+  conditionAtReceipt String
+  evidence          Json?
+  receivedAt        DateTime        @default(now())
+  releasedAt        DateTime?
+  exceptionAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  deliveryLeg   DeliveryLeg   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  hubPoint      HubPoint      @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
+  receivedBy    User          @relation("HubIntakeReceiver", fields: [receivedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([hubPointId, status, receivedAt])
+  @@index([parcelBookingId, hubPointId, status])
+  @@index([deliveryLegId, hubPointId])
+  @@map("hub_intake_records")
 }
 
 model PartnerDeliveryAssignment {
