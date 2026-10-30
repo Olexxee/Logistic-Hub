@@ -107,6 +107,15 @@ const implementedOperations = new Set([
   "POST /custody/handovers/{handoverId}/decision",
   "GET /admin/operational-cases",
   "PATCH /admin/operational-cases/{caseId}",
+  "GET /partner/payables",
+  "GET /admin/partner-payables",
+  "PATCH /admin/partner-payables/{payableId}/approve",
+  "POST /admin/partner-payables/{payableId}/adjustments",
+  "PATCH /admin/partner-payable-adjustments/{adjustmentId}/approve",
+  "POST /admin/transport-partners/{partnerId}/settlement-batches",
+  "GET /admin/partner-settlement-batches",
+  "PATCH /admin/partner-settlement-batches/{batchId}/approve",
+  "POST /admin/partner-settlement-batches/{batchId}/reconcile",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
@@ -120,6 +129,8 @@ const idempotentMutationPaths = new Set([
   "POST /payments/refunds/request",
   "POST /payments/payouts/request",
   "POST /admin/delivery-legs/{legId}/partner-assignment",
+  "POST /admin/partner-payables/{payableId}/adjustments",
+  "POST /admin/transport-partners/{partnerId}/settlement-batches",
 ]);
 
 try {
