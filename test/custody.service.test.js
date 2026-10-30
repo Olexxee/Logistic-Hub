@@ -15,12 +15,13 @@ function tx(overrides = {}) {
   const calls = { audits: [], cases: [], handovers: [] };
   const base = {
     user: { findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now }), updateMany: async () => ({ count: 1 }) },
-    deliveryLeg: { findUnique: async () => leg },
-    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [] },
+    deliveryLeg: { findUnique: async () => leg, findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
+    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [], update: async () => ({}) },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
     hubPointOperator: { findUnique: async () => null, findMany: async () => [], findFirst: async () => null, upsert: async ({ create }) => ({ id: "hub-operator-1", ...create }), update: async () => ({}), count: async () => 0 },
     transportPartner: { findUnique: async () => null },
     transportPartnerMember: { findUnique: async () => null, findMany: async () => [] },
+    hubIntakeRecord: { findFirst: async () => ({ id: "hub-intake-1" }), count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async ({ data }) => ({ id: "hub-intake-1", ...data }), update: async ({ where, data }) => ({ id: where.id, ...data }) },
     custodyHandover: {
       findFirst: async () => null,
       findUnique: async () => null,
@@ -28,7 +29,12 @@ function tx(overrides = {}) {
       update: async ({ where, data }) => ({ id: where.id, status: data.status, ...data }),
     },
     operationalCase: { create: async ({ data }) => { const value = { id: "case-1", ...data }; calls.cases.push(value); return value; } },
+    bookingEvent: { create: async () => ({}) },
+    parcelBooking: { update: async () => ({}) },
+    driverAssignment: { findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
+    driverPayout: { upsert: async () => ({ id: "driver-payout-1" }) },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+    $queryRaw: async () => [],
     $transaction: async callback => callback(base),
   };
   Object.assign(base, overrides);
@@ -183,9 +189,11 @@ test("confirmed destination hub handover completes partner assignment and create
     deliveryLeg: {
       findUnique: async () => partnerLeg,
       updateMany: async ({ where, data }) => { calls.legUpdates.push({ where, data }); return { count: 1 }; },
+      findFirst: async () => null,
     },
     hubPoint: { findUnique: async () => ({ id: "hub-2", status: "ACTIVE" }) },
     hubPointOperator: { findUnique: async () => ({ hubPointId: "hub-2", userId: "hub-user-1", isActive: true }) },
+    hubIntakeRecord: { findFirst: async () => null, count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async ({ data }) => ({ id: "intake-partner-1", ...data }) },
     transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }) },
     transportPartnerMember: { findUnique: async () => ({ partnerId: "partner-1", userId: "partner-user-1", isActive: true }) },
     partnerDeliveryAssignment: {
@@ -199,7 +207,7 @@ test("confirmed destination hub handover completes partner assignment and create
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   const result = await service.confirmHandover({
-    handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed and intact",
+    handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed and intact", weightGrams: 450,
   });
   assert.equal(result.handover.status, "CONFIRMED");
   assert.equal(calls.assignmentUpdates[0].data.status, "COMPLETED");

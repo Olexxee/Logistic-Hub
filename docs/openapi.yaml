@@ -3058,6 +3058,218 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Hub operator not found. }
+  /driver/hub-handovers:
+    post:
+      tags: [Delivery legs]
+      operationId: initiateDriverHubHandover
+      summary: Release a driver assignment into destination hub custody
+      description: The authenticated driver profile, assignment, destination hub and booking are derived and validated server-side. The driver must have arrived at the assignment destination; the receiving hub must confirm custody before the driver leg is completed.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [assignmentId, conditionAtRelease]
+              properties:
+                assignmentId: { type: string }
+                conditionAtRelease: { type: string, minLength: 2, maxLength: 500 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '201': { description: Pending handover to the configured destination hub created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Driver assignment not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /hub-operations/intakes:
+    get:
+      tags: [Delivery legs]
+      operationId: listHubIntakeInventory
+      summary: List parcel intake records for the authenticated hub operator's active hubs
+      description: Returns measured weight, optional dimensions, condition and current custody inventory status. Only records for hubs where the user has an active membership are returned.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [RECEIVED, RELEASED, EXCEPTION], default: RECEIVED } }
+        - { name: hubPointId, in: query, schema: { type: string }, description: Must be an active hub membership of the authenticated user. }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /hub-operations/handovers:
+    get:
+      tags: [Delivery legs]
+      operationId: listHubOperationsHandovers
+      summary: List incoming or outgoing custody handovers for the authenticated hub operator's active hubs
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: direction, in: query, schema: { type: string, enum: [incoming, outgoing], default: incoming } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING_CONFIRMATION, CONFIRMED, REJECTED, CANCELLED, EXPIRED] } }
+        - { name: hubPointId, in: query, schema: { type: string }, description: Must be an active hub membership of the authenticated user. }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Delivery legs]
+      operationId: initiateHubCustodyHandover
+      summary: Release a parcel from an operated hub to an assigned driver or accepted transport partner
+      description: The hub is inferred and verified against the delivery leg origin. Driver recipients must have arrived at pickup; partner recipients must have accepted the assignment. The receiver must confirm custody.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [hubPointId, deliveryLegId, toPartyType, toPartyId, conditionAtRelease]
+              properties:
+                hubPointId: { type: string }
+                deliveryLegId: { type: string }
+                toPartyType: { type: string, enum: [DRIVER, TRANSPORT_PARTNER] }
+                toPartyId: { type: string }
+                conditionAtRelease: { type: string, minLength: 2, maxLength: 500 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '201': { description: Pending hub custody handover created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Delivery leg not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /hub-operations/dispatchable:
+    get:
+      tags: [Delivery legs]
+      operationId: listHubDispatchableLegs
+      summary: List paid delivery legs at an operated hub with a driver or partner ready to receive custody
+      description: Returns only legs with an active parcel intake and an eligible recipient. Unresolved blocking hub exceptions prevent release.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: query, schema: { type: string }, description: Must be an active hub membership of the authenticated user. }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /hub-operations/handovers/{handoverId}/decision:
+    post:
+      tags: [Delivery legs]
+      operationId: decideHubCustodyHandover
+      summary: Confirm or reject an incoming custody handover addressed to an operated hub
+      description: The receiving hub membership is validated by the custody service. A successful hub intake requires measured weight in grams; dimensions are required when the hub has a configured volume limit. Configured parcel type, parcel count, weight and volume capacities are enforced transactionally. A rejection creates a high-priority FAILED_HANDOVER case transactionally.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: handoverId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                conditionAtReceipt: { type: string, minLength: 2, maxLength: 500 }\n                weightGrams: { type: integer, minimum: 1, maximum: 100000000, description: Required when the receiving party is a hub. }\n                lengthMm: { type: integer, minimum: 1, maximum: 1000000 }\n                widthMm: { type: integer, minimum: 1, maximum: 1000000 }\n                heightMm: { type: integer, minimum: 1, maximum: 1000000 }
+                rejectReason: { type: string, minLength: 3, maxLength: 1000 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '200': { description: Incoming custody confirmed or rejected. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Handover not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /hub-operations/cases:
+    post:
+      tags: [Delivery legs]
+      operationId: reportHubOperationalException
+      summary: Report a shipment exception at an operated hub
+      description: The hub membership and hub-to-delivery-leg relationship are verified server-side. The report creates an OPEN operational case and an audit event.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [hubPointId, deliveryLegId, type, title, description]
+              properties:
+                hubPointId: { type: string }
+                deliveryLegId: { type: string }
+                type: { type: string, enum: [DAMAGED_PARCEL, MISSING_PARCEL, FAILED_DELIVERY, ROUTE_DISRUPTION, OTHER] }
+                priority: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL], default: NORMAL }
+                title: { type: string, minLength: 3, maxLength: 160 }
+                description: { type: string, minLength: 5, maxLength: 2000 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '201': { description: Operational exception case created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub or delivery leg not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /custody/handovers/mine:
     get:
       tags: [Delivery legs]
