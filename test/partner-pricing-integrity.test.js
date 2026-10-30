@@ -122,7 +122,28 @@ test("PostgreSQL enforces partner-rate bands and immutable quote totals", { skip
       acceptedByUserId: sender.id,
     };
 
-    await prisma.shipmentQuote.create({ data: { ...acceptedQuoteData, version: 1 } });
+    const acceptedQuote = await prisma.shipmentQuote.create({ data: { ...acceptedQuoteData, version: 1 } });
+
+    await prisma.parcelBooking.update({
+      where: { id: booking.id },
+      data: {
+        status: "AWAITING_PAYMENT",
+        customerPayableMinor: 1900n,
+        connectionFeeMinor: 100n,
+        otherChargesMinor: 600n,
+        pricingSnapshot: {
+          quoteId: acceptedQuote.id,
+          totalCustomerChargeMinor: "1900",
+          currency: "NGN",
+        },
+      },
+    });
+    await assert.rejects(
+      prisma.parcelBooking.update({
+        where: { id: booking.id },
+        data: { customerPayableMinor: 2000n },
+      }),
+    );
 
     await assert.rejects(
       prisma.shipmentQuote.create({ data: { ...acceptedQuoteData, version: 2 } }),
