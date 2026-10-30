@@ -14,3 +14,5 @@ export const vehicleAdminListSchema = z.object({
 }).strict();
 
 export const driverAdminStatusSchema = z.object({ status: z.enum(["SUSPENDED", "ACTIVE"]), reason: z.string().trim().min(3).max(500).optional() }).strict().refine(v => v.status !== "SUSPENDED" || Boolean(v.reason), { message: "A reason is required when suspending a driver.", path: ["reason"] });
+
+export const driverAdminAuditSchema = z.object({ ...pagination }).strict();
