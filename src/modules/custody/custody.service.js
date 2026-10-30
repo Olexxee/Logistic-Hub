@@ -162,6 +162,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           && !leg.partnerAssignments.some(item => item.partnerId === input.fromPartyId && item.status === "IN_TRANSIT")) {
           throw fail(409, "PARTNER_ASSIGNMENT_NOT_IN_TRANSIT", "A transport partner can release custody only after its assignment has started.");
         }
+        if (input.fromPartyType === "DRIVER" && input.toPartyType === "HUB"
+          && !leg.assignments.some(item => item.driverProfileId === input.fromPartyId && item.status === "ARRIVED_AT_DESTINATION")) {
+          throw fail(409, "DRIVER_NOT_ARRIVED_AT_HUB", "A driver can release custody to a hub only after arriving at the assigned destination.");
+        }
         await validateParty(tx, { type: input.fromPartyType, id: input.fromPartyId, userId, booking: leg.parcelBooking, leg, actor: true });
         await validateParty(tx, { type: input.toPartyType, id: input.toPartyId, userId, booking: leg.parcelBooking, leg });
         if (input.fromPartyType === input.toPartyType && input.fromPartyId === input.toPartyId) {
@@ -243,50 +247,173 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           evidence: evidence ?? handover.evidence ?? undefined,
         }, tx);
 
-        // A partner interstate leg is complete only when its destination hub confirms custody.
-        if (handover.fromPartyType === "TRANSPORT_PARTNER" && handover.toPartyType === "HUB") {
-          const leg = await repo.findBookingLeg(handover.deliveryLegId, tx);
-          if (leg?.destinationHubPointId === handover.toPartyId) {
-            const assignment = await tx.partnerDeliveryAssignment.findFirst({
-              where: { deliveryLegId: handover.deliveryLegId, partnerId: handover.fromPartyId, status: "IN_TRANSIT" },
+        const confirmedLeg = await repo.findBookingLeg(handover.deliveryLegId, tx);
+
+        // Hub release to a driver is the pickup custody confirmation for that assignment.
+        if (handover.fromPartyType === "HUB" && handover.toPartyType === "DRIVER"
+          && confirmedLeg?.originHubPointId === handover.fromPartyId) {
+          const assignment = await tx.driverAssignment.findFirst({
+            where: { deliveryLegId: handover.deliveryLegId, driverProfileId: handover.toPartyId, status: "ARRIVED_AT_PICKUP" },
+          });
+          if (!assignment) throw fail(409, "DRIVER_PICKUP_STATE_CONFLICT", "The receiving driver is no longer awaiting pickup custody.");
+          const changed = await tx.driverAssignment.updateMany({
+            where: { id: assignment.id, status: "ARRIVED_AT_PICKUP" },
+            data: { status: "PICKUP_CONFIRMED", pickupAt: clock() },
+          });
+          if (changed.count !== 1) throw fail(409, "DRIVER_PICKUP_STATE_CONFLICT", "The driver pickup state changed before custody was confirmed.");
+          await tx.bookingEvent.create({
+            data: {
+              parcelBookingId: handover.parcelBookingId,
+              actorUserId: userId,
+              eventType: "HUB_PICKUP_CUSTODY_CONFIRMED",
+              fromStatus: "ARRIVED_AT_PICKUP",
+              toStatus: "PICKUP_CONFIRMED",
+              metadata: { assignmentId: assignment.id, deliveryLegId: handover.deliveryLegId, handoverId },
+            },
+          });
+          await repo.createAudit({
+            actorUserId: userId, entityType: "DRIVER_ASSIGNMENT", entityId: assignment.id,
+            action: "HUB_CUSTODY_RELEASE_CONFIRMED",
+            before: { status: "ARRIVED_AT_PICKUP" }, after: { status: "PICKUP_CONFIRMED", handoverId },
+          }, tx);
+        }
+
+        // Driver delivery into a hub completes this leg and activates the next planned leg.
+        if (handover.fromPartyType === "DRIVER" && handover.toPartyType === "HUB"
+          && confirmedLeg?.destinationHubPointId === handover.toPartyId) {
+          const assignment = await tx.driverAssignment.findFirst({
+            where: { deliveryLegId: handover.deliveryLegId, driverProfileId: handover.fromPartyId, status: "ARRIVED_AT_DESTINATION" },
+          });
+          if (!assignment) throw fail(409, "DRIVER_DESTINATION_STATE_CONFLICT", "The driver assignment is no longer awaiting destination custody.");
+          const completedAt = clock();
+          const assignmentChanged = await tx.driverAssignment.updateMany({
+            where: { id: assignment.id, status: "ARRIVED_AT_DESTINATION" },
+            data: { status: "COMPLETED", completedAt },
+          });
+          if (assignmentChanged.count !== 1) throw fail(409, "DRIVER_DESTINATION_STATE_CONFLICT", "The driver assignment changed before custody was confirmed.");
+          const legChanged = await tx.deliveryLeg.updateMany({
+            where: { id: handover.deliveryLegId, status: "DELIVERY_VERIFICATION_PENDING" },
+            data: { status: "COMPLETED", completedAt },
+          });
+          if (legChanged.count !== 1) throw fail(409, "DRIVER_LEG_COMPLETION_CONFLICT", "The delivery leg is no longer awaiting hub receipt.");
+          await tx.driverProfile.update({
+            where: { id: assignment.driverProfileId },
+            data: { isAvailable: true, completedJobs: { increment: 1 } },
+          });
+          await tx.driverPayout.upsert({
+            where: { idempotencyKey: "completion-" + assignment.id },
+            create: {
+              driverProfileId: assignment.driverProfileId,
+              parcelBookingId: handover.parcelBookingId,
+              amountMinor: assignment.agreedFareMinor,
+              currency: assignment.currency,
+              status: "PENDING",
+              provider: "PAYSTACK",
+              idempotencyKey: "completion-" + assignment.id,
+            },
+            update: {},
+          });
+          const nextLeg = await tx.deliveryLeg.findFirst({
+            where: { parcelBookingId: handover.parcelBookingId, sequence: { gt: confirmedLeg.sequence } },
+            orderBy: { sequence: "asc" },
+            select: { id: true, status: true },
+          });
+          if (nextLeg?.status === "PLANNED") {
+            const activated = await tx.deliveryLeg.updateMany({
+              where: { id: nextLeg.id, status: "PLANNED" },
+              data: { status: "READY_FOR_ASSIGNMENT" },
             });
-            if (assignment) {
-              const completedAt = clock();
-              const changed = await tx.partnerDeliveryAssignment.updateMany({
-                where: { id: assignment.id, status: "IN_TRANSIT" },
+            if (activated.count !== 1) throw fail(409, "DELIVERY_LEG_SEQUENCE_CONFLICT", "The next delivery leg could not be activated.");
+          } else if (nextLeg && nextLeg.status !== "READY_FOR_ASSIGNMENT") {
+            throw fail(409, "DELIVERY_LEG_SEQUENCE_CONFLICT", "The next delivery leg is not ready for activation.");
+          }
+          await tx.parcelBooking.update({
+            where: { id: handover.parcelBookingId },
+            data: { status: "IN_TRANSIT" },
+          });
+          await tx.bookingEvent.create({
+            data: {
+              parcelBookingId: handover.parcelBookingId,
+              actorUserId: userId,
+              eventType: "HUB_DESTINATION_CUSTODY_CONFIRMED",
+              fromStatus: "DELIVERY_VERIFICATION_PENDING",
+              toStatus: "COMPLETED",
+              metadata: { assignmentId: assignment.id, deliveryLegId: handover.deliveryLegId, nextDeliveryLegId: nextLeg?.id ?? null, handoverId },
+            },
+          });
+        }
+
+        // A partner interstate leg is complete only when its destination hub confirms custody.
+        if (handover.fromPartyType === "TRANSPORT_PARTNER" && handover.toPartyType === "HUB"
+          && confirmedLeg?.destinationHubPointId === handover.toPartyId) {
+          const assignment = await tx.partnerDeliveryAssignment.findFirst({
+            where: { deliveryLegId: handover.deliveryLegId, partnerId: handover.fromPartyId, status: "IN_TRANSIT" },
+          });
+          if (assignment) {
+            const completedAt = clock();
+            const changed = await tx.partnerDeliveryAssignment.updateMany({
+              where: { id: assignment.id, status: "IN_TRANSIT" },
+              data: { status: "COMPLETED", completedAt },
+            });
+            if (changed.count === 1) {
+              const legChanged = await tx.deliveryLeg.updateMany({
+                where: { id: handover.deliveryLegId, status: "IN_TRANSIT" },
                 data: { status: "COMPLETED", completedAt },
               });
-              if (changed.count === 1) {
-                const legChanged = await tx.deliveryLeg.updateMany({
-                  where: { id: handover.deliveryLegId, status: "IN_TRANSIT" },
-                  data: { status: "COMPLETED", completedAt },
-                });
-                if (legChanged.count !== 1) {
-                  throw fail(409, "PARTNER_LEG_COMPLETION_CONFLICT", "The delivery leg is no longer in transit and partner completion cannot be recorded.");
-                }
-                const payable = await tx.partnerPayable.upsert({
-                  where: { partnerDeliveryAssignmentId: assignment.id },
-                  create: {
-                    partnerId: assignment.partnerId,
-                    partnerDeliveryAssignmentId: assignment.id,
-                    agreementId: assignment.agreementId,
-                    deliveryLegId: assignment.deliveryLegId,
-                    sourceChargeMinor: assignment.agreedTransportChargeMinor,
-                    amountMinor: assignment.agreedTransportChargeMinor,
-                    currency: assignment.currency,
-                  },
-                  update: {},
-                });
-                await repo.createAudit({
-                  actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT",
-                  entityId: assignment.id, action: "PARTNER_EXECUTION_COMPLETED_AND_PAYABLE_CREATED",
-                  before: { status: assignment.status },
-                  after: { status: "COMPLETED", payableId: payable.id, amountMinor: payable.amountMinor.toString(), currency: payable.currency },
-                }, tx);
+              if (legChanged.count !== 1) {
+                throw fail(409, "PARTNER_LEG_COMPLETION_CONFLICT", "The delivery leg is no longer in transit and partner completion cannot be recorded.");
               }
+              const payable = await tx.partnerPayable.upsert({
+                where: { partnerDeliveryAssignmentId: assignment.id },
+                create: {
+                  partnerId: assignment.partnerId,
+                  partnerDeliveryAssignmentId: assignment.id,
+                  agreementId: assignment.agreementId,
+                  deliveryLegId: assignment.deliveryLegId,
+                  sourceChargeMinor: assignment.agreedTransportChargeMinor,
+                  amountMinor: assignment.agreedTransportChargeMinor,
+                  currency: assignment.currency,
+                },
+                update: {},
+              });
+              const nextLeg = await tx.deliveryLeg.findFirst({
+                where: { parcelBookingId: handover.parcelBookingId, sequence: { gt: confirmedLeg.sequence } },
+                orderBy: { sequence: "asc" },
+                select: { id: true, status: true },
+              });
+              if (nextLeg?.status === "PLANNED") {
+                const activated = await tx.deliveryLeg.updateMany({
+                  where: { id: nextLeg.id, status: "PLANNED" },
+                  data: { status: "READY_FOR_ASSIGNMENT" },
+                });
+                if (activated.count !== 1) throw fail(409, "DELIVERY_LEG_SEQUENCE_CONFLICT", "The next delivery leg could not be activated.");
+              } else if (nextLeg && nextLeg.status !== "READY_FOR_ASSIGNMENT") {
+                throw fail(409, "DELIVERY_LEG_SEQUENCE_CONFLICT", "The next delivery leg is not ready for activation.");
+              }
+              await tx.parcelBooking.update({
+                where: { id: handover.parcelBookingId },
+                data: { status: "IN_TRANSIT" },
+              });
+              await tx.bookingEvent.create({
+                data: {
+                  parcelBookingId: handover.parcelBookingId,
+                  actorUserId: userId,
+                  eventType: "PARTNER_HUB_CUSTODY_CONFIRMED",
+                  fromStatus: "IN_TRANSIT",
+                  toStatus: "COMPLETED",
+                  metadata: { partnerAssignmentId: assignment.id, deliveryLegId: handover.deliveryLegId, nextDeliveryLegId: nextLeg?.id ?? null, handoverId },
+                },
+              });
+              await repo.createAudit({
+                actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT",
+                entityId: assignment.id, action: "PARTNER_EXECUTION_COMPLETED_AND_PAYABLE_CREATED",
+                before: { status: assignment.status },
+                after: { status: "COMPLETED", payableId: payable.id, amountMinor: payable.amountMinor.toString(), currency: payable.currency },
+              }, tx);
             }
           }
         }
+
 
         await repo.createAudit({
           actorUserId: userId, entityType: "CUSTODY_HANDOVER", entityId: handoverId,
