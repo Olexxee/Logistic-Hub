@@ -298,7 +298,7 @@ paths:
                 password: { type: string, minLength: 1, maxLength: 128 }
       responses:
         '200':
-          description: Short-lived bearer access token and public account profile.
+          description: Short-lived bearer access token and public account profile. Refresh token is set in an HttpOnly cookie and is not returned in JSON. Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -1530,22 +1530,13 @@ paths:
     post:
       tags: [Authentication]
       operationId: refreshAuthSession
-      summary: Rotate a refresh token and issue a new access token
+      summary: Rotate the HttpOnly refresh cookie and issue a new access token
+      description: No request body. The browser sends the HttpOnly refresh cookie automatically with credentials included. The response rotates Set-Cookie and returns only the bearer access token. Requires an allowlisted Origin and X-Auth-CSRF: 1.
       x-implementation-status: implemented
       security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [refreshToken]
-              properties:
-                refreshToken: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
       responses:
         '200':
-          description: Rotated refresh token and new bearer access token.
+          description: New bearer access token; rotated refresh token is set as an HttpOnly cookie.
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -1667,7 +1658,8 @@ paths:
     post:
       tags: [Authentication]
       operationId: revokeCurrentAuthSession
-      summary: Revoke the current authenticated session
+      summary: Revoke the current authenticated session and clear its refresh cookie
+      description: Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -1678,7 +1670,8 @@ paths:
     post:
       tags: [Authentication]
       operationId: revokeAllAuthSessions
-      summary: Revoke every session for the authenticated account
+      summary: Revoke every session for the authenticated account and clear the refresh cookie
+      description: Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
