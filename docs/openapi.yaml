@@ -2966,6 +2966,44 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Active partner membership required. }
+  /partner/assignments/{assignmentId}/accept:
+    post:
+      tags: [Partner execution]
+      operationId: acceptPartnerDeliveryAssignment
+      summary: Accept an assigned interstate delivery leg
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Assignment accepted or idempotently replayed. }
+        '401': { description: Authentication required. }
+        '403': { description: Active partner membership required. }
+        '404': { description: Assignment not found. }
+        '409': { description: Assignment is not in an acceptable state. }
+  /partner/assignments/{assignmentId}/start:
+    post:
+      tags: [Partner execution]
+      operationId: startPartnerDeliveryAssignment
+      summary: Mark an accepted partner assignment as in transit
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Assignment started or idempotently replayed. }
+        '401': { description: Authentication required. }
+        '403': { description: Active partner membership required. }
+        '404': { description: Assignment not found. }
+        '409': { description: Assignment is not ready to start. }
 
   /admin/hub-points/{hubPointId}/operators:
     post:
