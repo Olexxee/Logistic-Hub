@@ -18,13 +18,13 @@ function tx(overrides = {}) {
     deliveryLeg: { findUnique: async () => leg },
     driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [] },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
-    hubPointOperator: { findUnique: async () => null, findMany: async () => [], findFirst: async () => null, upsert: async ({ data }) => ({ id: "hub-operator-1", ...data }), update: async () => ({}), count: async () => 0 },
+    hubPointOperator: { findUnique: async () => null, findMany: async () => [], findFirst: async () => null, upsert: async ({ create }) => ({ id: "hub-operator-1", ...create }), update: async () => ({}), count: async () => 0 },
     transportPartner: { findUnique: async () => null },
     transportPartnerMember: { findUnique: async () => null, findMany: async () => [] },
     custodyHandover: {
       findFirst: async () => null,
       findUnique: async () => null,
-      create: async ({ data }) => { const value = { id: "handover-1", ...data }; calls.handovers.push(value); return value; },
+      create: async ({ data }) => { const value = { id: "handover-1", status: "PENDING_CONFIRMATION", ...data }; calls.handovers.push(value); return value; },
       update: async ({ where, data }) => ({ id: where.id, status: data.status, ...data }),
     },
     operationalCase: { create: async ({ data }) => { const value = { id: "case-1", ...data }; calls.cases.push(value); return value; } },
@@ -120,7 +120,7 @@ test("admin can add an existing partner operator as a hub operator without downg
     user: { findUnique: async () => ({ id: "operator-1", status: "ACTIVE", role: "PARTNER_OPERATOR", emailVerifiedAt: now }) },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
     hubPointOperator: {
-      upsert: async ({ data }) => ({ id: "hub-operator-1", ...data }),
+      upsert: async ({ create }) => ({ id: "hub-operator-1", ...create }),
     },
   });
   let roleUpdates = 0;
