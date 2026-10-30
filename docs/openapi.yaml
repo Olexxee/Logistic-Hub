@@ -3558,6 +3558,376 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /health/live:
+    get:
+      tags: [Health]
+      operationId: getLiveness
+      summary: Check API process liveness
+      description: Liveness is independent of database availability and is safe for orchestrator probes.
+      x-implementation-status: implemented
+      security: []
+      responses:
+        '200': { description: API process is alive. }
+  /geography/admin/countries:
+    get:
+      tags: [Geography administration]
+      operationId: listCountriesAdmin
+      summary: List countries for geography administration
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Country reference records. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Geography administration]
+      operationId: createCountryAdmin
+      summary: Create a country reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code, name]
+              properties:
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '201': { description: Country created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /geography/admin/countries/{id}:
+    patch:
+      tags: [Geography administration]
+      operationId: updateCountryAdmin
+      summary: Update a country reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '200': { description: Country updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /geography/admin/countries/{id}/status:
+    patch:
+      tags: [Geography administration]
+      operationId: setCountryActive
+      summary: Activate or deactivate a country
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties: { isActive: { type: boolean } }
+      responses:
+        '200': { description: Country status updated. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/states:
+    get:
+      tags: [Geography administration]
+      operationId: listStatesAdmin
+      summary: List state reference records
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: countryId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: State reference records. }
+    post:
+      tags: [Geography administration]
+      operationId: createStateAdmin
+      summary: Create a state reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [countryId, code, name]
+              properties:
+                countryId: { type: string, minLength: 1, maxLength: 128 }
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '201': { description: State created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/states/{id}:
+    patch:
+      tags: [Geography administration]
+      operationId: updateStateAdmin
+      summary: Update a state reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '200': { description: State updated. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /geography/admin/states/{id}/status:
+    patch:
+      tags: [Geography administration]
+      operationId: setStateActive
+      summary: Activate or deactivate a state
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties: { isActive: { type: boolean } }
+      responses:
+        '200': { description: State status updated. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/lgas:
+    get:
+      tags: [Geography administration]
+      operationId: listLgasAdmin
+      summary: List local government areas
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: stateId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: LGA reference records. }
+    post:
+      tags: [Geography administration]
+      operationId: createLgaAdmin
+      summary: Create a local government area
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stateId, name]
+              properties:
+                stateId: { type: string, minLength: 1, maxLength: 128 }
+                code: { type: [string, 'null'], minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '201': { description: LGA created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/lgas/{id}:
+    patch:
+      tags: [Geography administration]
+      operationId: updateLgaAdmin
+      summary: Update a local government area
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                code: { type: [string, 'null'], minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '200': { description: LGA updated. }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Geography administration]
+      operationId: deleteLgaAdmin
+      summary: Delete an unused local government area
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      responses:
+        '204': { description: LGA deleted. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /service-zones/admin:
+    get:
+      tags: [Service zones]
+      operationId: listServiceZonesAdmin
+      summary: List service zones for administration
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Service zones with their geography and availability configuration. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Service zones]
+      operationId: createServiceZoneAdmin
+      summary: Create a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stateId, code, name]
+              properties:
+                stateId: { type: string, minLength: 1, maxLength: 128 }
+                lgaId: { type: [string, 'null'], maxLength: 128 }
+                code: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+                boundaryGeoJson: { type: [object, 'null'], additionalProperties: true }
+      responses:
+        '201': { description: Service zone created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /service-zones/admin/{serviceZoneId}:
+    patch:
+      tags: [Service zones]
+      operationId: updateServiceZoneAdmin
+      summary: Update a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: serviceZoneId, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                lgaId: { type: [string, 'null'], maxLength: 128 }
+                code: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+                boundaryGeoJson: { type: [object, 'null'], additionalProperties: true }
+      responses:
+        '200': { description: Service zone updated. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /service-zones/admin/{serviceZoneId}/status:
+    patch:
+      tags: [Service zones]
+      operationId: setServiceZoneActive
+      summary: Activate or deactivate a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: serviceZoneId, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties: { isActive: { type: boolean } }
+      responses:
+        '200': { description: Service zone status updated. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /service-zones/admin/{serviceZoneId}/availability:
+    put:
+      tags: [Service zones]
+      operationId: setServiceZoneAvailability
+      summary: Configure service availability for a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: serviceZoneId, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [serviceType, isEnabled]
+              properties:
+                serviceType: { type: string, enum: [PARCEL_DELIVERY, PASSENGER_RIDE, HUB_POINT, BUSINESS_LOGISTICS] }
+                isEnabled: { type: boolean }
+                startsAt: { type: [string, 'null'], format: date-time }
+                endsAt: { type: [string, 'null'], format: date-time }
+                config: { type: [object, 'null'], additionalProperties: true }
+      responses:
+        '200': { description: Service availability updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth:
