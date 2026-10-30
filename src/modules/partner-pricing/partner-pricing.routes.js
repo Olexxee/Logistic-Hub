@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createMultiLegPlan } from "../delivery-legs/delivery-plan.service.js";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
@@ -263,6 +264,7 @@ export function createPartnerPricingRouter({
           error.code = "BOOKING_NOT_QUOTABLE";
           throw error;
         }
+        const routePlan = await createMultiLegPlan({ tx, booking, quote, now });
         await tx.bookingEvent.create({
           data: {
             parcelBookingId: booking.id,
@@ -275,16 +277,27 @@ export function createPartnerPricingRouter({
               quoteVersion: quote.version,
               totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
               currency: quote.currency,
+              routeMode: routePlan.routeMode,
+              deliveryLegIds: routePlan.legs.map((leg) => leg.id),
+              originHubPointId: routePlan.originHub?.id ?? null,
+              destinationHubPointId: routePlan.destinationHub?.id ?? null,
             },
           },
         });
-        return { quote: await tx.shipmentQuote.findUnique({ where: { id: quote.id } }) };
+        return {
+          quote: await tx.shipmentQuote.findUnique({ where: { id: quote.id } }),
+          routePlan,
+        };
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
       if (result.quoteNotFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Quote not found for this booking." } });
       if (result.forbidden) return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot accept this quote." } });
       if (result.conflict) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_ACCEPTABLE", message: "This quote is no longer available or has expired." } });
-      return res.status(200).json({ success: true, data: { quote: quoteView(result.quote), replay: result.replay === true } });
+      return res.status(200).json({ success: true, data: {
+        quote: quoteView(result.quote),
+        routePlan: result.routePlan ?? null,
+        replay: result.replay === true,
+      } });
     } catch (error) {
       if (error.statusCode === 409) {
         return res.status(409).json({ success: false, error: {
