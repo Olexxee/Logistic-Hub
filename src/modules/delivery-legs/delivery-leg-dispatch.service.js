@@ -236,6 +236,26 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               currency: offer.currency, paymentRequired: true, paymentEnabled: false, replay: true,
             };
           }
+          const driverSnapshot = await tx.driverProfile.findFirst({
+            where: {
+              id: offer.driverProfileId,
+              verificationStatus: "VERIFIED",
+              isOnline: true,
+              isAvailable: true,
+              lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
+            },
+            select: {
+              id: true, verificationStatus: true, isOnline: true, isAvailable: true,
+              serviceRadiusMeters: true, lastLocationAt: true,
+              locations: {
+                orderBy: { recordedAt: "desc" }, take: 1,
+                select: { latitude: true, longitude: true, recordedAt: true },
+              },
+            },
+          });
+          if (!assertEligibleDriver(driverSnapshot, leg, now)) {
+            throw conflict("DRIVER_NO_LONGER_AVAILABLE", "The selected driver is no longer within the required pickup radius.");
+          }
           const driverReserved = await tx.driverProfile.updateMany({
             where: {
               id: offer.driverProfileId,
