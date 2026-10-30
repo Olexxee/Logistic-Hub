@@ -78,6 +78,79 @@ test("driver arrival moves the linked delivery leg to pickup verification pendin
   });
 });
 
+test("pickup verification records parcel pickup separately from transit start", async () => {
+  const legUpdates = [];
+  const assignment = {
+    id: "assignment_pickup",
+    deliveryLegId: "leg_pickup",
+    parcelBookingId: "booking_pickup",
+    rideBookingId: null,
+    driverProfileId: "driver_profile_pickup",
+    driverProfile: { userId: "driver_user_pickup" },
+    parcelBooking: { id: "booking_pickup", senderId: "sender_pickup", publicReference: "LH-PCL-PICKUP" },
+    rideBooking: null,
+    status: "ARRIVED_AT_PICKUP",
+    agreedFareMinor: 1500n,
+    currency: "NGN",
+  };
+  const tx = {
+    driverAssignment: { findUnique: async () => assignment, update: async () => ({}) },
+    verificationToken: { findFirst: async () => ({ id: "pickup_token" }), updateMany: async () => ({ count: 1 }) },
+    deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
+    parcelBooking: { update: async () => ({}) },
+    bookingEvent: { create: async () => ({}) },
+  };
+  const repository = createAssignmentsRepository({ $transaction: (callback) => callback(tx) });
+  const result = await repository.verifyCode({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_pickup",
+    action: "PICKUP",
+    tokenHash: "pickup-hash",
+    now,
+  });
+  assert.equal(result.status, "PICKUP_CONFIRMED");
+  assert.deepEqual(legUpdates[0], {
+    where: { id: "leg_pickup" },
+    data: { status: "IN_TRANSIT", pickedUpAt: now },
+  });
+});
+
+test("starting the trip records the delivery leg transit start timestamp", async () => {
+  const legUpdates = [];
+  const assignment = {
+    id: "assignment_start",
+    deliveryLegId: "leg_start",
+    parcelBookingId: "booking_start",
+    rideBookingId: null,
+    driverProfileId: "driver_profile_start",
+    driverProfile: { userId: "driver_user_start" },
+    parcelBooking: { id: "booking_start", status: "PICKED_UP" },
+    rideBooking: null,
+    status: "PICKUP_CONFIRMED",
+  };
+  const tx = {
+    driverAssignment: {
+      findUnique: async () => assignment,
+      update: async ({ data }) => ({ id: assignment.id, status: data.status, updatedAt: now }),
+    },
+    deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
+    parcelBooking: { update: async () => ({}) },
+    bookingEvent: { create: async () => ({}) },
+  };
+  const repository = createAssignmentsRepository({ $transaction: (callback) => callback(tx) });
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_start",
+    nextStatus: "IN_PROGRESS",
+    now,
+  });
+  assert.equal(result.status, "IN_PROGRESS");
+  assert.deepEqual(legUpdates[0], {
+    where: { id: "leg_start" },
+    data: { status: "IN_TRANSIT", startedAt: now },
+  });
+});
+
 test("verified recipient handover completes the linked delivery leg in the same transaction", async () => {
   const legUpdates = [];
   let tokenQuery;
