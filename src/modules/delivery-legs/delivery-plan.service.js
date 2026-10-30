@@ -54,18 +54,19 @@ function legData({
 export async function createMultiLegPlan({ tx, booking, quote, now = new Date() }) {
   if (!tx || !booking || !quote) throw new Error("A transaction, booking and accepted quote are required.");
 
+  const zoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
   const zones = await tx.serviceZone.findMany({
-    where: { id: { in: [booking.pickupServiceZoneId, booking.destinationServiceZoneId] } },
+    where: { id: { in: zoneIds } },
     select: { id: true, stateId: true },
   });
-  if (zones.length !== 2) {
+  if (zones.length !== zoneIds.length) {
     const error = new Error("Both route service zones must exist before a delivery plan can be created.");
     error.statusCode = 409;
     error.code = "DELIVERY_ROUTE_ZONES_INVALID";
     throw error;
   }
   const stateByZone = new Map(zones.map((zone) => [zone.id, zone.stateId]));
-  if (stateByZone.get(booking.pickupServiceZoneId) === stateByZone.get(booking.destinationServiceZoneId)) {
+  if (zoneIds.length === 1 || stateByZone.get(booking.pickupServiceZoneId) === stateByZone.get(booking.destinationServiceZoneId)) {
     return { routeMode: "LOCAL_DIRECT", legs: [] };
   }
 
