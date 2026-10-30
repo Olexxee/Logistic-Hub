@@ -44,6 +44,31 @@ This avoids one status field trying to represent several concurrent facts. A shi
 - Accepted partner transport charges remain in the shipment quote and booking pricing snapshot. They must not be written into `driverFareMinor`, which is reserved for a directly negotiated driver fare.
 - Partner quote acceptance records the customer-approved total and moves the booking to `AWAITING_PAYMENT`. Partner-specific assignment and settlement integration must be completed before this path can use the payment flow.
 
+## 1B. Parcel delivery-leg lifecycle
+
+A delivery leg is one independently tracked segment of a parcel journey. The booking is the customer-level shipment record; a leg is the operational movement between two service zones. Never use the booking status as a substitute for a leg's status.
+
+The first implementation supports one direct local-delivery leg per driver-matched parcel booking:
+
+Direct local-driver matching is restricted to routes whose pickup and destination service zones belong to the same state. Cross-state bookings must use the transport-partner quotation path; they cannot fall through to a direct local-driver assignment while partner-leg assignment is not yet implemented.
+
+- The sender accepts a specific driver fare; in the same transaction the system creates a DIRECT leg in AWAITING_PAYMENT and links the temporary driver assignment to that leg.
+- A successful, server-verified payment changes the leg to ASSIGNED in the same settlement transaction that activates the driver assignment.
+- Driver arrival at pickup changes the leg to PICKUP_VERIFICATION_PENDING.
+- A valid one-time pickup code changes the leg to IN_TRANSIT.
+- Driver arrival at the destination changes the leg to DELIVERY_VERIFICATION_PENDING.
+- A valid recipient delivery code changes the leg to COMPLETED.
+
+The assignment and leg transitions must be committed together. A failed token check, stale assignment state or transaction failure must not partially advance either lifecycle. Pickup and delivery verification tokens are bound to the leg as well as the booking so later multi-leg journeys cannot reuse a code from another segment.
+
+The sender or an authorized operator can read the ordered leg timeline through:
+
+GET /api/v1/parcel-bookings/{bookingId}/delivery-legs
+
+The endpoint is owner-scoped, returns service-zone names rather than exposing additional location data, and includes only the latest assignment summary for each leg.
+
+The current slice does not yet implement multi-leg route planning, partner assignment, hub intake/handover, or custody-transfer confirmation. Those are subsequent Priority 5 workstreams. The schema supports leg types for direct, local pickup, hub transfer, inter-state transport and final-mile segments, but only the direct local-delivery path is created automatically today.
+
 ## 2. Ride lifecycle
 
 Use the separate `RideStatus` enum and a distinct transition function. A typical path follows the same negotiation-before-payment rule as parcels:

@@ -10,6 +10,15 @@
 - CI applies the committed migration chain to a disposable PostgreSQL 16 database with `prisma migrate deploy`, checks migration status and Prisma schema drift, and exercises the database constraints.
 - The migration has been tested against a disposable CI database only. It has **not** been applied to staging or production.
 
+## Delivery-leg invariants
+
+- A parcel booking may contain multiple ordered delivery legs; (parcelBookingId, sequence) is unique and sequence numbers are positive.
+- Each leg has explicit origin and destination service-zone foreign keys.
+- A driver assignment may be linked to one delivery leg. A partial unique index permits at most one active assignment per leg while preserving completed, failed and cancelled assignment history.
+- Pickup/delivery verification tokens may be linked to a leg. The service scopes token issue, revocation and consumption to that leg to prevent cross-leg replay.
+- A completed leg must have a start timestamp. A failed leg must include a non-empty failure reason.
+- These are additive constraints in the Priority 5 migration; the initial foundation migration and its supplemental constraint snapshot remain immutable.
+
 ## Geography invariants
 
 A service zone has a required state and an optional LGA. If an LGA is supplied, its state must equal the service zone's state. The Prisma relation uses a composite foreign key to `lgas(id, stateId)`; PostgreSQL enforces the pair rather than relying on application code alone.

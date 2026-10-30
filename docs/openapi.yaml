@@ -16,6 +16,7 @@ tags:
   - name: Authentication
   - name: Parcel bookings
   - name: Driver offers
+  - name: Delivery legs
   - name: Payments
   - name: Drivers
   - name: Admin
@@ -1098,6 +1099,36 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /parcel-bookings/{bookingId}/delivery-legs:
+    get:
+      tags: [Delivery legs]
+      operationId: listParcelDeliveryLegs
+      summary: List the delivery legs and latest assignment state for a parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Ordered delivery-leg timeline visible to the booking sender or an authorized operator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeliveryLegResource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /parcel-bookings/{bookingId}/request-matching:
     post:
       tags: [Driver offers]
@@ -1118,7 +1149,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Booking state conflict or no eligible drivers.
+          description: Booking state conflict, no eligible drivers, unavailable service zone, or cross-state route requiring a transport-partner quote.
           content:
             application/json:
               schema:
@@ -2720,6 +2751,46 @@ components:
         updatedAt:
           type: string
           format: date-time
+    DeliveryLegResource:
+      type: object
+      required: [id, sequence, type, status, origin, destination, assignment]
+      properties:
+        id: { type: string }
+        sequence: { type: integer, minimum: 1 }
+        type:
+          type: string
+          enum: [DIRECT, LOCAL_PICKUP, HUB_TRANSFER, INTERSTATE_TRANSPORT, FINAL_MILE]
+        status:
+          type: string
+          enum: [PLANNED, AWAITING_PAYMENT, ASSIGNED, PICKUP_VERIFICATION_PENDING, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, FAILED, CANCELLED]
+        origin:
+          $ref: '#/components/schemas/ServiceZoneSummary'
+        destination:
+          $ref: '#/components/schemas/ServiceZoneSummary'
+        plannedAt: { type: string, format: date-time, nullable: true }
+        assignedAt: { type: string, format: date-time, nullable: true }
+        pickedUpAt: { type: string, format: date-time, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        failureReason: { type: string, nullable: true }
+        assignment:
+          oneOf:
+            - $ref: '#/components/schemas/DeliveryLegAssignmentSummary'
+            - type: 'null'
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    DeliveryLegAssignmentSummary:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string }
+        status:
+          type: string
+          enum: [AWAITING_PAYMENT, ACCEPTED, ARRIVED_AT_PICKUP, PICKUP_CONFIRMED, IN_PROGRESS, ARRIVED_AT_DESTINATION, COMPLETED, CANCELLED, FAILED]
+        acceptedAt: { type: string, format: date-time, nullable: true }
+        pickupAt: { type: string, format: date-time, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
     FareOffer:
       type: object
       required: [id, status, proposedFareMinor, currency, expiresAt, createdAt]
@@ -2846,13 +2917,14 @@ components:
           $ref: '#/components/schemas/Coordinates'
     AcceptedQuote:
       type: object
-      required: [bookingId, status, assignmentId, driverFareMinor, connectionFeeMinor, otherChargesMinor, customerPayableMinor, currency, paymentExpiresAt]
+      required: [bookingId, status, assignmentId, deliveryLegId, driverFareMinor, connectionFeeMinor, otherChargesMinor, customerPayableMinor, currency, paymentExpiresAt]
       properties:
         bookingId: { type: string }
         status:
           type: string
           const: AWAITING_PAYMENT
         assignmentId: { type: string }
+        deliveryLegId: { type: string }
         driverFareMinor:
           $ref: '#/components/schemas/PositiveMinorAmount'
         connectionFeeMinor:

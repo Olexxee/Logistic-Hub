@@ -178,6 +178,10 @@ The implementation is not ready for launch until tests demonstrate that:
 - Payment collection and payout activation remain disabled until explicitly approved.
 - Changes remain on a reviewable feature/documentation branch until the repository owner approves merging.
 
+### Priority 5 implementation progress
+
+Work is underway on the feature branch feature/priority-5-delivery-legs-custody, stacked on the Priority 4 booking/quotation branch. The first slice adds the parcel delivery-leg model, creates a direct leg atomically when the sender accepts a driver fare, activates it only after server-verified payment, synchronizes leg progress with assignment and one-time verification transitions, and exposes an owner-scoped delivery-leg timeline API. It does not yet implement multi-leg routing, partner assignment, hub custody handovers or operational exceptions. Review the branch CI and pull request before treating this slice as complete.
+
 ## Existing technical foundation
 
 The blueprint builds on the repository's existing technical foundation and must be reconciled with actual code before implementation.

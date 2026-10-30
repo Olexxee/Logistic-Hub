@@ -15,6 +15,7 @@ export function createParcelBookingsRouter({ prismaClient = prisma } = {}) {
   router.get("/", requireAuth, validateListParcelBookings, asyncWrapper(controller.list));
   router.post("/", requireAuth, validateCreateParcelBooking, asyncWrapper(controller.create));
   router.get("/:bookingId", requireAuth, validateParcelBookingId, asyncWrapper(controller.get));
+  router.get("/:bookingId/delivery-legs", requireAuth, validateParcelBookingId, asyncWrapper(controller.listDeliveryLegs));
   return router;
 }
 export const parcelBookingsRouter = createParcelBookingsRouter();

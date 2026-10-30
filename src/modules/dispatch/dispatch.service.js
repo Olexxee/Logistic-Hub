@@ -113,10 +113,13 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
               },
             },
           },
-          select: { id: true },
+          select: { id: true, stateId: true },
         });
         if (activeZones.length !== requestedZoneIds.length) {
           throw conflict("SERVICE_ZONE_UNAVAILABLE", "Pickup and destination zones must both be active for parcel delivery.");
+        }
+        if (new Set(activeZones.map((zone) => zone.stateId)).size !== 1) {
+          throw conflict("PARTNER_QUOTE_REQUIRED", "Cross-state parcel shipments require an accepted transport-partner quote; direct local-driver matching is not available for this route.");
         }
 
         const drivers = await tx.driverProfile.findMany({
@@ -388,12 +391,13 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           const assignment = await tx.driverAssignment.findFirst({
             where: { parcelBookingId: booking.id },
             orderBy: { createdAt: "desc" },
-            select: { id: true, paymentExpiresAt: true },
+            select: { id: true, paymentExpiresAt: true, deliveryLegId: true },
           });
           return {
             bookingId: booking.id,
             status: booking.status,
             assignmentId: assignment?.id ?? null,
+            deliveryLegId: assignment?.deliveryLegId ?? null,
             driverFareMinor: booking.driverFareMinor?.toString() ?? null,
             connectionFeeMinor: booking.connectionFeeMinor.toString(),
             otherChargesMinor: booking.otherChargesMinor.toString(),
@@ -468,9 +472,22 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           where: { parcelBookingId: booking.id, id: { not: offer.id }, status: "OFFERED" },
           data: { status: "WITHDRAWN", respondedAt: now },
         });
+        const deliveryLeg = await tx.deliveryLeg.create({
+          data: {
+            parcelBookingId: booking.id,
+            sequence: 1,
+            type: "DIRECT",
+            status: "AWAITING_PAYMENT",
+            originServiceZoneId: booking.pickupServiceZoneId,
+            destinationServiceZoneId: booking.destinationServiceZoneId,
+            plannedAt: now,
+          },
+          select: { id: true },
+        });
         const assignment = await tx.driverAssignment.create({
           data: {
             parcelBookingId: booking.id,
+            deliveryLegId: deliveryLeg.id,
             driverProfileId: offer.driverProfileId,
             assignedByUserId: user.id,
             status: "AWAITING_PAYMENT",
@@ -491,6 +508,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             metadata: {
               offerId: offer.id,
               assignmentId: assignment.id,
+              deliveryLegId: deliveryLeg.id,
               driverFareMinor: fare.toString(),
               connectionFeeMinor: booking.connectionFeeMinor.toString(),
               customerPayableMinor: customerPayable.toString(),
@@ -503,6 +521,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           bookingId: booking.id,
           status: "AWAITING_PAYMENT",
           assignmentId: assignment.id,
+          deliveryLegId: deliveryLeg.id,
           driverFareMinor: fare.toString(),
           connectionFeeMinor: booking.connectionFeeMinor.toString(),
           otherChargesMinor: booking.otherChargesMinor.toString(),
@@ -524,12 +543,13 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         const assignment = await prismaClient.driverAssignment.findFirst({
           where: { parcelBookingId: existing.id },
           orderBy: { createdAt: "desc" },
-          select: { id: true, paymentExpiresAt: true },
+          select: { id: true, paymentExpiresAt: true, deliveryLegId: true },
         });
         return {
           bookingId: existing.id,
           status: existing.status,
           assignmentId: assignment?.id ?? null,
+          deliveryLegId: assignment?.deliveryLegId ?? null,
           driverFareMinor: existing.driverFareMinor?.toString() ?? null,
           connectionFeeMinor: existing.connectionFeeMinor.toString(),
           otherChargesMinor: existing.otherChargesMinor.toString(),
