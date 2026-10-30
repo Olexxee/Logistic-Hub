@@ -321,6 +321,25 @@ export function createLegDispatchService({ prismaClient, clock = () => new Date(
           const minimum = BigInt(leg.parcelBooking.pricingSnapshot?.minimumDriverFareMinor ?? "0");
           if (fare <= 0n || fare < minimum) conflict("INVALID_FARE", "The selected driver fare is invalid or below the configured minimum.");
           const paymentExpiresAt = new Date(now.getTime() + 15 * 60_000);
+          const pickup = {
+            latitude: leg.originLatitude ?? leg.parcelBooking.pickupLatitude,
+            longitude: leg.originLongitude ?? leg.parcelBooking.pickupLongitude,
+          };
+          const candidate = await tx.driverProfile.findUnique({
+            where: { id: offer.driverProfileId },
+            include: {
+              locations: { take: 1, orderBy: { recordedAt: "desc" } },
+              coverage: { select: { serviceZoneId: true, serviceType: true, isEnabled: true } },
+            },
+          });
+          const coversBothEnds = [leg.originServiceZoneId, leg.destinationServiceZoneId].every((zoneId) =>
+            candidate?.coverage?.some((coverage) =>
+              coverage.serviceZoneId === zoneId && coverage.serviceType === "PARCEL_DELIVERY" && coverage.isEnabled,
+            ),
+          );
+          if (!candidate || !coversBothEnds || !isDriverWithinPickupRadius(candidate, pickup, now)) {
+            conflict("DRIVER_NO_LONGER_ELIGIBLE", "The driver no longer meets the current location and service-coverage requirements for this leg.");
+          }
 
           const reserved = await tx.driverProfile.updateMany({
             where: {
@@ -328,6 +347,7 @@ export function createLegDispatchService({ prismaClient, clock = () => new Date(
               verificationStatus: "VERIFIED",
               isOnline: true,
               isAvailable: true,
+              lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
               user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
               vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
               AND: [
