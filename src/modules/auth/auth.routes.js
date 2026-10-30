@@ -61,6 +61,8 @@ export function createAuthRouter({
   const router = Router();
   const { requireAuth } = createAuthMiddleware({ prismaClient, secret });
   const authRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-write", limit: 10, windowMs: 15 * 60_000 });
+  const refreshRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-refresh", limit: 30, windowMs: 15 * 60_000 });
+  const sessions = createAuthSessionsService({ prismaClient, secret });
 
   router.post("/register", authRateLimit, async (req, res, next) => {
     const parsed = registerSchema.safeParse(req.body);
@@ -212,7 +214,7 @@ export function createAuthRouter({
           error: { code: "ACCOUNT_NOT_ACTIVE", message: "Verify your email before signing in." },
         });
       }
-      const sessionTokens = await createAuthSessionsService({ prismaClient, secret }).issue(user);
+      const sessionTokens = await sessions.issue(user, { userAgent: req.get("user-agent"), ipHash: hashOpaqueToken(req.ip ?? req.socket?.remoteAddress ?? "unknown") });
       return res.status(200).json({
         success: true,
         data: {
@@ -317,14 +319,14 @@ export function createAuthRouter({
         });
       }
 
-      await sessions.revokeAll(token.userId);
+      await sessions.revokeAllForUser(token.userId);
       return res.status(200).json({ success: true, data: { message: "Password reset successfully. Please sign in again." } });
     } catch (error) {
       return next(error);
     }
   });
 
-  router.post("/refresh", async (req, res, next) => {
+  router.post("/refresh", refreshRateLimit, async (req, res, next) => {
     const parsed = refreshSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
     try {
@@ -338,7 +340,7 @@ export function createAuthRouter({
   router.post("/logout", requireAuth, async (req, res, next) => {
     try {
       if (req.auth.sessionId) {
-        await sessions.revoke({ sessionId: req.auth.sessionId, userId: req.user.id });
+        await sessions.revokeSession({ sessionId: req.auth.sessionId, userId: req.user.id });
       }
       return res.status(200).json({ success: true, data: { message: "Session revoked." } });
     } catch (error) {
@@ -348,7 +350,7 @@ export function createAuthRouter({
 
   router.post("/logout-all", requireAuth, async (req, res, next) => {
     try {
-      await sessions.revokeAll(req.user.id);
+      await sessions.revokeAllForUser(req.user.id);
       return res.status(200).json({ success: true, data: { message: "All sessions revoked." } });
     } catch (error) {
       return next(error);
