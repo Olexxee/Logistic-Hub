@@ -44,7 +44,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         }
         await tx.operationalAuditEvent.create({ data: {
           actorUserId, entityType: "TRANSPORT_PARTNER_MEMBER", entityId: member.id,
-          action: "PARTNER_MEMBER_ACTIVATED", after: { partnerId, userId, role, isActive: true },
+          action: "PARTNER_MEMBER_ACTIVATED", before: { userRole: user.role }, after: { partnerId, userId, role, isActive: true, userRole: "PARTNER_OPERATOR" },
         } });
         return { member };
       });
@@ -175,10 +175,13 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           data: { status: "IN_TRANSIT", startedAt: now },
         });
         if (changed.count !== 1) return { blocker: "ASSIGNMENT_NOT_STARTABLE" };
-        await tx.deliveryLeg.updateMany({
+        const legChanged = await tx.deliveryLeg.updateMany({
           where: { id: assignment.deliveryLegId, status: "ASSIGNED" },
           data: { status: "IN_TRANSIT", startedAt: now },
         });
+        if (legChanged.count !== 1) {
+          throw conflict("DELIVERY_LEG_NOT_STARTABLE", "The delivery leg is no longer assigned and cannot be started.");
+        }
         const updated = await repository.findAssignment(assignmentId, tx);
         await tx.operationalAuditEvent.create({ data: {
           actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT", entityId: assignmentId,
