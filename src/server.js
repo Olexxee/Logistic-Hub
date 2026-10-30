@@ -46,8 +46,15 @@ server.on("error", (error) => {
 
 async function checkDatabaseConnection() {
   const checkStartedAt = Date.now();
+  const databaseUrl = new URL(env.DATABASE_URL);
+  const databaseTarget = {
+    provider: "postgresql",
+    host: databaseUrl.hostname,
+    port: Number(databaseUrl.port || 5432),
+    database: databaseUrl.pathname.replace(/^\\//, "") || "unknown",
+  };
 
-  log("info", "database.connection_check.started");
+  log("info", "database.connection_check.started", databaseTarget);
 
   try {
     // A query verifies both that Prisma can establish a connection and that
@@ -55,17 +62,19 @@ async function checkDatabaseConnection() {
     await prisma.$queryRaw`SELECT 1`;
 
     log("info", "database.connected", {
+      ...databaseTarget,
       latencyMs: Date.now() - checkStartedAt,
-      provider: "postgresql",
     });
     return true;
   } catch (error) {
     log("error", "database.connection_failed", {
+      ...databaseTarget,
       latencyMs: Date.now() - checkStartedAt,
       errorName: error?.name,
       errorCode: error?.code,
+      clientVersion: error?.clientVersion,
       message: error?.message,
-      action: "Check DATABASE_URL, database availability, network access, and provider connection settings.",
+      action: "Verify DNS resolution, outbound TCP access to the configured database host and port, DATABASE_URL credentials, and Prisma Postgres availability.",
     });
     return false;
   }
