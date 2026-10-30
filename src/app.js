@@ -30,6 +30,7 @@ import { partnerSettlementRouter } from "./modules/partner-settlement/partner-se
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { auditRouter } from "./modules/audit/audit.routes.js";
+import { discoveryRouter } from "./modules/discovery/discovery.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
@@ -101,6 +102,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api/v1/health", healthRouter);
+app.use("/api/v1", discoveryRouter);
 app.use("/api/v1/admin/audit-events", auditRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/auth/sessions", authSessionsRouter);

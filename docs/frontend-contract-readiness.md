@@ -1,74 +1,51 @@
 # Frontend Contract Readiness
 
-**Audit baseline:** `main` at the 30 October 2026 backend state, including Priority 6 partner custody and settlement work.
+**Audit baseline:** `main` after Priority 6 and PR #30, plus the discovery and contract work in this branch.
 
-**Decision:** The backend is not yet a complete frontend contract. Existing customer and partner workflows can be integrated against their mounted routes, but the operations console, driver assignment dashboard and some account/capability discovery flows need backend work before those screens can be considered contract-complete.
+**Decision:** The backend now exposes the discovery APIs required for customer, driver, partner and operations-console integration. The remaining release gate is automated route-to-OpenAPI parity and full CI. Payment initiation remains disabled.
 
-## Confirmed mounted contract areas
+## Confirmed API surfaces
 
-The following are mounted by `src/app.js` and have route implementations:
-
-| Area | Current API surface | Frontend implication |
+| Area | Endpoints | Contract notes |
 |---|---|---|
-| Auth | `/auth/register`, `/auth/verify-email`, `/auth/login`, `/auth/password/forgot`, `/auth/password/reset`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/me` | Implement account flows using JSON token responses. Refresh tokens are not httpOnly cookies. |
-| Geography/maps | `/service-zones`, `/maps/geocode`, `/maps/routes` | Maps calls require authenticated access. Booking needs valid coordinates and active service zones. |
-| Customer parcels | `/parcel-bookings`, `/parcel-bookings/:bookingId`, `/parcel-bookings/:bookingId/delivery-legs` | Customer booking list, details and delivery-leg timeline can be integrated. |
-| Local driver dispatch | `/parcel-bookings/:bookingId/request-matching`, `/parcel-bookings/:bookingId/offers`, `/driver/offers`, `/driver/offers/:offerId/propose-fare`, `/parcel-bookings/:bookingId/accept-fare` | Local fare negotiation is implemented. Fare acceptance is not the same as payment confirmation. |
-| Partner pricing | `/admin/parcel-bookings/:bookingId/quotes`, `/parcel-bookings/:bookingId/quotes`, quote accept/reject routes, partner rate-card administration | Partner quotes are separate from local driver fare offers. Use the accepted quote snapshot and multi-leg plan returned by the API. |
-| Delivery-leg dispatch | `/delivery-legs/:legId/request-matching`, `/driver/delivery-leg-offers`, driver propose-fare, customer list/accept fare routes | Delivery-leg driver matching is implemented; do not assume it exposes the driver's active assignment dashboard. |
-| Driver profile | `/drivers/me`, `/drivers/onboarding`, `/drivers/availability`, `/drivers/location` | Onboarding and availability are available. Admin verification and vehicle review routes are separate. |
-| Driver assignment execution | `/assignments/:assignmentId/arrived`, `/start`, `/destination-arrived`, `/verification-codes`, `/verify`, `/location` | Execution operations exist once the client has a valid assignment ID. |
-| Partner execution | `/partner/assignments`, accept/start, admin partner members and delivery-leg assignment | A partner member can list their partner's assignments; membership listing itself is not exposed. |
-| Custody | `/custody/handovers/mine`, create handover, handover decision, admin hub operator membership, admin phone-verification record | Custody handover workflows are available. No recipient SMS OTP is implemented. |
-| Operational exceptions | `/admin/operational-cases` list/update | Admin case triage and resolution can be integrated. |
-| Partner settlement | `/partner/payables`, admin payables, adjustments, settlement batches, approval and reconciliation | Internal payable/reconciliation workflow only; no external transfer is performed by these routes. |
-| Finance review | `/finance/refund-requests`, admin refund review/list, admin payout list/settlement confirmation, reconciliation | These are mounted finance routes. They are not the old `/payments/refunds` or `/payments/payouts` paths. |
+| Authentication | `/auth/register`, `/auth/verify-email`, `/auth/login`, `/auth/password/forgot`, `/auth/password/reset`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/me`, `/auth/sessions/*` | `/auth/refresh` is canonical; `/auth/sessions/refresh` is a deprecated compatibility alias. Tokens are returned in JSON, not httpOnly cookies. |
+| Geography and maps | `/service-zones`, `/hub-points`, `/maps/geocode`, `/maps/routes`, `/geography/admin/*`, `/service-zones/admin/*` | Admin geography and service-zone CRUD/availability operations are documented. Maps require server-side provider configuration. Booking coordinates must map to active service zones. |
+| Customer/admin parcel bookings | `GET/POST /parcel-bookings`, `GET /parcel-bookings/:bookingId`, `GET /parcel-bookings/:bookingId/delivery-legs` | Customers are owner-scoped. ADMIN/SUPPORT can list all bookings. Admin filters include status, payment status, reference, pickup/destination service zone and creation date range. Advanced filters are forbidden to customers. |
+| Local driver dispatch | `/parcel-bookings/:bookingId/request-matching`, `/parcel-bookings/:bookingId/offers`, `/driver/offers`, `/driver/offers/:offerId/propose-fare`, `/parcel-bookings/:bookingId/accept-fare` | Fare proposals and customer acceptance are implemented. Fare acceptance does not mean payment has been collected. |
+| Delivery-leg dispatch | `/delivery-legs/:legId/request-matching`, `/driver/delivery-leg-offers`, `/driver/delivery-leg-offers/:offerId/propose-fare`, `/parcel-bookings/:bookingId/delivery-legs/:legId/offers`, `/parcel-bookings/:bookingId/delivery-legs/:legId/accept-fare` | Separate from local booking-level driver dispatch. |
+| Driver profile and execution | `/drivers/me`, `/drivers/onboarding`, `/drivers/availability`, `/drivers/location`, `GET /driver/assignments/mine`, `/assignments/:assignmentId/*` | Driver assignment discovery returns the authenticated driver's active assignments, booking summary, delivery-leg context and page-based pagination. |
+| Partner pricing and execution | `/admin/transport-partners/*`, `/admin/partner-agreements/*`, `/admin/partner-rate-cards/*`, `/admin/parcel-bookings/:bookingId/quotes`, `/admin/quotes`, `/parcel-bookings/:bookingId/quotes*`, `/partner/assignments*`, `/partner/memberships/mine` | Admin quote queue supports status, partner, booking and pagination filters. Partner membership read includes active and inactive memberships. |
+| Hub custody | `/custody/handovers*`, `/admin/hub-points/:hubPointId/operators*`, `/admin/users/:userId/phone-verification`, `/hub-operator/memberships/mine` | Hub membership discovery works even when the operator has no custody handovers. Recipient confirmation uses an active account with a verified matching phone; there is no SMS OTP flow. |
+| Admin user directory | `GET /admin/users` | ADMIN-only, paginated search with role/status filters. Returns safe identity and verification fields only. |
+| Operational exceptions | `/admin/operational-cases*` | Admin case triage and resolution lifecycle. |
+| Partner settlement | `/partner/payables`, `/admin/partner-payables*`, `/admin/partner-payable-adjustments*`, `/admin/partner-settlement-batches*` | Internal payable, approval and reconciliation only. No external partner transfer is performed. |
+| Finance and payment reads | `/finance/refund-requests`, `/finance/admin/*`, `GET /payments/:paymentAttemptId` | Payment attempt reads are owner/ADMIN/SUPPORT scoped and exclude provider references, raw payloads, authorization URLs and settlement details. Legacy unmounted `/payments/refunds` and `/payments/payouts` operations are not supported. |
+| Support and cancellations | `/support/tickets*`, `POST /cancellations` | Cancellation uses the unified bookingType/bookingId/reason contract. Old support cancellation paths are not mounted. |
 
-## Frontend-blocking gaps
+## Runtime and safety gates
 
-These are genuine API discovery/operations gaps, not UI tasks to work around with guessed IDs or scraping unrelated resources.
+- `PAYMENTS_ENABLED` is forced to `false` by `src/config/env.js`. `POST /payments/initialize` and the Paystack webhook return the disabled response until the project owner explicitly approves activation. Do not expose checkout as available.
+- `GET /payments/:paymentAttemptId` is read-only and remains available independently of payment initialization being enabled.
+- `MAPS_PROVIDER` defaults to `none`. A booking environment needs `MAPS_PROVIDER=google` and a valid server-side `GOOGLE_MAPS_API_KEY`.
+- `CORS_ORIGINS` must include the deployed frontend origin and any preview origins that need API access. Deployment values were not inspected in this repository audit.
+- Email registration requires the configured email provider and verified sender domain.
+- Partner payable and settlement batch APIs are internal accounting/reconciliation workflows, not bank or Paystack transfer APIs.
+- No production database migration, live payment activation, payout transfer, or recipient SMS/OTP flow is authorized by this work.
 
-| Gap | Why it blocks the client | Required backend contract |
-|---|---|---|
-| Driver active assignment discovery | `GET /driver/offers` returns offers, not the driver's accepted/active assignments. Driver execution routes require `assignmentId`. | Authenticated driver endpoint returning active assignments with booking/leg summary, assignment state and allowed next actions. |
-| Admin user search | Adding partner members and hub operators currently requires a `userId` that the admin cannot discover through a dedicated search endpoint. | Admin-only paginated user search with safe fields, filters and role/status visibility. |
-| Admin parcel booking queue | Customer booking list is owner-scoped; it is not an operational admin queue. | Admin/support booking list with status, reference, date, service-zone and exception filters. |
-| Admin quote queue | Quote listing is scoped to one booking. There is no cross-booking admin quote queue. | Admin quote list with booking, partner, status, expiry and pagination filters. |
-| Partner membership discovery | Assignment listing throws a membership error when no active membership exists and does not provide a general membership/capability view. | Authenticated membership/capability endpoint listing active partner memberships and roles. |
-| Hub-operator membership discovery | `GET /custody/handovers/mine` only lists handovers and cannot reliably establish operator membership when there are no handovers. | Authenticated hub membership endpoint with hub identity, role and active status. |
-| Payment-attempt retrieval | `GET /payments/{paymentAttemptId}` is a planned OpenAPI contract only; there is no matching mounted Express route. | Add an owner/authorized-operator-scoped payment-attempt read route, or keep the operation explicitly planned-disabled. |
-| Payment activation | `POST /payments/initialize` and Paystack webhook route are mounted but runtime configuration forces payments off. | No frontend checkout activation until owner approval, provider configuration and end-to-end verification. |
-| Refresh endpoint duplication | Both `POST /auth/refresh` and `POST /auth/sessions/refresh` are mounted. | Use `/auth/refresh` for new clients; retain the sessions path only as a deprecated compatibility alias until clients migrate. |
+## Discovery APIs added in this branch
 
-## Runtime configuration gates
+- `GET /driver/assignments/mine` — driver-owned active assignment list, page/limit pagination, safe parcel/ride and delivery-leg summaries.
+- `GET /admin/users` — admin-only user search for partner-member and hub-operator assignment.
+- `GET /admin/quotes` — admin/support cross-booking quote queue.
+- `GET /partner/memberships/mine` — current user's active and inactive partner memberships.
+- `GET /hub-operator/memberships/mine` — current user's active and inactive hub memberships.
+- `GET /payments/:paymentAttemptId` — owner/authorized-operator scoped payment status, with no provider secrets.
+- Extended `GET /parcel-bookings` — operational filters for admin/support while preserving customer ownership and rejecting admin-only filters for customer accounts.
 
-- `PAYMENTS_ENABLED` is forced to `false` by `src/config/env.js`; setting the environment variable to true intentionally fails startup. Frontend must handle the disabled response and must not present checkout as available.
-- `MAPS_PROVIDER` defaults to `none`. Booking requires coordinates, so a working end-to-end booking environment must configure `MAPS_PROVIDER=google` and a valid server-side `GOOGLE_MAPS_API_KEY`.
-- `CORS_ORIGINS` must explicitly include each deployed frontend origin (including preview origins that need API access). Current deployment values were not inspected in this repository audit.
-- Email registration requires the configured email provider and valid sender. A local environment with `EMAIL_PROVIDER=none` cannot complete registration email delivery.
+## Contract validation
 
-## Contract corrections in this PR
-
-This is a targeted correction of the high-impact mismatches identified in the audit, not proof that every OpenAPI operation has full route-to-spec parity. The existing OpenAPI document is large and still requires a systematic route-by-route comparison of every method, payload, response and authorization rule. Treat the gap register below as the current frontend gate; do not infer endpoint availability solely from an OpenAPI path.
-
-- Assignment route paths now match the Express router: `verification-codes`, `arrived`, `verify`, `start`, `destination-arrived`, and `location`.
-- Assignment verification schemas now specify `action` and a six-digit code; issue-code requests specify `action`.
-- Paystack webhook path is documented as `/payments/webhook/paystack`.
-- Payment initialization, webhook processing and the unmounted legacy payment/refund/payout routes are marked `planned-disabled`; they are not advertised as operational payment flows.
-- Mounted finance refund, payout-review and reconciliation routes are documented under `/finance`.
-- The active cancellation route is documented as `POST /cancellations` with `bookingType`, `bookingId` and `reason`.
-- The legacy refresh alias is documented as deprecated; `/auth/refresh` is canonical.
-- Refund request idempotency keys are validated at the route boundary (8–128 characters), matching the documented contract.
-- OpenAPI validation no longer compares the spec to a stale, hand-maintained list of implemented operations. It validates schema integrity, unique operation IDs, implementation-status metadata and declared idempotency requirements. It does not replace route-to-spec integration tests.
-
-## Not included / safety constraints
-
-- No production database migration or schema change.
-- No live Paystack activation, payout transfer, or payment-provider configuration.
-- No recipient SMS/OTP flow.
-- No frontend implementation in this backend repository.
-- No merge to `main` as part of this PR.
-
-## Frontend sequencing recommendation
-
-Build the API foundation and customer booking/quote flows against the confirmed contracts. Do not implement the driver assignment dashboard, admin operational queues, or membership administration UX until the missing discovery endpoints above are implemented and tested. Keep payment UI behind a server-driven feature gate and default it off.
+- `npm run api:validate` validates the OpenAPI document, unique operation IDs, implementation-status metadata, idempotency declarations and every mounted Express route against documented OpenAPI methods/paths, including geography and service-zone administration.
+- Latest full CI validation passed on the discovery-contract branch: OpenAPI validation, mounted-route parity, Prisma schema/client generation, migration checks, disposable PostgreSQL schema-drift checks and API/PostgreSQL integrity tests.
+- Deployment-specific `CORS_ORIGINS`, Google Maps credentials and email-provider configuration still require environment-level verification before end-to-end staging sign-off.
+- Unit tests cover discovery read models, repository scoping/privacy and admin booking filters.
+- CI must pass before this contract is considered ready for frontend implementation.

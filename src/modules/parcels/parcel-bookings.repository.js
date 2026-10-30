@@ -70,10 +70,15 @@ export function createParcelBookingsRepository({ prismaClient }) {
         },
       });
     },
-    listVisible({ senderId, includeAll, status, skip, take }) {
+    listVisible({ senderId, includeAll, status, paymentStatus, reference, pickupServiceZoneId, destinationServiceZoneId, createdFrom, createdTo, skip, take }) {
       const where = {
         ...(includeAll ? {} : { senderId }),
         ...(status ? { status } : {}),
+        ...(paymentStatus ? { paymentStatus } : {}),
+        ...(reference ? { publicReference: { contains: reference, mode: "insensitive" } } : {}),
+        ...(pickupServiceZoneId ? { pickupServiceZoneId } : {}),
+        ...(destinationServiceZoneId ? { destinationServiceZoneId } : {}),
+        ...(createdFrom || createdTo ? { createdAt: { ...(createdFrom ? { gte: createdFrom } : {}), ...(createdTo ? { lte: createdTo } : {}) } } : {}),
       };
       return Promise.all([
         prismaClient.parcelBooking.findMany({

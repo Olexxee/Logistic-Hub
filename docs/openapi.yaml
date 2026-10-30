@@ -67,14 +67,19 @@ paths:
                         type: object
                         required: [database]
                         properties:
-                          database: { const: ok }
+                          database:
+                            type: object
+                            required: [status, latencyMs]
+                            properties:
+                              status: { type: string, const: ok }
+                              latencyMs: { type: integer, minimum: 0 }
                       timestamp: { type: string, format: date-time }
         '503':
           description: PostgreSQL is unavailable.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ReadinessErrorResponse'
   /service-zones:
     get:
       tags: [Geography]
@@ -923,8 +928,8 @@ paths:
       summary: List parcel bookings visible to the authenticated user
       description: |
         Customers receive only their own bookings. Admin and support roles may list
-        all bookings. Results are ordered newest first and paginated; the optional
-        status filter is applied server-side.
+        all bookings. Results are ordered newest first and paginated. Admin/support may also filter
+        by payment status, public reference, service zones and creation date range.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -943,6 +948,24 @@ paths:
           schema:
             type: string
             enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
+        - in: query
+          name: paymentStatus
+          schema: { type: string, enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED] }
+        - in: query
+          name: reference
+          schema: { type: string, minLength: 2, maxLength: 64 }
+        - in: query
+          name: pickupServiceZoneId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: destinationServiceZoneId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: createdFrom
+          schema: { type: string, format: date-time }
+        - in: query
+          name: createdTo
+          schema: { type: string, format: date-time }
       responses:
         '200':
           description: Page of bookings visible to the caller.
@@ -973,6 +996,8 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [Parcel bookings]
       operationId: createParcelBooking
@@ -1560,7 +1585,7 @@ paths:
       operationId: getPaymentAttempt
       summary: Get the status of a payment attempt
       description: The status is server-verified; browser redirect parameters are not authoritative.
-      x-implementation-status: planned-disabled
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -1589,12 +1614,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '503':
-          description: Payment processing is disabled.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+
   /webhooks/paystack:
     post:
       tags: [Webhooks]
@@ -1981,7 +2001,7 @@ paths:
       responses:
         '200': { description: Paginated user tickets. }
         '401': { $ref: '#/components/responses/Unauthorized' }
-  /support/tickets/admin:
+  /support/admin/tickets:
     get:
       tags: [Support]
       operationId: listSupportTicketsForOperators
@@ -1992,7 +2012,7 @@ paths:
       responses:
         '200': { description: Paginated support queue. }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /support/tickets/admin/{ticketId}:
+  /support/admin/tickets/{ticketId}:
     patch:
       tags: [Support]
       operationId: updateSupportTicket
@@ -3388,6 +3408,752 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /driver/assignments/mine:
+    get:
+      tags: [Assignments]
+      operationId: listMyDriverAssignments
+      summary: List the authenticated driver's active assignments
+      description: Returns only the caller's non-terminal assignments. Completed, cancelled and failed assignments are excluded.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/DriverAssignmentSearchResult'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /partner/memberships/mine:
+    get:
+      tags: [Partner execution]
+      operationId: listMyPartnerMemberships
+      summary: List the authenticated user's transport-partner memberships
+      description: Includes active and inactive memberships and safe partner summaries.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/PartnerMembershipList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /hub-operator/memberships/mine:
+    get:
+      tags: [Custody]
+      operationId: listMyHubOperatorMemberships
+      summary: List the authenticated user's hub-operator memberships
+      description: Includes active and inactive memberships and safe hub summaries.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/HubMembershipList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: searchAdminUsers
+      summary: Search users for administrative membership assignment
+      description: Admin-only directory search. Returns safe identity, role, account and verification fields; never returns credentials or authentication tokens.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, minLength: 2, maxLength: 120 }
+        - in: query
+          name: role
+          schema: { type: string, enum: [CUSTOMER, DRIVER, ADMIN, SUPPORT, PARTNER_OPERATOR, HUB_OPERATOR] }
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING, ACTIVE, SUSPENDED, CLOSED] }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/AdminUserSearchResult'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/quotes:
+    get:
+      tags: [Admin]
+      operationId: listAdminShipmentQuotes
+      summary: List shipment quotes across bookings
+      description: Admin and support operational queue with optional status, partner and booking filters.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [OFFERED, ACCEPTED, REJECTED, EXPIRED, SUPERSEDED] }
+        - in: query
+          name: partnerId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: bookingId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/AdminQuoteSearchResult'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /health/live:
+    get:
+      tags: [Health]
+      operationId: getLiveness
+      summary: Check API process liveness
+      description: Liveness is independent of database availability and is safe for orchestrator probes.
+      x-implementation-status: implemented
+      security: []
+      responses:
+        '200':
+          description: API process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /geography/admin/countries:
+    get:
+      tags: [Geography administration]
+      operationId: listCountriesAdmin
+      summary: List countries for geography administration
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Country reference records.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/CountryResource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Geography administration]
+      operationId: createCountryAdmin
+      summary: Create a country reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code, name]
+              properties:
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '201':
+          description: Country created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [country]
+                    properties:
+                      country: { $ref: '#/components/schemas/CountryResource' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /geography/admin/countries/{id}:
+    patch:
+      tags: [Geography administration]
+      operationId: updateCountryAdmin
+      summary: Update a country reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '200':
+          description: Country updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [country]
+                    properties:
+                      country: { $ref: '#/components/schemas/CountryResource' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /geography/admin/countries/{id}/status:
+    patch:
+      tags: [Geography administration]
+      operationId: setCountryActive
+      summary: Activate or deactivate a country
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties: { isActive: { type: boolean } }
+      responses:
+        '200':
+          description: Country status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [country]
+                    properties:
+                      country: { $ref: '#/components/schemas/CountryResource' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/states:
+    get:
+      tags: [Geography administration]
+      operationId: listStatesAdmin
+      summary: List state reference records
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: countryId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: State reference records.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/StateResource' }
+    post:
+      tags: [Geography administration]
+      operationId: createStateAdmin
+      summary: Create a state reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [countryId, code, name]
+              properties:
+                countryId: { type: string, minLength: 1, maxLength: 128 }
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '201':
+          description: State created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [state]
+                    properties:
+                      state: { $ref: '#/components/schemas/StateResource' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/states/{id}:
+    patch:
+      tags: [Geography administration]
+      operationId: updateStateAdmin
+      summary: Update a state reference record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                code: { type: string, minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '200':
+          description: State updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [state]
+                    properties:
+                      state: { $ref: '#/components/schemas/StateResource' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /geography/admin/states/{id}/status:
+    patch:
+      tags: [Geography administration]
+      operationId: setStateActive
+      summary: Activate or deactivate a state
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties: { isActive: { type: boolean } }
+      responses:
+        '200':
+          description: State status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [state]
+                    properties:
+                      state: { $ref: '#/components/schemas/StateResource' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/lgas:
+    get:
+      tags: [Geography administration]
+      operationId: listLgasAdmin
+      summary: List local government areas
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: stateId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: LGA reference records.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/LgaResource' }
+    post:
+      tags: [Geography administration]
+      operationId: createLgaAdmin
+      summary: Create a local government area
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stateId, name]
+              properties:
+                stateId: { type: string, minLength: 1, maxLength: 128 }
+                code: { type: [string, 'null'], minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '201':
+          description: LGA created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [lga]
+                    properties:
+                      lga: { $ref: '#/components/schemas/LgaResource' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /geography/admin/lgas/{id}:
+    patch:
+      tags: [Geography administration]
+      operationId: updateLgaAdmin
+      summary: Update a local government area
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                code: { type: [string, 'null'], minLength: 2, maxLength: 12, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '200':
+          description: LGA updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [lga]
+                    properties:
+                      lga: { $ref: '#/components/schemas/LgaResource' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Geography administration]
+      operationId: deleteLgaAdmin
+      summary: Delete an unused local government area
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      responses:
+        '204': { description: LGA deleted. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /service-zones/admin:
+    get:
+      tags: [Service zones]
+      operationId: listServiceZonesAdmin
+      summary: List service zones for administration
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Service zones with their geography and availability configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/ServiceZoneAdminResource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Service zones]
+      operationId: createServiceZoneAdmin
+      summary: Create a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stateId, code, name]
+              properties:
+                stateId: { type: string, minLength: 1, maxLength: 128 }
+                lgaId: { type: [string, 'null'], maxLength: 128 }
+                code: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+                boundaryGeoJson: { type: [object, 'null'], additionalProperties: true }
+      responses:
+        '201':
+          description: Service zone created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [serviceZone]
+                    properties:
+                      serviceZone: { $ref: '#/components/schemas/ServiceZoneResource' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /service-zones/admin/{serviceZoneId}:
+    patch:
+      tags: [Service zones]
+      operationId: updateServiceZoneAdmin
+      summary: Update a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: serviceZoneId, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                lgaId: { type: [string, 'null'], maxLength: 128 }
+                code: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Z0-9_-]+$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+                boundaryGeoJson: { type: [object, 'null'], additionalProperties: true }
+      responses:
+        '200':
+          description: Service zone updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [serviceZone]
+                    properties:
+                      serviceZone: { $ref: '#/components/schemas/ServiceZoneResource' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /service-zones/admin/{serviceZoneId}/status:
+    patch:
+      tags: [Service zones]
+      operationId: setServiceZoneActive
+      summary: Activate or deactivate a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: serviceZoneId, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [isActive]
+              properties: { isActive: { type: boolean } }
+      responses:
+        '200':
+          description: Service zone status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [serviceZone]
+                    properties:
+                      serviceZone: { $ref: '#/components/schemas/ServiceZoneResource' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /service-zones/admin/{serviceZoneId}/availability:
+    put:
+      tags: [Service zones]
+      operationId: setServiceZoneAvailability
+      summary: Configure service availability for a service zone
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - { in: path, name: serviceZoneId, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [serviceType, isEnabled]
+              properties:
+                serviceType: { type: string, enum: [PARCEL_DELIVERY, PASSENGER_RIDE, HUB_POINT, BUSINESS_LOGISTICS] }
+                isEnabled: { type: boolean }
+                startsAt: { type: [string, 'null'], format: date-time }
+                endsAt: { type: [string, 'null'], format: date-time }
+                config: { type: [object, 'null'], additionalProperties: true }
+      responses:
+        '200':
+          description: Service availability updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [availability]
+                    properties:
+                      availability: { $ref: '#/components/schemas/ServiceAvailabilityResource' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3456,6 +4222,187 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    PartnerMembershipList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PartnerMembershipResource' }
+    PartnerMembershipResource:
+      type: object
+      required: [id, role, isActive, partner]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        partner:
+          type: object
+          required: [id, displayName, status, verificationStatus]
+          properties:
+            id: { type: string }
+            displayName: { type: string }
+            status: { type: string }
+            verificationStatus: { type: string }
+    HubMembershipList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/HubMembershipResource' }
+    HubMembershipResource:
+      type: object
+      required: [id, role, isActive, hubPoint]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [MANAGER, OPERATOR] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hubPoint:
+          type: object
+          required: [id, name, status, address, serviceZoneId]
+          properties:
+            id: { type: string }
+            name: { type: string }
+            status: { type: string }
+            address: { type: string }
+            serviceZoneId: { type: string }
+    AdminUserSearchResult:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminUserResource' }
+        pagination: { $ref: '#/components/schemas/PageMetadata' }
+    AdminUserResource:
+      type: object
+      required: [id, fullName, role, status, createdAt]
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        role: { type: string, enum: [CUSTOMER, DRIVER, ADMIN, SUPPORT, PARTNER_OPERATOR, HUB_OPERATOR] }
+        status: { type: string, enum: [PENDING, ACTIVE, SUSPENDED, CLOSED] }
+        emailVerifiedAt: { type: [string, 'null'], format: date-time }
+        phoneVerifiedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    AdminQuoteSearchResult:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminQuoteResource' }
+        pagination: { $ref: '#/components/schemas/PageMetadata' }
+    AdminQuoteResource:
+      type: object
+      required: [id, version, status, currency, transportChargeMinor, totalCustomerChargeMinor, expiresAt, offeredAt, booking]
+      properties:
+        id: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [OFFERED, ACCEPTED, REJECTED, EXPIRED, SUPERSEDED] }
+        currency: { type: string }
+        transportChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        collectionChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        hubHandlingChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        destinationDeliveryChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        platformChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        otherChargesMinor: { type: string, pattern: '^[0-9]+$' }
+        totalCustomerChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        expiresAt: { type: string, format: date-time }
+        offeredAt: { type: string, format: date-time }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+        booking:
+          type: object
+          required: [id, publicReference, status, paymentStatus, pickupServiceZone, destinationServiceZone]
+          properties:
+            id: { type: string }
+            publicReference: { type: string }
+            status: { type: string }
+            paymentStatus: { type: string }
+            pickupServiceZone:
+              type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+            destinationServiceZone:
+              type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+        partner:
+          oneOf:
+            - type: object
+              required: [id, displayName]
+              properties:
+                id: { type: string }
+                displayName: { type: string }
+            - type: 'null'
+    DriverAssignmentSearchResult:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DriverAssignmentResource' }
+        pagination:
+          type: object
+          required: [page, limit, hasMore, nextPage]
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            hasMore: { type: boolean }
+            nextPage: { type: [integer, 'null'] }
+    PageMetadata:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+    DriverAssignmentResource:
+      type: object
+      required: [id, status, agreedFareMinor, currency, booking]
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [ACCEPTED, ARRIVED_AT_PICKUP, PICKUP_CONFIRMED, IN_PROGRESS, ARRIVED_AT_DESTINATION] }
+        agreedFareMinor: { type: string, pattern: '^[0-9]+$' }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+        pickupAt: { type: [string, 'null'], format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        booking:
+          type: object
+          required: [id, publicReference, status, bookingType, pickupAddress, destinationAddress]
+          properties:
+            id: { type: string }
+            publicReference: { type: string }
+            status: { type: string }
+            bookingType: { type: string, enum: [PARCEL, RIDE] }
+            pickupAddress: { type: string }
+            destinationAddress: { type: string }
+            recipientName: { type: [string, 'null'] }
+            recipientPhone: { type: [string, 'null'] }
+        deliveryLeg:
+          oneOf:
+            - type: object
+              required: [id, sequence, type, status]
+              properties:
+                id: { type: string }
+                sequence: { type: integer }
+                type: { type: string }
+                status: { type: string }
+            - type: 'null'
     RefundRequest:
       type: object
       additionalProperties: false
@@ -3471,27 +4418,144 @@ components:
       properties:
         decision: { type: string, enum: [APPROVE, REJECT] }
         reviewNote: { type: string, minLength: 5, maxLength: 1000 }
+    CountryResource:
+      type: object
+      required: [id, code, name, isActive]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        _count:
+          type: object
+          properties:
+            states: { type: integer, minimum: 0 }
+    StateResource:
+      type: object
+      required: [id, countryId, code, name, isActive]
+      properties:
+        id: { type: string }
+        countryId: { type: string }
+        code: { type: string }
+        name: { type: string }
+        isActive: { type: boolean }
+        country:
+          type: object
+          properties:
+            id: { type: string }
+            code: { type: string }
+            name: { type: string }
+            isActive: { type: boolean }
+        _count:
+          type: object
+          properties:
+            lgas: { type: integer, minimum: 0 }
+            zones: { type: integer, minimum: 0 }
+    LgaResource:
+      type: object
+      required: [id, stateId, name]
+      properties:
+        id: { type: string }
+        stateId: { type: string }
+        code: { type: [string, 'null'] }
+        name: { type: string }
+        state:
+          type: object
+          properties:
+            id: { type: string }
+            code: { type: string }
+            name: { type: string }
+        _count:
+          type: object
+          properties:
+            zones: { type: integer, minimum: 0 }
+    ServiceAvailabilityResource:
+      type: object
+      required: [id, serviceZoneId, serviceType, isEnabled]
+      properties:
+        id: { type: string }
+        serviceZoneId: { type: string }
+        serviceType: { type: string, enum: [PARCEL_DELIVERY, PASSENGER_RIDE, HUB_POINT, BUSINESS_LOGISTICS] }
+        isEnabled: { type: boolean }
+        startsAt: { type: [string, 'null'], format: date-time }
+        endsAt: { type: [string, 'null'], format: date-time }
+        config: { type: [object, 'null'], additionalProperties: true }
+    ServiceZoneResource:
+      type: object
+      required: [id, stateId, code, name, isActive]
+      properties:
+        id: { type: string }
+        stateId: { type: string }
+        lgaId: { type: [string, 'null'] }
+        code: { type: string }
+        name: { type: string }
+        boundaryGeoJson: { type: [object, 'null'], additionalProperties: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ServiceZoneAdminResource:
+      allOf:
+        - $ref: '#/components/schemas/ServiceZoneResource'
+        - type: object
+          properties:
+            state:
+              type: object
+              properties:
+                id: { type: string }
+                code: { type: string }
+                name: { type: string }
+                country: { type: object }
+            lga:
+              oneOf:
+                - $ref: '#/components/schemas/LgaResource'
+                - type: 'null'
+            availability:
+              type: array
+              items: { $ref: '#/components/schemas/ServiceAvailabilityResource' }
+    ReadinessErrorResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { const: false }
+        data:
+          type: object
+          required: [service, status, dependencies, timestamp]
+          properties:
+            service: { type: string, const: logistic-hub-api }
+            status: { type: string, const: not_ready }
+            dependencies:
+              type: object
+              required: [database]
+              properties:
+                database:
+                  type: object
+                  required: [status]
+                  properties:
+                    status: { type: string, const: unavailable }
+            timestamp: { type: string, format: date-time }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, const: DEPENDENCY_UNAVAILABLE }
+            message: { type: string }
     HealthResponse:
       type: object
       required: [success, data]
       properties:
-        success:
-          const: true
+        success: { const: true }
         data:
           type: object
-          required: [name, status, version, paymentsEnabled]
+          required: [service, status, uptimeSeconds, timestamp, environment, paymentsEnabled]
           properties:
-            name:
-              type: string
-              const: Logistic Hub API
-            status:
-              type: string
-              const: ok
-            version:
-              type: string
-            paymentsEnabled:
-              type: boolean
-              const: false
+            service: { type: string, const: logistic-hub-api }
+            status: { type: string, const: ok }
+            uptimeSeconds: { type: integer, minimum: 0 }
+            timestamp: { type: string, format: date-time }
+            environment: { type: string }
+            paymentsEnabled: { type: boolean, const: false }
     ErrorResponse:
       type: object
       required: [success, error]
@@ -3908,18 +4972,24 @@ components:
           description: Provider-hosted checkout URL; omitted if not available.
     PaymentStatusResource:
       type: object
-      required: [id, status, amountMinor, currency, updatedAt]
+      required: [id, provider, status, amountMinor, currency, initializedAt]
       properties:
-        id:
-          type: string
-        status:
-          type: string
-          enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED]
-        amountMinor:
-          $ref: '#/components/schemas/MinorAmount'
-        currency:
-          type: string
-          const: NGN
-        updatedAt:
-          type: string
-          format: date-time
+        id: { type: string }
+        provider: { type: string, enum: [PAYSTACK] }
+        status: { type: string, enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED] }
+        amountMinor: { $ref: '#/components/schemas/MinorAmount' }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        initializedAt: { type: string, format: date-time }
+        verifiedAt: { type: [string, 'null'], format: date-time }
+        failedAt: { type: [string, 'null'], format: date-time }
+        booking:
+          oneOf:
+            - type: object
+              required: [id, publicReference, bookingType, status, paymentStatus]
+              properties:
+                id: { type: string }
+                publicReference: { type: string }
+                bookingType: { type: string, enum: [PARCEL, RIDE] }
+                status: { type: string }
+                paymentStatus: { type: string }
+            - type: 'null'

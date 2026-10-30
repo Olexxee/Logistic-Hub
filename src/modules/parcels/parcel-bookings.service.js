@@ -162,12 +162,22 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
       const legs = await db.findDeliveryLegsByBookingId(bookingId);
       return legs.map(serializeDeliveryLeg);
     },
-    async listVisibleBookings({ user, page, limit, status }) {
+    async listVisibleBookings({ user, page, limit, status, paymentStatus, reference, pickupServiceZoneId, destinationServiceZoneId, createdFrom, createdTo }) {
       const includeAll = ["ADMIN", "SUPPORT"].includes(user.role);
+      const hasAdminFilters = Boolean(paymentStatus || reference || pickupServiceZoneId || destinationServiceZoneId || createdFrom || createdTo);
+      if (hasAdminFilters && !includeAll) {
+        throw new ForbiddenError("Operational booking filters are available to admin and support users only.");
+      }
       const result = await db.listVisible({
         senderId: user.id,
         includeAll,
         status,
+        paymentStatus,
+        reference,
+        pickupServiceZoneId,
+        destinationServiceZoneId,
+        createdFrom: createdFrom ? new Date(createdFrom) : undefined,
+        createdTo: createdTo ? new Date(createdTo) : undefined,
         skip: (page - 1) * limit,
         take: limit,
       });
