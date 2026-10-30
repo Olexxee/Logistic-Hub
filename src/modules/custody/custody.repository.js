@@ -37,7 +37,7 @@ export function createCustodyRepository({ prismaClient }) {
         where: { id: deliveryLegId },
         include: {
           parcelBooking: { select: { id: true, senderId: true, paymentStatus: true, status: true, recipientName: true, recipientPhone: true } },
-          assignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, include: { driverProfile: { select: { id: true, userId: true } } } },
+          assignments: { where: { status: { notIn: ["CANCELLED", "FAILED", "COMPLETED"] } }, include: { driverProfile: { select: { id: true, userId: true } } } },
           partnerAssignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, select: { partnerId: true, status: true } },
         },
       });
