@@ -2,6 +2,7 @@ import { createHubPointsAdminService } from "./hub-points.admin.service.js";
 import {
   createHubPointAdminSchema,
   hubPointStatusAdminSchema,
+  hubOperatorVerificationSchema,
   updateHubPointAdminSchema,
 } from "./hub-points.admin.validators.js";
 
@@ -40,6 +41,15 @@ export function createHubPointsAdminController({ prismaClient }) {
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
         const hubPoint = await service.update(id(req), parsed.data);
+        if (!hubPoint) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Hub point not found." } });
+        return res.status(200).json({ success: true, data: { hubPoint } });
+      } catch (error) { return next(error); }
+    },
+    reviewOperator: async (req, res, next) => {
+      const parsed = hubOperatorVerificationSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
+      try {
+        const hubPoint = await service.reviewOperator({ id: id(req), ...parsed.data, actorUserId: req.user.id });
         if (!hubPoint) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Hub point not found." } });
         return res.status(200).json({ success: true, data: { hubPoint } });
       } catch (error) { return next(error); }
