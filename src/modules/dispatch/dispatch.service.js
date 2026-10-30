@@ -5,6 +5,31 @@ function payloadHash(value) {
 }
 
 const ACTIVE_ASSIGNMENT_STATUSES = ["AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"];
+const MAX_DRIVER_LOCATION_AGE_MS = 5 * 60 * 1000;
+
+export function distanceBetweenCoordinatesMeters(latitudeA, longitudeA, latitudeB, longitudeB) {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const earthRadiusMeters = 6_371_000;
+  const latitudeDelta = radians(latitudeB - latitudeA);
+  const longitudeDelta = radians(longitudeB - longitudeA);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(latitudeA)) * Math.cos(radians(latitudeB))
+    * Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function isDriverWithinPickupRadius(driver, pickup, now = new Date()) {
+  const latestLocation = driver.locations?.[0];
+  if (!latestLocation || !driver.lastLocationAt || !driver.serviceRadiusMeters) return false;
+  const cutoff = now.getTime() - MAX_DRIVER_LOCATION_AGE_MS;
+  if (new Date(driver.lastLocationAt).getTime() < cutoff) return false;
+  if (new Date(latestLocation.recordedAt).getTime() < cutoff) return false;
+  const distance = distanceBetweenCoordinatesMeters(
+    Number(latestLocation.latitude), Number(latestLocation.longitude),
+    Number(pickup.latitude), Number(pickup.longitude),
+  );
+  return distance <= driver.serviceRadiusMeters;
+}
 
 function conflict(code, message) {
   const error = new Error(message);
@@ -72,6 +97,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             verificationStatus: "VERIFIED",
             isOnline: true,
             isAvailable: true,
+            lastLocationAt: { gte: new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MS) },
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
             vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
             AND: [
@@ -96,16 +122,29 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             ],
             assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
           },
-          select: { id: true },
+          select: {
+            id: true,
+            serviceRadiusMeters: true,
+            lastLocationAt: true,
+            locations: {
+              orderBy: { recordedAt: "desc" },
+              take: 1,
+              select: { latitude: true, longitude: true, recordedAt: true },
+            },
+          },
         });
+        const eligibleDrivers = drivers.filter((driver) => isDriverWithinPickupRadius(driver, {
+          latitude: booking.pickupLatitude,
+          longitude: booking.pickupLongitude,
+        }, now));
 
-        if (drivers.length === 0) {
+        if (eligibleDrivers.length === 0) {
           throw conflict("NO_ELIGIBLE_DRIVERS", "No verified, available drivers currently cover the pickup zone.");
         }
 
         const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
         const created = await tx.driverOffer.createMany({
-          data: drivers.map(({ id }) => ({
+          data: eligibleDrivers.map(({ id }) => ({
             parcelBookingId: booking.id,
             driverProfileId: id,
             status: "OFFERED",
@@ -127,7 +166,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             eventType: "PARCEL_MATCHING_REQUESTED",
             fromStatus: "DRAFT",
             toStatus: "MATCHING",
-            metadata: { offersCreated: created.count, expiresAt: expiresAt.toISOString() },
+            metadata: { offersCreated: created.count, eligibleDrivers: eligibleDrivers.length, expiresAt: expiresAt.toISOString() },
           },
         });
         return { bookingId: booking.id, status: "MATCHING", offersCreated: created.count, offersExpireAt: expiresAt };
@@ -185,12 +224,10 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
               id: true,
               publicReference: true,
               currency: true,
-              pickupAddress: true,
-              destinationAddress: true,
               parcelCategory: true,
               parcelSize: true,
-              pickupServiceZoneId: true,
-              destinationServiceZoneId: true,
+              pickupServiceZone: { select: { name: true } },
+              destinationServiceZone: { select: { name: true } },
             },
           },
         },
