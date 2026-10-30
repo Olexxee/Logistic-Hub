@@ -208,3 +208,37 @@ test("confirmed destination hub handover completes partner assignment and create
   assert.equal(calls.payables[0].create.amountMinor, 450000n);
   assert.equal(calls.audits.some(item => item.action === "PARTNER_EXECUTION_COMPLETED_AND_PAYABLE_CREATED"), true);
 });
+
+
+test("admin can record an off-platform verified recipient phone with an audit trail", async () => {
+  const calls = { audits: [], updates: [] };
+  const { db } = tx({
+    user: {
+      findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now, phone: "08000000000", phoneVerifiedAt: null }),
+      update: async ({ where, data }) => { calls.updates.push({ where, data }); return { id: where.id, ...data }; },
+    },
+    operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setRecipientPhoneVerification({
+    userId: "recipient-1", verified: true, verificationMethod: "CALLBACK",
+    reason: "Recipient number confirmed by an outbound verification call.",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.user.phoneVerifiedAt, now);
+  assert.equal(calls.updates[0].data.phoneVerifiedAt, now);
+  assert.equal(calls.audits[0].action, "USER_PHONE_VERIFIED_BY_ADMIN");
+});
+
+test("admin cannot verify a user without a phone number", async () => {
+  const { db } = tx({
+    user: { findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now, phone: null, phoneVerifiedAt: null }) },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setRecipientPhoneVerification({
+    userId: "recipient-1", verified: true, verificationMethod: "CALLBACK",
+    reason: "Attempted phone verification.",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "USER_PHONE_REQUIRED");
+});

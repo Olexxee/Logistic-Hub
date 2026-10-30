@@ -32,6 +32,9 @@ export function createCustodyRepository({ prismaClient }) {
     setUserRole(userId, role, tx = prismaClient) {
       return tx.user.update({ where: { id: userId }, data: { role } });
     },
+    setUserPhoneVerification(userId, phoneVerifiedAt, tx = prismaClient) {
+      return tx.user.update({ where: { id: userId }, data: { phoneVerifiedAt } });
+    },
     findBookingLeg(deliveryLegId, tx = prismaClient) {
       return tx.deliveryLeg.findUnique({
         where: { id: deliveryLegId },

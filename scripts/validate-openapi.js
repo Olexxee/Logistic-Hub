@@ -107,6 +107,7 @@ const implementedOperations = new Set([
   "POST /custody/handovers/{handoverId}/decision",
   "GET /admin/operational-cases",
   "PATCH /admin/operational-cases/{caseId}",
+  "PATCH /admin/users/{userId}/phone-verification",
   "GET /partner/payables",
   "GET /admin/partner-payables",
   "PATCH /admin/partner-payables/{payableId}/approve",

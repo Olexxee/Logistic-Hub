@@ -1,5 +1,14 @@
 export function createCustodyController(service) {
   return {
+    setRecipientPhoneVerification: async (req, res) => {
+      const result = await service.setRecipientPhoneVerification({
+        ...req.body, userId: req.params.userId, actorUserId: req.user.id,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "USER_NOT_FOUND", message: "User not found." } });
+      if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active users can be phone-verified." } });
+      if (result.blocker === "USER_PHONE_REQUIRED") return res.status(409).json({ success: false, error: { code: "USER_PHONE_REQUIRED", message: "A phone number must be present before verification." } });
+      return res.status(200).json({ success: true, data: result });
+    },
     addHubOperator: async (req, res) => {
       const result = await service.addHubOperator({ ...req.body, hubPointId: req.params.hubPointId, actorUserId: req.user.id });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_NOT_FOUND", message: "Hub point not found." } });

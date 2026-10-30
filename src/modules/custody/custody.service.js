@@ -22,7 +22,12 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
   async function validateParty(tx, { type, id, userId, booking, leg, actor = false }) {
     if (type === "RECIPIENT") {
       const recipient = await repo.findUser(id, tx);
-      const normalizePhone = value => String(value ?? "").replace(/\D/g, "");
+      const normalizePhone = value => {
+        const digits = String(value ?? "").replace(/\D/g, "");
+        if (digits.length === 13 && digits.startsWith("234")) return `0${digits.slice(3)}`;
+        if (digits.length === 10) return `0${digits}`;
+        return digits;
+      };
       const phoneMatches = normalizePhone(recipient?.phone) !== ""
         && normalizePhone(recipient?.phone) === normalizePhone(booking.recipientPhone);
       if (!recipient || recipient.status !== "ACTIVE" || !recipient.phoneVerifiedAt || !phoneMatches) {
@@ -87,6 +92,29 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
   }
 
   return {
+    async setRecipientPhoneVerification({ userId, verified, verificationMethod, reason, actorUserId }) {
+      return repo.transaction(async tx => {
+        const user = await repo.findUser(userId, tx);
+        if (!user) return { notFound: true };
+        if (user.status !== "ACTIVE") return { blocker: "USER_NOT_ACTIVE" };
+        if (verified && !user.phone) return { blocker: "USER_PHONE_REQUIRED" };
+        const currentlyVerified = Boolean(user.phoneVerifiedAt);
+        if (currentlyVerified === verified) {
+          return { user: { id: user.id, phoneVerifiedAt: user.phoneVerifiedAt }, replay: true };
+        }
+        const phoneVerifiedAt = verified ? clock() : null;
+        const updated = await repo.setUserPhoneVerification(userId, phoneVerifiedAt, tx);
+        await repo.createAudit({
+          actorUserId, entityType: "USER_PHONE_VERIFICATION", entityId: userId,
+          action: verified ? "USER_PHONE_VERIFIED_BY_ADMIN" : "USER_PHONE_VERIFICATION_REVOKED",
+          before: { phoneVerifiedAt: user.phoneVerifiedAt },
+          after: { phoneVerifiedAt, verificationMethod, reason },
+          reason,
+        }, tx);
+        return { user: { id: updated.id, phoneVerifiedAt: updated.phoneVerifiedAt }, replay: false };
+      });
+    },
+
     async addHubOperator({ hubPointId, userId, role = "OPERATOR", actorUserId }) {
       return repo.transaction(async tx => {
         const hub = await repo.findHub(hubPointId, tx);

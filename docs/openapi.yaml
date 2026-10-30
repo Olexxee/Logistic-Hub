@@ -3155,6 +3155,36 @@ paths:
         '404': { description: Batch not found. }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /admin/users/{userId}/phone-verification:
+    patch:
+      tags: [Admin]
+      operationId: setUserPhoneVerification
+      summary: Record or revoke an administrator-reviewed user phone verification
+      description: This endpoint records an off-platform verification result such as a callback or in-person check. It does not send an SMS or generate an OTP.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [verified, verificationMethod, reason]
+              properties:
+                verified: { type: boolean }
+                verificationMethod: { type: string, enum: [CALLBACK, IN_PERSON, DOCUMENT_REVIEW, ADMIN_REVOCATION] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: User not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth:
