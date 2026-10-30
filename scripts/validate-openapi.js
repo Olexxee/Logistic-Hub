@@ -71,6 +71,7 @@ const implementedOperations = new Set([
   "GET /driver/ride-offers",
   "POST /driver/ride-offers/{offerId}/propose-fare",
   "POST /ride-bookings/{rideBookingId}/accept-fare",
+  "GET /admin/audit-events",
   "GET /drivers/me",
   "POST /drivers/onboarding",
   "PATCH /drivers/availability",
