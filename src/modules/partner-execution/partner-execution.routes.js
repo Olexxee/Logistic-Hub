@@ -25,7 +25,8 @@ function validate(schema, source = "body") {
       code: "VALIDATION_ERROR", message: "One or more fields are invalid.",
       details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
     } });
-    req[source] = parsed.data;
+    if (source === "query") req.validatedQuery = parsed.data;
+    else req.body = parsed.data;
     return next();
   };
 }
