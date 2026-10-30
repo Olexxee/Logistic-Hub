@@ -28,8 +28,8 @@ export function createPartnerExecutionAdminRouter({ prismaClient = prisma } = {}
   const router = Router();
   const controller = createPartnerExecutionController({ prismaClient });
   router.use(requireAuth, requireRole("ADMIN"));
-  router.post("/transport-partners/:partnerId/api-credentials", validate(partnerParams, "params"), validate(credentialBody), controller.issueCredential);
-  router.post("/transport-partners/:partnerId/api-credentials/:credentialId/revoke", validate(credentialParams, "params"), controller.revokeCredential);
+  router.post("/:partnerId/api-credentials", validate(partnerParams, "params"), validate(credentialBody), controller.issueCredential);
+  router.post("/:partnerId/api-credentials/:credentialId/revoke", validate(credentialParams, "params"), controller.revokeCredential);
   return router;
 }
 
