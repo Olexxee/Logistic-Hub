@@ -15,8 +15,8 @@ function tx(overrides = {}) {
   const calls = { audits: [], cases: [], handovers: [] };
   const base = {
     user: { findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now }), updateMany: async () => ({ count: 1 }) },
-    deliveryLeg: { findUnique: async () => leg },
-    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [] },
+    deliveryLeg: { findUnique: async () => leg, findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
+    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [], update: async () => ({}) },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
     hubPointOperator: { findUnique: async () => null, findMany: async () => [], findFirst: async () => null, upsert: async ({ create }) => ({ id: "hub-operator-1", ...create }), update: async () => ({}), count: async () => 0 },
     transportPartner: { findUnique: async () => null },
@@ -28,6 +28,10 @@ function tx(overrides = {}) {
       update: async ({ where, data }) => ({ id: where.id, status: data.status, ...data }),
     },
     operationalCase: { create: async ({ data }) => { const value = { id: "case-1", ...data }; calls.cases.push(value); return value; } },
+    bookingEvent: { create: async () => ({}) },
+    parcelBooking: { update: async () => ({}) },
+    driverAssignment: { findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
+    driverPayout: { upsert: async () => ({ id: "driver-payout-1" }) },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
     $transaction: async callback => callback(base),
   };
@@ -183,6 +187,7 @@ test("confirmed destination hub handover completes partner assignment and create
     deliveryLeg: {
       findUnique: async () => partnerLeg,
       updateMany: async ({ where, data }) => { calls.legUpdates.push({ where, data }); return { count: 1 }; },
+      findFirst: async () => null,
     },
     hubPoint: { findUnique: async () => ({ id: "hub-2", status: "ACTIVE" }) },
     hubPointOperator: { findUnique: async () => ({ hubPointId: "hub-2", userId: "hub-user-1", isActive: true }) },
