@@ -45,7 +45,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       }
       const next = { ...current, ...input };
       if (current.status === "ACTIVE" && !hasOperationalDetails(next)) {
-        throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain a verified operator contact, valid opening hours, accepted parcel types, and a valid capacity configuration.");
+        throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain a operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
       }
       return repository.update(id, input);
     },
