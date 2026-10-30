@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import { PrismaClient } from "@prisma/client";
 import { createDriversService } from "../src/modules/drivers/drivers.service.js";
+import { createDriversRouter } from "../src/modules/drivers/drivers.routes.js";
 import { createPartnerPricingRouter } from "../src/modules/partner-pricing/partner-pricing.routes.js";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRITY_TESTS === "true";
@@ -141,6 +142,54 @@ test("transport partner administration rejects authenticated non-admin users", a
     const body = await response.json();
     assert.equal(response.status, 403);
     assert.equal(body.error.code, "FORBIDDEN");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("driver operational and administrative routes enforce role authorization", async () => {
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1/drivers", createDriversRouter({
+    prismaClient: {},
+    email: { configured: false },
+    authMiddleware: (req, _res, next) => {
+      req.user = { id: "customer-user", role: "CUSTOMER" };
+      next();
+    },
+    roleMiddleware: (...roles) => (req, res, next) => {
+      if (!req.user || !roles.includes(req.user.role)) {
+        return res.status(403).json({
+          success: false,
+          error: { code: "FORBIDDEN", message: "You do not have permission." },
+        });
+      }
+      return next();
+    },
+  }));
+
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve, reject) => {
+    server.once("listening", resolve);
+    server.once("error", reject);
+  });
+
+  try {
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}/api/v1/drivers`;
+    const availability = await fetch(`${baseUrl}/availability`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ isOnline: true, isAvailable: true }),
+    });
+    assert.equal(availability.status, 403);
+
+    const review = await fetch(`${baseUrl}/admin/profile-id/verification`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ verificationStatus: "VERIFIED" }),
+    });
+    assert.equal(review.status, 403);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
