@@ -147,6 +147,33 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
       },
     });
     legs.push(leg);
+    if (definition.type === "INTERSTATE_TRANSPORT" && quote.partnerAgreementId) {
+      const agreement = await tx.partnerAgreement.findUnique({
+        where: { id: quote.partnerAgreementId },
+        select: { id: true, partnerId: true, status: true, currency: true, partner: { select: { status: true, verificationStatus: true } } },
+      });
+      if (!agreement || agreement.status !== "ACTIVE" || agreement.partner.status !== "ACTIVE"
+        || agreement.partner.verificationStatus !== "VERIFIED" || agreement.currency !== quote.currency) {
+        const error = new Error("The quoted transport partner is no longer eligible to receive this assignment.");
+        error.statusCode = 409;
+        error.code = "PARTNER_ASSIGNMENT_UNAVAILABLE";
+        throw error;
+      }
+      await tx.partnerAssignment.create({
+        data: {
+          deliveryLegId: leg.id,
+          parcelBookingId: booking.id,
+          shipmentQuoteId: quote.id,
+          partnerId: agreement.partnerId,
+          partnerAgreementId: agreement.id,
+          status: "OFFERED",
+          currency: quote.currency,
+          quotedTransportChargeMinor: quote.transportChargeMinor,
+          offeredAt: now,
+          metadata: { quoteVersion: quote.version, routePlanVersion: 1 },
+        },
+      });
+    }
   }
   return {
     routeMode,
