@@ -1162,18 +1162,6 @@ paths:
       x-implementation-status: implemented
       security:
         - bearerAuth: []
-      parameters:
-        - in: query
-          name: cursor
-          schema:
-            type: string
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 50
-            default: 20
       responses:
         '200':
           description: Offers for the authenticated and eligible driver.
@@ -1189,8 +1177,6 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/DriverOfferResource'
-                  nextCursor:
-                    type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1199,7 +1185,7 @@ paths:
     post:
       tags: [Driver offers]
       operationId: proposeDriverFare
-      summary: Submit or revise a fare proposal for an offer
+      summary: Submit one fare proposal for an offer
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -1218,13 +1204,10 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [proposedFareMinor, currency]
+              required: [proposedFareMinor]
               properties:
                 proposedFareMinor:
                   $ref: '#/components/schemas/PositiveMinorAmount'
-                currency:
-                  type: string
-                  const: NGN
       responses:
         '200':
           description: Fare proposal recorded with server-generated expiry.
@@ -1237,7 +1220,7 @@ paths:
                   success:
                     const: true
                   data:
-                    $ref: '#/components/schemas/FareOffer'
+                    $ref: '#/components/schemas/FareProposalResult'
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -2346,8 +2329,8 @@ paths:
     post:
       tags: [Parcel bookings]
       operationId: acceptShipmentQuote
-      summary: Accept one unexpired quote for an owned booking
-      description: Acceptance is transactional, snapshots the total, supersedes competing offers and moves the booking to awaiting payment. Payment itself remains disabled.
+      summary: Accept one unexpired partner quote for a draft booking
+      description: Acceptance is transactional and naturally idempotent for the same accepted quote. It snapshots the total, supersedes competing partner quotes and moves the booking to awaiting payment. Partner quote acceptance is blocked after driver matching starts. Payment itself remains approval-gated.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -2361,7 +2344,7 @@ paths:
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Accepted quote and persisted booking price snapshot. }
+        '200': { description: Accepted quote and persisted booking price snapshot; repeated acceptance by the same sender replays the accepted result. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2375,7 +2358,7 @@ paths:
     post:
       tags: [Parcel bookings]
       operationId: rejectShipmentQuote
-      summary: Reject an unexpired quote for an owned booking
+      summary: Reject an unexpired partner quote for an owned booking
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -2399,7 +2382,7 @@ paths:
               properties:
                 reason: { type: string, minLength: 3, maxLength: 500 }
       responses:
-        '200': { description: Quote rejected. }
+        '200': { description: Quote rejected; repeated rejection replays successfully. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2409,11 +2392,13 @@ paths:
     post:
       tags: [Payments]
       operationId: initializePayment
-      summary: Initialize payment for an accepted parcel quote
+      summary: Initialize payment for an accepted driver fare booking
       description: |
         Planned and disabled until the owner approves implementation. The request
         contains no amount, fee, split destination or provider reference. The server
         computes all amounts and uses a versioned split-routing configuration.
+        Partner shipment quotes are not payable through this operation until a
+        partner-specific assignment and settlement path is implemented.
       x-implementation-status: planned-disabled
       security:
         - bearerAuth: []
@@ -2737,7 +2722,7 @@ components:
           format: date-time
     FareOffer:
       type: object
-      required: [id, status, proposedFareMinor, currency, expiresAt]
+      required: [id, status, proposedFareMinor, currency, expiresAt, createdAt]
       properties:
         id:
           type: string
@@ -2752,22 +2737,21 @@ components:
         expiresAt:
           type: string
           format: date-time
+        createdAt:
+          type: string
+          format: date-time
         driver:
           $ref: '#/components/schemas/DriverSummary'
     DriverSummary:
       type: object
-      required: [displayName, verificationStatus, completedJobs]
+      required: [displayName, completedJobs]
       properties:
         displayName:
           type: string
           description: Public display name; do not expose the driver's full legal name by default.
-        verificationStatus:
+        averageRating:
           type: string
-          const: VERIFIED
-        rating:
-          type: number
-          minimum: 0
-          maximum: 5
+          nullable: true
         completedJobs:
           type: integer
           minimum: 0
@@ -2808,34 +2792,50 @@ components:
         maxParcels: { type: integer, minimum: 1, maximum: 100000 }
         maxWeightGrams: { type: integer, minimum: 1, maximum: 100000000 }
         maxVolumeCm3: { type: integer, minimum: 1, maximum: 1000000000 }
+    FareProposalResult:
+      type: object
+      required: [offerId, proposedFareMinor, currency, status]
+      properties:
+        offerId: { type: string }
+        proposedFareMinor:
+          $ref: '#/components/schemas/PositiveMinorAmount'
+        currency: { type: string, const: NGN }
+        status: { type: string, const: OFFERED }
+        replay: { type: boolean }
     DriverOfferResource:
       type: object
-      required: [id, status, expiresAt, serviceType, pickup, destination]
+      required: [id, currency, expiresAt, createdAt, booking]
       properties:
         id:
           type: string
-        status:
+        currency:
           type: string
-          enum: [OFFERED, ACCEPTED, DECLINED, EXPIRED, WITHDRAWN]
+          const: NGN
         expiresAt:
           type: string
           format: date-time
-        serviceType:
+        createdAt:
           type: string
-          const: PARCEL_DELIVERY
-        pickup:
-          $ref: '#/components/schemas/LocationSummary'
-        destination:
-          $ref: '#/components/schemas/LocationSummary'
-        parcelCategory:
-          type: string
-        parcelSize:
-          type: string
-        parcelDescription:
-          type: string
-          description: Omit or redact sensitive contents where not needed for driver eligibility.
-        handlingInstructions:
-          type: string
+          format: date-time
+        booking:
+          type: object
+          required: [id, publicReference, currency, parcelCategory, parcelSize, pickupServiceZone, destinationServiceZone]
+          properties:
+            id: { type: string }
+            publicReference: { type: string }
+            currency: { type: string, const: NGN }
+            parcelCategory: { type: string }
+            parcelSize: { type: string }
+            pickupServiceZone:
+              $ref: '#/components/schemas/ServiceZoneSummary'
+            destinationServiceZone:
+              $ref: '#/components/schemas/ServiceZoneSummary'
+      description: Driver-facing offer intentionally omits exact pickup/destination addresses, coordinates, and recipient contact details until assignment.
+    ServiceZoneSummary:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
     LocationSummary:
       type: object
       required: [address, coordinates]
@@ -2846,15 +2846,13 @@ components:
           $ref: '#/components/schemas/Coordinates'
     AcceptedQuote:
       type: object
-      required: [bookingId, offerId, status, driverFareMinor, connectionFeeMinor, otherChargesMinor, customerPayableMinor, currency, expiresAt]
+      required: [bookingId, status, assignmentId, driverFareMinor, connectionFeeMinor, otherChargesMinor, customerPayableMinor, currency, paymentExpiresAt]
       properties:
-        bookingId:
-          type: string
-        offerId:
-          type: string
+        bookingId: { type: string }
         status:
           type: string
           const: AWAITING_PAYMENT
+        assignmentId: { type: string }
         driverFareMinor:
           $ref: '#/components/schemas/PositiveMinorAmount'
         connectionFeeMinor:
@@ -2863,13 +2861,12 @@ components:
           $ref: '#/components/schemas/MinorAmount'
         customerPayableMinor:
           $ref: '#/components/schemas/MinorAmount'
-        currency:
-          type: string
-          const: NGN
-        expiresAt:
+        currency: { type: string, const: NGN }
+        paymentExpiresAt:
           type: string
           format: date-time
-      description: Quote reservation expiry while the customer completes payment; it is distinct from the original driver offer expiry.
+        replay: { type: boolean }
+      description: Driver reservation expiry while the customer completes payment; it is distinct from the original driver offer expiry.
     PaymentInitialization:
       type: object
       required: [id, status, amountMinor, currency]

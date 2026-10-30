@@ -34,6 +34,7 @@ export function buildPartnerRateEligibilityWhere(booking, now = new Date()) {
     parcelCategory: booking.parcelCategory,
     rateCard: {
       status: "ACTIVE",
+      currency: booking.currency,
       effectiveFrom: { lte: now },
       AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
       agreement: {
@@ -111,9 +112,21 @@ export function createPartnerPricingRouter({
       const result = await prismaClient.$transaction(async (tx) => {
         const booking = await tx.parcelBooking.findUnique({ where: { id: parsedId.data } });
         if (!booking) return { notFound: true };
-        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
-          return { conflict: "A quote can only be issued before payment or dispatch has started." };
+        if (booking.status !== "DRAFT") {
+          return { conflict: "A partner quote can only be issued while the booking is still a draft." };
         }
+
+        // Serialize quote version allocation against concurrent quote creation and
+        // fulfilment-path transitions for this booking.
+        const now = new Date();
+        const bookingLock = await tx.parcelBooking.updateMany({
+          where: { id: booking.id, status: "DRAFT" },
+          data: { updatedAt: now },
+        });
+        if (bookingLock.count !== 1) {
+          return { conflict: "The booking changed while the partner quote was being issued." };
+        }
+
         let rate = null;
         if (input.partnerRateId) {
           rate = await tx.partnerRate.findFirst({
@@ -162,7 +175,7 @@ export function createPartnerPricingRouter({
             partnerAgreementId: rate?.rateCard.agreementId ?? null,
             manualQuoteReason: rate ? null : input.reason,
           },
-          expiresAt: new Date(Date.now() + input.expiresInMinutes * 60_000),
+          expiresAt: new Date(now.getTime() + input.expiresInMinutes * 60_000),
         } });
         return { quote };
       });
@@ -199,11 +212,14 @@ export function createPartnerPricingRouter({
         const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId.data } });
         if (!booking) return { notFound: true };
         if (booking.senderId !== req.user.id) return { forbidden: true };
-        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
-          return { conflict: true };
-        }
         const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
         if (!quote) return { quoteNotFound: true };
+        if (quote.status === "ACCEPTED" && quote.acceptedByUserId === req.user.id) {
+          return { quote, replay: true };
+        }
+        if (booking.status !== "DRAFT") {
+          return { conflict: true };
+        }
         const now = new Date();
         if (quote.status !== "OFFERED" || quote.expiresAt <= now) {
           if (quote.status === "OFFERED" && quote.expiresAt <= now) {
@@ -224,10 +240,9 @@ export function createPartnerPricingRouter({
           where: {
             id: booking.id,
             senderId: req.user.id,
-            status: { in: ["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"] },
+            status: "DRAFT",
           },
           data: {
-            driverFareMinor: quote.transportChargeMinor,
             customerPayableMinor: quote.totalCustomerChargeMinor,
             connectionFeeMinor: quote.platformChargeMinor,
             otherChargesMinor: quote.otherChargesMinor + quote.collectionChargeMinor + quote.hubHandlingChargeMinor + quote.destinationDeliveryChargeMinor,
@@ -269,7 +284,7 @@ export function createPartnerPricingRouter({
       if (result.quoteNotFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Quote not found for this booking." } });
       if (result.forbidden) return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot accept this quote." } });
       if (result.conflict) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_ACCEPTABLE", message: "This quote is no longer available or has expired." } });
-      return res.status(200).json({ success: true, data: { quote: quoteView(result.quote) } });
+      return res.status(200).json({ success: true, data: { quote: quoteView(result.quote), replay: result.replay === true } });
     } catch (error) {
       if (error.statusCode === 409) {
         return res.status(409).json({ success: false, error: {
@@ -294,6 +309,9 @@ export function createPartnerPricingRouter({
         return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot reject this quote." } });
       }
       const result = await prismaClient.$transaction(async (tx) => {
+        const existing = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
+        if (existing?.status === "REJECTED") return { replay: true };
+        if (!existing || existing.status !== "OFFERED") return false;
         const now = new Date();
         const updated = await tx.shipmentQuote.updateMany({
           where: { id: quoteId.data, parcelBookingId: booking.id, status: "OFFERED", expiresAt: { gt: now } },
@@ -308,10 +326,10 @@ export function createPartnerPricingRouter({
             metadata: { quoteId: quoteId.data, reason: parsed.data.reason },
           },
         });
-        return true;
+        return { replay: false };
       });
       if (!result) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_REJECTABLE", message: "Quote is no longer available." } });
-      return res.status(200).json({ success: true, data: { rejected: true } });
+      return res.status(200).json({ success: true, data: { rejected: true, replay: result.replay === true } });
     } catch (error) { return next(error); }
   });
 
