@@ -34,6 +34,7 @@ function tx(overrides = {}) {
     driverAssignment: { findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
     driverPayout: { upsert: async () => ({ id: "driver-payout-1" }) },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+    $queryRaw: async () => [],
     $transaction: async callback => callback(base),
   };
   Object.assign(base, overrides);
