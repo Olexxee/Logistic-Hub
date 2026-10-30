@@ -36,3 +36,8 @@ export const updateHubPointAdminSchema = createHubPointAdminSchema
 export const hubPointStatusAdminSchema = z.object({
   status: z.enum(["ACTIVE", "SUSPENDED", "CLOSED"]),
 }).strict();
+
+export const hubOperatorVerificationSchema = z.object({
+  verificationStatus: z.enum(["PENDING", "VERIFIED", "REJECTED", "EXPIRED"]),
+  notes: z.string().trim().max(500).optional(),
+}).strict();
