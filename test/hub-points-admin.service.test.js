@@ -37,6 +37,7 @@ test("hub activation succeeds only when operational details and service eligibil
   const prismaClient = {
     hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
     serviceZone: {},
+    $transaction: async callback => callback({ hubPoint: { update: async ({ data }) => ({ ...hub, ...data }) }, operationalAuditEvent: { create: async () => ({}) } }),
   };
   const service = createHubPointsAdminService({ prismaClient });
   const result = await service.setStatus("hub-1", "ACTIVE");
