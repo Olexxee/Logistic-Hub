@@ -191,8 +191,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
       });
       if (!bookingAccess) throw new NotFoundError("Parcel booking not found.");
       if (bookingAccess.senderId !== user.id) throw new ForbiddenError();
-      try {
-        const priorAcceptance = await db.findOfferByAcceptanceKey(idempotencyKey);
+      const priorAcceptance = await db.findOfferByAcceptanceKey(idempotencyKey);
       if (priorAcceptance) {
         if (priorAcceptance.deliveryLegId !== legId || priorAcceptance.acceptancePayloadHash !== acceptanceHash) {
           throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare acceptance.");
