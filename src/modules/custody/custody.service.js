@@ -32,7 +32,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     if (type === "DRIVER") {
       const driver = await repo.findDriverForParty(id, tx);
       const assigned = leg.assignments.some(item => item.driverProfileId === id);
-      if (!driver || !assigned) throw fail(400, "INVALID_CUSTODY_PARTY", "Driver must have an active assignment on this delivery leg.");
+      if (!driver || driver.verificationStatus !== "VERIFIED" || !assigned) throw fail(400, "INVALID_CUSTODY_PARTY", "Driver must be verified and have an active assignment on this delivery leg.");
       if (actor && driver.userId !== userId) throw forbidden();
       return;
     }
