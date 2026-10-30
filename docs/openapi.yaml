@@ -2769,6 +2769,7 @@ components:
           $ref: '#/components/schemas/ServiceZoneSummary'
         plannedAt: { type: string, format: date-time, nullable: true }
         assignedAt: { type: string, format: date-time, nullable: true }
+        pickedUpAt: { type: string, format: date-time, nullable: true }
         startedAt: { type: string, format: date-time, nullable: true }
         completedAt: { type: string, format: date-time, nullable: true }
         failureReason: { type: string, nullable: true }
