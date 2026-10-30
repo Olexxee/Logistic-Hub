@@ -161,6 +161,7 @@ export function createCustodyRepository({ prismaClient }) {
         where: {
           originHubPointId: { in: hubPointIds },
           status: { in: ["ASSIGNED", "READY_FOR_ASSIGNMENT", "PICKUP_VERIFICATION_PENDING"] },
+          custodyHandovers: { none: { status: "PENDING_CONFIRMATION" } },
           parcelBooking: { is: { paymentStatus: "SUCCEEDED", hubIntakeRecords: { some: { hubPointId: { in: hubPointIds }, status: "RECEIVED" } } } },
           OR: [
             { assignments: { some: { status: "ARRIVED_AT_PICKUP" } } },
