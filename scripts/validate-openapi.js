@@ -43,6 +43,11 @@ const implementedOperations = new Set([
   "POST /parcel-bookings",
   "GET /parcel-bookings/{bookingId}",
   "GET /parcel-bookings/{bookingId}/delivery-legs",
+  "POST /delivery-legs/{legId}/request-matching",
+  "GET /delivery-legs/{legId}/offers",
+  "POST /delivery-legs/{legId}/accept-fare",
+  "GET /driver/delivery-leg-offers",
+  "POST /driver/delivery-leg-offers/{offerId}/propose-fare",
   "POST /admin/partner-rate-cards/{rateCardId}/publish",
   "GET /admin/transport-partners",
   "POST /admin/transport-partners",
@@ -97,6 +102,8 @@ const idempotentMutationPaths = new Set([
   "POST /ride-bookings/{rideBookingId}/accept-fare",
   "POST /driver/offers/{offerId}/propose-fare",
   "POST /parcel-bookings/{bookingId}/accept-fare",
+  "POST /delivery-legs/{legId}/accept-fare",
+  "POST /driver/delivery-leg-offers/{offerId}/propose-fare",
   "POST /payments",
   "POST /payments/initialize",
   "POST /payments/refunds/request",
@@ -142,5 +149,7 @@ try {
   console.log(`OpenAPI contract valid: ${api.info.title} v${api.info.version}; ${operationIds.size} operations; implementation-status and idempotency checks passed.`);
 } catch (error) {
   console.error("OpenAPI validation failed:", error.message);
+  if (error.errors) console.error("OpenAPI validation details:", JSON.stringify(error.errors, null, 2));
+  if (error.stack) console.error(error.stack);
   process.exitCode = 1;
 }
