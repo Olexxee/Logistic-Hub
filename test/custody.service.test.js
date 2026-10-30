@@ -114,3 +114,19 @@ test("releasing user cannot confirm their own handover", async () => {
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   await assert.rejects(service.confirmHandover({ handoverId: "handover-1", userId: "sender-1" }), error => error.code === "HANDOVER_SELF_CONFIRMATION");
 });
+
+test("admin can add an existing partner operator as a hub operator without downgrading their role", async () => {
+  const { db } = tx({
+    user: { findUnique: async () => ({ id: "operator-1", status: "ACTIVE", role: "PARTNER_OPERATOR", emailVerifiedAt: now }) },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
+    hubPointOperator: {
+      upsert: async ({ data }) => ({ id: "hub-operator-1", ...data }),
+    },
+  });
+  let roleUpdates = 0;
+  db.user.update = async () => { roleUpdates += 1; };
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.addHubOperator({ hubPointId: "hub-1", userId: "operator-1", actorUserId: "admin-1" });
+  assert.equal(result.operator.isActive, true);
+  assert.equal(roleUpdates, 0);
+});
