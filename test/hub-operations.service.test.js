@@ -18,7 +18,7 @@ const leg = {
   partnerAssignments: [],
 };
 function setup(overrides = {}) {
-  const calls = { handovers: [], cases: [], audits: [], assignmentUpdates: [], events: [] };
+  const calls = { handovers: [], cases: [], audits: [], assignmentUpdates: [], events: [], locks: [] };
   const db = {
     user: {
       findUnique: async ({ where }) => ({
@@ -58,7 +58,7 @@ function setup(overrides = {}) {
     driverPayout: { upsert: async () => ({ id: "payout-1" }) },
     partnerDeliveryAssignment: { findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
     partnerPayable: { upsert: async () => ({ id: "payable-1", amountMinor: 45000n, currency: "NGN" }) },
-    $queryRaw: async () => [],
+    $queryRaw: async (strings, ...values) => { calls.locks.push({ sql: strings.join("?"), values }); return []; },
     $transaction: async callback => callback(db),
   };
   Object.assign(db, overrides);
@@ -227,6 +227,72 @@ test("hub intake rejects a parcel that exceeds configured aggregate weight capac
   await assert.rejects(
     service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Parcel intact", weightGrams: 200 }),
     error => error.statusCode === 409 && error.code === "HUB_WEIGHT_CAPACITY_EXCEEDED",
+  );
+  assert.equal(calls.handovers.length, 0);
+});
+
+
+test("handover creation locks the delivery leg before checking for an existing pending handover", async () => {
+  const { db, calls } = setup({
+    custodyHandover: {
+      findFirst: async () => null,
+      create: async ({ data }) => ({ id: "handover-locked", status: "PENDING_CONFIRMATION", ...data }),
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await service.createHubHandover({
+    hubPointId: "hub-1", deliveryLegId: "leg-1", toPartyType: "DRIVER",
+    toPartyId: "driver-1", conditionAtRelease: "Sealed",
+  }, "hub-user-1");
+  assert.equal(calls.locks.some(lock => lock.sql.includes('FROM "delivery_legs"') && lock.values.includes("leg-1")), true);
+});
+
+test("handover decisions lock and reload the handover before confirming custody", async () => {
+  const handover = {
+    id: "handover-locked", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "sender-1", fromPartyType: "SENDER", fromPartyId: "sender-1",
+    toPartyType: "HUB", toPartyId: "hub-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+    conditionAtRelease: "Sealed",
+  };
+  const order = [];
+  const { db, calls } = setup({
+    $queryRaw: async (strings, ...values) => { order.push("lock"); calls.locks.push({ sql: strings.join("?"), values }); return []; },
+    custodyHandover: {
+      findUnique: async () => { order.push("read"); return handover; },
+      update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }),
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", acceptedParcelTypes: [], capacityConfig: {} }) },
+    hubIntakeRecord: {
+      count: async () => 0,
+      aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }),
+      create: async ({ data }) => ({ id: "intake-1", ...data }),
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await service.confirmHandover({
+    handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed",
+    weightGrams: 200,
+  });
+  assert.deepEqual(order.slice(0, 2), ["lock", "read"]);
+  assert.equal(calls.locks.some(lock => lock.sql.includes('FROM "custody_handovers"') && lock.values.includes(handover.id)), true);
+});
+
+test("hub intake requires all dimensions when a partial measurement is submitted", async () => {
+  const handover = {
+    id: "handover-dimensions", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "sender-1", fromPartyType: "SENDER", fromPartyId: "sender-1",
+    toPartyType: "HUB", toPartyId: "hub-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+    conditionAtRelease: "Sealed",
+  };
+  const { db, calls } = setup({
+    custodyHandover: { findUnique: async () => handover },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", weightGrams: 200, lengthMm: 100 }),
+    error => error.statusCode === 409 && error.code === "HUB_INTAKE_DIMENSIONS_INCOMPLETE",
   );
   assert.equal(calls.handovers.length, 0);
 });

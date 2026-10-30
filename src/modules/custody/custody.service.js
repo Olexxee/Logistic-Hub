@@ -154,6 +154,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     async createHandover(input, userId) {
       return repo.transaction(async tx => {
         await requireActiveUser(tx, userId);
+        await repo.lockDeliveryLeg(input.deliveryLegId, tx);
         const leg = await repo.findBookingLeg(input.deliveryLegId, tx);
         if (!leg || leg.parcelBookingId !== input.parcelBookingId) return { notFound: true };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
@@ -215,6 +216,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     async confirmHandover({ handoverId, userId, conditionAtReceipt, evidence, rejectReason, weightGrams, lengthMm, widthMm, heightMm }) {
       return repo.transaction(async tx => {
         await requireActiveUser(tx, userId);
+        await repo.lockHandover(handoverId, tx);
         const handover = await repo.findHandover(handoverId, tx);
         if (!handover) return { notFound: true };
         if (handover.status !== "PENDING_CONFIRMATION") return { blocker: "HANDOVER_NOT_PENDING" };

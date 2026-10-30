@@ -67,6 +67,12 @@ export function createCustodyRepository({ prismaClient }) {
         },
       });
     },
+    lockDeliveryLeg(deliveryLegId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "delivery_legs" WHERE "id" = ${deliveryLegId} FOR UPDATE`;
+    },
+    lockHandover(handoverId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "custody_handovers" WHERE "id" = ${handoverId} FOR UPDATE`;
+    },
     findHandover(id, tx = prismaClient) {
       return tx.custodyHandover.findUnique({ where: { id }, include: { deliveryLeg: true, parcelBooking: true } });
     },
