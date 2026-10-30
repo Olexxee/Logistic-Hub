@@ -26,7 +26,17 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
     const allowed={ACCEPTED:["ARRIVED_AT_PICKUP"],ARRIVED_AT_PICKUP:[],PICKUP_CONFIRMED:["IN_PROGRESS"],IN_PROGRESS:["ARRIVED_AT_DESTINATION"],ARRIVED_AT_DESTINATION:[]};
     if(!(allowed[a.status]||[]).includes(nextStatus))return {conflict:true,status:a.status};
-    const updated=await tx.driverAssignment.update({where:{id:a.id},data:{status:nextStatus,...(nextStatus==="ARRIVED_AT_PICKUP"?{pickupAt:now}:{}),...(nextStatus==="IN_PROGRESS"?{startedAt:now}:{}),...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
+    const transition = await tx.driverAssignment.updateMany({
+     where: { id: a.id, status: a.status },
+     data: {
+      status: nextStatus,
+      ...(nextStatus==="ARRIVED_AT_PICKUP"?{pickupAt:now}:{}),
+      ...(nextStatus==="IN_PROGRESS"?{startedAt:now}:{}),
+      ...(nextStatus==="COMPLETED"?{completedAt:now}:{}),
+     },
+    });
+    if (transition.count !== 1) return { conflict: true, status: a.status };
+    const updated = { id: a.id, status: nextStatus, updatedAt: now };
     if(a.deliveryLegId) await tx.deliveryLeg.update({where:{id:a.deliveryLegId},data:{status:nextStatus==="ARRIVED_AT_PICKUP"?"PICKUP_VERIFICATION_PENDING":nextStatus==="IN_PROGRESS"?"IN_TRANSIT":nextStatus==="ARRIVED_AT_DESTINATION"?"DELIVERY_VERIFICATION_PENDING":a.deliveryLeg?.status??"ASSIGNED",...(nextStatus==="IN_PROGRESS"?{startedAt:now}:{})}});
     if(a.parcelBookingId) await tx.parcelBooking.update({where:{id:a.parcelBookingId},data:{status:nextStatus==="ARRIVED_AT_PICKUP"?"PICKUP_VERIFICATION_PENDING":nextStatus==="IN_PROGRESS"?"IN_TRANSIT":nextStatus==="ARRIVED_AT_DESTINATION"?"DELIVERY_VERIFICATION_PENDING":nextStatus==="COMPLETED"?"COMPLETED":a.parcelBooking.status,...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
     if(a.rideBookingId) await tx.rideBooking.update({where:{id:a.rideBookingId},data:{status:nextStatus==="ARRIVED_AT_PICKUP"?"DRIVER_ARRIVED":nextStatus==="IN_PROGRESS"?"TRIP_IN_PROGRESS":nextStatus==="ARRIVED_AT_DESTINATION"?"TRIP_COMPLETION_PENDING":nextStatus==="COMPLETED"?"COMPLETED":a.rideBooking.status,...(nextStatus==="IN_PROGRESS"?{tripStartedAt:now}:{}),...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
