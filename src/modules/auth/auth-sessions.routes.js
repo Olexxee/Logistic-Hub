@@ -4,7 +4,6 @@ import { prisma } from "../../db/prisma.js";
 import { env } from "../../config/env.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { validate } from "../../shared/http/validate.js";
-import { createPersistentRateLimit } from "../../shared/http/rate-limit.middleware.js";
 import { createAuthMiddleware } from "./auth.middleware.js";
 import { createAuthSessionsService } from "./auth-sessions.service.js";
 
@@ -14,10 +13,7 @@ export function createAuthSessionsRouter({ prismaClient = prisma, secret = env.J
   const router = Router();
   const service = createAuthSessionsService({ prismaClient, secret });
   const { requireAuth } = createAuthMiddleware({ prismaClient, secret });
-  router.post("/refresh", createPersistentRateLimit({ prismaClient, namespace: "auth-refresh", limit: 20, windowMs: 60_000 }), validate(tokenSchema), asyncWrapper(async (req, res) => {
-    const data = await service.refresh(req.body.refreshToken);
-    res.status(200).json({ success: true, data });
-  }));
+  router.post("/refresh", (_req, res) => res.status(410).json({ success: false, error: { code: "ENDPOINT_DEPRECATED", message: "Use POST /api/v1/auth/refresh. Refresh tokens are now managed by an HttpOnly cookie." } }));
   router.post("/revoke", validate(tokenSchema), asyncWrapper(async (req, res) => {
     const data = await service.revoke(req.body.refreshToken);
     res.status(200).json({ success: true, data });

@@ -17,13 +17,15 @@
 - Validate both pickup and destination service-zone IDs against current service availability. Reference geography does not imply operational availability.
 - Maps credentials remain server-side. Normalize provider responses before returning them.
 - Do not assume payment availability from the existence of a route. The current backend forces `PAYMENTS_ENABLED=false`; payment initialization and provider processing are unavailable until explicitly approved by the project owner.
-- Refresh tokens are returned in JSON response bodies, not httpOnly cookies. Treat them as credentials: keep them out of logs, URLs, analytics and browser-readable persistent storage where possible.
+- Refresh tokens are set only in an HttpOnly, Secure production cookie; they are never returned in JSON. Browser clients must use credentialed requests and send the `X-Auth-CSRF: 1` header from an allowlisted Origin.
 
 ## Authentication and authorization
 
-- Access tokens are sent as bearer tokens.
+- Access tokens are sent as bearer tokens and should remain in application memory in browser clients.
+- The refresh credential is an HttpOnly cookie, not a request-body field. `POST /auth/refresh` takes no JSON body and rotates the cookie.
+- Browser login, refresh and logout requests require an allowlisted `Origin` plus `X-Auth-CSRF: 1`. CORS must use exact origins and `credentials: true`.
 - Registration requires `fullName`, `email` and `password`; account activation requires email verification.
-- `POST /auth/refresh` is the canonical refresh endpoint. `POST /auth/sessions/refresh` remains a deprecated compatibility alias and must not be used for new clients.
+- `POST /auth/refresh` is the canonical refresh endpoint. `POST /auth/sessions/refresh` is retired and returns 410; only `POST /auth/refresh` is supported.
 - Logout and logout-all revoke the current session or all user sessions.
 - Role checks are enforced server-side. Hiding a UI control is not authorization.
 - Booking, assignment, partner and custody reads must remain scoped to the authenticated owner or authorized operational role.

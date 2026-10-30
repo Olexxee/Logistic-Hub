@@ -28,7 +28,46 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
 }).strict();
 const resetPasswordSchema = emailTokenSchema.extend({ password: z.string().min(10).max(128) }).strict();
-const refreshSchema = z.object({ refreshToken: z.string().regex(/^[a-f0-9]{64}$/i) }).strict();
+const REFRESH_COOKIE_NAME = env.NODE_ENV === "production" ? "__Host-lh_refresh" : "lh_refresh";
+const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+function refreshCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: COOKIE_MAX_AGE_MS,
+  };
+}
+
+function readRefreshCookie(req) {
+  const header = req.headers.cookie ?? "";
+  const pair = header.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${REFRESH_COOKIE_NAME}=`));
+  return pair ? pair.slice(REFRESH_COOKIE_NAME.length + 1) : null;
+}
+
+function setRefreshCookie(res, token) {
+  res.cookie(REFRESH_COOKIE_NAME, token, refreshCookieOptions());
+}
+
+function clearRefreshCookie(res) {
+  const { maxAge: _maxAge, ...options } = refreshCookieOptions();
+  res.clearCookie(REFRESH_COOKIE_NAME, options);
+}
+
+function requireTrustedBrowserRequest(req, res, next) {
+  const origins = env.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean);
+  const origin = req.get("origin");
+  if (!origin || !origins.includes(origin) || req.get("x-auth-csrf") !== "1") {
+    return res.status(403).json({
+      success: false,
+      error: { code: "CSRF_VALIDATION_FAILED", message: "The browser request could not be verified." },
+    });
+  }
+  return next();
+}
+
 const DUMMY_PASSWORD_HASH = "scrypt$" + "0".repeat(32) + "$" + "0".repeat(128);
 
 const genericValidationError = (res, issues) => res.status(400).json({
@@ -59,6 +98,7 @@ export function createAuthRouter({
   appBaseUrl = env.APP_BASE_URL,
 } = {}) {
   const router = Router();
+  router.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
   const { requireAuth } = createAuthMiddleware({ prismaClient, secret });
   const authRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-write", limit: 10, windowMs: 15 * 60_000 });
   const refreshRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-refresh", limit: 30, windowMs: 15 * 60_000 });
@@ -188,7 +228,7 @@ export function createAuthRouter({
     }
   });
 
-  router.post("/login", authRateLimit, async (req, res, next) => {
+  router.post("/login", requireTrustedBrowserRequest, authRateLimit, async (req, res, next) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
 
@@ -215,10 +255,12 @@ export function createAuthRouter({
         });
       }
       const sessionTokens = await sessions.issue(user, { userAgent: req.get("user-agent"), ipHash: hashOpaqueToken(req.ip ?? req.socket?.remoteAddress ?? "unknown") });
+      setRefreshCookie(res, sessionTokens.refreshToken);
+      const { refreshToken: _refreshToken, refreshExpiresAt: _refreshExpiresAt, ...publicTokens } = sessionTokens;
       return res.status(200).json({
         success: true,
         data: {
-          ...sessionTokens,
+          ...publicTokens,
           user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
         },
       });
@@ -326,31 +368,35 @@ export function createAuthRouter({
     }
   });
 
-  router.post("/refresh", refreshRateLimit, async (req, res, next) => {
-    const parsed = refreshSchema.safeParse(req.body);
-    if (!parsed.success) return genericValidationError(res, parsed.error.issues);
+  router.post("/refresh", requireTrustedBrowserRequest, refreshRateLimit, async (req, res, next) => {
     try {
-      const tokens = await sessions.refresh(parsed.data.refreshToken);
-      return res.status(200).json({ success: true, data: tokens });
+      const refreshToken = readRefreshCookie(req);
+      const tokens = await sessions.refresh(refreshToken);
+      setRefreshCookie(res, tokens.refreshToken);
+      const { refreshToken: _refreshToken, refreshExpiresAt: _refreshExpiresAt, ...publicTokens } = tokens;
+      return res.status(200).json({ success: true, data: publicTokens });
     } catch (error) {
+      if (["INVALID_REFRESH_TOKEN", "UNAUTHORIZED"].includes(error.code)) clearRefreshCookie(res);
       return next(error);
     }
   });
 
-  router.post("/logout", requireAuth, async (req, res, next) => {
+  router.post("/logout", requireTrustedBrowserRequest, requireAuth, async (req, res, next) => {
     try {
       if (req.auth.sessionId) {
         await sessions.revokeSession({ sessionId: req.auth.sessionId, userId: req.user.id });
       }
+      clearRefreshCookie(res);
       return res.status(200).json({ success: true, data: { message: "Session revoked." } });
     } catch (error) {
       return next(error);
     }
   });
 
-  router.post("/logout-all", requireAuth, async (req, res, next) => {
+  router.post("/logout-all", requireTrustedBrowserRequest, requireAuth, async (req, res, next) => {
     try {
       await sessions.revokeAllForUser(req.user.id);
+      clearRefreshCookie(res);
       return res.status(200).json({ success: true, data: { message: "All sessions revoked." } });
     } catch (error) {
       return next(error);
