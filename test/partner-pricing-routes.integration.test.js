@@ -104,32 +104,42 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     assert.equal(rejectedReplay.json.data.replay, true);
 
     activeUserId = adminUser.id;
-    const second = await call(`/admin/parcel-bookings/${booking.id}/quotes`, {
-      method: "POST",
-      body: { transportChargeMinor: "1500", reason: "Revised approved manual quote", expiresInMinutes: 60 },
-    });
+    const [second, third] = await Promise.all([
+      call(`/admin/parcel-bookings/${booking.id}/quotes`, {
+        method: "POST",
+        body: { transportChargeMinor: "1500", reason: "Concurrent approved quote A", expiresInMinutes: 60 },
+      }),
+      call(`/admin/parcel-bookings/${booking.id}/quotes`, {
+        method: "POST",
+        body: { transportChargeMinor: "1500", reason: "Concurrent approved quote B", expiresInMinutes: 60 },
+      }),
+    ]);
     assert.equal(second.status, 201);
+    assert.equal(third.status, 201);
+    const concurrentQuotes = [second.json.data.quote, third.json.data.quote];
+    assert.deepEqual(concurrentQuotes.map((quote) => quote.version).sort((a, b) => a - b), [2, 3]);
+    const latestQuote = concurrentQuotes.find((quote) => quote.version === 3);
 
     activeUserId = sender.id;
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "MATCHING" } });
-    const blockedMatchingAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    const blockedMatchingAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(blockedMatchingAcceptance.status, 409);
     const stillOfferedDuringMatching = await prisma.shipmentQuote.findUnique({ where: { id: second.json.data.quote.id } });
     assert.equal(stillOfferedDuringMatching.status, "OFFERED");
 
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "IN_TRANSIT" } });
-    const blockedLateAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    const blockedLateAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(blockedLateAcceptance.status, 409);
     assert.equal(blockedLateAcceptance.json.error.code, "QUOTE_NOT_ACCEPTABLE");
     const stillOffered = await prisma.shipmentQuote.findUnique({ where: { id: second.json.data.quote.id } });
     assert.equal(stillOffered.status, "OFFERED");
 
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "DRAFT" } });
-    const accepted = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    const accepted = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.json.data.quote.status, "ACCEPTED");
     assert.equal(accepted.json.data.replay, false);
-    const acceptedReplay = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    const acceptedReplay = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(acceptedReplay.status, 200);
     assert.equal(acceptedReplay.json.data.quote.status, "ACCEPTED");
     assert.equal(acceptedReplay.json.data.replay, true);
