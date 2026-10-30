@@ -75,6 +75,67 @@ export function createCustodyRepository({ prismaClient }) {
     createAudit(data, tx = prismaClient) {
       return tx.operationalAuditEvent.create({ data });
     },
+    listHubHandovers(hubPointIds, { direction = "incoming", status, cursor, limit = 25 } = {}, tx = prismaClient) {
+      const where = direction === "incoming"
+        ? { toPartyType: "HUB", toPartyId: { in: hubPointIds }, ...(status ? { status } : {}) }
+        : { fromPartyType: "HUB", fromPartyId: { in: hubPointIds }, ...(status ? { status } : {}) };
+      return tx.custodyHandover.findMany({
+        where,
+        orderBy: [{ initiatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true,
+          fromPartyType: true, fromPartyId: true, toPartyType: true, toPartyId: true,
+          status: true, conditionAtRelease: true, conditionAtReceipt: true, evidence: true,
+          expiresAt: true, initiatedAt: true, confirmedAt: true, rejectedAt: true, rejectionReason: true,
+          parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true, status: true } },
+          deliveryLeg: {
+            select: {
+              id: true, sequence: true, type: true, status: true,
+              originServiceZone: { select: { name: true, state: { select: { name: true } } } },
+              destinationServiceZone: { select: { name: true, state: { select: { name: true } } } },
+              originHubPoint: { select: { id: true, name: true, address: true } },
+              destinationHubPoint: { select: { id: true, name: true, address: true } },
+            },
+          },
+          hubPoint: { select: { id: true, name: true, address: true } },
+        },
+      });
+    },
+    findDispatchableLegs(hubPointIds, { cursor, limit = 25 } = {}, tx = prismaClient) {
+      return tx.deliveryLeg.findMany({
+        where: {
+          originHubPointId: { in: hubPointIds },
+          status: { in: ["ASSIGNED", "READY_FOR_ASSIGNMENT"] },
+          parcelBooking: { is: { paymentStatus: "SUCCEEDED" } },
+          OR: [
+            { assignments: { some: { status: "ARRIVED_AT_PICKUP" } } },
+            { partnerAssignments: { some: { status: "ACCEPTED" } } },
+          ],
+        },
+        orderBy: [{ sequence: "asc" }, { id: "asc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, sequence: true, type: true, status: true,
+          originHubPointId: true, destinationHubPointId: true,
+          parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true } },
+          originServiceZone: { select: { name: true, state: { select: { name: true } } } },
+          destinationServiceZone: { select: { name: true, state: { select: { name: true } } } },
+          originHubPoint: { select: { id: true, name: true, address: true } },
+          destinationHubPoint: { select: { id: true, name: true, address: true } },
+          assignments: {
+            where: { status: "ARRIVED_AT_PICKUP" },
+            select: { id: true, driverProfileId: true, status: true, driverProfile: { select: { user: { select: { fullName: true } } } } },
+          },
+          partnerAssignments: {
+            where: { status: "ACCEPTED" },
+            select: { id: true, partnerId: true, status: true, partner: { select: { displayName: true } } },
+          },
+        },
+      });
+    },
     listMyHandovers(userId, hubIds, partnerIds, driverIds, tx = prismaClient) {
       const parties = [
         { fromPartyType: "SENDER", fromPartyId: userId }, { toPartyType: "SENDER", toPartyId: userId },
