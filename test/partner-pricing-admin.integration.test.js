@@ -146,6 +146,9 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     assert.ok(listed.json.data.items.some((item) => item.id === partner.id && item._count.agreements === 1));
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
+    if (rateCard) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: rateCard.id } });
+    if (agreement) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: agreement.id } });
+    if (partner) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: partner.id } });
     if (rateCard) await prisma.partnerRate.deleteMany({ where: { rateCardId: rateCard.id } });
     if (rateCard) await prisma.partnerRateCard.deleteMany({ where: { id: rateCard.id } });
     if (agreement) await prisma.partnerAgreement.deleteMany({ where: { id: agreement.id } });
