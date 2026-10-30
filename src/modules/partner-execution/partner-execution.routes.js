@@ -16,11 +16,11 @@ export function createPartnerExecutionRouter({ prismaClient = prisma } = {}) {
   const router = Router();
   const controller = createPartnerExecutionController({ prismaClient });
   router.use(createPartnerApiAuth({ prismaClient }));
-  router.get("/partner/assignments", controller.list);
-  router.post("/partner/assignments/:assignmentId/accept", validate(assignmentParams, "params"), controller.accept);
-  router.post("/partner/assignments/:assignmentId/reject", validate(assignmentParams, "params"), validate(rejectBody), controller.reject);
-  router.post("/partner/assignments/:assignmentId/start", validate(assignmentParams, "params"), controller.start);
-  router.post("/partner/assignments/:assignmentId/arrived-at-hub", validate(assignmentParams, "params"), controller.arrive);
+  router.get("/assignments", controller.list);
+  router.post("/assignments/:assignmentId/accept", validate(assignmentParams, "params"), controller.accept);
+  router.post("/assignments/:assignmentId/reject", validate(assignmentParams, "params"), validate(rejectBody), controller.reject);
+  router.post("/assignments/:assignmentId/start", validate(assignmentParams, "params"), controller.start);
+  router.post("/assignments/:assignmentId/arrived-at-hub", validate(assignmentParams, "params"), controller.arrive);
   return router;
 }
 
