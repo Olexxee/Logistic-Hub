@@ -21,6 +21,7 @@ const quoteListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
 const assignmentQuery = z.object({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
 const paymentParams = z.object({ paymentAttemptId: id }).strict();
