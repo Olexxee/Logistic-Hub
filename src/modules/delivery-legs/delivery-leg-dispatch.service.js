@@ -186,6 +186,25 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
       const now = clock();
       const acceptanceHash = hash({ bookingId, legId, offerId });
       try {
+        const priorAcceptance = await db.findOfferByAcceptanceKey(idempotencyKey);
+      if (priorAcceptance) {
+        if (priorAcceptance.deliveryLegId !== legId || priorAcceptance.acceptancePayloadHash !== acceptanceHash) {
+          throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare acceptance.");
+        }
+        const priorAssignment = await prismaClient.driverAssignment.findFirst({
+          where: { deliveryLegId: legId, driverProfileId: priorAcceptance.driverProfileId },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, status: true, agreedFareMinor: true },
+        });
+        return {
+          bookingId, deliveryLegId: legId, offerId: priorAcceptance.id,
+          assignmentId: priorAssignment?.id ?? null,
+          status: "AWAITING_PAYMENT",
+          agreedFareMinor: priorAssignment?.agreedFareMinor?.toString() ?? priorAcceptance.proposedFareMinor.toString(),
+          currency: priorAcceptance.currency, paymentRequired: true, paymentEnabled: false, replay: true,
+        };
+      }
+      try {
         return await db.acceptOfferTransaction(async (tx) => {
           const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId } });
           if (!booking) throw new NotFoundError("Parcel booking not found.");
