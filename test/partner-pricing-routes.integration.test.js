@@ -124,14 +124,14 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "MATCHING" } });
     const blockedMatchingAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(blockedMatchingAcceptance.status, 409);
-    const stillOfferedDuringMatching = await prisma.shipmentQuote.findUnique({ where: { id: second.json.data.quote.id } });
+    const stillOfferedDuringMatching = await prisma.shipmentQuote.findUnique({ where: { id: latestQuote.id } });
     assert.equal(stillOfferedDuringMatching.status, "OFFERED");
 
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "IN_TRANSIT" } });
     const blockedLateAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(blockedLateAcceptance.status, 409);
     assert.equal(blockedLateAcceptance.json.error.code, "QUOTE_NOT_ACCEPTABLE");
-    const stillOffered = await prisma.shipmentQuote.findUnique({ where: { id: second.json.data.quote.id } });
+    const stillOffered = await prisma.shipmentQuote.findUnique({ where: { id: latestQuote.id } });
     assert.equal(stillOffered.status, "OFFERED");
 
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "DRAFT" } });
@@ -159,7 +159,7 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     assert.equal(acceptedEvent.actorUserId, sender.id);
     assert.equal(acceptedEvent.fromStatus, "DRAFT");
     assert.equal(acceptedEvent.toStatus, "AWAITING_PAYMENT");
-    assert.equal(acceptedEvent.metadata.quoteId, second.json.data.quote.id);
+    assert.equal(acceptedEvent.metadata.quoteId, latestQuote.id);
     assert.equal(acceptedEvent.metadata.totalCustomerChargeMinor, "1500");
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
