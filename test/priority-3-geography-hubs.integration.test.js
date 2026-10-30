@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import { createHubPointsService } from "../src/modules/hub-points/hub-points.service.js";
 import { createHubPointsAdminService } from "../src/modules/hub-points/hub-points.admin.service.js";
 import { createServiceZonesService } from "../src/modules/geography/service-zones.service.js";
+import { createServiceZonesAdminService } from "../src/modules/geography/service-zones.admin.service.js";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRITY_TESTS === "true";
 const prisma = new PrismaClient();
@@ -27,12 +28,9 @@ test("public geography and hub discovery expose only currently eligible operatio
     state = await prisma.state.create({
       data: { countryId: country.id, code: `S${suffix}`, name: `Hub Test State ${suffix}`, isActive: true },
     });
-    zone = await prisma.serviceZone.create({
-      data: { stateId: state.id, code: `Z${suffix}`, name: `Hub Test Zone ${suffix}`, isActive: true },
-    });
-    availability = await prisma.serviceAvailability.create({
-      data: { serviceZoneId: zone.id, serviceType: "PARCEL_DELIVERY", isEnabled: true },
-    });
+    const zoneAdmin = createServiceZonesAdminService({ prismaClient: prisma });
+    zone = await zoneAdmin.create({ stateId: state.id, code: `Z${suffix}`, name: `Hub Test Zone ${suffix}`, isActive: true });
+    availability = await zoneAdmin.setAvailability(zone.id, { serviceType: "PARCEL_DELIVERY", isEnabled: true });
     const hubAdmin = createHubPointsAdminService({ prismaClient: prisma });
     hub = await hubAdmin.create({
       serviceZoneId: zone.id,
@@ -57,10 +55,7 @@ test("public geography and hub discovery expose only currently eligible operatio
     });
     assert.ok(hubs.data.some((item) => item.id === hub.id));
 
-    await prisma.serviceAvailability.update({
-      where: { id: availability.id },
-      data: { isEnabled: false },
-    });
+    await zoneAdmin.setAvailability(zone.id, { serviceType: "PARCEL_DELIVERY", isEnabled: false });
 
     await hubAdmin.setStatus(hub.id, "SUSPENDED");
     await assert.rejects(
