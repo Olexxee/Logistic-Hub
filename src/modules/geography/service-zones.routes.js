@@ -1,12 +1,22 @@
 import { Router } from "express";
+import { requireAuth, requireRole } from "../auth/auth.middleware.js";
+import { createServiceZonesAdminController } from "./service-zones.admin.controller.js";
 import { ZodError } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { createServiceZonesService } from "./service-zones.service.js";
 import { listServiceZonesQuerySchema } from "./service-zones.schemas.js";
 
-export function createServiceZonesRouter({ prismaClient = prisma } = {}) {
+export function createServiceZonesRouter({ prismaClient = prisma, authMiddleware = requireAuth, roleMiddleware = requireRole } = {}) {
   const router = Router();
   const service = createServiceZonesService({ prismaClient });
+  const admin = createServiceZonesAdminController({ prismaClient });
+  const requireAdmin = roleMiddleware("ADMIN");
+
+  router.get("/admin", authMiddleware, requireAdmin, admin.list);
+  router.post("/admin", authMiddleware, requireAdmin, admin.create);
+  router.patch("/admin/:serviceZoneId", authMiddleware, requireAdmin, admin.update);
+  router.patch("/admin/:serviceZoneId/status", authMiddleware, requireAdmin, admin.setActive);
+  router.put("/admin/:serviceZoneId/availability", authMiddleware, requireAdmin, admin.setAvailability);
 
   router.get("/", async (req, res, next) => {
     const parsed = listServiceZonesQuerySchema.safeParse(req.query);
