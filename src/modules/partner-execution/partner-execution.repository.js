@@ -33,10 +33,24 @@ export function createPartnerExecutionRepository({ prismaClient }) {
           where,
           skip,
           take,
-          include: {
+          select: {
+            id: true,
+            status: true,
+            agreedTransportChargeMinor: true,
+            currency: true,
+            assignedAt: true,
+            acceptedAt: true,
+            startedAt: true,
+            completedAt: true,
+            failureReason: true,
             partner: { select: { id: true, displayName: true } },
             deliveryLeg: {
-              include: {
+              select: {
+                id: true,
+                sequence: true,
+                type: true,
+                status: true,
+                parcelBookingId: true,
                 parcelBooking: { select: {
                   id: true, publicReference: true, parcelCategory: true, parcelSize: true,
                   handlingInstructions: true, status: true,
