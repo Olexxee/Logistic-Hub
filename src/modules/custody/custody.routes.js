@@ -13,6 +13,35 @@ const evidenceSchema = z.array(z.object({
   capturedAt: z.string().datetime().optional(),
   note: z.string().trim().max(300).optional(),
 }).strict()).max(10).optional();
+const hubOperationsQuerySchema = z.object({
+  direction: z.enum(["incoming", "outgoing"]).default("incoming"),
+  status: z.enum(["PENDING_CONFIRMATION", "CONFIRMED", "REJECTED", "CANCELLED", "EXPIRED"]).optional(),
+  hubPointId: id.optional(),
+  cursor: id.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
+const hubDispatchQuerySchema = z.object({
+  hubPointId: id.optional(),
+  cursor: id.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
+const createHubHandoverSchema = z.object({
+  hubPointId: id,
+  deliveryLegId: id,
+  toPartyType: z.enum(["DRIVER", "TRANSPORT_PARTNER"]),
+  toPartyId: id,
+  conditionAtRelease: z.string().trim().min(2).max(500),
+  evidence: evidenceSchema,
+}).strict();
+const hubExceptionSchema = z.object({
+  hubPointId: id,
+  deliveryLegId: id,
+  type: z.enum(["DAMAGED_PARCEL", "MISSING_PARCEL", "FAILED_DELIVERY", "ROUTE_DISRUPTION", "OTHER"]),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "CRITICAL"]).default("NORMAL"),
+  title: z.string().trim().min(3).max(160),
+  description: z.string().trim().min(5).max(2000),
+  evidence: evidenceSchema,
+}).strict();
 const operatorSchema = z.object({
   userId: id,
   role: z.enum(["MANAGER", "OPERATOR"]).default("OPERATOR"),
@@ -73,6 +102,28 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
   router.patch("/admin/users/:userId/phone-verification", authMiddleware, admin, validateParams, validate(phoneVerificationSchema), asyncWrapper(controller.setRecipientPhoneVerification));
   router.post("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, validate(operatorSchema), asyncWrapper(controller.addHubOperator));
   router.patch("/admin/hub-points/:hubPointId/operators/:operatorId", authMiddleware, admin, validateParams, validate(operatorStatusSchema), asyncWrapper(controller.setHubOperatorStatus));
+  router.get("/hub-operations/handovers", authMiddleware, (req, res, next) => {
+    const parsed = hubOperationsQuerySchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ success: false, error: {
+      code: "VALIDATION_ERROR", message: "One or more query parameters are invalid.",
+      details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
+    } });
+    req.validatedQuery = parsed.data;
+    return next();
+  }, asyncWrapper(controller.listHubHandovers));
+  router.get("/hub-operations/dispatchable", authMiddleware, (req, res, next) => {
+    const parsed = hubDispatchQuerySchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ success: false, error: {
+      code: "VALIDATION_ERROR", message: "One or more query parameters are invalid.",
+      details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
+    } });
+    req.validatedQuery = parsed.data;
+    return next();
+  }, asyncWrapper(controller.listHubDispatchable));
+  router.post("/hub-operations/handovers", authMiddleware, validate(createHubHandoverSchema), asyncWrapper(controller.createHubHandover));
+  router.post("/hub-operations/handovers/:handoverId/decision", authMiddleware, validateParams, validate(handoverDecisionSchema), asyncWrapper(controller.decideHubHandover));
+  router.post("/hub-operations/cases", authMiddleware, validate(hubExceptionSchema), asyncWrapper(controller.reportHubException));
+
   router.get("/custody/handovers/mine", authMiddleware, asyncWrapper(controller.listMyHandovers));
   router.post("/custody/handovers", authMiddleware, validate(createHandoverSchema), asyncWrapper(controller.createHandover));
   router.post("/custody/handovers/:handoverId/decision", authMiddleware, validateParams, validate(handoverDecisionSchema), asyncWrapper(controller.confirmHandover));
