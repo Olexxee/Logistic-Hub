@@ -44,7 +44,7 @@ function refreshCookieOptions() {
 function readRefreshCookie(req) {
   const header = req.headers.cookie ?? "";
   const pair = header.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${REFRESH_COOKIE_NAME}=`));
-  return pair ? decodeURIComponent(pair.slice(REFRESH_COOKIE_NAME.length + 1)) : null;
+  return pair ? pair.slice(REFRESH_COOKIE_NAME.length + 1) : null;
 }
 
 function setRefreshCookie(res, token) {
