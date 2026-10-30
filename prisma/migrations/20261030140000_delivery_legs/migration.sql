@@ -81,3 +81,14 @@ ALTER TABLE "driver_assignments"
   ADD CONSTRAINT "driver_assignments_deliveryLegId_fkey"
   FOREIGN KEY ("deliveryLegId") REFERENCES "delivery_legs"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "verification_tokens"
+  ADD COLUMN "deliveryLegId" TEXT;
+
+CREATE INDEX "verification_tokens_deliveryLegId_action_status_idx"
+  ON "verification_tokens"("deliveryLegId", "action", "status");
+
+ALTER TABLE "verification_tokens"
+  ADD CONSTRAINT "verification_tokens_deliveryLegId_fkey"
+  FOREIGN KEY ("deliveryLegId") REFERENCES "delivery_legs"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
