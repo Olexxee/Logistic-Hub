@@ -19,6 +19,7 @@ enum UserRole {
   CUSTOMER
   DRIVER
   HUB_OPERATOR
+  PARTNER_OPERATOR
   SUPPORT
   ADMIN
 }
@@ -219,6 +220,69 @@ enum ShipmentQuoteStatus {
   SUPERSEDED
 }
 
+enum PartnerAssignmentStatus { 
+  ASSIGNED
+  ACCEPTED
+  IN_TRANSIT
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CustodyPartyType {
+  SENDER
+  DRIVER
+  HUB
+  TRANSPORT_PARTNER
+  RECIPIENT
+}
+
+enum CustodyHandoverStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum OperationalCaseType {
+  FAILED_HANDOVER
+  DAMAGED_PARCEL
+  MISSING_PARCEL
+  FAILED_DELIVERY
+  PARTNER_DELAY
+  ROUTE_DISRUPTION
+  PRICING_EXCEPTION
+  CUSTOMER_DISPUTE
+  OTHER
+}
+
+enum OperationalCaseStatus {
+  OPEN
+  TRIAGED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum OperationalCasePriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum PartnerMemberRole {
+  OWNER
+  OPERATIONS
+  DISPATCHER
+}
+
+enum HubOperatorRole {
+  MANAGER
+  OPERATOR
+}
+
 enum AuthTokenPurpose {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -242,6 +306,13 @@ model User {
   updatedAt       DateTime   @updatedAt
 
   operationalAuditEvents OperationalAuditEvent[] @relation("OperationalAuditActor")
+  partnerMemberships TransportPartnerMember[]
+  hubMemberships HubPointOperator[]
+  initiatedCustodyHandovers CustodyHandover[] @relation("CustodyHandoverInitiator")
+  confirmedCustodyHandovers CustodyHandover[] @relation("CustodyHandoverConfirmer")
+  reportedOperationalCases OperationalCase[] @relation("OperationalCaseReporter")
+  assignedOperationalCases OperationalCase[] @relation("OperationalCaseAssignee")
+  createdPartnerAssignments PartnerDeliveryAssignment[] @relation("PartnerDeliveryAssignmentAssigner")
   driverProfile    DriverProfile?
   sentParcels      ParcelBooking[]    @relation("ParcelSender")
   rideBookings     RideBooking[]      @relation("RidePassenger")
@@ -545,6 +616,9 @@ model HubPoint {
   serviceZone ServiceZone @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
   originDeliveryLegs DeliveryLeg[] @relation("DeliveryLegOriginHub")
   destinationDeliveryLegs DeliveryLeg[] @relation("DeliveryLegDestinationHub")
+  operators HubPointOperator[]
+  custodyHandovers CustodyHandover[]
+  operationalCases OperationalCase[]
 
   @@index([serviceZoneId, status])
   @@map("hub_points")
@@ -638,6 +712,8 @@ model ParcelBooking {
   supportTickets         SupportTicket[]
   quotes                 ShipmentQuote[]
   deliveryLegs           DeliveryLeg[]
+  custodyHandovers       CustodyHandover[]
+  operationalCases       OperationalCase[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
@@ -792,6 +868,9 @@ model DeliveryLeg {
   assignments       DriverAssignment[]
   offers             DeliveryLegOffer[]
   verificationTokens VerificationToken[]
+  partnerAssignments PartnerDeliveryAssignment[]
+  custodyHandovers   CustodyHandover[]
+  operationalCases   OperationalCase[]
 
   @@unique([parcelBookingId, sequence])
   @@index([status, plannedAt])
@@ -1097,6 +1176,9 @@ model TransportPartner {
   updatedAt          DateTime           @updatedAt
 
   agreements PartnerAgreement[]
+  members TransportPartnerMember[]
+  deliveryAssignments PartnerDeliveryAssignment[]
+  operationalCases OperationalCase[]
 
   @@index([status, verificationStatus])
   @@map("transport_partners")
@@ -1120,6 +1202,7 @@ model PartnerAgreement {
   partner   TransportPartner   @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   rateCards PartnerRateCard[]
   quotes    ShipmentQuote[]
+  deliveryAssignments PartnerDeliveryAssignment[]
 
   @@index([partnerId, status, effectiveFrom])
   @@index([status, effectiveFrom, effectiveUntil])
@@ -1227,3 +1310,147 @@ model OperationalAuditEvent {
   @@index([actorUserId, createdAt])
   @@map("operational_audit_events")
 }
+
+
+model TransportPartnerMember {
+  id        String            @id @default(cuid())
+  partnerId String
+  userId    String
+  role      PartnerMemberRole @default(OPERATIONS)
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  partner TransportPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, userId])
+  @@index([userId, isActive])
+  @@index([partnerId, isActive])
+  @@map("transport_partner_members")
+}
+
+model HubPointOperator {
+  id         String          @id @default(cuid())
+  hubPointId String
+  userId     String
+  role       HubOperatorRole @default(OPERATOR)
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  hubPoint HubPoint @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([hubPointId, userId])
+  @@index([userId, isActive])
+  @@index([hubPointId, isActive])
+  @@map("hub_point_operators")
+}
+
+model PartnerDeliveryAssignment {
+  id                         String                  @id @default(cuid())
+  deliveryLegId              String
+  partnerId                  String
+  agreementId                String
+  assignedByUserId           String?
+  status                     PartnerAssignmentStatus @default(ASSIGNED)
+  agreedTransportChargeMinor BigInt
+  currency                   String                  @default("NGN")
+  idempotencyKey             String                  @unique
+  assignedAt                 DateTime                @default(now())
+  acceptedAt                 DateTime?
+  startedAt                  DateTime?
+  completedAt                DateTime?
+  cancelledAt                DateTime?
+  failureReason              String?
+  metadata                   Json?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+
+  deliveryLeg DeliveryLeg      @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  partner     TransportPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  agreement   PartnerAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  assignedBy  User?            @relation("PartnerDeliveryAssignmentAssigner", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([deliveryLegId, status])
+  @@index([partnerId, status, assignedAt])
+  @@index([agreementId, status])
+  @@map("partner_delivery_assignments")
+}
+
+model CustodyHandover {
+  id                   String                @id @default(cuid())
+  parcelBookingId      String
+  deliveryLegId        String
+  hubPointId           String?
+  fromPartyType        CustodyPartyType
+  fromPartyId          String
+  toPartyType          CustodyPartyType
+  toPartyId            String
+  initiatedByUserId    String
+  confirmedByUserId    String?
+  status               CustodyHandoverStatus @default(PENDING_CONFIRMATION)
+  conditionAtRelease   String
+  conditionAtReceipt   String?
+  evidence             Json?
+  verificationCodeHash String?
+  expiresAt            DateTime?
+  initiatedAt          DateTime              @default(now())
+  confirmedAt          DateTime?
+  rejectedAt           DateTime?
+  rejectionReason      String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  deliveryLeg   DeliveryLeg   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  hubPoint      HubPoint?     @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
+  initiatedBy   User          @relation("CustodyHandoverInitiator", fields: [initiatedByUserId], references: [id], onDelete: Restrict)
+  confirmedBy   User?         @relation("CustodyHandoverConfirmer", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([parcelBookingId, initiatedAt])
+  @@index([deliveryLegId, status, initiatedAt])
+  @@index([hubPointId, status, initiatedAt])
+  @@map("custody_handovers")
+}
+
+model OperationalCase {
+  id                String                  @id @default(cuid())
+  publicReference   String                  @unique
+  type              OperationalCaseType
+  status            OperationalCaseStatus   @default(OPEN)
+  priority          OperationalCasePriority  @default(NORMAL)
+  parcelBookingId   String?
+  deliveryLegId     String?
+  custodyHandoverId String?
+  partnerId         String?
+  hubPointId        String?
+  reportedByUserId  String
+  assignedToUserId  String?
+  title             String
+  description       String
+  evidence          Json?
+  resolution        String?
+  resolvedAt        DateTime?
+  closedAt          DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  parcelBooking   ParcelBooking?   @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  deliveryLeg     DeliveryLeg?     @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  custodyHandover CustodyHandover? @relation(fields: [custodyHandoverId], references: [id], onDelete: Restrict)
+  partner         TransportPartner? @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  hubPoint        HubPoint?        @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
+  reportedBy      User             @relation("OperationalCaseReporter", fields: [reportedByUserId], references: [id], onDelete: Restrict)
+  assignedTo      User?            @relation("OperationalCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: Restrict)
+
+  @@index([status, priority, createdAt])
+  @@index([parcelBookingId, status])
+  @@index([deliveryLegId, status])
+  @@index([partnerId, status])
+  @@index([hubPointId, status])
+  @@map("operational_cases")
+}
+
+
