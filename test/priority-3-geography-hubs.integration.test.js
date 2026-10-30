@@ -40,6 +40,7 @@ test("public geography and hub discovery expose only currently eligible operatio
       longitude: 3.3792,
       operatorName: "Integration Test Operator",
       operatorPhone: "+2348000000000",
+      operatorVerificationStatus: "VERIFIED", operatorVerifiedAt: new Date(),
       openingHours: Object.fromEntries(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map((day) => [day, [{ opensAt: "08:00", closesAt: "18:00" }]])),
       acceptedParcelTypes: ["DOCUMENTS", "SMALL_PARCEL"],
       capacityConfig: { maxParcels: 80 },
