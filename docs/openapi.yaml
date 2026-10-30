@@ -3567,7 +3567,12 @@ paths:
       x-implementation-status: implemented
       security: []
       responses:
-        '200': { description: API process is alive. }
+        '200':
+          description: API process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
   /geography/admin/countries:
     get:
       tags: [Geography administration]
@@ -4196,23 +4201,17 @@ components:
       type: object
       required: [success, data]
       properties:
-        success:
-          const: true
+        success: { const: true }
         data:
           type: object
-          required: [name, status, version, paymentsEnabled]
+          required: [service, status, uptimeSeconds, timestamp, environment, paymentsEnabled]
           properties:
-            name:
-              type: string
-              const: Logistic Hub API
-            status:
-              type: string
-              const: ok
-            version:
-              type: string
-            paymentsEnabled:
-              type: boolean
-              const: false
+            service: { type: string, const: logistic-hub-api }
+            status: { type: string, const: ok }
+            uptimeSeconds: { type: integer, minimum: 0 }
+            timestamp: { type: string, format: date-time }
+            environment: { type: string }
+            paymentsEnabled: { type: boolean, const: false }
     ErrorResponse:
       type: object
       required: [success, error]
