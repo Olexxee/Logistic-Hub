@@ -338,6 +338,7 @@ model DriverProfile {
   locations          DriverLocation[]
   coverage           DriverCoverage[]
   offers             DriverOffer[]
+  deliveryLegOffers  DeliveryLegOffer[]
   assignments        DriverAssignment[]
   payouts            DriverPayout[]
   settlementAccounts DriverSettlementAccount[]
@@ -789,6 +790,7 @@ model DeliveryLeg {
   originHubPoint HubPoint? @relation("DeliveryLegOriginHub", fields: [originHubPointId], references: [id], onDelete: Restrict)
   destinationHubPoint HubPoint? @relation("DeliveryLegDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
   assignments       DriverAssignment[]
+  offers             DeliveryLegOffer[]
   verificationTokens VerificationToken[]
 
   @@unique([parcelBookingId, sequence])
@@ -797,6 +799,30 @@ model DeliveryLeg {
   @@index([originHubPointId])
   @@index([destinationHubPointId])
   @@map("delivery_legs")
+}
+
+
+model DeliveryLegOffer {
+  id                         String      @id @default(cuid())
+  deliveryLegId              String
+  driverProfileId            String
+  status                     OfferStatus @default(OFFERED)
+  proposedFareMinor          BigInt?
+  proposalIdempotencyKey     String?     @unique
+  proposalPayloadHash        String?
+  acceptanceIdempotencyKey   String?     @unique
+  acceptancePayloadHash      String?
+  currency                   String      @default("NGN")
+  expiresAt                  DateTime
+  respondedAt                DateTime?
+  createdAt                  DateTime    @default(now())
+
+  deliveryLeg   DeliveryLeg  @relation(fields: [deliveryLegId], references: [id], onDelete: Cascade)
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+
+  @@index([deliveryLegId, status, expiresAt])
+  @@index([driverProfileId, status, expiresAt])
+  @@map("delivery_leg_offers")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
