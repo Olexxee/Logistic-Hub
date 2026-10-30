@@ -1,6 +1,6 @@
 # Backend API Contracts
 
-**Status:** This document describes stable API-wide rules. The mounted Express routes and the OpenAPI implementation-status annotations are the contract baseline; historical endpoint lists are intentionally not maintained here.
+**Status:** This document describes stable API-wide rules. Use the frontend readiness audit for known route gaps and do not infer runtime availability solely from an OpenAPI path or implementation-status annotation; full route-to-spec parity is still being completed.
 
 - Machine-readable API: [`openapi.yaml`](openapi.yaml)
 - Frontend readiness and known backend gaps: [`frontend-contract-readiness.md`](frontend-contract-readiness.md)
