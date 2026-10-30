@@ -26,6 +26,7 @@ test("hub activation is blocked until operational details are complete", async (
   const prismaClient = {
     hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
     serviceZone: {},
+    $transaction: async callback => callback({ hubPoint: { update: async ({ data }) => ({ ...hub, ...data }) }, operationalAuditEvent: { create: async () => ({}) } }),
   };
   const service = createHubPointsAdminService({ prismaClient });
   await assert.rejects(service.setStatus("hub-1", "ACTIVE"), { code: "HUB_OPERATIONAL_DETAILS_REQUIRED", statusCode: 409 });
