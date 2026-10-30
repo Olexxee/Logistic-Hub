@@ -143,6 +143,8 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     assert.equal(acceptedReplay.status, 200);
     assert.equal(acceptedReplay.json.data.quote.status, "ACCEPTED");
     assert.equal(acceptedReplay.json.data.replay, true);
+    assert.equal(acceptedReplay.json.data.routePlan.routeMode, "LOCAL_DIRECT");
+    assert.deepEqual(acceptedReplay.json.data.routePlan.legs, []);
 
     const persistedBooking = await prisma.parcelBooking.findUnique({ where: { id: booking.id } });
     assert.equal(persistedBooking.status, "AWAITING_PAYMENT");
