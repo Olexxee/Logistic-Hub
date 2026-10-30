@@ -4,16 +4,21 @@
 
 - POST /api/v1/auth/register — creates a pending customer account and sends an email verification link.
 - POST /api/v1/auth/verify-email — consumes a one-time, expiring verification token and activates the account.
-- POST /api/v1/auth/login — checks the password and verified active account, then returns a 15-minute bearer access token.
+- POST /api/v1/auth/login — checks the password and verified active account, creates a persistent refresh session, and returns a 15-minute bearer access token plus a 30-day opaque refresh token.
 - POST /api/v1/auth/password/forgot — sends a reset link without disclosing whether an account exists.
 - POST /api/v1/auth/password/reset — consumes a one-time, expiring reset token and changes the password.
+- POST /api/v1/auth/refresh — atomically rotates the refresh token and issues a new access token.
+- POST /api/v1/auth/logout — revokes the current authenticated session.
+- POST /api/v1/auth/logout-all — revokes every active session for the authenticated account.
 - GET /api/v1/auth/me — returns the current authenticated account.
 
 ## Security controls
 
 - Passwords use Node.js scrypt with per-password random salts; plaintext passwords are never stored.
 - Email-action tokens are cryptographically random, stored as SHA-256 hashes, purpose-scoped and expiring. Tokens are consumed atomically to prevent replay.
-- Access tokens are HS256-signed with a server-side secret and expire after 15 minutes. Protected requests re-check account status against the database.
+- Access tokens are HS256-signed with a server-side secret, carry the session ID, and expire after 15 minutes. Protected requests re-check account status and session revocation against the database.
+- Refresh tokens are cryptographically random, stored only as SHA-256 hashes, expire after 30 days, and rotate atomically on use. Reuse of a rotated token is rejected.
+- Password reset revokes every active session and consumes outstanding password-reset tokens.
 - New accounts are always created as CUSTOMER/PENDING. Clients cannot choose roles or status.
 - Error responses do not expose password hashes, token hashes, email-provider responses, or signing secrets.
 
@@ -23,4 +28,4 @@ Set JWT_ACCESS_SECRET to at least 32 random characters in production. Set EMAIL_
 
 ## Limitations and next steps
 
-This first auth increment uses short-lived access tokens without refresh tokens or server-side session revocation; access tokens may remain valid for up to 15 minutes after a password reset or account-state change. Add refresh-session rotation/revocation and persistent rate limiting before treating auth as production complete. Driver onboarding, role elevation/admin workflows, phone verification, and booking-specific authorization are separate modules.
+Session revocation is checked on every authenticated request. Refresh rotation and authentication endpoints use persistent rate limiting. Remaining production work includes route-level integration coverage, account recovery delivery monitoring, and booking-specific authorization. Existing access tokens issued before session binding may remain valid until their 15-minute expiry. Driver onboarding, role elevation/admin workflows, phone verification, and booking-specific authorization are separate modules.

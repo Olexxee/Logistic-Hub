@@ -7,12 +7,12 @@ const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export function createAuthSessionsService({ prismaClient, secret, clock = () => new Date() }) {
   const repository = createAuthSessionsRepository(prismaClient);
   return {
-    async issue(user) {
+    async issue(user, metadata = {}) {
       if (user.status !== "ACTIVE" || !user.emailVerifiedAt) throw new ForbiddenError("Verify your email before using a session.", "ACCOUNT_NOT_ACTIVE");
       const raw = createOpaqueToken();
       const now = clock();
-      const row = await repository.create({ userId: user.id, tokenHash: hashOpaqueToken(raw), expiresAt: new Date(now.getTime() + REFRESH_TTL_MS), lastUsedAt: now });
-      const access = signAccessToken({ userId: user.id, role: user.role, secret, now: now.getTime() });
+      const row = await repository.create({ userId: user.id, tokenHash: hashOpaqueToken(raw), expiresAt: new Date(now.getTime() + REFRESH_TTL_MS), lastUsedAt: now, userAgent: metadata.userAgent?.slice(0, 512) ?? null, ipHash: metadata.ipHash ?? null });
+      const access = signAccessToken({ userId: user.id, role: user.role, sessionId: row.id, secret, now: now.getTime() });
       return { refreshToken: raw, refreshExpiresAt: row.expiresAt, accessToken: access.token, tokenType: "Bearer", expiresIn: access.expiresIn };
     },
     async refresh(rawToken) {
@@ -26,7 +26,7 @@ export function createAuthSessionsService({ prismaClient, secret, clock = () => 
       const rawNext = createOpaqueToken();
       const rotated = await repository.rotate({ id: session.id, oldTokenHash: oldHash, newTokenHash: hashOpaqueToken(rawNext), expiresAt: new Date(now.getTime() + REFRESH_TTL_MS), now });
       if (!rotated) throw new AuthenticationError("Refresh token has already been used or revoked.", "INVALID_REFRESH_TOKEN");
-      const access = signAccessToken({ userId: rotated.user.id, role: rotated.user.role, secret, now: now.getTime() });
+      const access = signAccessToken({ userId: rotated.user.id, role: rotated.user.role, sessionId: rotated.id, secret, now: now.getTime() });
       return { refreshToken: rawNext, refreshExpiresAt: rotated.expiresAt, accessToken: access.token, tokenType: "Bearer", expiresIn: access.expiresIn };
     },
     async revoke(rawToken) {
@@ -34,6 +34,11 @@ export function createAuthSessionsService({ prismaClient, secret, clock = () => 
       const result = await repository.revoke({ tokenHash: hashOpaqueToken(rawToken), now: clock() });
       return { revoked: result.count > 0 };
     },
-    revokeAll(userId) { return repository.revokeAllForUser({ userId, now: clock() }).then((result) => ({ revokedCount: result.count })); },
+    async revokeSession({ sessionId, userId }) {
+      if (!sessionId || !userId) return { revoked: false };
+      const result = await repository.revokeById({ id: sessionId, userId, now: clock() });
+      return { revoked: result.count > 0 };
+    },
+    revokeAllForUser(userId) { return repository.revokeAllForUser({ userId, now: clock() }).then((result) => ({ revokedCount: result.count })); },
   };
 }

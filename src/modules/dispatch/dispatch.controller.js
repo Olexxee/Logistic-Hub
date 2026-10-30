@@ -5,7 +5,7 @@ export function createDispatchController({ service, notifications }) {
     requestMatching: async (req, res) => {
       const result = await service.requestParcelMatching({ bookingId: req.validated.params.bookingId, user: req.user });
       if (!result) throw new NotFoundError("The parcel booking was not found.");
-      if (result.status === "MATCHING" && result.offersCreated > 0) await notifications.notifyMatchingOffers({ bookingId: result.bookingId });
+      if (!result.replay && result.status === "MATCHING" && result.offersCreated > 0) await notifications.notifyMatchingOffers({ bookingId: result.bookingId });
       return res.status(202).json({ success: true, data: result });
     },
     listBookingOffers: async (req, res) => {
