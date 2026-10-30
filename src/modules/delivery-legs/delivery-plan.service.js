@@ -95,7 +95,7 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
     routeMode = "HUB_ASSISTED";
     definitions = [
       {
-        sequence: 1, type: "LOCAL_PICKUP", status: "AWAITING_PAYMENT",
+        sequence: 1, type: "LOCAL_PICKUP", status: "READY_FOR_ASSIGNMENT",
         originServiceZoneId: booking.pickupServiceZoneId,
         destinationServiceZoneId: booking.pickupServiceZoneId,
         destinationHubPointId: originHub.id,
@@ -122,7 +122,7 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
   } else {
     routeMode = "END_TO_END";
     definitions = [{
-      sequence: 1, type: "INTERSTATE_TRANSPORT", status: "AWAITING_PAYMENT",
+      sequence: 1, type: "INTERSTATE_TRANSPORT", status: "READY_FOR_ASSIGNMENT",
       originServiceZoneId: booking.pickupServiceZoneId,
       destinationServiceZoneId: booking.destinationServiceZoneId,
       originLatitude: booking.pickupLatitude, originLongitude: booking.pickupLongitude,
