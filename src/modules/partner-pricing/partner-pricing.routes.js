@@ -111,8 +111,8 @@ export function createPartnerPricingRouter({
       const result = await prismaClient.$transaction(async (tx) => {
         const booking = await tx.parcelBooking.findUnique({ where: { id: parsedId.data } });
         if (!booking) return { notFound: true };
-        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
-          return { conflict: "A quote can only be issued before payment or dispatch has started." };
+        if (booking.status !== "DRAFT") {
+          return { conflict: "A partner quote can only be issued while the booking is still a draft." };
         }
         let rate = null;
         if (input.partnerRateId) {
@@ -199,7 +199,7 @@ export function createPartnerPricingRouter({
         const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId.data } });
         if (!booking) return { notFound: true };
         if (booking.senderId !== req.user.id) return { forbidden: true };
-        if (!["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"].includes(booking.status)) {
+        if (booking.status !== "DRAFT") {
           return { conflict: true };
         }
         const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
