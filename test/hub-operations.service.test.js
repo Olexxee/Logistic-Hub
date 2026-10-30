@@ -58,6 +58,7 @@ function setup(overrides = {}) {
     driverPayout: { upsert: async () => ({ id: "payout-1" }) },
     partnerDeliveryAssignment: { findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
     partnerPayable: { upsert: async () => ({ id: "payable-1", amountMinor: 45000n, currency: "NGN" }) },
+    $queryRaw: async () => [],
     $transaction: async callback => callback(db),
   };
   Object.assign(db, overrides);
