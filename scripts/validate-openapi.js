@@ -84,6 +84,7 @@ const implementedOperations = new Set([
   "POST /hub-points/admin",
   "PATCH /hub-points/admin/{hubPointId}",
   "PATCH /hub-points/admin/{hubPointId}/status",
+  "PATCH /hub-points/admin/{hubPointId}/operator-verification",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
