@@ -298,7 +298,7 @@ paths:
                 password: { type: string, minLength: 1, maxLength: 128 }
       responses:
         '200':
-          description: Short-lived bearer access token and public account profile. Refresh token is set in an HttpOnly cookie and is not returned in JSON. Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.
+          description: 'Short-lived bearer access token and public account profile. Refresh token is set in an HttpOnly cookie and is not returned in JSON. Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.'
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -1531,7 +1531,7 @@ paths:
       tags: [Authentication]
       operationId: refreshAuthSession
       summary: Rotate the HttpOnly refresh cookie and issue a new access token
-      description: No request body. The browser sends the HttpOnly refresh cookie automatically with credentials included. The response rotates Set-Cookie and returns only the bearer access token. Requires an allowlisted Origin and X-Auth-CSRF: 1.
+      description: 'No request body. The browser sends the HttpOnly refresh cookie automatically with credentials included. The response rotates Set-Cookie and returns only the bearer access token. Requires an allowlisted Origin and X-Auth-CSRF: 1.'
       x-implementation-status: implemented
       security: []
       responses:
@@ -1659,7 +1659,7 @@ paths:
       tags: [Authentication]
       operationId: revokeCurrentAuthSession
       summary: Revoke the current authenticated session and clear its refresh cookie
-      description: Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.
+      description: 'Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.'
       x-implementation-status: implemented
       security:
         - bearerAuth: []
