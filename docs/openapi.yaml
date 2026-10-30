@@ -2878,53 +2878,94 @@ paths:
     get:
       tags: [Partner execution]
       operationId: listMyPartnerDeliveryAssignments
-      summary: List assignments for the authenticated partner member
-      security:
-        - bearerAuth: []
-      x-implementation-status: implemented
-      responses:
-        '200': { description: Partner delivery assignments. }
-        '401': { description: Authentication required. }
-        '403': { description: Active partner membership required. }
-  /partner/assignments/{assignmentId}/accept:
-    post:
-      tags: [Partner execution]
-      operationId: acceptPartnerDeliveryAssignment
-      summary: Accept an assigned interstate delivery leg
+      summary: List paginated assignments for the authenticated partner member
       security:
         - bearerAuth: []
       x-implementation-status: implemented
       parameters:
-        - name: assignmentId
-          in: path
-          required: true
-          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
-        '200': { description: Assignment accepted or idempotently replayed. }
-        '401': { description: Authentication required. }
+        '200':
+          description: Partner delivery assignments and pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items, pagination]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, status, agreedTransportChargeMinor, currency, partner, deliveryLeg]
+                          properties:
+                            id: { type: string }
+                            status: { type: string, enum: [ASSIGNED, ACCEPTED, IN_TRANSIT, COMPLETED, FAILED, CANCELLED] }
+                            agreedTransportChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            currency: { type: string, minLength: 3, maxLength: 3 }
+                            assignedAt: { type: string, format: date-time }
+                            acceptedAt: { type: [string, 'null'], format: date-time }
+                            startedAt: { type: [string, 'null'], format: date-time }
+                            completedAt: { type: [string, 'null'], format: date-time }
+                            failureReason: { type: [string, 'null'] }
+                            partner:
+                              type: object
+                              required: [id, displayName]
+                              properties:
+                                id: { type: string }
+                                displayName: { type: string }
+                            deliveryLeg:
+                              type: object
+                              required: [id, sequence, type, status, parcelBookingId, parcelBooking, originServiceZone, destinationServiceZone]
+                              properties:
+                                id: { type: string }
+                                sequence: { type: integer, minimum: 1 }
+                                type: { type: string, const: INTERSTATE_TRANSPORT }
+                                status: { type: string }
+                                parcelBookingId: { type: string }
+                                parcelBooking:
+                                  type: object
+                                  required: [id, publicReference, parcelCategory, parcelSize, status]
+                                  properties:
+                                    id: { type: string }
+                                    publicReference: { type: string }
+                                    parcelCategory: { type: string }
+                                    parcelSize: { type: string }
+                                    handlingInstructions: { type: [string, 'null'] }
+                                    status: { type: string }
+                                originServiceZone:
+                                  $ref: '#/components/schemas/PartnerAssignmentServiceZone'
+                                destinationServiceZone:
+                                  $ref: '#/components/schemas/PartnerAssignmentServiceZone'
+                                originHubPoint:
+                                  oneOf:
+                                    - $ref: '#/components/schemas/PartnerAssignmentHub'
+                                    - type: 'null'
+                                destinationHubPoint:
+                                  oneOf:
+                                    - $ref: '#/components/schemas/PartnerAssignmentHub'
+                                    - type: 'null'
+                      pagination:
+                        type: object
+                        required: [page, limit, total, totalPages]
+                        properties:
+                          page: { type: integer, minimum: 1 }
+                          limit: { type: integer, minimum: 1, maximum: 100 }
+                          total: { type: integer, minimum: 0 }
+                          totalPages: { type: integer, minimum: 0 }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Active partner membership required. }
-        '404': { description: Assignment not found. }
-        '409': { description: Assignment is not in an acceptable state. }
-  /partner/assignments/{assignmentId}/start:
-    post:
-      tags: [Partner execution]
-      operationId: startPartnerDeliveryAssignment
-      summary: Mark an accepted partner assignment as in transit
-      security:
-        - bearerAuth: []
-      x-implementation-status: implemented
-      parameters:
-        - name: assignmentId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: Assignment started or idempotently replayed. }
-        '401': { description: Authentication required. }
-        '403': { description: Active partner membership required. }
-        '404': { description: Assignment not found. }
-        '409': { description: Assignment is not ready to start. }
-
 
   /admin/hub-points/{hubPointId}/operators:
     post:
@@ -4981,6 +5022,25 @@ components:
             - type: 'null'
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    PartnerAssignmentServiceZone:
+      type: object
+      required: [id, name, state]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        state:
+          type: object
+          required: [code, name]
+          properties:
+            code: { type: string }
+            name: { type: string }
+    PartnerAssignmentHub:
+      type: object
+      required: [id, name, address]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        address: { type: string }
     AssignmentLocation:
       type: object
       required: [serviceZone, hub, address, latitude, longitude]

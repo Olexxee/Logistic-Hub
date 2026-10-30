@@ -137,11 +137,23 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
       });
     },
 
-    async listMyAssignments({ userId }) {
+    async listMyAssignments({ userId, page = 1, limit = 20 }) {
       const memberships = await repository.findMembershipsForUser(userId);
       const partnerIds = memberships.map(item => item.partnerId);
       if (!partnerIds.length) throw forbidden();
-      return repository.listAssignments(partnerIds);
+      const result = await repository.listAssignments(partnerIds, {
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+      return {
+        items: result.items,
+        pagination: {
+          page,
+          limit,
+          total: result.total,
+          totalPages: Math.ceil(result.total / limit),
+        },
+      };
     },
 
     async acceptAssignment({ assignmentId, userId }) {

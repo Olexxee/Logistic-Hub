@@ -13,6 +13,10 @@ const memberSchema = z.object({
 }).strict();
 const memberStatusSchema = z.object({ isActive: z.boolean() }).strict();
 const assignmentSchema = z.object({ partnerId: id }).strict();
+const listSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+}).strict();
 
 function validate(schema, source = "body") {
   return (req, res, next) => {
@@ -50,7 +54,7 @@ export function createPartnerExecutionRouter({ prismaClient = prisma, authMiddle
   router.patch("/admin/transport-partners/:partnerId/members/:memberId", authMiddleware, admin, validateId, validate(memberStatusSchema), asyncWrapper(controller.setMemberStatus));
   router.post("/admin/delivery-legs/:legId/partner-assignment", authMiddleware, admin, validateId, validate(assignmentSchema), requireIdempotencyKey, asyncWrapper(controller.assignLeg));
 
-  router.get("/partner/assignments", authMiddleware, asyncWrapper(controller.listMyAssignments));
+  router.get("/partner/assignments", authMiddleware, validate(listSchema, "query"), asyncWrapper(controller.listMyAssignments));
   router.post("/partner/assignments/:assignmentId/accept", authMiddleware, validateId, asyncWrapper(controller.acceptAssignment));
   router.post("/partner/assignments/:assignmentId/start", authMiddleware, validateId, asyncWrapper(controller.startAssignment));
 

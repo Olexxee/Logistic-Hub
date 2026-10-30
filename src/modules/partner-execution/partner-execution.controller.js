@@ -33,7 +33,10 @@ export function createPartnerExecutionController(service) {
       } catch (error) { return next(error); }
     },
     listMyAssignments: async (req, res, next) => {
-      try { return res.status(200).json({ success: true, data: { items: (await service.listMyAssignments({ userId: req.user.id })).map(assignmentView) } }); }
+      try {
+        const result = await service.listMyAssignments({ userId: req.user.id, page: req.validated.query.page, limit: req.validated.query.limit });
+        return res.status(200).json({ success: true, data: { items: result.items.map(assignmentView), pagination: result.pagination } });
+      }
       catch (error) { return next(error); }
     },
     acceptAssignment: async (req, res, next) => {

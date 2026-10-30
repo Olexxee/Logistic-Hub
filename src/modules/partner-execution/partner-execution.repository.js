@@ -26,14 +26,32 @@ export function createPartnerExecutionRepository({ prismaClient }) {
         include: { partner: true, deliveryLeg: true },
       });
     },
-    listAssignments(partnerIds, tx = prismaClient) {
-      return tx.partnerDeliveryAssignment.findMany({
-        where: { partnerId: { in: partnerIds } },
-        include: { partner: { select: { id: true, displayName: true } }, deliveryLeg: {
-          select: { id: true, sequence: true, type: true, status: true, parcelBookingId: true },
-        } },
-        orderBy: [{ assignedAt: "desc" }, { id: "desc" }],
-      });
+    listAssignments(partnerIds, { skip = 0, take = 20 } = {}, tx = prismaClient) {
+      const where = { partnerId: { in: partnerIds } };
+      return Promise.all([
+        tx.partnerDeliveryAssignment.findMany({
+          where,
+          skip,
+          take,
+          include: {
+            partner: { select: { id: true, displayName: true } },
+            deliveryLeg: {
+              include: {
+                parcelBooking: { select: {
+                  id: true, publicReference: true, parcelCategory: true, parcelSize: true,
+                  handlingInstructions: true, status: true,
+                } },
+                originServiceZone: { select: { id: true, name: true, state: { select: { code: true, name: true } } } },
+                destinationServiceZone: { select: { id: true, name: true, state: { select: { code: true, name: true } } } },
+                originHubPoint: { select: { id: true, name: true, address: true } },
+                destinationHubPoint: { select: { id: true, name: true, address: true } },
+              },
+            },
+          },
+          orderBy: [{ assignedAt: "desc" }, { id: "desc" }],
+        }),
+        tx.partnerDeliveryAssignment.count({ where }),
+      ]).then(([items, total]) => ({ items, total }));
     },
     findMembership(partnerId, userId, tx = prismaClient) {
       return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
