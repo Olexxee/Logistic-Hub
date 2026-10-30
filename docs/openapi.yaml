@@ -1220,7 +1220,7 @@ paths:
                   success:
                     const: true
                   data:
-                    $ref: '#/components/schemas/FareOffer'
+                    $ref: '#/components/schemas/FareProposalResult'
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -2790,6 +2790,16 @@ components:
         maxParcels: { type: integer, minimum: 1, maximum: 100000 }
         maxWeightGrams: { type: integer, minimum: 1, maximum: 100000000 }
         maxVolumeCm3: { type: integer, minimum: 1, maximum: 1000000000 }
+    FareProposalResult:
+      type: object
+      required: [offerId, proposedFareMinor, currency, status]
+      properties:
+        offerId: { type: string }
+        proposedFareMinor:
+          $ref: '#/components/schemas/PositiveMinorAmount'
+        currency: { type: string, const: NGN }
+        status: { type: string, const: OFFERED }
+        replay: { type: boolean }
     DriverOfferResource:
       type: object
       required: [id, currency, expiresAt, createdAt, booking]
