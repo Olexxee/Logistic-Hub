@@ -204,7 +204,7 @@ test("confirmed destination hub handover completes partner assignment and create
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   const result = await service.confirmHandover({
-    handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed and intact",
+    handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed and intact", weightGrams: 450,
   });
   assert.equal(result.handover.status, "CONFIRMED");
   assert.equal(calls.assignmentUpdates[0].data.status, "COMPLETED");
