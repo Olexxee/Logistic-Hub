@@ -25,7 +25,7 @@
 - The refresh credential is an HttpOnly cookie, not a request-body field. `POST /auth/refresh` takes no JSON body and rotates the cookie.
 - Browser login, refresh and logout requests require an allowlisted `Origin` plus `X-Auth-CSRF: 1`. CORS must use exact origins and `credentials: true`.
 - Registration requires `fullName`, `email` and `password`; account activation requires email verification.
-- `POST /auth/refresh` is the canonical refresh endpoint. `POST /auth/sessions/refresh` remains a deprecated compatibility alias and must not be used for new clients.
+- `POST /auth/refresh` is the canonical refresh endpoint. `POST /auth/sessions/refresh` is retired and returns 410; only `POST /auth/refresh` is supported.
 - Logout and logout-all revoke the current session or all user sessions.
 - Role checks are enforced server-side. Hiding a UI control is not authorization.
 - Booking, assignment, partner and custody reads must remain scoped to the authenticated owner or authorized operational role.
