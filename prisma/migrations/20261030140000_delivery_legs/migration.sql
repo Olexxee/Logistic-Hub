@@ -28,6 +28,7 @@ CREATE TABLE "delivery_legs" (
   "destinationServiceZoneId" TEXT NOT NULL,
   "plannedAt" TIMESTAMP(3),
   "assignedAt" TIMESTAMP(3),
+  "pickedUpAt" TIMESTAMP(3),
   "startedAt" TIMESTAMP(3),
   "completedAt" TIMESTAMP(3),
   "cancelledAt" TIMESTAMP(3),
