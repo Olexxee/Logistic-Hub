@@ -35,7 +35,7 @@ function refreshCookieOptions() {
   return {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "lax",
     path: "/",
     maxAge: COOKIE_MAX_AGE_MS,
   };
