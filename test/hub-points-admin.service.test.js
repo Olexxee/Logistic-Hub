@@ -5,7 +5,7 @@ import { openingHoursAdminSchema, capacityConfigAdminSchema } from "../src/modul
 
 const openingHours = Object.fromEntries(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"].map(day => [day, [{ opensAt: "08:00", closesAt: "18:00" }]]));
 const readyHub = () => ({
-  id: "hub-1", status: "PENDING", operatorName: "Hub Operator", operatorPhone: "+2348000000000",
+  id: "hub-1", status: "PENDING", operatorVerificationStatus: "VERIFIED", operatorVerifiedAt: new Date(), operatorName: "Hub Operator", operatorPhone: "+2348000000000",
   openingHours, acceptedParcelTypes: ["DOCUMENTS", "SMALL_PARCEL"], capacityConfig: { maxParcels: 80 },
   serviceZone: { isActive: true, state: { isActive: true, country: { isActive: true } }, availability: [{ serviceType: "PARCEL_DELIVERY", isEnabled: true, startsAt: null, endsAt: null }] },
 });
