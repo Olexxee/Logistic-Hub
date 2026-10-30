@@ -2419,6 +2419,134 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Quote is no longer available. }
+  /delivery-legs/{legId}/request-matching:
+    post:
+      tags: [Delivery legs]
+      operationId: requestDeliveryLegDriverMatching
+      summary: Request local driver offers for a ready delivery leg
+      description: Only LOCAL_PICKUP and FINAL_MILE legs are eligible. Interstate transport remains a partner-execution responsibility. Offers expose service-zone and hub names, not exact addresses or coordinates.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: legId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202': { description: Matching request accepted or replayed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Leg is not ready, requires partner execution, or no eligible drivers are available.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /driver/delivery-leg-offers:
+    get:
+      tags: [Delivery legs]
+      operationId: listDriverDeliveryLegOffers
+      summary: List available driver offers for ready delivery legs
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Privacy-safe delivery-leg offers. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /driver/delivery-leg-offers/{offerId}/propose-fare:
+    post:
+      tags: [Delivery legs]
+      operationId: proposeDeliveryLegFare
+      summary: Propose a fare for a delivery leg
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: offerId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [proposedFareMinor]
+              properties:
+                proposedFareMinor: { $ref: '#/components/schemas/PositiveMinorAmount' }
+      responses:
+        '200': { description: Fare proposal recorded or replayed. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Offer is no longer available or idempotency key conflicts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /parcel-bookings/{bookingId}/delivery-legs/{legId}/offers:
+    get:
+      tags: [Delivery legs]
+      operationId: listDeliveryLegFareProposals
+      summary: List fare proposals for a booking delivery leg
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: legId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Driver fare proposals visible to the booking owner. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /parcel-bookings/{bookingId}/delivery-legs/{legId}/accept-fare:
+    post:
+      tags: [Delivery legs]
+      operationId: acceptDeliveryLegFare
+      summary: Accept a driver fare proposal for a delivery leg
+      description: Acceptance reserves the driver and records an AWAITING_PAYMENT assignment. Payment remains disabled and no payment is collected by this operation.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: legId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [offerId]
+              properties:
+                offerId: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Fare accepted and driver reserved pending payment approval. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Offer or leg is no longer available, or idempotency key conflicts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /payments:
     post:
       tags: [Payments]

@@ -15,6 +15,7 @@ import { parcelBookingsRouter } from "./modules/parcels/parcel-bookings.routes.j
 import { rideBookingsRouter } from "./modules/rides/ride-bookings.routes.js";
 import { rideDispatchRouter } from "./modules/rides/ride-dispatch.routes.js";
 import { dispatchRouter } from "./modules/dispatch/dispatch.routes.js";
+import { deliveryLegDispatchRouter } from "./modules/delivery-legs/delivery-leg-dispatch.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { paymentsRouter } from "./modules/payments/payments.routes.js";
 import { financialRouter } from "./modules/payments/financial.routes.js";
@@ -112,6 +113,7 @@ app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);
 app.use("/api/v1", rideDispatchRouter);
 app.use("/api/v1", dispatchRouter);
+app.use("/api/v1", deliveryLegDispatchRouter);
 app.use("/api/v1/notifications", notificationsRouter);
 app.use("/api/v1/cancellations", cancellationsRouter);
 app.use("/api/v1/finance", financeRouter);
