@@ -41,6 +41,12 @@ export function createCustodyController(service) {
       const result = await service.listHubDispatchable({ ...req.validatedQuery, userId: req.user.id });
       return res.status(200).json({ success: true, data: result });
     },
+    createDriverHubHandover: async (req, res) => {
+      const result = await service.createDriverHubHandover(req.body, req.user.id);
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "ASSIGNMENT_NOT_FOUND", message: "Driver assignment not found." } });
+      if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "The driver cannot release this assignment into hub custody in the current state." } });
+      return res.status(201).json({ success: true, data: { handover: result.handover } });
+    },
     createHubHandover: async (req, res) => {
       const result = await service.createHubHandover(req.body, req.user.id);
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "DELIVERY_LEG_NOT_FOUND", message: "Delivery leg not found." } });
