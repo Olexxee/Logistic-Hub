@@ -44,7 +44,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         }
         await tx.operationalAuditEvent.create({ data: {
           actorUserId, entityType: "TRANSPORT_PARTNER_MEMBER", entityId: member.id,
-          action: "PARTNER_MEMBER_ACTIVATED", before: { userRole: user.role }, after: { partnerId, userId, role, isActive: true, userRole: "PARTNER_OPERATOR" },
+          action: "PARTNER_MEMBER_ACTIVATED", before: { userRole: user.role }, after: { partnerId, userId, role, isActive: true, userRole: user.role === "CUSTOMER" ? "PARTNER_OPERATOR" : user.role },
         } });
         return { member };
       });
