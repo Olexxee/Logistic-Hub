@@ -1671,7 +1671,7 @@ paths:
       tags: [Authentication]
       operationId: revokeAllAuthSessions
       summary: Revoke every session for the authenticated account and clear the refresh cookie
-      description: Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.
+      description: 'Browser requests require an allowlisted Origin and X-Auth-CSRF: 1.'
       x-implementation-status: implemented
       security:
         - bearerAuth: []
