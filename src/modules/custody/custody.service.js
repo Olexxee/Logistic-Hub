@@ -88,7 +88,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operator.id,
           action: "HUB_OPERATOR_ACTIVATED",
           before: { userRole: user.role },
-          after: { hubPointId, userId, role, isActive: true, userRole: "HUB_OPERATOR" },
+          after: { hubPointId, userId, role, isActive: true, userRole: user.role === "CUSTOMER" ? "HUB_OPERATOR" : user.role },
         }, tx);
         return { operator };
       });
