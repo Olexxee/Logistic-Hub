@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - "feat/**"
+      - "feature/**"
       - "fix/**"
   pull_request:
     branches:
