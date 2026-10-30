@@ -2306,7 +2306,7 @@ paths:
       tags: [Admin]
       operationId: createShipmentQuote
       summary: Issue a versioned quote for a parcel booking
-      description: Contracted partner rates are preferred. A manual transport charge requires an explicit reason and administrator authorization. Payment remains disabled.
+      description: Contracted partner rates are preferred. A manual transport charge must identify an active, verified partner agreement in the booking currency and include an explicit reason. Payment remains disabled.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -2324,6 +2324,7 @@ paths:
               additionalProperties: false
               properties:
                 partnerRateId: { type: string, minLength: 1, maxLength: 128 }
+                partnerAgreementId: { type: string, minLength: 1, maxLength: 128, description: Required with transportChargeMinor when issuing a manual partner quote. }
                 transportChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
                 collectionChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
                 hubHandlingChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
