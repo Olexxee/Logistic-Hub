@@ -189,6 +189,12 @@ The blueprint builds on the repository's existing technical foundation and must 
 - [Technical foundation](docs/technical-foundation.md)
 - [Foundation decisions: geography, maps and Paystack split payments](docs/foundation-decisions.md)
 - [State machines and matching algorithm](docs/state-machines-and-matching.md)
+### Priority 6 implementation progress
+
+The first Priority 6 slice is in PR #26. It adds authenticated transport-partner membership, admin assignment of paid interstate delivery legs against the accepted partner agreement, partner acceptance/start transitions, idempotency protection and operational audit events. The accepted quote—not a client-supplied amount—is the source of the partner transport charge.
+
+This is not the completion of Priority 6. Custody handover confirmation, hub-operator membership and authorization, operational-case workflows, and partner settlement/reconciliation remain outstanding. The schema includes initial custody and operational-case records, but those workflows must not be treated as implemented until their services, routes, contracts and tests are complete. Live payments and provider payouts remain disabled.
+
 - [Payment ledger and settlement](docs/payment-ledger.md)
 - [Database integrity and migration strategy](docs/database-integrity.md)
 - [OpenAPI contract baseline](docs/openapi.yaml)
