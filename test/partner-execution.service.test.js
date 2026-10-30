@@ -124,3 +124,45 @@ test("a user without an active partner membership cannot accept an assignment", 
     error => error.statusCode === 403 && error.code === "PARTNER_MEMBERSHIP_REQUIRED",
   );
 });
+
+
+test("partner assignment queue is scoped to active memberships and paginated", async () => {
+  let capturedFindMany;
+  let capturedCount;
+  const rows = [{ id: "assignment-1", status: "ASSIGNED" }];
+  const tx = {
+    transportPartnerMember: {
+      findMany: async args => {
+        assert.equal(args.where.userId, "operator-1");
+        assert.equal(args.where.isActive, true);
+        return [{ partnerId: "partner-1" }, { partnerId: "partner-2" }];
+      },
+    },
+    partnerDeliveryAssignment: {
+      findMany: async args => { capturedFindMany = args; return rows; },
+      count: async args => { capturedCount = args; return 31; },
+    },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.listMyAssignments({ userId: "operator-1", page: 2, limit: 10 });
+
+  assert.deepEqual(capturedFindMany.where, { partnerId: { in: ["partner-1", "partner-2"] } });
+  assert.equal(capturedFindMany.skip, 10);
+  assert.equal(capturedFindMany.take, 10);
+  assert.deepEqual(capturedCount, { where: { partnerId: { in: ["partner-1", "partner-2"] } } });
+  assert.deepEqual(result, {
+    items: rows,
+    pagination: { page: 2, limit: 10, total: 31, totalPages: 4 },
+  });
+});
+
+test("partner assignment queue rejects users without active partner memberships", async () => {
+  const tx = {
+    transportPartnerMember: { findMany: async () => [] },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  await assert.rejects(
+    service.listMyAssignments({ userId: "operator-2", page: 1, limit: 20 }),
+    error => error.statusCode === 403 && error.code === "PARTNER_MEMBERSHIP_REQUIRED",
+  );
+});
