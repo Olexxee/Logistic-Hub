@@ -220,6 +220,7 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
+  operationalAuditEvents OperationalAuditEvent[] @relation("OperationalAuditActor")
   driverProfile    DriverProfile?
   sentParcels      ParcelBooking[]    @relation("ParcelSender")
   rideBookings     RideBooking[]      @relation("RidePassenger")
@@ -298,6 +299,9 @@ model DriverProfile {
   id                  String             @id @default(cuid())
   userId              String             @unique
   verificationStatus  VerificationStatus @default(NOT_SUBMITTED)
+  suspendedAt         DateTime?
+  suspensionReason    String?
+  reinstatedAt        DateTime?
   isOnline            Boolean            @default(false)
   isAvailable         Boolean            @default(false)
   serviceRadiusMeters Int                @default(5000)
@@ -505,6 +509,9 @@ model HubPoint {
   status              HubPointStatus @default(PENDING)
   operatorName        String?
   operatorPhone       String?
+  operatorVerificationStatus VerificationStatus @default(NOT_SUBMITTED)
+  operatorVerifiedAt  DateTime?
+  operatorVerificationNotes String?
   openingHours        Json?
   acceptedParcelTypes Json?
   capacityConfig      Json?
@@ -1102,4 +1109,22 @@ model ShipmentQuote {
   @@index([partnerAgreementId])
   @@index([partnerRateId])
   @@map("shipment_quotes")
+}
+
+
+model OperationalAuditEvent {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  entityType  String
+  entityId    String
+  action      String
+  reason      String?
+  before      Json?
+  after       Json?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actor User? @relation("OperationalAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("operational_audit_events")
 }

@@ -12,6 +12,7 @@ import {
   vehicleVerificationSchema,
 } from "./drivers.schemas.js";
 import { createDriversService } from "./drivers.service.js";
+import { createDriversAdminRouter } from "./drivers.admin.routes.js";
 
 const idSchema = z.string().trim().min(1).max(128);
 
@@ -32,13 +33,14 @@ function validationError(res, issues) {
   });
 }
 
-export function createDriversRouter({ prismaClient = prisma, email = emailService } = {}) {
+export function createDriversRouter({ prismaClient = prisma, email = emailService, authMiddleware = requireAuth, roleMiddleware = requireRole } = {}) {
   const router = Router();
   const service = createDriversService({ prismaClient });
-  const requireAdmin = requireRole("ADMIN");
-  const requireDriver = requireRole("DRIVER");
+  const requireAdmin = roleMiddleware("ADMIN");
+  const requireDriver = roleMiddleware("DRIVER");
+  router.use("/admin", createDriversAdminRouter({ prismaClient, authMiddleware, roleMiddleware }));
 
-  router.get("/me", requireAuth, async (req, res, next) => {
+  router.get("/me", authMiddleware, async (req, res, next) => {
     try {
       const profile = await service.getMyProfile(req.user.id);
       return res.status(200).json({ success: true, data: { profile } });
@@ -47,7 +49,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     }
   });
 
-  router.post("/onboarding", requireAuth, async (req, res, next) => {
+  router.post("/onboarding", authMiddleware, async (req, res, next) => {
     const parsed = driverOnboardingSchema.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error.issues);
     try {
@@ -58,7 +60,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     }
   });
 
-  router.patch("/availability", requireAuth, requireDriver, async (req, res, next) => {
+  router.patch("/availability", authMiddleware, requireDriver, async (req, res, next) => {
     const parsed = driverAvailabilitySchema.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error.issues);
     try {
@@ -69,7 +71,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     }
   });
 
-  router.post("/location", requireAuth, requireDriver, async (req, res, next) => {
+  router.post("/location", authMiddleware, requireDriver, async (req, res, next) => {
     const parsed = driverLocationSchema.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error.issues);
     try {
@@ -80,7 +82,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     }
   });
 
-  router.patch("/admin/:driverProfileId/verification", requireAuth, requireAdmin, async (req, res, next) => {
+  router.patch("/admin/:driverProfileId/verification", authMiddleware, requireAdmin, async (req, res, next) => {
     const parsedId = idSchema.safeParse(req.params.driverProfileId);
     if (!parsedId.success) return validationError(res, parsedId.error.issues);
     const parsed = driverVerificationSchema.safeParse(req.body);
@@ -120,7 +122,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     }
   });
 
-  router.patch("/admin/vehicles/:vehicleId/verification", requireAuth, requireAdmin, async (req, res, next) => {
+  router.patch("/admin/vehicles/:vehicleId/verification", authMiddleware, requireAdmin, async (req, res, next) => {
     const parsedId = idSchema.safeParse(req.params.vehicleId);
     if (!parsedId.success) return validationError(res, parsedId.error.issues);
     const parsed = vehicleVerificationSchema.safeParse(req.body);
@@ -134,7 +136,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     }
   });
 
-  router.put("/admin/coverage", requireAuth, requireAdmin, async (req, res, next) => {
+  router.put("/admin/coverage", authMiddleware, requireAdmin, async (req, res, next) => {
     const parsed = driverCoverageSchema.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error.issues);
     try {

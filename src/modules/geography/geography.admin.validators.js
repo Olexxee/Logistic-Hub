@@ -1,0 +1,13 @@
+import { z } from "zod";
+const id = z.string().trim().min(1).max(128);
+const code = z.string().trim().min(2).max(12).regex(/^[A-Z0-9_-]+$/);
+const name = z.string().trim().min(2).max(120);
+export const countryCreateSchema = z.object({ code, name }).strict();
+export const countryUpdateSchema = z.object({ code: code.optional(), name: name.optional() }).strict().refine(v => Object.keys(v).length > 0);
+export const stateCreateSchema = z.object({ countryId: id, code, name }).strict();
+export const stateUpdateSchema = z.object({ code: code.optional(), name: name.optional() }).strict().refine(v => Object.keys(v).length > 0);
+export const lgaCreateSchema = z.object({ stateId: id, code: code.nullable().optional(), name }).strict();
+export const lgaUpdateSchema = z.object({ code: code.nullable().optional(), name: name.optional() }).strict().refine(v => Object.keys(v).length > 0);
+export const activeSchema = z.object({ isActive: z.boolean() }).strict();
+export const stateFilterSchema = z.object({ countryId: id.optional() }).strict();
+export const lgaFilterSchema = z.object({ stateId: id.optional() }).strict();

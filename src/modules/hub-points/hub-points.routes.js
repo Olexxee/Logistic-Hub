@@ -1,11 +1,21 @@
 import { Router } from "express";
+import { requireAuth, requireRole } from "../auth/auth.middleware.js";
+import { createHubPointsAdminController } from "./hub-points.admin.controller.js";
 import { prisma } from "../../db/prisma.js";
 import { createHubPointsService } from "./hub-points.service.js";
 import { listHubPointsQuerySchema } from "./hub-points.schemas.js";
 
-export function createHubPointsRouter({ prismaClient = prisma } = {}) {
+export function createHubPointsRouter({ prismaClient = prisma, authMiddleware = requireAuth, roleMiddleware = requireRole } = {}) {
   const router = Router();
   const service = createHubPointsService({ prismaClient });
+  const admin = createHubPointsAdminController({ prismaClient });
+  const requireAdmin = roleMiddleware("ADMIN");
+
+  router.get("/admin", authMiddleware, requireAdmin, admin.list);
+  router.post("/admin", authMiddleware, requireAdmin, admin.create);
+  router.patch("/admin/:hubPointId", authMiddleware, requireAdmin, admin.update);
+  router.patch("/admin/:hubPointId/status", authMiddleware, requireAdmin, admin.setStatus);
+  router.patch("/admin/:hubPointId/operator-verification", authMiddleware, requireAdmin, admin.reviewOperator);
 
   router.get("/", async (req, res, next) => {
     const parsed = listHubPointsQuerySchema.safeParse(req.query);

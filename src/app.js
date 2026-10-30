@@ -9,6 +9,7 @@ import { authSessionsRouter } from "./modules/auth/auth-sessions.routes.js";
 import { requireAuth } from "./modules/auth/auth.middleware.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { serviceZonesRouter } from "./modules/geography/service-zones.routes.js";
+import { geographyAdminRouter } from "./modules/geography/geography.admin.routes.js";
 import { mapsRouter } from "./modules/maps/maps.routes.js";
 import { parcelBookingsRouter } from "./modules/parcels/parcel-bookings.routes.js";
 import { rideBookingsRouter } from "./modules/rides/ride-bookings.routes.js";
@@ -97,6 +98,7 @@ app.get("/", (_req, res) => {
 app.use("/api/v1/health", healthRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/auth/sessions", authSessionsRouter);
+app.use("/api/v1/geography/admin", geographyAdminRouter);
 app.use("/api/v1/service-zones", serviceZonesRouter);
 app.use("/api/v1/hub-points", hubPointsRouter);
 app.use("/api/v1/drivers", driversRouter);
