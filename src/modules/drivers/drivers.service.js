@@ -112,7 +112,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
         },
       });
       if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt) {
-        throw forbidden("Driver verification must be completed before going online.");
+        throw forbidden(profile?.suspendedAt ? "This driver account is suspended. Contact operations before attempting to go online." : "Driver verification must be completed before going online.");
       }
       if (input.isAvailable) {
         const now = clock();
