@@ -123,8 +123,16 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           return { blocker: "SAME_CUSTODY_PARTY" };
         }
         const pending = await repo.findPendingHandover(leg.id, tx);
-        if (pending) return { blocker: "HANDOVER_ALREADY_PENDING" };
-        const hubPointId = input.hubPointId ?? (input.fromPartyType === "HUB" ? input.fromPartyId : input.toPartyType === "HUB" ? input.toPartyId : null);
+        if (pending && pending.expiresAt && pending.expiresAt <= clock()) {
+          await repo.updateHandover(pending.id, { status: "EXPIRED" }, tx);
+        } else if (pending) {
+          return { blocker: "HANDOVER_ALREADY_PENDING" };
+        }
+        const partyHubId = input.fromPartyType === "HUB" ? input.fromPartyId : input.toPartyType === "HUB" ? input.toPartyId : null;
+        if (input.hubPointId && input.hubPointId !== partyHubId) {
+          return { blocker: "HANDOVER_HUB_MISMATCH" };
+        }
+        const hubPointId = partyHubId;
         const handover = await repo.createHandover({
           parcelBookingId: leg.parcelBookingId,
           deliveryLegId: leg.id,
@@ -153,7 +161,12 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const handover = await repo.findHandover(handoverId, tx);
         if (!handover) return { notFound: true };
         if (handover.status !== "PENDING_CONFIRMATION") return { blocker: "HANDOVER_NOT_PENDING" };
-        if (handover.expiresAt && handover.expiresAt <= clock()) return { blocker: "HANDOVER_EXPIRED" };
+        if (handover.expiresAt && handover.expiresAt <= clock()) {
+          await repo.updateHandover(handoverId, { status: "EXPIRED" }, tx);
+          await repo.createAudit({ actorUserId: userId, entityType: "CUSTODY_HANDOVER", entityId: handoverId, action: "CUSTODY_HANDOVER_EXPIRED", before: { status: handover.status }, after: { status: "EXPIRED" } }, tx);
+          return { blocker: "HANDOVER_EXPIRED" };
+        }
+        if (handover.initiatedByUserId === userId) throw conflict("HANDOVER_SELF_CONFIRMATION", "The releasing user cannot confirm their own custody handover.");
         await validateParty(tx, {
           type: handover.toPartyType, id: handover.toPartyId, userId,
           booking: handover.parcelBooking, leg: await repo.findBookingLeg(handover.deliveryLegId, tx), actor: true,
