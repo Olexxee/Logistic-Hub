@@ -166,6 +166,14 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           && !leg.assignments.some(item => item.driverProfileId === input.fromPartyId && item.status === "ARRIVED_AT_DESTINATION")) {
           throw fail(409, "DRIVER_NOT_ARRIVED_AT_HUB", "A driver can release custody to a hub only after arriving at the assigned destination.");
         }
+        if (input.fromPartyType === "HUB" && input.toPartyType === "DRIVER"
+          && !leg.assignments.some(item => item.driverProfileId === input.toPartyId && item.status === "ARRIVED_AT_PICKUP")) {
+          throw fail(409, "DRIVER_NOT_ARRIVED_AT_HUB", "A hub can release custody only to a driver who has arrived at pickup.");
+        }
+        if (input.fromPartyType === "HUB" && input.toPartyType === "TRANSPORT_PARTNER"
+          && !leg.partnerAssignments.some(item => item.partnerId === input.toPartyId && item.status === "ACCEPTED")) {
+          throw fail(409, "PARTNER_NOT_READY_FOR_HANDOVER", "A hub can release custody only to a partner that has accepted the assignment.");
+        }
         await validateParty(tx, { type: input.fromPartyType, id: input.fromPartyId, userId, booking: leg.parcelBooking, leg, actor: true });
         await validateParty(tx, { type: input.toPartyType, id: input.toPartyId, userId, booking: leg.parcelBooking, leg });
         if (input.fromPartyType === input.toPartyType && input.fromPartyId === input.toPartyId) {
