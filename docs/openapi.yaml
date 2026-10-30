@@ -923,8 +923,8 @@ paths:
       summary: List parcel bookings visible to the authenticated user
       description: |
         Customers receive only their own bookings. Admin and support roles may list
-        all bookings. Results are ordered newest first and paginated; the optional
-        status filter is applied server-side.
+        all bookings. Results are ordered newest first and paginated. Admin/support may also filter
+        by payment status, public reference, service zones and creation date range.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -943,6 +943,24 @@ paths:
           schema:
             type: string
             enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
+        - in: query
+          name: paymentStatus
+          schema: { type: string, enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED] }
+        - in: query
+          name: reference
+          schema: { type: string, minLength: 2, maxLength: 64 }
+        - in: query
+          name: pickupServiceZoneId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: destinationServiceZoneId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: createdFrom
+          schema: { type: string, format: date-time }
+        - in: query
+          name: createdTo
+          schema: { type: string, format: date-time }
       responses:
         '200':
           description: Page of bookings visible to the caller.
@@ -973,6 +991,8 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [Parcel bookings]
       operationId: createParcelBooking
