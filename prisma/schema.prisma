@@ -648,6 +648,7 @@ model ParcelBooking {
   supportTickets         SupportTicket[]
   quotes                 ShipmentQuote[]
   deliveryLegs           DeliveryLeg[]
+  partnerAssignments     PartnerAssignment[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])

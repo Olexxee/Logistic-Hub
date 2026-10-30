@@ -116,7 +116,7 @@ app.use("/api/v1", rideDispatchRouter);
 app.use("/api/v1", dispatchRouter);
 app.use("/api/v1", legDispatchRouter);
 app.use("/api/v1", partnerExecutionRouter);
-app.use("/api/v1/admin/partner-execution", partnerExecutionAdminRouter);
+app.use("/api/v1/admin", partnerExecutionAdminRouter);
 app.use("/api/v1/notifications", notificationsRouter);
 app.use("/api/v1/cancellations", cancellationsRouter);
 app.use("/api/v1/finance", financeRouter);
