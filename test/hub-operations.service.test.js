@@ -441,3 +441,23 @@ test("hub cannot release a parcel while a blocking operational case is unresolve
   assert.equal(result.blocker, "HUB_OPERATIONAL_CASE_OPEN");
   assert.equal(calls.handovers.length, 0);
 });
+
+
+test("hub cannot confirm an already-created release while a blocking case is unresolved", async () => {
+  const handover = {
+    id: "handover-blocked-release", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "hub-user-1", fromPartyType: "HUB", fromPartyId: "hub-1",
+    toPartyType: "DRIVER", toPartyId: "driver-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+  };
+  const { db, calls } = setup({
+    custodyHandover: { findUnique: async () => handover, update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }) },
+    operationalCase: { findFirst: async () => ({ id: "case-damaged-2", type: "DAMAGED_PARCEL", status: "OPEN" }) },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "driver-user-1", conditionAtReceipt: "Packaging damaged" }),
+    error => error.statusCode === 409 && error.code === "HUB_OPERATIONAL_CASE_OPEN",
+  );
+  assert.equal(calls.assignmentUpdates.length, 0);
+});
