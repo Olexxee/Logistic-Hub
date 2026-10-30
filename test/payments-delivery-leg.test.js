@@ -79,7 +79,7 @@ test("verified parcel payment activates the linked delivery leg in the settlemen
   assert.equal(legUpdate.data.status, "ASSIGNED");
   assert.ok(legUpdate.data.assignedAt instanceof Date);
   assert.equal(writes.find(([name]) => name === "assignment.updateMany")[1].data.status, "ACCEPTED");
-  assert.equal(writes.find(([name]) => name === "parcelBooking.update")[1].data.paymentStatus, "SUCCEEDED");
+  assert.equal(writes.find(([name]) => name === "parcelBooking.update")[1].paymentStatus, "SUCCEEDED");
 });
 
 test("payment amount mismatch cannot activate the assignment or delivery leg", async () => {
