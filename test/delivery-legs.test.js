@@ -80,6 +80,7 @@ test("driver arrival moves the linked delivery leg to pickup verification pendin
 
 test("verified recipient handover completes the linked delivery leg in the same transaction", async () => {
   const legUpdates = [];
+  let tokenQuery;
   const assignment = {
     id: "assignment_2",
     deliveryLegId: "leg_2",
@@ -99,7 +100,7 @@ test("verified recipient handover completes the linked delivery leg in the same 
       update: async () => ({}),
     },
     verificationToken: {
-      findFirst: async () => ({ id: "token_1" }),
+      findFirst: async (query) => { tokenQuery = query; return { id: "token_1" }; },
       updateMany: async () => ({ count: 1 }),
     },
     deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
@@ -117,6 +118,7 @@ test("verified recipient handover completes the linked delivery leg in the same 
     now,
   });
   assert.equal(result.status, "COMPLETED");
+  assert.equal(tokenQuery.where.deliveryLegId, "leg_2");
   assert.deepEqual(legUpdates[0], {
     where: { id: "leg_2" },
     data: { status: "COMPLETED", completedAt: now },
