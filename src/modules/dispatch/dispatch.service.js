@@ -246,7 +246,8 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
     async proposeParcelFare({ offerId, userId, proposedFareMinor, idempotencyKey }) {
       const now = clock();
       const fare = BigInt(proposedFareMinor);
-      return prismaClient.$transaction(async (tx) => {
+      try {
+        return await prismaClient.$transaction(async (tx) => {
         const profile = await tx.driverProfile.findUnique({
           where: { userId },
           select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
@@ -321,12 +322,31 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           },
         });
         return { offerId: offer.id, proposedFareMinor: fare.toString(), currency: offer.currency, status: "OFFERED" };
-      });
+        });
+      } catch (error) {
+        if (error.code !== "P2002") throw error;
+        const existing = await prismaClient.driverOffer.findUnique({
+          where: { fareProposalIdempotencyKey: idempotencyKey },
+        });
+        if (!existing) throw error;
+        const expectedHash = payloadHash({ offerId, proposedFareMinor });
+        if (existing.id !== offerId || existing.fareProposalPayloadHash !== expectedHash) {
+          throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
+        }
+        return {
+          offerId: existing.id,
+          proposedFareMinor: existing.proposedFareMinor?.toString() ?? proposedFareMinor,
+          currency: existing.currency,
+          status: existing.status,
+          replay: true,
+        };
+      }
     },
 
     async acceptParcelFare({ bookingId, user, offerId, idempotencyKey }) {
       const now = clock();
-      return prismaClient.$transaction(async (tx) => {
+      try {
+        return await prismaClient.$transaction(async (tx) => {
         const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId } });
         if (!booking) return null;
         if (booking.senderId !== user.id) throw forbidden();
@@ -460,7 +480,35 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           currency: booking.currency,
           paymentExpiresAt,
         };
-      });
+        });
+      } catch (error) {
+        if (error.code !== "P2002") throw error;
+        const existing = await prismaClient.parcelBooking.findUnique({
+          where: { fareAcceptanceIdempotencyKey: idempotencyKey },
+        });
+        if (!existing) throw error;
+        const expectedHash = payloadHash({ bookingId, offerId });
+        if (existing.id !== bookingId || existing.fareAcceptancePayloadHash !== expectedHash) {
+          throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare acceptance.");
+        }
+        const assignment = await prismaClient.driverAssignment.findFirst({
+          where: { parcelBookingId: existing.id },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, paymentExpiresAt: true },
+        });
+        return {
+          bookingId: existing.id,
+          status: existing.status,
+          assignmentId: assignment?.id ?? null,
+          driverFareMinor: existing.driverFareMinor?.toString() ?? null,
+          connectionFeeMinor: existing.connectionFeeMinor.toString(),
+          otherChargesMinor: existing.otherChargesMinor.toString(),
+          customerPayableMinor: existing.customerPayableMinor?.toString() ?? null,
+          currency: existing.currency,
+          paymentExpiresAt: assignment?.paymentExpiresAt ?? null,
+          replay: true,
+        };
+      }
     },
   };
 }
