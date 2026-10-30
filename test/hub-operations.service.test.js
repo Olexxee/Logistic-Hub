@@ -32,7 +32,7 @@ function setup(overrides = {}) {
       findMany: async () => [{ hubPointId: "hub-1" }],
     },
     deliveryLeg: { findUnique: async () => leg, findMany: async () => [], updateMany: async () => ({ count: 1 }), findFirst: async () => null },
-    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [] },
+    driverProfile: { findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }), findMany: async () => [], update: async () => ({}) },
     transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }) },
     transportPartnerMember: { findUnique: async () => ({ isActive: true }), findMany: async () => [] },
     custodyHandover: {
@@ -48,6 +48,7 @@ function setup(overrides = {}) {
     },
     operationalCase: { create: async ({ data }) => { const item = { id: "case-1", ...data }; calls.cases.push(item); return item; } },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+    parcelBooking: { update: async () => ({}) },
     bookingEvent: { create: async ({ data }) => { calls.events.push(data); return data; } },
     driverAssignment: {
       findFirst: async () => ({ id: "driver-assignment-1", status: "ARRIVED_AT_PICKUP", driverProfileId: "driver-1", agreedFareMinor: 25000n, currency: "NGN" }),
