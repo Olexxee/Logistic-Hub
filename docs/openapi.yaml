@@ -1996,7 +1996,7 @@ paths:
       responses:
         '200': { description: Paginated user tickets. }
         '401': { $ref: '#/components/responses/Unauthorized' }
-  /support/tickets/admin:
+  /support/admin/tickets:
     get:
       tags: [Support]
       operationId: listSupportTicketsForOperators
@@ -2007,7 +2007,7 @@ paths:
       responses:
         '200': { description: Paginated support queue. }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /support/tickets/admin/{ticketId}:
+  /support/admin/tickets/{ticketId}:
     patch:
       tags: [Support]
       operationId: updateSupportTicket
