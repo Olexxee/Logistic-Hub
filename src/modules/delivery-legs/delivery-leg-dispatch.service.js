@@ -205,7 +205,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         return {
           bookingId, deliveryLegId: legId, offerId: priorAcceptance.id,
           assignmentId: priorAssignment?.id ?? null,
-          status: "AWAITING_PAYMENT",
+          status: priorAcceptance.deliveryLeg.status,
           agreedFareMinor: priorAssignment?.agreedFareMinor?.toString() ?? priorAcceptance.proposedFareMinor.toString(),
           currency: priorAcceptance.currency, paymentRequired: true, paymentEnabled: false, replay: true,
         };
@@ -349,7 +349,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         return {
           bookingId, deliveryLegId: legId, offerId: existing.id,
           assignmentId: assignment?.id ?? null,
-          status: "AWAITING_PAYMENT",
+          status: existing.deliveryLeg?.status ?? "AWAITING_PAYMENT",
           agreedFareMinor: assignment?.agreedFareMinor?.toString() ?? existing.proposedFareMinor.toString(),
           currency: existing.currency, paymentRequired: true, paymentEnabled: false, replay: true,
         };
