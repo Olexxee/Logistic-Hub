@@ -25,11 +25,11 @@ function requireIdempotencyKey(req, res, next) {
 export function createLegDispatchRouter({ prismaClient = prisma } = {}) {
   const router = Router();
   const controller = createLegDispatchController(createLegDispatchService({ prismaClient }));
-  router.post("/:legId/request-matching", requireAuth, validate(idParams, "params"), controller.requestMatching);
-  router.get("/:legId/offers", requireAuth, validate(idParams, "params"), controller.listCustomerOffers);
-  router.post("/:legId/accept-fare", requireAuth, validate(idParams, "params"), requireIdempotencyKey, validate(acceptFareBody), controller.acceptFare);
-  router.get("/driver-offers", requireAuth, requireRole("DRIVER"), controller.listDriverOffers);
-  router.post("/driver-offers/:offerId/propose-fare", requireAuth, requireRole("DRIVER"), validate(offerParams, "params"), requireIdempotencyKey, validate(proposeFareBody), controller.proposeFare);
+  router.post("/delivery-legs/:legId/request-matching", requireAuth, validate(idParams, "params"), controller.requestMatching);
+  router.get("/delivery-legs/:legId/offers", requireAuth, validate(idParams, "params"), controller.listCustomerOffers);
+  router.post("/delivery-legs/:legId/accept-fare", requireAuth, validate(idParams, "params"), requireIdempotencyKey, validate(acceptFareBody), controller.acceptFare);
+  router.get("/driver/delivery-leg-offers", requireAuth, requireRole("DRIVER"), controller.listDriverOffers);
+  router.post("/driver/delivery-leg-offers/:offerId/propose-fare", requireAuth, requireRole("DRIVER"), validate(offerParams, "params"), requireIdempotencyKey, validate(proposeFareBody), controller.proposeFare);
   return router;
 }
 export const legDispatchRouter = createLegDispatchRouter();

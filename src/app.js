@@ -113,7 +113,7 @@ app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);
 app.use("/api/v1", rideDispatchRouter);
 app.use("/api/v1", dispatchRouter);
-app.use("/api/v1/delivery-legs", legDispatchRouter);
+app.use("/api/v1", legDispatchRouter);
 app.use("/api/v1/notifications", notificationsRouter);
 app.use("/api/v1/cancellations", cancellationsRouter);
 app.use("/api/v1/finance", financeRouter);
