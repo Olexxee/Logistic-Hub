@@ -8,5 +8,7 @@ export function createDriversAdminRouter({ prismaClient = prisma, authMiddleware
   router.use(authMiddleware, roleMiddleware("ADMIN"));
   router.get("/drivers", controller.listDrivers);
   router.get("/vehicles", controller.listVehicles);
+  router.patch("/drivers/:driverProfileId/status", controller.setDriverStatus);
+  router.get("/drivers/:driverProfileId/audit", controller.listDriverAudit);
   return router;
 }

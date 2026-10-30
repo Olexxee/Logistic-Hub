@@ -451,6 +451,39 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/audit-events:
+    get:
+      tags: [Admin]
+      operationId: listAdminOperationalAuditEvents
+      summary: Query operational audit history across modules
+      description: ADMIN-only paginated audit feed for driver, hub, transport partner, agreement, and rate-card lifecycle events.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: entityType
+          schema: { type: string, enum: [DRIVER_PROFILE, HUB_POINT, TRANSPORT_PARTNER, PARTNER_AGREEMENT, PARTNER_RATE_CARD] }
+        - in: query
+          name: entityId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: action
+          schema: { type: string, minLength: 1, maxLength: 100 }
+        - in: query
+          name: actorUserId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200': { description: Paginated audit events with actor and before/after state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /drivers/admin/{driverProfileId}/verification:
     patch:
       tags: [Admin]
@@ -556,6 +589,63 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /drivers/admin/drivers/{driverProfileId}/status:
+    patch:
+      tags: [Admin]
+      operationId: setAdminDriverOperationalStatus
+      summary: Suspend or reinstate a driver
+      description: Suspension immediately disables online and available state. Reinstatement does not automatically put the driver online.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: driverProfileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [SUSPENDED, ACTIVE] }
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200': { description: Driver operational status updated and audit event recorded. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Requested suspension or reinstatement is not a valid state transition. }
+  /drivers/admin/drivers/{driverProfileId}/audit:
+    get:
+      tags: [Admin]
+      operationId: listAdminDriverAuditEvents
+      summary: List operational audit events for a driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: driverProfileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200': { description: Paginated driver audit history including actor and before/after state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /drivers/admin/vehicles:
     get:
       tags: [Admin]

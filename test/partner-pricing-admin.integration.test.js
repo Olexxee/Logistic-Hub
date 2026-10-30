@@ -21,6 +21,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
   let zone;
   let destinationZone;
   let partner;
+  let adminUser;
   let agreement;
   let rateCard;
   let server;
@@ -31,12 +32,14 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     zone = await prisma.serviceZone.create({ data: { stateId: state.id, code: `Z${tag}`, name: `Admin Test Zone ${tag}`, isActive: true } });
     destinationZone = await prisma.serviceZone.create({ data: { stateId: state.id, code: `D${tag}`, name: `Admin Test Destination Zone ${tag}`, isActive: true } });
 
+    adminUser = await prisma.user.create({ data: { fullName: `Partner Admin ${tag}`, role: "ADMIN", status: "ACTIVE" } });
+
     const app = express();
     app.use(express.json());
     app.use("/api/v1", createPartnerPricingRouter({
       prismaClient: prisma,
       authMiddleware: (req, _res, next) => {
-        req.user = { id: "integration-admin", role: "ADMIN" };
+        req.user = { id: adminUser.id, role: "ADMIN" };
         next();
       },
       adminMiddleware: (_req, _res, next) => next(),
@@ -143,10 +146,14 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     assert.ok(listed.json.data.items.some((item) => item.id === partner.id && item._count.agreements === 1));
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
+    if (rateCard) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: rateCard.id } });
+    if (agreement) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: agreement.id } });
+    if (partner) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: partner.id } });
     if (rateCard) await prisma.partnerRate.deleteMany({ where: { rateCardId: rateCard.id } });
     if (rateCard) await prisma.partnerRateCard.deleteMany({ where: { id: rateCard.id } });
     if (agreement) await prisma.partnerAgreement.deleteMany({ where: { id: agreement.id } });
     if (partner) await prisma.transportPartner.deleteMany({ where: { id: partner.id } });
+    if (adminUser) await prisma.user.deleteMany({ where: { id: adminUser.id } });
     if (destinationZone) await prisma.serviceZone.deleteMany({ where: { id: destinationZone.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
     if (state) await prisma.state.deleteMany({ where: { id: state.id } });

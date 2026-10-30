@@ -60,7 +60,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         return updated;
       });
     },
-    async setStatus(id, status) {
+    async setStatus(id, status, actorUserId) {
       const current = await repository.findById(id);
       if (!current) return null;
       if (current.status === "CLOSED" && status !== "CLOSED") {
@@ -80,7 +80,14 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "Before activation, provide verified operator details, valid opening hours for all weekdays, accepted parcel types, and a valid capacity configuration.");
         }
       }
-      return repository.update(id, { status });
+      return prismaClient.$transaction(async tx => {
+        const updated = await tx.hubPoint.update({ where: { id }, data: { status } });
+        await tx.operationalAuditEvent.create({ data: {
+          actorUserId, entityType: "HUB_POINT", entityId: id,
+          action: "HUB_STATUS_UPDATED", before: { status: current.status }, after: { status: updated.status },
+        } });
+        return updated;
+      });
     },
   };
 }

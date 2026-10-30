@@ -30,6 +30,8 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
       return {
         id: profile.id,
         verificationStatus: profile.verificationStatus,
+        suspendedAt: profile.suspendedAt,
+        suspensionReason: profile.suspensionReason,
         isOnline: profile.isOnline,
         isAvailable: profile.isAvailable,
         serviceRadiusMeters: profile.serviceRadiusMeters,
@@ -109,8 +111,8 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
           },
         },
       });
-      if (!profile || profile.verificationStatus !== "VERIFIED") {
-        throw forbidden("Driver verification must be completed before going online.");
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt) {
+        throw forbidden(profile?.suspendedAt ? "This driver account is suspended. Contact operations before attempting to go online." : "Driver verification must be completed before going online.");
       }
       if (input.isAvailable) {
         const now = clock();
@@ -140,9 +142,9 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
     async recordLocation({ userId, input }) {
       const profile = await prismaClient.driverProfile.findUnique({
         where: { userId },
-        select: { id: true, verificationStatus: true, isOnline: true },
+        select: { id: true, verificationStatus: true, suspendedAt: true, isOnline: true },
       });
-      if (!profile || profile.verificationStatus !== "VERIFIED" || !profile.isOnline) {
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !profile.isOnline) {
         throw forbidden("Only a verified online driver can publish a location.");
       }
       const recordedAt = clock();

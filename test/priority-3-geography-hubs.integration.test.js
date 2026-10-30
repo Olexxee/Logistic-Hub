@@ -81,6 +81,7 @@ test("public geography and hub discovery expose only currently eligible operatio
     });
     assert.equal(unavailableHubs.data.some((item) => item.id === hub.id), false);
   } finally {
+    if (hub) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: hub.id } });
     if (hub) await prisma.hubPoint.deleteMany({ where: { id: hub.id } });
     if (availability) await prisma.serviceAvailability.deleteMany({ where: { id: availability.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
