@@ -3058,6 +3058,44 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Hub operator not found. }
+  /driver/hub-handovers:
+    post:
+      tags: [Delivery legs]
+      operationId: initiateDriverHubHandover
+      summary: Release a driver assignment into destination hub custody
+      description: The authenticated driver profile, assignment, destination hub and booking are derived and validated server-side. The driver must have arrived at the assignment destination; the receiving hub must confirm custody before the driver leg is completed.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [assignmentId, conditionAtRelease]
+              properties:
+                assignmentId: { type: string }
+                conditionAtRelease: { type: string, minLength: 2, maxLength: 500 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '201': { description: Pending handover to the configured destination hub created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Driver assignment not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /hub-operations/handovers:
     get:
       tags: [Delivery legs]
