@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createMultiLegPlan } from "../delivery-legs/delivery-plan.service.js";
+import { createMultiLegPlan, getExistingDeliveryRoutePlan } from "../delivery-legs/delivery-plan.service.js";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
@@ -216,7 +216,8 @@ export function createPartnerPricingRouter({
         const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
         if (!quote) return { quoteNotFound: true };
         if (quote.status === "ACCEPTED" && quote.acceptedByUserId === req.user.id) {
-          return { quote, replay: true };
+          const routePlan = await getExistingDeliveryRoutePlan({ tx, bookingId: booking.id });
+          return { quote, routePlan, replay: true };
         }
         if (booking.status !== "DRAFT") {
           return { conflict: true };
