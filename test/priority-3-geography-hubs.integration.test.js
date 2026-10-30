@@ -38,6 +38,11 @@ test("public geography and hub discovery expose only currently eligible operatio
       address: "Test operational address",
       latitude: 6.5244,
       longitude: 3.3792,
+      operatorName: "Integration Test Operator",
+      operatorPhone: "+2348000000000",
+      openingHours: Object.fromEntries(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map((day) => [day, [{ opensAt: "08:00", closesAt: "18:00" }]])),
+      acceptedParcelTypes: ["DOCUMENTS", "SMALL_PARCEL"],
+      capacityConfig: { maxParcels: 80 },
     });
     assert.equal(hub.status, "PENDING");
     hub = await hubAdmin.setStatus(hub.id, "ACTIVE");
