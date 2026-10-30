@@ -2592,8 +2592,155 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: "Offer expired, already answered, or idempotency key conflicts." }
 
+  /partner/assignments:
+    get:
+      tags: [Delivery legs]
+      operationId: listPartnerAssignments
+      summary: List assignments for the authenticated transport partner
+      description: Requires a partner API credential issued by an administrator.
+      x-implementation-status: implemented
+      security: [{ partnerBearer: [] }]
+      responses:
+        '200': { description: Partner assignments and privacy-safe route summaries. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /partner/assignments/{assignmentId}/accept:
+    post:
+      tags: [Delivery legs]
+      operationId: acceptPartnerAssignment
+      summary: Accept an offered interstate transport assignment
+      x-implementation-status: implemented
+      security: [{ partnerBearer: [] }]
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Assignment accepted or replayed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Assignment is no longer available. }
+  /partner/assignments/{assignmentId}/reject:
+    post:
+      tags: [Delivery legs]
+      operationId: rejectPartnerAssignment
+      summary: Reject an offered interstate transport assignment
+      x-implementation-status: implemented
+      security: [{ partnerBearer: [] }]
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200': { description: Assignment rejected or replayed. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Assignment is no longer available. }
+  /partner/assignments/{assignmentId}/start:
+    post:
+      tags: [Delivery legs]
+      operationId: startPartnerAssignment
+      summary: Start an accepted interstate transport leg when its sequence is ready
+      x-implementation-status: implemented
+      security: [{ partnerBearer: [] }]
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Partner assignment marked in transit. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Assignment or delivery leg is not ready. }
+  /partner/assignments/{assignmentId}/arrived-at-hub:
+    post:
+      tags: [Delivery legs]
+      operationId: markPartnerAssignmentArrivedAtHub
+      summary: Report arrival at the destination hub pending hub intake verification
+      x-implementation-status: implemented
+      security: [{ partnerBearer: [] }]
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Arrival recorded; hub intake remains a separate custody confirmation. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Assignment is not in transit. }
+  /admin/transport-partners/{partnerId}/api-credentials:
+    post:
+      tags: [Admin]
+      operationId: createPartnerApiCredential
+      summary: Issue a one-time partner API credential
+      description: The raw credential is returned once. Only its hash is stored.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: partnerId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [label]
+              properties:
+                label: { type: string, minLength: 2, maxLength: 80 }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        '201': { description: Credential created; token is only shown in this response. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Partner must be active and verified. }
+  /admin/transport-partners/{partnerId}/api-credentials/{credentialId}/revoke:
+    post:
+      tags: [Admin]
+      operationId: revokePartnerApiCredential
+      summary: Revoke a partner API credential
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: partnerId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: credentialId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Credential revoked. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
+    partnerBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Partner API credential
     bearerAuth:
       type: http
       scheme: bearer

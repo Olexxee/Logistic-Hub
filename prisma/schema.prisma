@@ -219,6 +219,17 @@ enum ShipmentQuoteStatus {
   SUPERSEDED
 }
 
+enum PartnerAssignmentStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  IN_TRANSIT
+  ARRIVED_AT_HUB
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
 enum AuthTokenPurpose {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -796,6 +807,7 @@ model DeliveryLeg {
   destinationHubPoint HubPoint? @relation("DeliveryLegDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
   assignments       DriverAssignment[]
   offers            DriverOffer[]
+  partnerAssignment PartnerAssignment?
   verificationTokens VerificationToken[]
 
   @@unique([parcelBookingId, sequence])
@@ -1078,6 +1090,8 @@ model TransportPartner {
   updatedAt          DateTime           @updatedAt
 
   agreements PartnerAgreement[]
+  credentials PartnerApiCredential[]
+  assignments PartnerAssignment[]
 
   @@index([status, verificationStatus])
   @@map("transport_partners")
@@ -1101,6 +1115,7 @@ model PartnerAgreement {
   partner   TransportPartner   @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   rateCards PartnerRateCard[]
   quotes    ShipmentQuote[]
+  assignments PartnerAssignment[]
 
   @@index([partnerId, status, effectiveFrom])
   @@index([status, effectiveFrom, effectiveUntil])
@@ -1183,6 +1198,7 @@ model ShipmentQuote {
   partnerAgreement PartnerAgreement? @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
   partnerRate      PartnerRate?      @relation(fields: [partnerRateId], references: [id], onDelete: Restrict)
   acceptedByUser   User?             @relation("ShipmentQuoteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  partnerAssignment PartnerAssignment?
 
   @@unique([parcelBookingId, version])
   @@index([parcelBookingId, status, expiresAt])
@@ -1191,6 +1207,61 @@ model ShipmentQuote {
   @@map("shipment_quotes")
 }
 
+
+
+model PartnerApiCredential {
+  id         String    @id @default(cuid())
+  partnerId  String
+  label      String
+  tokenHash  String    @unique
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  partner TransportPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, revokedAt])
+  @@index([expiresAt, revokedAt])
+  @@map("partner_api_credentials")
+}
+
+model PartnerAssignment {
+  id                          String                  @id @default(cuid())
+  deliveryLegId               String                  @unique
+  parcelBookingId             String
+  shipmentQuoteId             String                  @unique
+  partnerId                   String
+  partnerAgreementId          String
+  status                      PartnerAssignmentStatus @default(OFFERED)
+  currency                    String
+  quotedTransportChargeMinor  BigInt
+  partnerReference            String?
+  offeredAt                   DateTime                @default(now())
+  acceptedAt                  DateTime?
+  rejectedAt                  DateTime?
+  startedAt                   DateTime?
+  arrivedAtHubAt               DateTime?
+  completedAt                 DateTime?
+  cancelledAt                 DateTime?
+  failedAt                    DateTime?
+  rejectionReason             String?
+  failureReason               String?
+  metadata                    Json?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
+
+  deliveryLeg      DeliveryLeg     @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  parcelBooking    ParcelBooking   @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  shipmentQuote    ShipmentQuote   @relation(fields: [shipmentQuoteId], references: [id], onDelete: Restrict)
+  partner          TransportPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  partnerAgreement PartnerAgreement @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
+
+  @@index([partnerId, status, offeredAt])
+  @@index([parcelBookingId, status])
+  @@index([partnerAgreementId])
+  @@map("partner_assignments")
+}
 
 model OperationalAuditEvent {
   id          String   @id @default(cuid())
