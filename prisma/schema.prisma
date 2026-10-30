@@ -777,6 +777,7 @@ model DeliveryLeg {
   originServiceZone ServiceZone   @relation("DeliveryLegOriginZone", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
   destinationServiceZone ServiceZone @relation("DeliveryLegDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   assignments       DriverAssignment[]
+  verificationTokens VerificationToken[]
 
   @@unique([parcelBookingId, sequence])
   @@index([status, plannedAt])
@@ -933,6 +934,7 @@ model VerificationToken {
   id               String                  @id @default(cuid())
   parcelBookingId  String?
   rideBookingId    String?
+  deliveryLegId    String?
   action           VerificationAction
   tokenHash        String                  @unique
   status           VerificationTokenStatus @default(ACTIVE)
@@ -943,9 +945,11 @@ model VerificationToken {
 
   parcelBooking ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
   rideBooking   RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Cascade)
+  deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
 
   @@index([parcelBookingId, action, status])
   @@index([rideBookingId, action, status])
+  @@index([deliveryLegId, action, status])
   @@index([status, expiresAt])
   @@map("verification_tokens")
 }
