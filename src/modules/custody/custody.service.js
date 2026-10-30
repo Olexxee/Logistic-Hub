@@ -180,6 +180,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (input.fromPartyType === input.toPartyType && input.fromPartyId === input.toPartyId) {
           return { blocker: "SAME_CUSTODY_PARTY" };
         }
+        if (input.fromPartyType === "HUB") {
+          const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, input.fromPartyId, tx);
+          if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
+        }
         const pending = await repo.findPendingHandover(leg.id, tx);
         if (pending && pending.expiresAt && pending.expiresAt <= clock()) {
           await repo.updateHandover(pending.id, { status: "EXPIRED" }, tx);
