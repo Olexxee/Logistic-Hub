@@ -15,6 +15,7 @@ export function createHubPointsRouter({ prismaClient = prisma, authMiddleware = 
   router.post("/admin", authMiddleware, requireAdmin, admin.create);
   router.patch("/admin/:hubPointId", authMiddleware, requireAdmin, admin.update);
   router.patch("/admin/:hubPointId/status", authMiddleware, requireAdmin, admin.setStatus);
+  router.patch("/admin/:hubPointId/operator-verification", authMiddleware, requireAdmin, admin.reviewOperator);
 
   router.get("/", async (req, res, next) => {
     const parsed = listHubPointsQuerySchema.safeParse(req.query);
