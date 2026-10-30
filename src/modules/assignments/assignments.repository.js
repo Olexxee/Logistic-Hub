@@ -1,6 +1,31 @@
 import { prisma } from "../../db/prisma.js";
 export function createAssignmentsRepository(prismaClient = prisma) {
  return {
+  async listDriverAssignments({userId,skip,take}){
+   const where={
+    driverProfile:{is:{userId}},
+    parcelBookingId:{not:null},
+    parcelBooking:{is:{paymentStatus:"SUCCEEDED"}},
+   };
+   const [items,total]=await Promise.all([
+    prismaClient.driverAssignment.findMany({
+     where,orderBy:[{createdAt:"desc"},{id:"desc"}],skip,take,
+     include:{
+      parcelBooking:true,
+      deliveryLeg:{
+       include:{
+        originServiceZone:{select:{id:true,name:true}},
+        destinationServiceZone:{select:{id:true,name:true}},
+        originHubPoint:{select:{id:true,name:true,address:true}},
+        destinationHubPoint:{select:{id:true,name:true,address:true}},
+       },
+      },
+     },
+    }),
+    prismaClient.driverAssignment.count({where}),
+   ]);
+   return {items,total};
+  },
   findAssignment(id) { return prismaClient.driverAssignment.findUnique({where:{id},include:{driverProfile:{select:{id:true,userId:true}},parcelBooking:true,rideBooking:true}}); },
   findOwnerLocation({assignment,now}) {
    const booking=assignment.parcelBooking||assignment.rideBooking;
