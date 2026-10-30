@@ -2437,7 +2437,11 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Leg is not ready, requires partner execution, or no eligible drivers are available. }
+        '409':
+          description: Leg is not ready, requires partner execution, or no eligible drivers are available.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /driver/delivery-leg-offers:
     get:
       tags: [Delivery legs]
@@ -2478,7 +2482,11 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Offer is no longer available or idempotency key conflicts. }
+        '409':
+          description: Offer is no longer available or idempotency key conflicts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /parcel-bookings/{bookingId}/delivery-legs/{legId}/offers:
     get:
       tags: [Delivery legs]
@@ -2534,7 +2542,11 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Offer or leg is no longer available, or idempotency key conflicts. }
+        '409':
+          description: Offer or leg is no longer available, or idempotency key conflicts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /payments:
     post:
       tags: [Payments]
