@@ -37,6 +37,7 @@ test("driver pickup eligibility requires a fresh location inside the configured 
 test("parcel matching creates offers only for fresh, nearby eligible drivers", async () => {
   const createdOffers = [];
   let driverQuery;
+  let zoneQuery;
   const booking = {
     id: "booking_1",
     senderId: "sender_1",
@@ -52,6 +53,9 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
       parcelBooking: {
         findUnique: async () => booking,
         updateMany: async () => ({ count: 1 }),
+      },
+      serviceZone: {
+        findMany: async (query) => { zoneQuery = query; return [{ id: "zone_pickup" }, { id: "zone_destination" }]; },
       },
       driverProfile: {
         findMany: async (query) => {
@@ -83,6 +87,9 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
 
   assert.deepEqual(createdOffers.map((offer) => offer.driverProfileId), ["nearby"]);
   assert.equal(result.offersCreated, 1);
+  assert.deepEqual(zoneQuery.where.id.in, ["zone_pickup", "zone_destination"]);
+  assert.equal(zoneQuery.where.availability.some.serviceType, "PARCEL_DELIVERY");
+  assert.equal(zoneQuery.where.availability.some.isEnabled, true);
   assert.deepEqual(driverQuery.where.lastLocationAt, {
     gte: new Date(now.getTime() - 5 * 60_000),
   });
