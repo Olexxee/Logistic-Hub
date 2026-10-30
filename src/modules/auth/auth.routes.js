@@ -98,6 +98,7 @@ export function createAuthRouter({
   appBaseUrl = env.APP_BASE_URL,
 } = {}) {
   const router = Router();
+  router.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
   const { requireAuth } = createAuthMiddleware({ prismaClient, secret });
   const authRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-write", limit: 10, windowMs: 15 * 60_000 });
   const refreshRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-refresh", limit: 30, windowMs: 15 * 60_000 });
