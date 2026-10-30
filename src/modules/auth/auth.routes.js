@@ -375,7 +375,7 @@ export function createAuthRouter({
       const { refreshToken: _refreshToken, refreshExpiresAt: _refreshExpiresAt, ...publicTokens } = tokens;
       return res.status(200).json({ success: true, data: publicTokens });
     } catch (error) {
-      clearRefreshCookie(res);
+      if (["INVALID_REFRESH_TOKEN", "UNAUTHORIZED"].includes(error.code)) clearRefreshCookie(res);
       return next(error);
     }
   });
