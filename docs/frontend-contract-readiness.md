@@ -45,5 +45,7 @@
 ## Contract validation
 
 - `npm run api:validate` validates the OpenAPI document, unique operation IDs, implementation-status metadata, idempotency declarations and every mounted Express route against documented OpenAPI methods/paths, including geography and service-zone administration.
+- Latest full CI validation passed on the discovery-contract branch: OpenAPI validation, mounted-route parity, Prisma schema/client generation, migration checks, disposable PostgreSQL schema-drift checks and API/PostgreSQL integrity tests.
+- Deployment-specific `CORS_ORIGINS`, Google Maps credentials and email-provider configuration still require environment-level verification before end-to-end staging sign-off.
 - Unit tests cover discovery read models, repository scoping/privacy and admin booking filters.
 - CI must pass before this contract is considered ready for frontend implementation.
