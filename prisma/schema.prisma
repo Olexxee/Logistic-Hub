@@ -765,6 +765,7 @@ model DeliveryLeg {
   destinationServiceZoneId String
   plannedAt              DateTime?
   assignedAt             DateTime?
+  pickedUpAt             DateTime?
   startedAt              DateTime?
   completedAt            DateTime?
   cancelledAt            DateTime?
