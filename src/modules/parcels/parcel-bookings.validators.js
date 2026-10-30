@@ -13,7 +13,16 @@ const listParcelBookingsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   status: z.enum(bookingStatuses).optional(),
-}).strict();
+  paymentStatus: z.enum(["INITIALIZED", "PENDING", "SUCCEEDED", "FAILED", "ABANDONED", "REVERSED"]).optional(),
+  reference: z.string().trim().min(2).max(64).optional(),
+  pickupServiceZoneId: z.string().trim().min(1).max(128).optional(),
+  destinationServiceZoneId: z.string().trim().min(1).max(128).optional(),
+  createdFrom: z.string().datetime().optional(),
+  createdTo: z.string().datetime().optional(),
+}).strict().refine(value => !value.createdFrom || !value.createdTo || new Date(value.createdFrom) <= new Date(value.createdTo), {
+  message: "createdFrom must be earlier than or equal to createdTo.",
+  path: ["createdTo"],
+});
 
 export function validateListParcelBookings(req, _res, next) {
   const parsed = listParcelBookingsQuerySchema.safeParse(req.query);
