@@ -37,6 +37,44 @@ Use separate fields/records for:
 
 This avoids one status field trying to represent several concurrent facts. A shipment can remain `PICKED_UP` while a dispute is open.
 
+## 1A. Partner quotation path
+
+- Partner rate-card quotations and direct driver fare proposals are alternative fulfilment paths for a parcel booking.
+- A partner quote may be issued and accepted only while the booking is `DRAFT`. Once the sender requests driver matching and the booking enters `MATCHING`, partner quote acceptance is blocked; the sender must choose from driver fare proposals.
+- Accepted partner transport charges remain in the shipment quote and booking pricing snapshot. They must not be written into `driverFareMinor`, which is reserved for a directly negotiated driver fare.
+- Partner quote acceptance records the customer-approved total and moves the booking to `AWAITING_PAYMENT`. Partner-specific assignment and settlement integration must be completed before this path can use the payment flow.
+
+## 1B. Parcel delivery-leg lifecycle
+
+A delivery leg is one independently tracked segment of a parcel journey. The booking is the customer-level shipment record; a leg is the operational movement between two service zones. Never use the booking status as a substitute for a leg's status.
+
+The direct local-driver path creates one DIRECT leg per driver-matched parcel booking:
+
+- The sender accepts a specific driver fare; in the same transaction the system creates a DIRECT leg in AWAITING_PAYMENT and links the temporary driver assignment to that leg.
+- A successful, server-verified payment changes the leg to ASSIGNED in the same settlement transaction that activates the driver assignment.
+- Driver arrival at pickup changes the leg to PICKUP_VERIFICATION_PENDING.
+- A valid one-time pickup code changes the leg to IN_TRANSIT.
+- Driver arrival at the destination changes the leg to DELIVERY_VERIFICATION_PENDING.
+- A valid recipient delivery code changes the leg to COMPLETED.
+
+The multi-leg route-planning slice adds an ordered plan for accepted inter-state shipment quotes:
+
+- If active, operator-verified hubs that accept the parcel category exist in both endpoint service zones, the plan contains LOCAL_PICKUP, INTERSTATE_TRANSPORT and FINAL_MILE legs. The nearest eligible hub to each endpoint is selected using the booking's stored coordinates.
+- If hub coverage is incomplete, the plan falls back to one end-to-end INTERSTATE_TRANSPORT leg. The planner does not invent missing hubs or substitute an inactive hub.
+- The first planned segment is READY_FOR_ASSIGNMENT; later segments remain PLANNED until the preceding segment is completed.
+- When a non-final leg's recipient/hub handover is verified, the next leg moves atomically from PLANNED to READY_FOR_ASSIGNMENT and the booking remains IN_TRANSIT. Only completion of the final leg completes the booking.
+- A route plan is created in the same transaction as quote acceptance, so an accepted quote cannot exist without its corresponding plan when a cross-state route is planned.
+
+The assignment and leg transitions must be committed together. A failed token check, stale assignment state or transaction failure must not partially advance either lifecycle. Assignment status transitions use compare-and-set updates so concurrent driver requests cannot emit duplicate transition events. Pickup and delivery verification tokens are bound to the leg as well as the booking so later multi-leg journeys cannot reuse a code from another segment.
+
+The sender or an authorized operator can read the ordered leg timeline through:
+
+GET /api/v1/parcel-bookings/{bookingId}/delivery-legs
+
+The endpoint is owner-scoped, returns service-zone and hub names rather than exposing additional location data, and includes only the latest assignment summary for each leg.
+
+This slice establishes route planning and sequential leg activation. It does not yet create per-leg driver offers or assignments, partner assignment/settlement records, hub intake/handover scans, or custody-transfer confirmations. Those remain follow-on Priority 5 workstreams. The current driver assignment/payment path remains booking-oriented and must not be reused as a partner assignment workflow.
+
 ## 2. Ride lifecycle
 
 Use the separate `RideStatus` enum and a distinct transition function. A typical path follows the same negotiation-before-payment rule as parcels:
@@ -75,14 +113,14 @@ Before ranking, filter to drivers who:
 - Have an active account and verified driver profile.
 - Have a verified, active vehicle appropriate to the parcel/ride.
 - Are online and available.
-- Have an acceptable last-location timestamp.
-- Cover the pickup service zone and service type.
-- Are inside the configured pickup radius.
+- Have a location timestamp no older than five minutes at matching time.
+- Have a latest location record within their configured `serviceRadiusMeters` of the pickup coordinates.
+- Cover both pickup and destination service zones for the parcel service type.
 - Are not suspended or under a safety/compliance hold.
 - Have no conflicting active assignment.
 - Meet parcel size/capacity and handling requirements.
 
-Do not reveal the sender's exact contact or destination details to drivers who have not been assigned the job. The offer should include only the minimum information needed to decide whether to accept.
+Do not reveal the sender's exact pickup/destination addresses, coordinates, recipient name, or recipient phone to drivers who have not been assigned the job. Driver-facing offer cards expose the pickup and destination service-zone names plus parcel category and size only. The offer should include only the minimum information needed to decide whether to accept.
 
 ### Candidate ranking
 

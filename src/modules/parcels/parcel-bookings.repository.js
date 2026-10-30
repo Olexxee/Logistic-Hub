@@ -50,6 +50,26 @@ export function createParcelBookingsRepository({ prismaClient }) {
     findById(id) {
       return prismaClient.parcelBooking.findUnique({ where: { id } });
     },
+    findDeliveryLegsByBookingId(parcelBookingId) {
+      return prismaClient.deliveryLeg.findMany({
+        where: { parcelBookingId },
+        orderBy: { sequence: "asc" },
+        include: {
+          originServiceZone: { select: { id: true, name: true } },
+          destinationServiceZone: { select: { id: true, name: true } },
+          originHubPoint: { select: { id: true, name: true } },
+          destinationHubPoint: { select: { id: true, name: true } },
+          assignments: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true, status: true, acceptedAt: true, pickupAt: true,
+              startedAt: true, completedAt: true,
+            },
+          },
+        },
+      });
+    },
     listVisible({ senderId, includeAll, status, skip, take }) {
       const where = {
         ...(includeAll ? {} : { senderId }),

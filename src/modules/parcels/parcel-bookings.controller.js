@@ -39,5 +39,10 @@ export function createParcelBookingsController({ service, notifications }) {
       if (!booking) throw new NotFoundError("The parcel booking was not found.");
       return res.status(200).json({ success: true, data: booking });
     },
+    listDeliveryLegs: async (req, res) => {
+      const legs = await service.listVisibleDeliveryLegs({ bookingId: req.validated.params.bookingId, user: req.user });
+      if (!legs) throw new NotFoundError("The parcel booking was not found.");
+      return res.status(200).json({ success: true, data: legs });
+    },
   };
 }

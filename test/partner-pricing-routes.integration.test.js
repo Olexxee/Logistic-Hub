@@ -95,30 +95,60 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
       body: { reason: "Customer declines this price" },
     });
     assert.equal(rejected.status, 200);
+    assert.equal(rejected.json.data.replay, false);
+    const rejectedReplay = await call(`/parcel-bookings/${booking.id}/quotes/${rejectedQuoteId}/reject`, {
+      method: "POST",
+      body: { reason: "Retry after network timeout" },
+    });
+    assert.equal(rejectedReplay.status, 200);
+    assert.equal(rejectedReplay.json.data.replay, true);
 
     activeUserId = adminUser.id;
-    const second = await call(`/admin/parcel-bookings/${booking.id}/quotes`, {
-      method: "POST",
-      body: { transportChargeMinor: "1500", reason: "Revised approved manual quote", expiresInMinutes: 60 },
-    });
+    const [second, third] = await Promise.all([
+      call(`/admin/parcel-bookings/${booking.id}/quotes`, {
+        method: "POST",
+        body: { transportChargeMinor: "1500", reason: "Concurrent approved quote A", expiresInMinutes: 60 },
+      }),
+      call(`/admin/parcel-bookings/${booking.id}/quotes`, {
+        method: "POST",
+        body: { transportChargeMinor: "1500", reason: "Concurrent approved quote B", expiresInMinutes: 60 },
+      }),
+    ]);
     assert.equal(second.status, 201);
+    assert.equal(third.status, 201);
+    const concurrentQuotes = [second.json.data.quote, third.json.data.quote];
+    assert.deepEqual(concurrentQuotes.map((quote) => quote.version).sort((a, b) => a - b), [2, 3]);
+    const latestQuote = concurrentQuotes.find((quote) => quote.version === 3);
 
     activeUserId = sender.id;
+    await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "MATCHING" } });
+    const blockedMatchingAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
+    assert.equal(blockedMatchingAcceptance.status, 409);
+    const stillOfferedDuringMatching = await prisma.shipmentQuote.findUnique({ where: { id: latestQuote.id } });
+    assert.equal(stillOfferedDuringMatching.status, "OFFERED");
+
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "IN_TRANSIT" } });
-    const blockedLateAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    const blockedLateAcceptance = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(blockedLateAcceptance.status, 409);
     assert.equal(blockedLateAcceptance.json.error.code, "QUOTE_NOT_ACCEPTABLE");
-    const stillOffered = await prisma.shipmentQuote.findUnique({ where: { id: second.json.data.quote.id } });
+    const stillOffered = await prisma.shipmentQuote.findUnique({ where: { id: latestQuote.id } });
     assert.equal(stillOffered.status, "OFFERED");
 
     await prisma.parcelBooking.update({ where: { id: booking.id }, data: { status: "DRAFT" } });
-    const accepted = await call(`/parcel-bookings/${booking.id}/quotes/${second.json.data.quote.id}/accept`, { method: "POST" });
+    const accepted = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.json.data.quote.status, "ACCEPTED");
+    assert.equal(accepted.json.data.replay, false);
+    const acceptedReplay = await call(`/parcel-bookings/${booking.id}/quotes/${latestQuote.id}/accept`, { method: "POST" });
+    assert.equal(acceptedReplay.status, 200);
+    assert.equal(acceptedReplay.json.data.quote.status, "ACCEPTED");
+    assert.equal(acceptedReplay.json.data.replay, true);
+    assert.equal(acceptedReplay.json.data.routePlan.routeMode, "LOCAL_DIRECT");
+    assert.deepEqual(acceptedReplay.json.data.routePlan.legs, []);
 
     const persistedBooking = await prisma.parcelBooking.findUnique({ where: { id: booking.id } });
     assert.equal(persistedBooking.status, "AWAITING_PAYMENT");
-    assert.equal(persistedBooking.driverFareMinor, 1500n);
+    assert.equal(persistedBooking.driverFareMinor, null);
     assert.equal(persistedBooking.customerPayableMinor, 1500n);
     const persistedEvent = await prisma.bookingEvent.findFirst({
       where: { parcelBookingId: booking.id, eventType: "SHIPMENT_QUOTE_REJECTED" },
@@ -131,7 +161,7 @@ test("quote create, list, reject, and accept endpoints enforce the sender lifecy
     assert.equal(acceptedEvent.actorUserId, sender.id);
     assert.equal(acceptedEvent.fromStatus, "DRAFT");
     assert.equal(acceptedEvent.toStatus, "AWAITING_PAYMENT");
-    assert.equal(acceptedEvent.metadata.quoteId, second.json.data.quote.id);
+    assert.equal(acceptedEvent.metadata.quoteId, latestQuote.id);
     assert.equal(acceptedEvent.metadata.totalCustomerChargeMinor, "1500");
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));

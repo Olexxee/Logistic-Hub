@@ -119,6 +119,27 @@ enum AssignmentStatus {
   FAILED
 }
 
+enum DeliveryLegType {
+  DIRECT
+  LOCAL_PICKUP
+  HUB_TRANSFER
+  INTERSTATE_TRANSPORT
+  FINAL_MILE
+}
+
+enum DeliveryLegStatus {
+  PLANNED
+  READY_FOR_ASSIGNMENT
+  AWAITING_PAYMENT
+  ASSIGNED
+  PICKUP_VERIFICATION_PENDING
+  IN_TRANSIT
+  DELIVERY_VERIFICATION_PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 enum VerificationAction {
   PARCEL_PICKUP
   PARCEL_DELIVERY
@@ -317,6 +338,7 @@ model DriverProfile {
   locations          DriverLocation[]
   coverage           DriverCoverage[]
   offers             DriverOffer[]
+  deliveryLegOffers  DeliveryLegOffer[]
   assignments        DriverAssignment[]
   payouts            DriverPayout[]
   settlementAccounts DriverSettlementAccount[]
@@ -454,6 +476,8 @@ model ServiceZone {
   pickupRideBookings       RideBooking[]         @relation("RidePickupZone")
   destinationRideBookings  RideBooking[]         @relation("RideDestinationZone")
   hubPoints                HubPoint[]
+  originDeliveryLegs       DeliveryLeg[] @relation("DeliveryLegOriginZone")
+  destinationDeliveryLegs  DeliveryLeg[] @relation("DeliveryLegDestinationZone")
   pricingRules             PricingRule[]
   partnerRateOrigins       PartnerRate[] @relation("PartnerRateOriginZone")
   partnerRateDestinations  PartnerRate[] @relation("PartnerRateDestinationZone")
@@ -519,6 +543,8 @@ model HubPoint {
   updatedAt           DateTime       @updatedAt
 
   serviceZone ServiceZone @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  originDeliveryLegs DeliveryLeg[] @relation("DeliveryLegOriginHub")
+  destinationDeliveryLegs DeliveryLeg[] @relation("DeliveryLegDestinationHub")
 
   @@index([serviceZoneId, status])
   @@map("hub_points")
@@ -611,6 +637,7 @@ model ParcelBooking {
   refunds                RefundRequest[]
   supportTickets         SupportTicket[]
   quotes                 ShipmentQuote[]
+  deliveryLegs           DeliveryLeg[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
@@ -702,6 +729,7 @@ model DriverAssignment {
   id               String           @id @default(cuid())
   parcelBookingId  String?
   rideBookingId    String?
+  deliveryLegId    String?
   driverProfileId  String
   assignedByUserId String?
   status           AssignmentStatus @default(AWAITING_PAYMENT)
@@ -722,11 +750,79 @@ model DriverAssignment {
   rideBooking   RideBooking?   @relation(fields: [rideBookingId],   references: [id], onDelete: Restrict)
   driverProfile DriverProfile  @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
   assignedBy    User?          @relation(fields: [assignedByUserId], references: [id], onDelete: SetNull)
+  deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
 
   @@index([driverProfileId, status, reservedAt])
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
+  @@index([deliveryLegId, status])
   @@map("driver_assignments")
+}
+
+model DeliveryLeg {
+  id                     String           @id @default(cuid())
+  parcelBookingId        String
+  sequence               Int
+  type                   DeliveryLegType
+  status                 DeliveryLegStatus @default(PLANNED)
+  originServiceZoneId    String
+  destinationServiceZoneId String
+  originHubPointId        String?
+  destinationHubPointId   String?
+  originLatitude          Decimal? @db.Decimal(10, 7)
+  originLongitude         Decimal? @db.Decimal(10, 7)
+  destinationLatitude     Decimal? @db.Decimal(10, 7)
+  destinationLongitude    Decimal? @db.Decimal(10, 7)
+  plannedAt              DateTime?
+  assignedAt             DateTime?
+  pickedUpAt             DateTime?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  cancelledAt            DateTime?
+  failureReason          String?
+  metadata               Json?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  parcelBooking     ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  originServiceZone ServiceZone   @relation("DeliveryLegOriginZone", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
+  destinationServiceZone ServiceZone @relation("DeliveryLegDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
+  originHubPoint HubPoint? @relation("DeliveryLegOriginHub", fields: [originHubPointId], references: [id], onDelete: Restrict)
+  destinationHubPoint HubPoint? @relation("DeliveryLegDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
+  assignments       DriverAssignment[]
+  offers             DeliveryLegOffer[]
+  verificationTokens VerificationToken[]
+
+  @@unique([parcelBookingId, sequence])
+  @@index([status, plannedAt])
+  @@index([originServiceZoneId, destinationServiceZoneId, status], map: "delivery_legs_route_status_idx")
+  @@index([originHubPointId])
+  @@index([destinationHubPointId])
+  @@map("delivery_legs")
+}
+
+
+model DeliveryLegOffer {
+  id                         String      @id @default(cuid())
+  deliveryLegId              String
+  driverProfileId            String
+  status                     OfferStatus @default(OFFERED)
+  proposedFareMinor          BigInt?
+  proposalIdempotencyKey     String?     @unique
+  proposalPayloadHash        String?
+  acceptanceIdempotencyKey   String?     @unique
+  acceptancePayloadHash      String?
+  currency                   String      @default("NGN")
+  expiresAt                  DateTime
+  respondedAt                DateTime?
+  createdAt                  DateTime    @default(now())
+
+  deliveryLeg   DeliveryLeg  @relation(fields: [deliveryLegId], references: [id], onDelete: Cascade)
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+
+  @@index([deliveryLegId, status, expiresAt])
+  @@index([driverProfileId, status, expiresAt])
+  @@map("delivery_leg_offers")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -878,6 +974,7 @@ model VerificationToken {
   id               String                  @id @default(cuid())
   parcelBookingId  String?
   rideBookingId    String?
+  deliveryLegId    String?
   action           VerificationAction
   tokenHash        String                  @unique
   status           VerificationTokenStatus @default(ACTIVE)
@@ -888,9 +985,11 @@ model VerificationToken {
 
   parcelBooking ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
   rideBooking   RideBooking?   @relation(fields: [rideBookingId], references: [id], onDelete: Cascade)
+  deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
 
   @@index([parcelBookingId, action, status])
   @@index([rideBookingId, action, status])
+  @@index([deliveryLegId, action, status])
   @@index([status, expiresAt])
   @@map("verification_tokens")
 }

@@ -5,6 +5,35 @@ function payloadHash(value) {
 }
 
 const ACTIVE_ASSIGNMENT_STATUSES = ["AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"];
+const MAX_DRIVER_LOCATION_AGE_MS = 5 * 60 * 1000;
+
+export function distanceBetweenCoordinatesMeters(latitudeA, longitudeA, latitudeB, longitudeB) {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const earthRadiusMeters = 6_371_000;
+  const latitudeDelta = radians(latitudeB - latitudeA);
+  const longitudeDelta = radians(longitudeB - longitudeA);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(latitudeA)) * Math.cos(radians(latitudeB))
+    * Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function isDriverWithinPickupRadius(driver, pickup, now = new Date()) {
+  const latestLocation = driver.locations?.[0];
+  if (!latestLocation || !driver.lastLocationAt || !driver.serviceRadiusMeters) return false;
+  const nowMs = now.getTime();
+  const cutoff = nowMs - MAX_DRIVER_LOCATION_AGE_MS;
+  const profileLocationAt = new Date(driver.lastLocationAt).getTime();
+  const recordedAt = new Date(latestLocation.recordedAt).getTime();
+  if (!Number.isFinite(profileLocationAt) || !Number.isFinite(recordedAt)) return false;
+  if (profileLocationAt < cutoff || profileLocationAt > nowMs) return false;
+  if (recordedAt < cutoff || recordedAt > nowMs) return false;
+  const distance = distanceBetweenCoordinatesMeters(
+    Number(latestLocation.latitude), Number(latestLocation.longitude),
+    Number(pickup.latitude), Number(pickup.longitude),
+  );
+  return distance <= driver.serviceRadiusMeters;
+}
 
 function conflict(code, message) {
   const error = new Error(message);
@@ -67,11 +96,41 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           throw conflict("BOOKING_STATE_CONFLICT", "Only a draft booking can request driver offers.");
         }
 
+        const requestedZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
+        const activeZones = await tx.serviceZone.findMany({
+          where: {
+            id: { in: requestedZoneIds },
+            isActive: true,
+            state: { isActive: true, country: { isActive: true } },
+            availability: {
+              some: {
+                serviceType: "PARCEL_DELIVERY",
+                isEnabled: true,
+                AND: [
+                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                  { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+                ],
+              },
+            },
+          },
+          select: { id: true, stateId: true },
+        });
+        if (activeZones.length !== requestedZoneIds.length) {
+          throw conflict("SERVICE_ZONE_UNAVAILABLE", "Pickup and destination zones must both be active for parcel delivery.");
+        }
+        if (new Set(activeZones.map((zone) => zone.stateId)).size !== 1) {
+          throw conflict("PARTNER_QUOTE_REQUIRED", "Cross-state parcel shipments require an accepted transport-partner quote; direct local-driver matching is not available for this route.");
+        }
+
         const drivers = await tx.driverProfile.findMany({
           where: {
             verificationStatus: "VERIFIED",
             isOnline: true,
             isAvailable: true,
+            lastLocationAt: {
+              gte: new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MS),
+              lte: now,
+            },
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
             vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
             AND: [
@@ -96,16 +155,29 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             ],
             assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
           },
-          select: { id: true },
+          select: {
+            id: true,
+            serviceRadiusMeters: true,
+            lastLocationAt: true,
+            locations: {
+              orderBy: { recordedAt: "desc" },
+              take: 1,
+              select: { latitude: true, longitude: true, recordedAt: true },
+            },
+          },
         });
+        const eligibleDrivers = drivers.filter((driver) => isDriverWithinPickupRadius(driver, {
+          latitude: booking.pickupLatitude,
+          longitude: booking.pickupLongitude,
+        }, now));
 
-        if (drivers.length === 0) {
-          throw conflict("NO_ELIGIBLE_DRIVERS", "No verified, available drivers currently cover the pickup zone.");
+        if (eligibleDrivers.length === 0) {
+          throw conflict("NO_ELIGIBLE_DRIVERS", "No verified, available drivers with fresh locations inside their pickup radius cover both service zones.");
         }
 
         const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
         const created = await tx.driverOffer.createMany({
-          data: drivers.map(({ id }) => ({
+          data: eligibleDrivers.map(({ id }) => ({
             parcelBookingId: booking.id,
             driverProfileId: id,
             status: "OFFERED",
@@ -127,7 +199,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             eventType: "PARCEL_MATCHING_REQUESTED",
             fromStatus: "DRAFT",
             toStatus: "MATCHING",
-            metadata: { offersCreated: created.count, expiresAt: expiresAt.toISOString() },
+            metadata: { offersCreated: created.count, eligibleDrivers: eligibleDrivers.length, expiresAt: expiresAt.toISOString() },
           },
         });
         return { bookingId: booking.id, status: "MATCHING", offersCreated: created.count, offersExpireAt: expiresAt };
@@ -185,12 +257,10 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
               id: true,
               publicReference: true,
               currency: true,
-              pickupAddress: true,
-              destinationAddress: true,
               parcelCategory: true,
               parcelSize: true,
-              pickupServiceZoneId: true,
-              destinationServiceZoneId: true,
+              pickupServiceZone: { select: { name: true } },
+              destinationServiceZone: { select: { name: true } },
             },
           },
         },
@@ -209,7 +279,8 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
     async proposeParcelFare({ offerId, userId, proposedFareMinor, idempotencyKey }) {
       const now = clock();
       const fare = BigInt(proposedFareMinor);
-      return prismaClient.$transaction(async (tx) => {
+      try {
+        return await prismaClient.$transaction(async (tx) => {
         const profile = await tx.driverProfile.findUnique({
           where: { userId },
           select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
@@ -284,12 +355,31 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           },
         });
         return { offerId: offer.id, proposedFareMinor: fare.toString(), currency: offer.currency, status: "OFFERED" };
-      });
+        });
+      } catch (error) {
+        if (error.code !== "P2002") throw error;
+        const existing = await prismaClient.driverOffer.findUnique({
+          where: { fareProposalIdempotencyKey: idempotencyKey },
+        });
+        if (!existing) throw error;
+        const expectedHash = payloadHash({ offerId, proposedFareMinor });
+        if (existing.id !== offerId || existing.fareProposalPayloadHash !== expectedHash) {
+          throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
+        }
+        return {
+          offerId: existing.id,
+          proposedFareMinor: existing.proposedFareMinor?.toString() ?? proposedFareMinor,
+          currency: existing.currency,
+          status: existing.status,
+          replay: true,
+        };
+      }
     },
 
     async acceptParcelFare({ bookingId, user, offerId, idempotencyKey }) {
       const now = clock();
-      return prismaClient.$transaction(async (tx) => {
+      try {
+        return await prismaClient.$transaction(async (tx) => {
         const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId } });
         if (!booking) return null;
         if (booking.senderId !== user.id) throw forbidden();
@@ -301,12 +391,13 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           const assignment = await tx.driverAssignment.findFirst({
             where: { parcelBookingId: booking.id },
             orderBy: { createdAt: "desc" },
-            select: { id: true, paymentExpiresAt: true },
+            select: { id: true, paymentExpiresAt: true, deliveryLegId: true },
           });
           return {
             bookingId: booking.id,
             status: booking.status,
             assignmentId: assignment?.id ?? null,
+            deliveryLegId: assignment?.deliveryLegId ?? null,
             driverFareMinor: booking.driverFareMinor?.toString() ?? null,
             connectionFeeMinor: booking.connectionFeeMinor.toString(),
             otherChargesMinor: booking.otherChargesMinor.toString(),
@@ -381,9 +472,22 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           where: { parcelBookingId: booking.id, id: { not: offer.id }, status: "OFFERED" },
           data: { status: "WITHDRAWN", respondedAt: now },
         });
+        const deliveryLeg = await tx.deliveryLeg.create({
+          data: {
+            parcelBookingId: booking.id,
+            sequence: 1,
+            type: "DIRECT",
+            status: "AWAITING_PAYMENT",
+            originServiceZoneId: booking.pickupServiceZoneId,
+            destinationServiceZoneId: booking.destinationServiceZoneId,
+            plannedAt: now,
+          },
+          select: { id: true },
+        });
         const assignment = await tx.driverAssignment.create({
           data: {
             parcelBookingId: booking.id,
+            deliveryLegId: deliveryLeg.id,
             driverProfileId: offer.driverProfileId,
             assignedByUserId: user.id,
             status: "AWAITING_PAYMENT",
@@ -404,6 +508,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             metadata: {
               offerId: offer.id,
               assignmentId: assignment.id,
+              deliveryLegId: deliveryLeg.id,
               driverFareMinor: fare.toString(),
               connectionFeeMinor: booking.connectionFeeMinor.toString(),
               customerPayableMinor: customerPayable.toString(),
@@ -416,6 +521,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           bookingId: booking.id,
           status: "AWAITING_PAYMENT",
           assignmentId: assignment.id,
+          deliveryLegId: deliveryLeg.id,
           driverFareMinor: fare.toString(),
           connectionFeeMinor: booking.connectionFeeMinor.toString(),
           otherChargesMinor: booking.otherChargesMinor.toString(),
@@ -423,7 +529,36 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           currency: booking.currency,
           paymentExpiresAt,
         };
-      });
+        });
+      } catch (error) {
+        if (error.code !== "P2002") throw error;
+        const existing = await prismaClient.parcelBooking.findUnique({
+          where: { fareAcceptanceIdempotencyKey: idempotencyKey },
+        });
+        if (!existing) throw error;
+        const expectedHash = payloadHash({ bookingId, offerId });
+        if (existing.id !== bookingId || existing.fareAcceptancePayloadHash !== expectedHash) {
+          throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare acceptance.");
+        }
+        const assignment = await prismaClient.driverAssignment.findFirst({
+          where: { parcelBookingId: existing.id },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, paymentExpiresAt: true, deliveryLegId: true },
+        });
+        return {
+          bookingId: existing.id,
+          status: existing.status,
+          assignmentId: assignment?.id ?? null,
+          deliveryLegId: assignment?.deliveryLegId ?? null,
+          driverFareMinor: existing.driverFareMinor?.toString() ?? null,
+          connectionFeeMinor: existing.connectionFeeMinor.toString(),
+          otherChargesMinor: existing.otherChargesMinor.toString(),
+          customerPayableMinor: existing.customerPayableMinor?.toString() ?? null,
+          currency: existing.currency,
+          paymentExpiresAt: assignment?.paymentExpiresAt ?? null,
+          replay: true,
+        };
+      }
     },
   };
 }
