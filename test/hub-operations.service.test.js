@@ -296,3 +296,68 @@ test("hub intake requires all dimensions when a partial measurement is submitted
   );
   assert.equal(calls.handovers.length, 0);
 });
+
+
+test("hub intake rejects parcels when the active parcel-count capacity is full", async () => {
+  const handover = {
+    id: "handover-count-capacity", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "sender-1", fromPartyType: "SENDER", fromPartyId: "sender-1",
+    toPartyType: "HUB", toPartyId: "hub-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+    conditionAtRelease: "Sealed",
+  };
+  const { db, calls } = setup({
+    custodyHandover: { findUnique: async () => handover },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", acceptedParcelTypes: [], capacityConfig: { maxParcels: 1 } }) },
+    hubIntakeRecord: { count: async () => 1, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }), create: async () => { throw new Error("must not create intake"); } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", weightGrams: 200, conditionAtReceipt: "Sealed" }),
+    error => error.statusCode === 409 && error.code === "HUB_PARCEL_CAPACITY_EXCEEDED",
+  );
+  assert.equal(calls.audits.length, 0);
+});
+
+test("hub intake enforces configured aggregate volume capacity", async () => {
+  const handover = {
+    id: "handover-volume-capacity", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "sender-1", fromPartyType: "SENDER", fromPartyId: "sender-1",
+    toPartyType: "HUB", toPartyId: "hub-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+    conditionAtRelease: "Sealed",
+  };
+  const { db } = setup({
+    custodyHandover: { findUnique: async () => handover },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", acceptedParcelTypes: [], capacityConfig: { maxVolumeCm3: 1000 } }) },
+    hubIntakeRecord: { count: async () => 0, aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 990 } }), create: async () => { throw new Error("must not create intake"); } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({
+      handoverId: handover.id, userId: "hub-user-1", weightGrams: 200,
+      lengthMm: 200, widthMm: 200, heightMm: 1, conditionAtReceipt: "Sealed",
+    }),
+    error => error.statusCode === 409 && error.code === "HUB_VOLUME_CAPACITY_EXCEEDED",
+  );
+});
+
+test("hub cannot release a parcel without a received inventory record", async () => {
+  const handover = {
+    id: "handover-no-intake", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "hub-user-1", fromPartyType: "HUB", fromPartyId: "hub-1",
+    toPartyType: "DRIVER", toPartyId: "driver-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+    conditionAtRelease: "Sealed",
+  };
+  const { db, calls } = setup({
+    custodyHandover: { findUnique: async () => handover, update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }) },
+    hubIntakeRecord: { findFirst: async () => null },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "driver-user-1", conditionAtReceipt: "Sealed" }),
+    error => error.statusCode === 409 && error.code === "HUB_INTAKE_REQUIRED",
+  );
+  assert.equal(calls.assignmentUpdates.length, 0);
+});
