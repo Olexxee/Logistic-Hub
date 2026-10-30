@@ -140,6 +140,16 @@ export function createCustodyRepository({ prismaClient }) {
     createHubIntakeRecord(data, tx = prismaClient) {
       return tx.hubIntakeRecord.create({ data });
     },
+    findBlockingHubOperationalCase(deliveryLegId, tx = prismaClient) {
+      return tx.operationalCase.findFirst({
+        where: {
+          deliveryLegId,
+          status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] },
+          type: { in: ["FAILED_HANDOVER", "DAMAGED_PARCEL", "MISSING_PARCEL", "FAILED_DELIVERY", "ROUTE_DISRUPTION"] },
+        },
+        select: { id: true, type: true, status: true },
+      });
+    },
     findReceivedHubIntake(parcelBookingId, hubPointId, tx = prismaClient) {
       return tx.hubIntakeRecord.findFirst({
         where: { parcelBookingId, hubPointId, status: "RECEIVED" },
@@ -171,6 +181,10 @@ export function createCustodyRepository({ prismaClient }) {
           originHubPointId: { in: hubPointIds },
           status: { in: ["ASSIGNED", "READY_FOR_ASSIGNMENT", "PICKUP_VERIFICATION_PENDING"] },
           custodyHandovers: { none: { status: "PENDING_CONFIRMATION" } },
+          operationalCases: { none: {
+            status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] },
+            type: { in: ["FAILED_HANDOVER", "DAMAGED_PARCEL", "MISSING_PARCEL", "FAILED_DELIVERY", "ROUTE_DISRUPTION"] },
+          } },
           parcelBooking: { is: { paymentStatus: "SUCCEEDED", hubIntakeRecords: { some: { hubPointId: { in: hubPointIds }, status: "RECEIVED" } } } },
           OR: [
             { assignments: { some: { status: "ARRIVED_AT_PICKUP" } } },

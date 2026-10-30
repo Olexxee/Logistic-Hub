@@ -184,6 +184,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, input.fromPartyId, tx);
           if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
         }
+        if (input.fromPartyType === "HUB") {
+          const blockingCase = await repo.findBlockingHubOperationalCase(leg.id, tx);
+          if (blockingCase) return { blocker: "HUB_OPERATIONAL_CASE_OPEN", operationalCaseId: blockingCase.id };
+        }
         const pending = await repo.findPendingHandover(leg.id, tx);
         if (pending && pending.expiresAt && pending.expiresAt <= clock()) {
           await repo.updateHandover(pending.id, { status: "EXPIRED" }, tx);

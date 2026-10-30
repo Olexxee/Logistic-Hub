@@ -3180,7 +3180,7 @@ paths:
       security: [{ bearerAuth: [] }]
       x-implementation-status: implemented
       parameters:
-        - { name: hubPointId, in: query, schema: { type: string }, description: Must be an active hub membership of the authenticated user. }
+        - { name: hubPointId, in: query, schema: { type: string }, description: Must be an active hub membership of the authenticated user. } Unresolved blocking hub exceptions prevent release.
         - { name: cursor, in: query, schema: { type: string } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
       responses:

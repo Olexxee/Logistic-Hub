@@ -47,7 +47,7 @@ function setup(overrides = {}) {
       },
       update: async ({ where, data }) => ({ id: where.id, status: data.status, ...data }),
     },
-    operationalCase: { create: async ({ data }) => { const item = { id: "case-1", ...data }; calls.cases.push(item); return item; } },
+    operationalCase: { findFirst: async () => null, create: async ({ data }) => { const item = { id: "case-1", ...data }; calls.cases.push(item); return item; } },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
     parcelBooking: { update: async () => ({}) },
     bookingEvent: { create: async ({ data }) => { calls.events.push(data); return data; } },
@@ -420,4 +420,22 @@ test("hub intake prevents duplicate active inventory records for the same parcel
     service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", weightGrams: 200, conditionAtReceipt: "Sealed" }),
     error => error.statusCode === 409 && error.code === "HUB_INTAKE_ALREADY_ACTIVE",
   );
+});
+
+
+test("hub cannot release a parcel while a blocking operational case is unresolved", async () => {
+  const { db, calls } = setup({
+    operationalCase: {
+      findFirst: async () => ({ id: "case-damaged-1", type: "DAMAGED_PARCEL", status: "OPEN" }),
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.createHandover({
+    parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    fromPartyType: "HUB", fromPartyId: "hub-1",
+    toPartyType: "DRIVER", toPartyId: "driver-1",
+    conditionAtRelease: "Sealed",
+  }, "hub-user-1");
+  assert.equal(result.blocker, "HUB_OPERATIONAL_CASE_OPEN");
+  assert.equal(calls.handovers.length, 0);
 });
