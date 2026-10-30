@@ -3282,10 +3282,10 @@ paths:
     RefundReview:
       type: object
       additionalProperties: false
-      required: [decision, reason]
+      required: [decision, reviewNote]
       properties:
         decision: { type: string, enum: [APPROVE, REJECT] }
-        reason: { type: string, minLength: 5, maxLength: 1000 }
+        reviewNote: { type: string, minLength: 5, maxLength: 1000 }
     HealthResponse:
       type: object
       required: [success, data]
@@ -4409,10 +4409,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [settlementReference, note]
+              required: [providerReference]
               properties:
-                settlementReference: { type: string, minLength: 3, maxLength: 200 }
-                note: { type: string, minLength: 3, maxLength: 1000 }
+                providerReference: { type: string, minLength: 3, maxLength: 128 }
       responses:
         '200': { description: Settlement confirmation recorded. }
         '400': { $ref: '#/components/responses/ValidationError' }
