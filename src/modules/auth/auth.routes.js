@@ -228,7 +228,7 @@ export function createAuthRouter({
     }
   });
 
-  router.post("/login", authRateLimit, requireTrustedBrowserRequest, async (req, res, next) => {
+  router.post("/login", requireTrustedBrowserRequest, authRateLimit, async (req, res, next) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
 
@@ -368,7 +368,7 @@ export function createAuthRouter({
     }
   });
 
-  router.post("/refresh", refreshRateLimit, requireTrustedBrowserRequest, async (req, res, next) => {
+  router.post("/refresh", requireTrustedBrowserRequest, refreshRateLimit, async (req, res, next) => {
     try {
       const refreshToken = readRefreshCookie(req);
       const tokens = await sessions.refresh(refreshToken);
