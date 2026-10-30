@@ -1734,7 +1734,8 @@ paths:
               required: [action, code]
               properties:
                 action: { type: string, enum: [PICKUP, DELIVERY] }
-                code: { type: string, pattern: '^[0-9]{6}      responses:
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
         '200': { description: Verification succeeded and the assignment advanced. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
