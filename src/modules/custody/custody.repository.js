@@ -57,6 +57,16 @@ export function createCustodyRepository({ prismaClient }) {
     findPartnerMembership(partnerId, userId, tx = prismaClient) {
       return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
     },
+    findDriverAssignmentForCustody(assignmentId, tx = prismaClient) {
+      return tx.driverAssignment.findUnique({
+        where: { id: assignmentId },
+        include: {
+          driverProfile: { select: { id: true, userId: true } },
+          parcelBooking: { select: { id: true, paymentStatus: true } },
+          deliveryLeg: { select: { id: true, destinationHubPointId: true } },
+        },
+      });
+    },
     findHandover(id, tx = prismaClient) {
       return tx.custodyHandover.findUnique({ where: { id }, include: { deliveryLeg: true, parcelBooking: true } });
     },
