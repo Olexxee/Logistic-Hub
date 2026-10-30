@@ -794,6 +794,8 @@ model DeliveryLeg {
   @@unique([parcelBookingId, sequence])
   @@index([status, plannedAt])
   @@index([originServiceZoneId, destinationServiceZoneId, status], map: "delivery_legs_route_status_idx")
+  @@index([originHubPointId])
+  @@index([destinationHubPointId])
   @@map("delivery_legs")
 }
 
