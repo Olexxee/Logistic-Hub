@@ -75,14 +75,14 @@ Before ranking, filter to drivers who:
 - Have an active account and verified driver profile.
 - Have a verified, active vehicle appropriate to the parcel/ride.
 - Are online and available.
-- Have an acceptable last-location timestamp.
-- Cover the pickup service zone and service type.
-- Are inside the configured pickup radius.
+- Have a location timestamp no older than five minutes at matching time.
+- Have a latest location record within their configured `serviceRadiusMeters` of the pickup coordinates.
+- Cover both pickup and destination service zones for the parcel service type.
 - Are not suspended or under a safety/compliance hold.
 - Have no conflicting active assignment.
 - Meet parcel size/capacity and handling requirements.
 
-Do not reveal the sender's exact contact or destination details to drivers who have not been assigned the job. The offer should include only the minimum information needed to decide whether to accept.
+Do not reveal the sender's exact pickup/destination addresses, coordinates, recipient name, or recipient phone to drivers who have not been assigned the job. Driver-facing offer cards expose the pickup and destination service-zone names plus parcel category and size only. The offer should include only the minimum information needed to decide whether to accept.
 
 ### Candidate ranking
 
