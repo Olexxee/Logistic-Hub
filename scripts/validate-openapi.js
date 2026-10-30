@@ -100,6 +100,11 @@ const implementedOperations = new Set([
   "GET /partner/assignments",
   "POST /partner/assignments/{assignmentId}/accept",
   "POST /partner/assignments/{assignmentId}/start",
+  "POST /admin/hub-points/{hubPointId}/operators",
+  "PATCH /admin/hub-points/{hubPointId}/operators/{operatorId}",
+  "GET /custody/handovers/mine",
+  "POST /custody/handovers",
+  "POST /custody/handovers/{handoverId}/decision",
 ]);
 const idempotentMutationPaths = new Set([
   "POST /parcel-bookings",
