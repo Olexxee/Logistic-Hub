@@ -27,6 +27,17 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     windowMs: 60_000,
     keyFn: (req) => req.user?.id ?? req.ip,
   });
+  const listQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  }).strict();
+  router.get(
+    "/mine",
+    requireAuth,
+    requireRole("DRIVER"),
+    validate(listQuerySchema, "query"),
+    controller.listMine,
+  );
   const idSchema = z.object({
     assignmentId: z.string().trim().min(1).max(128),
   });
