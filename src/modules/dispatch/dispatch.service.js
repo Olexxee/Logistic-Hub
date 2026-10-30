@@ -113,10 +113,13 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
               },
             },
           },
-          select: { id: true },
+          select: { id: true, stateId: true },
         });
         if (activeZones.length !== requestedZoneIds.length) {
           throw conflict("SERVICE_ZONE_UNAVAILABLE", "Pickup and destination zones must both be active for parcel delivery.");
+        }
+        if (new Set(activeZones.map((zone) => zone.stateId)).size !== 1) {
+          throw conflict("PARTNER_QUOTE_REQUIRED", "Cross-state parcel shipments require an accepted transport-partner quote; direct local-driver matching is not available for this route.");
         }
 
         const drivers = await tx.driverProfile.findMany({
