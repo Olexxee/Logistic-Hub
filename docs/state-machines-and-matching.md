@@ -48,9 +48,7 @@ This avoids one status field trying to represent several concurrent facts. A shi
 
 A delivery leg is one independently tracked segment of a parcel journey. The booking is the customer-level shipment record; a leg is the operational movement between two service zones. Never use the booking status as a substitute for a leg's status.
 
-The first implementation supports one direct local-delivery leg per driver-matched parcel booking:
-
-Direct local-driver matching is restricted to routes whose pickup and destination service zones belong to the same state. Cross-state bookings must use the transport-partner quotation path; they cannot fall through to a direct local-driver assignment while partner-leg assignment is not yet implemented.
+The direct local-driver path creates one DIRECT leg per driver-matched parcel booking:
 
 - The sender accepts a specific driver fare; in the same transaction the system creates a DIRECT leg in AWAITING_PAYMENT and links the temporary driver assignment to that leg.
 - A successful, server-verified payment changes the leg to ASSIGNED in the same settlement transaction that activates the driver assignment.
@@ -59,15 +57,23 @@ Direct local-driver matching is restricted to routes whose pickup and destinatio
 - Driver arrival at the destination changes the leg to DELIVERY_VERIFICATION_PENDING.
 - A valid recipient delivery code changes the leg to COMPLETED.
 
-The assignment and leg transitions must be committed together. A failed token check, stale assignment state or transaction failure must not partially advance either lifecycle. Pickup and delivery verification tokens are bound to the leg as well as the booking so later multi-leg journeys cannot reuse a code from another segment.
+The multi-leg route-planning slice adds an ordered plan for accepted inter-state shipment quotes:
+
+- If active, operator-verified hubs that accept the parcel category exist in both endpoint service zones, the plan contains LOCAL_PICKUP, INTERSTATE_TRANSPORT and FINAL_MILE legs. The nearest eligible hub to each endpoint is selected using the booking's stored coordinates.
+- If hub coverage is incomplete, the plan falls back to one end-to-end INTERSTATE_TRANSPORT leg. The planner does not invent missing hubs or substitute an inactive hub.
+- The first planned segment is READY_FOR_ASSIGNMENT; later segments remain PLANNED until the preceding segment is completed.
+- When a non-final leg's recipient/hub handover is verified, the next leg moves atomically from PLANNED to READY_FOR_ASSIGNMENT and the booking remains IN_TRANSIT. Only completion of the final leg completes the booking.
+- A route plan is created in the same transaction as quote acceptance, so an accepted quote cannot exist without its corresponding plan when a cross-state route is planned.
+
+The assignment and leg transitions must be committed together. A failed token check, stale assignment state or transaction failure must not partially advance either lifecycle. Assignment status transitions use compare-and-set updates so concurrent driver requests cannot emit duplicate transition events. Pickup and delivery verification tokens are bound to the leg as well as the booking so later multi-leg journeys cannot reuse a code from another segment.
 
 The sender or an authorized operator can read the ordered leg timeline through:
 
 GET /api/v1/parcel-bookings/{bookingId}/delivery-legs
 
-The endpoint is owner-scoped, returns service-zone names rather than exposing additional location data, and includes only the latest assignment summary for each leg.
+The endpoint is owner-scoped, returns service-zone and hub names rather than exposing additional location data, and includes only the latest assignment summary for each leg.
 
-The current slice does not yet implement multi-leg route planning, partner assignment, hub intake/handover, or custody-transfer confirmation. Those are subsequent Priority 5 workstreams. The schema supports leg types for direct, local pickup, hub transfer, inter-state transport and final-mile segments, but only the direct local-delivery path is created automatically today.
+This slice establishes route planning and sequential leg activation. It does not yet create per-leg driver offers or assignments, partner assignment/settlement records, hub intake/handover scans, or custody-transfer confirmations. Those remain follow-on Priority 5 workstreams. The current driver assignment/payment path remains booking-oriented and must not be reused as a partner assignment workflow.
 
 ## 2. Ride lifecycle
 
