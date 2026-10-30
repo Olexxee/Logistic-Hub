@@ -4,7 +4,6 @@ import { prisma } from "../../db/prisma.js";
 import { env } from "../../config/env.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { validate } from "../../shared/http/validate.js";
-import { createPersistentRateLimit } from "../../shared/http/rate-limit.middleware.js";
 import { createAuthMiddleware } from "./auth.middleware.js";
 import { createAuthSessionsService } from "./auth-sessions.service.js";
 
