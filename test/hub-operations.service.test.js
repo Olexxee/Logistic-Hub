@@ -142,3 +142,56 @@ test("hub operator cannot report an exception against a hub unrelated to the leg
   }, "hub-user-1");
   assert.equal(result.notFound, true);
 });
+
+
+test("hub confirmation moves the receiving driver to pickup-confirmed", async () => {
+  const handover = {
+    id: "handover-from-hub", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "hub-user-1", fromPartyType: "HUB", fromPartyId: "hub-1",
+    toPartyType: "DRIVER", toPartyId: "driver-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+  };
+  const { db, calls } = setup({
+    custodyHandover: { findUnique: async () => handover, update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }) },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.confirmHandover({ handoverId: handover.id, userId: "driver-user-1", conditionAtReceipt: "Sealed and intact" });
+  assert.equal(result.handover.status, "CONFIRMED");
+  assert.equal(calls.assignmentUpdates[0].where.status, "ARRIVED_AT_PICKUP");
+  assert.equal(calls.assignmentUpdates[0].data.status, "PICKUP_CONFIRMED");
+  assert.equal(calls.events[0].eventType, "HUB_PICKUP_CUSTODY_CONFIRMED");
+});
+
+test("hub receipt of an arrived driver activates the next planned leg", async () => {
+  const handover = {
+    id: "handover-to-hub", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "driver-user-1", fromPartyType: "DRIVER", fromPartyId: "driver-1",
+    toPartyType: "HUB", toPartyId: "hub-2", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+  };
+  const updates = [];
+  const { db, calls } = setup({
+    custodyHandover: { findUnique: async () => handover, update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }) },
+    deliveryLeg: {
+      findUnique: async () => ({
+        ...leg, status: "DELIVERY_VERIFICATION_PENDING", sequence: 1,
+        destinationHubPointId: "hub-2",
+        assignments: [{ id: "driver-assignment-1", driverProfileId: "driver-1", status: "ARRIVED_AT_DESTINATION", driverProfile: { id: "driver-1", userId: "driver-user-1" } }],
+      }),
+      updateMany: async ({ where, data }) => { updates.push({ where, data }); return { count: 1 }; },
+      findFirst: async () => ({ id: "leg-2", status: "PLANNED" }),
+    },
+    driverAssignment: {
+      findFirst: async () => ({ id: "driver-assignment-1", status: "ARRIVED_AT_DESTINATION", driverProfileId: "driver-1", agreedFareMinor: 25000n, currency: "NGN" }),
+      updateMany: async ({ where, data }) => { calls.assignmentUpdates.push({ where, data }); return { count: 1 }; },
+    },
+  });
+  db.deliveryLeg.updateMany = async ({ where, data }) => { updates.push({ where, data }); return { count: 1 }; };
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", conditionAtReceipt: "Sealed and intact" });
+  assert.equal(result.handover.status, "CONFIRMED");
+  assert.equal(calls.assignmentUpdates[0].data.status, "COMPLETED");
+  assert.equal(updates.some(item => item.data.status === "COMPLETED"), true);
+  assert.equal(updates.some(item => item.data.status === "READY_FOR_ASSIGNMENT"), true);
+  assert.equal(calls.events[0].eventType, "HUB_DESTINATION_CUSTODY_CONFIRMED");
+});
