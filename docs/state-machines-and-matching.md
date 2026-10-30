@@ -37,6 +37,13 @@ Use separate fields/records for:
 
 This avoids one status field trying to represent several concurrent facts. A shipment can remain `PICKED_UP` while a dispute is open.
 
+## 1A. Partner quotation path
+
+- Partner rate-card quotations and direct driver fare proposals are alternative fulfilment paths for a parcel booking.
+- A partner quote may be issued and accepted only while the booking is `DRAFT`. Once the sender requests driver matching and the booking enters `MATCHING`, partner quote acceptance is blocked; the sender must choose from driver fare proposals.
+- Accepted partner transport charges remain in the shipment quote and booking pricing snapshot. They must not be written into `driverFareMinor`, which is reserved for a directly negotiated driver fare.
+- Partner quote acceptance records the customer-approved total and moves the booking to `AWAITING_PAYMENT`. Partner-specific assignment and settlement integration must be completed before this path can use the payment flow.
+
 ## 2. Ride lifecycle
 
 Use the separate `RideStatus` enum and a distinct transition function. A typical path follows the same negotiation-before-payment rule as parcels:
