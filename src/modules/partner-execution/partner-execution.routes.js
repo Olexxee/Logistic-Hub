@@ -26,8 +26,17 @@ function validate(schema, source = "body") {
   };
 }
 function validateId(req, res, next) {
-  const parsed = id.safeParse(req.params.partnerId ?? req.params.memberId ?? req.params.legId ?? req.params.assignmentId);
-  if (!parsed.success) return res.status(400).json({ success: false, error: { code: "VALIDATION_ERROR", message: "A valid identifier is required." } });
+  const values = Object.values(req.params);
+  if (values.some(value => !id.safeParse(value).success)) {
+    return res.status(400).json({ success: false, error: { code: "VALIDATION_ERROR", message: "A valid identifier is required." } });
+  }
+  return next();
+}
+function requireIdempotencyKey(req, res, next) {
+  const value = req.get("Idempotency-Key");
+  if (typeof value !== "string" || value.trim().length < 8 || value.trim().length > 128) {
+    return res.status(400).json({ success: false, error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Provide an Idempotency-Key header between 8 and 128 characters." } });
+  }
   return next();
 }
 
@@ -39,7 +48,7 @@ export function createPartnerExecutionRouter({ prismaClient = prisma, authMiddle
 
   router.post("/admin/transport-partners/:partnerId/members", authMiddleware, admin, validateId, validate(memberSchema), asyncWrapper(controller.addMember));
   router.patch("/admin/transport-partners/:partnerId/members/:memberId", authMiddleware, admin, validateId, validate(memberStatusSchema), asyncWrapper(controller.setMemberStatus));
-  router.post("/admin/delivery-legs/:legId/partner-assignment", authMiddleware, admin, validateId, validate(assignmentSchema), asyncWrapper(controller.assignLeg));
+  router.post("/admin/delivery-legs/:legId/partner-assignment", authMiddleware, admin, validateId, validate(assignmentSchema), requireIdempotencyKey, asyncWrapper(controller.assignLeg));
 
   router.get("/partner/assignments", authMiddleware, asyncWrapper(controller.listMyAssignments));
   router.post("/partner/assignments/:assignmentId/accept", authMiddleware, validateId, asyncWrapper(controller.acceptAssignment));
