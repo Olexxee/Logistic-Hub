@@ -3400,7 +3400,17 @@ paths:
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
       responses:
-        '200': { description: Active assignments and pagination metadata. }
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/DriverAssignmentSearchResult'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /partner/memberships/mine:
@@ -3413,7 +3423,17 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200': { description: Partner memberships and safe partner summaries. }
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/PartnerMembershipList'
         '401': { $ref: '#/components/responses/Unauthorized' }
   /hub-operator/memberships/mine:
     get:
@@ -3425,7 +3445,17 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200': { description: Hub memberships and safe hub summaries. }
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/HubMembershipList'
         '401': { $ref: '#/components/responses/Unauthorized' }
   /admin/users:
     get:
@@ -3453,7 +3483,17 @@ paths:
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
       responses:
-        '200': { description: Paginated safe user directory results. }
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/AdminUserSearchResult'
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -3483,7 +3523,17 @@ paths:
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
       responses:
-        '200': { description: Paginated quote queue with booking and partner summaries. }
+        '200':
+          description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/AdminQuoteSearchResult'
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -3556,6 +3606,153 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    PartnerMembershipList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PartnerMembershipResource' }
+    PartnerMembershipResource:
+      type: object
+      required: [id, role, isActive, partner]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        partner:
+          type: object
+          required: [id, displayName, status, verificationStatus]
+          properties:
+            id: { type: string }
+            displayName: { type: string }
+            status: { type: string }
+            verificationStatus: { type: string }
+    HubMembershipList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/HubMembershipResource' }
+    HubMembershipResource:
+      type: object
+      required: [id, role, isActive, hubPoint]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [MANAGER, OPERATOR] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hubPoint:
+          type: object
+          required: [id, name, status, address, serviceZoneId]
+          properties:
+            id: { type: string }
+            name: { type: string }
+            status: { type: string }
+            address: { type: string }
+            serviceZoneId: { type: string }
+    AdminUserSearchResult:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminUserResource' }
+        pagination: { $ref: '#/components/schemas/PageMetadata' }
+    AdminUserResource:
+      type: object
+      required: [id, fullName, role, status, createdAt]
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        role: { type: string, enum: [CUSTOMER, DRIVER, ADMIN, SUPPORT, PARTNER_OPERATOR, HUB_OPERATOR] }
+        status: { type: string, enum: [PENDING, ACTIVE, SUSPENDED, CLOSED] }
+        emailVerifiedAt: { type: [string, 'null'], format: date-time }
+        phoneVerifiedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    AdminQuoteSearchResult:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminQuoteResource' }
+        pagination: { $ref: '#/components/schemas/PageMetadata' }
+    AdminQuoteResource:
+      type: object
+      required: [id, version, status, currency, transportChargeMinor, totalCustomerChargeMinor, expiresAt, offeredAt, booking]
+      properties:
+        id: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [OFFERED, ACCEPTED, REJECTED, EXPIRED, SUPERSEDED] }
+        currency: { type: string }
+        transportChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        collectionChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        hubHandlingChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        destinationDeliveryChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        platformChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        otherChargesMinor: { type: string, pattern: '^[0-9]+$' }
+        totalCustomerChargeMinor: { type: string, pattern: '^[0-9]+$' }
+        expiresAt: { type: string, format: date-time }
+        offeredAt: { type: string, format: date-time }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+        booking:
+          type: object
+          required: [id, publicReference, status, paymentStatus, pickupServiceZone, destinationServiceZone]
+          properties:
+            id: { type: string }
+            publicReference: { type: string }
+            status: { type: string }
+            paymentStatus: { type: string }
+            pickupServiceZone:
+              type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+            destinationServiceZone:
+              type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+        partner:
+          oneOf:
+            - type: object
+              required: [id, displayName]
+              properties:
+                id: { type: string }
+                displayName: { type: string }
+            - type: 'null'
+    DriverAssignmentSearchResult:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DriverAssignmentResource' }
+        pagination:
+          type: object
+          required: [page, limit, hasMore, nextPage]
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            hasMore: { type: boolean }
+            nextPage: { type: [integer, 'null'] }
+    PageMetadata:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
     DriverAssignmentResource:
       type: object
       required: [id, status, agreedFareMinor, currency, booking]
@@ -4042,18 +4239,24 @@ components:
           description: Provider-hosted checkout URL; omitted if not available.
     PaymentStatusResource:
       type: object
-      required: [id, status, amountMinor, currency, updatedAt]
+      required: [id, provider, status, amountMinor, currency, initializedAt]
       properties:
-        id:
-          type: string
-        status:
-          type: string
-          enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED]
-        amountMinor:
-          $ref: '#/components/schemas/MinorAmount'
-        currency:
-          type: string
-          const: NGN
-        updatedAt:
-          type: string
-          format: date-time
+        id: { type: string }
+        provider: { type: string, enum: [PAYSTACK] }
+        status: { type: string, enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED] }
+        amountMinor: { $ref: '#/components/schemas/MinorAmount' }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        initializedAt: { type: string, format: date-time }
+        verifiedAt: { type: [string, 'null'], format: date-time }
+        failedAt: { type: [string, 'null'], format: date-time }
+        booking:
+          oneOf:
+            - type: object
+              required: [id, publicReference, bookingType, status, paymentStatus]
+              properties:
+                id: { type: string }
+                publicReference: { type: string }
+                bookingType: { type: string, enum: [PARCEL, RIDE] }
+                status: { type: string }
+                paymentStatus: { type: string }
+            - type: 'null'
