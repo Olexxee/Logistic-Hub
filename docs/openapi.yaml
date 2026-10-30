@@ -2329,8 +2329,8 @@ paths:
     post:
       tags: [Parcel bookings]
       operationId: acceptShipmentQuote
-      summary: Accept one unexpired quote for an owned booking
-      description: Acceptance is transactional, snapshots the total, supersedes competing offers and moves the booking to awaiting payment. Payment itself remains disabled.
+      summary: Accept one unexpired partner quote for a draft booking
+      description: Acceptance is transactional and naturally idempotent for the same accepted quote. It snapshots the total, supersedes competing partner quotes and moves the booking to awaiting payment. Partner quote acceptance is blocked after driver matching starts. Payment itself remains approval-gated.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -2344,7 +2344,7 @@ paths:
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Accepted quote and persisted booking price snapshot. }
+        '200': { description: Accepted quote and persisted booking price snapshot; repeated acceptance by the same sender replays the accepted result. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2358,7 +2358,7 @@ paths:
     post:
       tags: [Parcel bookings]
       operationId: rejectShipmentQuote
-      summary: Reject an unexpired quote for an owned booking
+      summary: Reject an unexpired partner quote for an owned booking
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -2382,7 +2382,7 @@ paths:
               properties:
                 reason: { type: string, minLength: 3, maxLength: 500 }
       responses:
-        '200': { description: Quote rejected. }
+        '200': { description: Quote rejected; repeated rejection replays successfully. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
