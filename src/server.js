@@ -51,7 +51,7 @@ async function checkDatabaseConnection() {
     provider: "postgresql",
     host: databaseUrl.hostname,
     port: Number(databaseUrl.port || 5432),
-    database: databaseUrl.pathname.replace(/^\\//, "") || "unknown",
+    database: databaseUrl.pathname.slice(1) || "unknown",
   };
 
   log("info", "database.connection_check.started", databaseTarget);
