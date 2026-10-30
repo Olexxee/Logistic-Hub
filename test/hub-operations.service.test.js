@@ -398,3 +398,26 @@ test("hub handover creation revalidates active inventory after acquiring the del
   assert.equal(calls.handovers.length, 0);
   assert.equal(calls.locks.some(lock => lock.sql.includes('FROM "delivery_legs"')), true);
 });
+
+
+test("hub intake prevents duplicate active inventory records for the same parcel and hub", async () => {
+  const handover = {
+    id: "handover-duplicate-intake", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    initiatedByUserId: "sender-1", fromPartyType: "SENDER", fromPartyId: "sender-1",
+    toPartyType: "HUB", toPartyId: "hub-1", status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"), parcelBooking: booking,
+    conditionAtRelease: "Sealed",
+  };
+  const { db } = setup({
+    custodyHandover: { findUnique: async () => handover },
+    hubIntakeRecord: {
+      findFirst: async () => ({ id: "already-received" }),
+      create: async () => { throw new Error("duplicate intake must not be created"); },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "hub-user-1", weightGrams: 200, conditionAtReceipt: "Sealed" }),
+    error => error.statusCode === 409 && error.code === "HUB_INTAKE_ALREADY_ACTIVE",
+  );
+});

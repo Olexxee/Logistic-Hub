@@ -265,6 +265,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             throw fail(409, "HUB_INTAKE_DIMENSIONS_INCOMPLETE", "Provide all three positive parcel dimensions in millimetres, or leave all dimensions blank.");
           }
           await repo.lockHubCapacity(handover.toPartyId, tx);
+          const existingIntake = await repo.findReceivedHubIntake(handover.parcelBookingId, handover.toPartyId, tx);
+          if (existingIntake) throw fail(409, "HUB_INTAKE_ALREADY_ACTIVE", "This parcel already has an active intake record at the receiving hub.");
           const hub = await repo.findHubIntakeConfig(handover.toPartyId, tx);
           if (!hub || hub.status !== "ACTIVE") throw fail(409, "HUB_NOT_ACTIVE", "The receiving hub is not active.");
           const acceptedTypes = Array.isArray(hub.acceptedParcelTypes) ? hub.acceptedParcelTypes : [];
