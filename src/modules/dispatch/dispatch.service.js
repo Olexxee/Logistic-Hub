@@ -92,6 +92,29 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           throw conflict("BOOKING_STATE_CONFLICT", "Only a draft booking can request driver offers.");
         }
 
+        const requestedZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
+        const activeZones = await tx.serviceZone.findMany({
+          where: {
+            id: { in: requestedZoneIds },
+            isActive: true,
+            state: { isActive: true, country: { isActive: true } },
+            availability: {
+              some: {
+                serviceType: "PARCEL_DELIVERY",
+                isEnabled: true,
+                AND: [
+                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                  { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+                ],
+              },
+            },
+          },
+          select: { id: true },
+        });
+        if (activeZones.length !== requestedZoneIds.length) {
+          throw conflict("SERVICE_ZONE_UNAVAILABLE", "Pickup and destination zones must both be active for parcel delivery.");
+        }
+
         const drivers = await tx.driverProfile.findMany({
           where: {
             verificationStatus: "VERIFIED",
@@ -139,7 +162,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         }, now));
 
         if (eligibleDrivers.length === 0) {
-          throw conflict("NO_ELIGIBLE_DRIVERS", "No verified, available drivers currently cover the pickup zone.");
+          throw conflict("NO_ELIGIBLE_DRIVERS", "No verified, available drivers with fresh locations inside their pickup radius cover both service zones.");
         }
 
         const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
