@@ -4,6 +4,33 @@ import { ConflictError, ForbiddenError } from "../../shared/http/app-error.js";
 
 function requestHash(input) { return createHash("sha256").update(JSON.stringify(input)).digest("hex"); }
 function publicReference() { return `LH-PCL-${randomBytes(6).toString("hex").toUpperCase()}`; }
+function serializeDeliveryLeg(leg) {
+  const assignment = leg.assignments?.[0] ?? null;
+  return {
+    id: leg.id,
+    sequence: leg.sequence,
+    type: leg.type,
+    status: leg.status,
+    origin: leg.originServiceZone,
+    destination: leg.destinationServiceZone,
+    plannedAt: leg.plannedAt,
+    assignedAt: leg.assignedAt,
+    startedAt: leg.startedAt,
+    completedAt: leg.completedAt,
+    failureReason: leg.failureReason,
+    assignment: assignment ? {
+      id: assignment.id,
+      status: assignment.status,
+      acceptedAt: assignment.acceptedAt,
+      pickupAt: assignment.pickupAt,
+      startedAt: assignment.startedAt,
+      completedAt: assignment.completedAt,
+    } : null,
+    createdAt: leg.createdAt,
+    updatedAt: leg.updatedAt,
+  };
+}
+
 function serializeBooking(booking) {
   return {
     id: booking.id,
@@ -122,6 +149,15 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         throw new ForbiddenError("You do not have permission to view this booking.");
       }
       return serializeBooking(booking);
+    },
+    async listVisibleDeliveryLegs({ bookingId, user }) {
+      const booking = await db.findById(bookingId);
+      if (!booking) return null;
+      if (!["ADMIN", "SUPPORT"].includes(user.role) && booking.senderId !== user.id) {
+        throw new ForbiddenError("You do not have permission to view this booking.");
+      }
+      const legs = await db.findDeliveryLegsByBookingId(bookingId);
+      return legs.map(serializeDeliveryLeg);
     },
     async listVisibleBookings({ user, page, limit, status }) {
       const includeAll = ["ADMIN", "SUPPORT"].includes(user.role);
