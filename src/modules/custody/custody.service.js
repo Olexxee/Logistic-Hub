@@ -565,6 +565,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async createHubHandover({ hubPointId, deliveryLegId, toPartyType, toPartyId, conditionAtRelease, evidence }, userId) {
+      const membership = await repo.findHubOperator(hubPointId, userId);
+      if (!membership?.isActive) throw forbidden();
       const leg = await repo.findBookingLeg(deliveryLegId);
       if (!leg) return { notFound: true };
       if (leg.originHubPointId !== hubPointId) return { blocker: "HUB_NOT_LEG_ORIGIN" };
