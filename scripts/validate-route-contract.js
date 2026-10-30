@@ -76,10 +76,23 @@ for (const [route, pathItem] of Object.entries(api.paths ?? {})) {
   }
 }
 const missing = [...actual].filter(route => !documented.has(route)).sort();
-if (missing.length) {
-  console.error("Mounted Express routes missing from OpenAPI:");
-  for (const route of missing) console.error(` - ${route}`);
+const invalidStatuses = [...actual].filter(route => {
+  const split = route.indexOf(" ");
+  const method = route.slice(0, split).toLowerCase();
+  const routePath = route.slice(split + 1);
+  const status = api.paths?.[routePath]?.[method]?.["x-implementation-status"];
+  return !["implemented", "planned-disabled"].includes(status);
+}).sort();
+if (missing.length || invalidStatuses.length) {
+  if (missing.length) {
+    console.error("Mounted Express routes missing from OpenAPI:");
+    for (const route of missing) console.error(` - ${route}`);
+  }
+  if (invalidStatuses.length) {
+    console.error("Mounted Express routes must be marked implemented or planned-disabled:");
+    for (const route of invalidStatuses) console.error(` - ${route}`);
+  }
   process.exitCode = 1;
 } else {
-  console.log(`Route/OpenAPI parity passed: ${actual.size} mounted Express operations are documented.`);
+  console.log(`Route/OpenAPI parity passed: ${actual.size} mounted Express operations are documented and have an explicit implementation status.`);
 }
