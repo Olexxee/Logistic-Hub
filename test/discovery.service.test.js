@@ -17,7 +17,7 @@ test("driver assignment discovery returns active work with string minor-unit amo
     },
   };
   const service = createDiscoveryService({ prismaClient: {}, repository });
-  const result = await service.listDriverAssignments({ userId: "driver-user-1", limit: 10 });
+  const result = await service.listDriverAssignments({ userId: "driver-user-1", page: 1, limit: 10 });
   assert.equal(result.items[0].agreedFareMinor, "125000");
   assert.equal(result.items[0].booking.bookingType, "PARCEL");
   assert.equal(result.items[0].deliveryLeg.id, "leg-1");
@@ -27,8 +27,8 @@ test("driver assignment discovery returns active work with string minor-unit amo
 test("driver assignment discovery returns an empty result when the user has no driver profile", async () => {
   const repository = { findDriverProfile: async () => null };
   const service = createDiscoveryService({ prismaClient: {}, repository });
-  const result = await service.listDriverAssignments({ userId: "customer-1", limit: 20 });
-  assert.deepEqual(result, { items: [], pagination: { limit: 20, hasMore: false, nextCursor: null } });
+  const result = await service.listDriverAssignments({ userId: "customer-1", page: 1, limit: 20 });
+  assert.deepEqual(result, { items: [], pagination: { page: 1, limit: 20, hasMore: false, nextPage: null } });
 });
 
 test("admin user search delegates bounded pagination and computes page metadata", async () => {
