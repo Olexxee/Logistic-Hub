@@ -1,3 +1,11 @@
+function assignmentView(assignment) {
+  if (!assignment) return assignment;
+  return {
+    ...assignment,
+    agreedTransportChargeMinor: assignment.agreedTransportChargeMinor?.toString?.() ?? assignment.agreedTransportChargeMinor,
+  };
+}
+
 export function createPartnerExecutionController(service) {
   return {
     addMember: async (req, res, next) => {
@@ -21,11 +29,11 @@ export function createPartnerExecutionController(service) {
         const result = await service.assignLeg({ deliveryLegId: req.params.legId, partnerId: req.body.partnerId, idempotencyKey: req.get("Idempotency-Key"), actorUserId: req.user.id });
         if (result.notFound) return res.status(404).json({ success: false, error: { code: "DELIVERY_LEG_NOT_FOUND", message: "Delivery leg not found." } });
         if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "The delivery leg or partner agreement is not eligible for partner assignment." } });
-        return res.status(result.replay ? 200 : 201).json({ success: true, data: { assignment: result.assignment, replay: result.replay } });
+        return res.status(result.replay ? 200 : 201).json({ success: true, data: { assignment: assignmentView(result.assignment), replay: result.replay } });
       } catch (error) { return next(error); }
     },
     listMyAssignments: async (req, res, next) => {
-      try { return res.status(200).json({ success: true, data: { items: await service.listMyAssignments({ userId: req.user.id }) } }); }
+      try { return res.status(200).json({ success: true, data: { items: (await service.listMyAssignments({ userId: req.user.id })).map(assignmentView) } }); }
       catch (error) { return next(error); }
     },
     acceptAssignment: async (req, res, next) => {
