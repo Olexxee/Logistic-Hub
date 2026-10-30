@@ -18,7 +18,7 @@ const updateSchema = z.object({
   status: z.enum(["OPEN", "TRIAGED", "IN_PROGRESS", "RESOLVED", "CLOSED"]).optional(),
   priority: z.enum(["LOW", "NORMAL", "HIGH", "CRITICAL"]).optional(),
   assignedToUserId: id.nullable().optional(),
-  resolution: z.string().trim().min(3).max(2000).nullable().optional(),
+  resolution: z.string().trim().min(3).max(2000).optional(),
 }).strict().refine(value => Object.keys(value).length > 0, { message: "At least one field must be supplied." });
 
 export function createOperationalCasesRouter({ prismaClient = prisma, authMiddleware = requireAuth, roleMiddleware = requireRole } = {}) {
@@ -32,7 +32,7 @@ export function createOperationalCasesRouter({ prismaClient = prisma, authMiddle
       code: "VALIDATION_ERROR", message: "One or more query parameters are invalid.",
       details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
     } });
-    req.query = parsed.data;
+    req.validatedQuery = parsed.data;
     return next();
   }, asyncWrapper(controller.list));
   router.patch("/admin/operational-cases/:caseId", (req, res, next) => {
