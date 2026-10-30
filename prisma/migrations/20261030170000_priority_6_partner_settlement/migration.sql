@@ -81,7 +81,7 @@ CREATE TABLE "partner_settlement_batches" (
 );
 CREATE UNIQUE INDEX "partner_settlement_batches_reference_key" ON "partner_settlement_batches"("reference");
 CREATE UNIQUE INDEX "partner_settlement_batches_idempotencyKey_key" ON "partner_settlement_batches"("idempotencyKey");
-CREATE INDEX "partner_settlement_batches_partnerId_currency_status_periodStart_periodEnd_idx" ON "partner_settlement_batches"("partnerId", "currency", "status", "periodStart", "periodEnd");
+CREATE INDEX "partner_settlement_batches_partnerId_currency_status_period_idx" ON "partner_settlement_batches"("partnerId", "currency", "status", "periodStart", "periodEnd");
 ALTER TABLE "partner_settlement_batches" ADD CONSTRAINT "partner_settlement_batches_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "transport_partners"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "partner_settlement_batches" ADD CONSTRAINT "partner_settlement_batches_approvedByUserId_fkey" FOREIGN KEY ("approvedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "partner_settlement_batches" ADD CONSTRAINT "partner_settlement_batches_reconciledByUserId_fkey" FOREIGN KEY ("reconciledByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
