@@ -9,6 +9,7 @@ const id = z.string().trim().min(1).max(128);
 const minor = z.string().regex(/^(0|[1-9][0-9]{0,14})$/);
 const quoteInput = z.object({
   partnerRateId: id.optional(),
+  partnerAgreementId: id.optional(),
   transportChargeMinor: minor.optional(),
   collectionChargeMinor: minor.default("0"),
   hubHandlingChargeMinor: minor.default("0"),
@@ -17,8 +18,8 @@ const quoteInput = z.object({
   otherChargesMinor: minor.default("0"),
   expiresInMinutes: z.number().int().min(5).max(10080).default(1440),
   reason: z.string().trim().max(500).optional(),
-}).strict().refine((v) => Boolean(v.partnerRateId) || v.transportChargeMinor !== undefined, {
-  message: "Provide a partner rate or an explicitly approved transport charge.",
+}).strict().refine((v) => Boolean(v.partnerRateId) || (v.transportChargeMinor !== undefined && Boolean(v.partnerAgreementId)), {
+  message: "Provide a contracted partner rate or a manual transport charge tied to an active partner agreement.",
 });
 const rejectionInput = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
 
@@ -129,7 +130,9 @@ export function createPartnerPricingRouter({
         }
 
         let rate = null;
+        let manualAgreement = null;
         if (input.partnerRateId) {
+          if (input.partnerAgreementId) return { invalidRate: true };
           rate = await tx.partnerRate.findFirst({
             where: {
               id: input.partnerRateId,
@@ -138,6 +141,20 @@ export function createPartnerPricingRouter({
             include: { rateCard: { include: { agreement: true } } },
           });
           if (!rate) return { invalidRate: true };
+        } else {
+          manualAgreement = await tx.partnerAgreement.findUnique({
+            where: { id: input.partnerAgreementId },
+            include: { partner: true },
+          });
+          if (!manualAgreement ||
+            manualAgreement.status !== "ACTIVE" ||
+            manualAgreement.partner.status !== "ACTIVE" ||
+            manualAgreement.partner.verificationStatus !== "VERIFIED" ||
+            manualAgreement.currency !== booking.currency ||
+            manualAgreement.effectiveFrom > now ||
+            (manualAgreement.effectiveUntil && manualAgreement.effectiveUntil <= now)) {
+            return { invalidManualAgreement: true };
+          }
         }
         const transport = BigInt(rate ? rate.transportChargeMinor.toString() : input.transportChargeMinor);
         const collection = BigInt(input.collectionChargeMinor);
@@ -156,8 +173,8 @@ export function createPartnerPricingRouter({
         });
         const quote = await tx.shipmentQuote.create({ data: {
           parcelBookingId: booking.id, version: (previous?.version ?? 0) + 1,
-          status: "OFFERED", partnerAgreementId: rate?.rateCard.agreementId ?? null,
-          partnerRateId: rate?.id ?? null, currency: rate?.rateCard.currency ?? booking.currency,
+          status: "OFFERED", partnerAgreementId: rate?.rateCard.agreementId ?? manualAgreement.id,
+          partnerRateId: rate?.id ?? null, currency: rate?.rateCard.currency ?? manualAgreement.currency,
           transportChargeMinor: transport, collectionChargeMinor: collection,
           hubHandlingChargeMinor: handling, destinationDeliveryChargeMinor: destination,
           platformChargeMinor: platform, otherChargesMinor: other,
@@ -173,7 +190,8 @@ export function createPartnerPricingRouter({
             destinationServiceZoneId: booking.destinationServiceZoneId,
             parcelCategory: booking.parcelCategory, parcelSize: booking.parcelSize,
             partnerRateId: rate?.id ?? null, partnerRateCardVersion: rate?.rateCard.version ?? null,
-            partnerAgreementId: rate?.rateCard.agreementId ?? null,
+            partnerAgreementId: rate?.rateCard.agreementId ?? manualAgreement.id,
+            partnerId: rate?.rateCard.agreement.partnerId ?? manualAgreement.partnerId,
             manualQuoteReason: rate ? null : input.reason,
           },
           expiresAt: new Date(now.getTime() + input.expiresInMinutes * 60_000),
@@ -183,6 +201,7 @@ export function createPartnerPricingRouter({
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
       if (result.conflict) return res.status(409).json({ success: false, error: { code: "BOOKING_NOT_QUOTABLE", message: result.conflict } });
       if (result.invalidRate) return res.status(409).json({ success: false, error: { code: "PARTNER_RATE_UNAVAILABLE", message: "The selected rate is not active for this route and service." } });
+      if (result.invalidManualAgreement) return res.status(409).json({ success: false, error: { code: "PARTNER_AGREEMENT_INELIGIBLE", message: "Manual transport charges must be tied to an active, verified partner agreement in the booking currency." } });
       if (result.invalidTransport) return res.status(400).json({ success: false, error: { code: "INVALID_TRANSPORT_CHARGE", message: "Transport charge must be greater than zero." } });
       return res.status(201).json({ success: true, data: { quote: quoteView(result.quote) } });
     } catch (error) { return next(error); }
