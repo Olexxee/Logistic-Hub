@@ -185,6 +185,12 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
     async acceptFare({ bookingId, legId, offerId, user, idempotencyKey }) {
       const now = clock();
       const acceptanceHash = hash({ bookingId, legId, offerId });
+      const bookingAccess = await prismaClient.parcelBooking.findUnique({
+        where: { id: bookingId },
+        select: { id: true, senderId: true },
+      });
+      if (!bookingAccess) throw new NotFoundError("Parcel booking not found.");
+      if (bookingAccess.senderId !== user.id) throw new ForbiddenError();
       try {
         const priorAcceptance = await db.findOfferByAcceptanceKey(idempotencyKey);
       if (priorAcceptance) {
