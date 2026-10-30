@@ -11,7 +11,19 @@ import {
   confirmPayoutSchema,
 } from "./finance.schemas.js";
 
-
+function requireIdempotencyKey(req, res, next) {
+  const key = req.get("Idempotency-Key");
+  if (typeof key !== "string" || key.trim().length < 8 || key.trim().length > 128) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: "IDEMPOTENCY_KEY_REQUIRED",
+        message: "Provide an Idempotency-Key header between 8 and 128 characters.",
+      },
+    });
+  }
+  return next();
+}
 
 export function createFinanceRouter({ prismaClient = prisma } = {}) {
   const r = Router();
@@ -22,6 +34,7 @@ export function createFinanceRouter({ prismaClient = prisma } = {}) {
     "/refund-requests",
     requireAuth,
     validate(refundRequestSchema),
+    requireIdempotencyKey,
     c.requestRefund,
   );
   r.get(
