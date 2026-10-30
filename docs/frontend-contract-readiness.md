@@ -9,7 +9,7 @@
 | Area | Endpoints | Contract notes |
 |---|---|---|
 | Authentication | `/auth/register`, `/auth/verify-email`, `/auth/login`, `/auth/password/forgot`, `/auth/password/reset`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/me`, `/auth/sessions/*` | `/auth/refresh` is canonical; `/auth/sessions/refresh` is a deprecated compatibility alias. Tokens are returned in JSON, not httpOnly cookies. |
-| Geography and maps | `/service-zones`, `/hub-points`, `/maps/geocode`, `/maps/routes` | Maps require server-side provider configuration. Booking coordinates must map to active service zones. |
+| Geography and maps | `/service-zones`, `/hub-points`, `/maps/geocode`, `/maps/routes`, `/geography/admin/*`, `/service-zones/admin/*` | Admin geography and service-zone CRUD/availability operations are documented. Maps require server-side provider configuration. Booking coordinates must map to active service zones. |
 | Customer/admin parcel bookings | `GET/POST /parcel-bookings`, `GET /parcel-bookings/:bookingId`, `GET /parcel-bookings/:bookingId/delivery-legs` | Customers are owner-scoped. ADMIN/SUPPORT can list all bookings. Admin filters include status, payment status, reference, pickup/destination service zone and creation date range. Advanced filters are forbidden to customers. |
 | Local driver dispatch | `/parcel-bookings/:bookingId/request-matching`, `/parcel-bookings/:bookingId/offers`, `/driver/offers`, `/driver/offers/:offerId/propose-fare`, `/parcel-bookings/:bookingId/accept-fare` | Fare proposals and customer acceptance are implemented. Fare acceptance does not mean payment has been collected. |
 | Delivery-leg dispatch | `/delivery-legs/:legId/request-matching`, `/driver/delivery-leg-offers`, `/driver/delivery-leg-offers/:offerId/propose-fare`, `/parcel-bookings/:bookingId/delivery-legs/:legId/offers`, `/parcel-bookings/:bookingId/delivery-legs/:legId/accept-fare` | Separate from local booking-level driver dispatch. |
@@ -44,6 +44,6 @@
 
 ## Contract validation
 
-- `npm run api:validate` validates the OpenAPI document, unique operation IDs, implementation-status metadata, idempotency declarations and every mounted Express route against documented OpenAPI methods/paths.
+- `npm run api:validate` validates the OpenAPI document, unique operation IDs, implementation-status metadata, idempotency declarations and every mounted Express route against documented OpenAPI methods/paths, including geography and service-zone administration.
 - Unit tests cover discovery read models, repository scoping/privacy and admin booking filters.
 - CI must pass before this contract is considered ready for frontend implementation.
