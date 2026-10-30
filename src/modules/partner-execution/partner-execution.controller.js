@@ -34,7 +34,7 @@ export function createPartnerExecutionController(service) {
     },
     listMyAssignments: async (req, res, next) => {
       try {
-        const result = await service.listMyAssignments({ userId: req.user.id, page: req.validated.query.page, limit: req.validated.query.limit });
+        const result = await service.listMyAssignments({ userId: req.user.id, page: req.validatedQuery.page, limit: req.validatedQuery.limit });
         return res.status(200).json({ success: true, data: { items: result.items.map(assignmentView), pagination: result.pagination } });
       }
       catch (error) { return next(error); }
