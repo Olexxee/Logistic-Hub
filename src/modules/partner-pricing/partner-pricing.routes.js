@@ -227,10 +227,9 @@ export function createPartnerPricingRouter({
           where: {
             id: booking.id,
             senderId: req.user.id,
-            status: { in: ["DRAFT", "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE"] },
+            status: "DRAFT",
           },
           data: {
-            driverFareMinor: quote.transportChargeMinor,
             customerPayableMinor: quote.totalCustomerChargeMinor,
             connectionFeeMinor: quote.platformChargeMinor,
             otherChargesMinor: quote.otherChargesMinor + quote.collectionChargeMinor + quote.hubHandlingChargeMinor + quote.destinationDeliveryChargeMinor,
