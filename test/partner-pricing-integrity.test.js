@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { buildPartnerRateEligibilityWhere } from "../src/modules/partner-pricing/partner-pricing.routes.js";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRITY_TESTS === "true";
 const prisma = new PrismaClient();
@@ -11,6 +12,19 @@ test.after(async () => prisma.$disconnect());
 function suffix() {
   return randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase();
 }
+
+test("partner rate eligibility requires the booking currency", () => {
+  const booking = {
+    pickupServiceZoneId: "pickup-zone",
+    destinationServiceZoneId: "destination-zone",
+    parcelCategory: "BOX",
+    currency: "NGN",
+  };
+  const where = buildPartnerRateEligibilityWhere(booking, new Date("2026-10-30T12:00:00.000Z"));
+  assert.equal(where.rateCard.currency, "NGN");
+  assert.equal(where.originServiceZoneId, "pickup-zone");
+  assert.equal(where.destinationServiceZoneId, "destination-zone");
+});
 
 test("PostgreSQL enforces partner-rate bands and immutable quote totals", { skip: !enabled }, async () => {
   const tag = suffix();
