@@ -1,7 +1,7 @@
 # Phase 3B — Geography and service-coverage administration
 
 **Status:** Complete. Core implementation merged in PR #50; parent-geography transaction-integrity hardening merged in PR #51.  
-**Baseline:** `main` after merged Phase 3B PR #50.  
+**Baseline:** `main` after merged Phase 3B PRs #50 and #51.  
 **Scope:** Country → state → LGA hierarchy, service-zone lifecycle, per-service availability and operational hub consistency.
 
 ## Acceptance criteria
