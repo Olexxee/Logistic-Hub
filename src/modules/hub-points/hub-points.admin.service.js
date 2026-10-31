@@ -38,7 +38,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       });
     },
     async update(id, input, actorUserId) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const current = await tx.hubPoint.findUnique({
           where: { id },
           include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
@@ -66,7 +66,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       });
     },
     async reviewOperator({ id, verificationStatus, notes, actorUserId }) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const current = await tx.hubPoint.findUnique({ where: { id } });
         if (!current) return null;
         if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reviewed.");
@@ -87,7 +87,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       });
     },
     async setStatus(id, status, actorUserId) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const current = await tx.hubPoint.findUnique({
           where: { id },
           include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
