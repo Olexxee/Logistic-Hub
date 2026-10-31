@@ -61,9 +61,8 @@ app.use(pinoHttp({
       method: req.method,
       // Query strings can contain one-time tokens or personal data.
       url: req.url?.split("?")[0],
-      remoteAddress: req.remoteAddress,
-      remotePort: req.remotePort,
     }),
+    res: (res) => ({ statusCode: res.statusCode }),
   },
   redact: [
     "req.headers.authorization",
@@ -71,15 +70,13 @@ app.use(pinoHttp({
     "req.headers.x-api-key",
     "res.headers.set-cookie",
   ],
-  customProps: (req) => ({ requestId: req.id }),
   customLogLevel: (_req, res, error) => {
     if (error || res.statusCode >= 500) return "error";
     if (res.statusCode >= 400) return "warn";
     return "info";
   },
-  customReceivedMessage: (req) => `HTTP request started: ${req.method} ${req.url?.split("?")[0]}`,
-  customSuccessMessage: (req, res) => `HTTP request completed: ${req.method} ${req.url?.split("?")[0]} (${res.statusCode})`,
-  customErrorMessage: (req, res, error) => `HTTP request failed: ${req.method} ${req.url?.split("?")[0]} (${res.statusCode}): ${error?.message ?? "unknown error"}`,
+  customSuccessMessage: (req, res) => `${req.method} ${req.url?.split("?")[0]} ${res.statusCode}`,
+  customErrorMessage: (req, res) => `${req.method} ${req.url?.split("?")[0]} ${res.statusCode}`,
 }));
 
 app.use((req, res, next) => {
