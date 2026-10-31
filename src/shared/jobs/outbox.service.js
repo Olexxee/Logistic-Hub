@@ -2,7 +2,7 @@ import { encryptJobPayload } from "./outbox-crypto.js";
 
 const EMAIL_TOPIC = "email.send";
 
-export function createOutboxService({ prismaClient, clock = () => new Date() }) {
+export function createOutboxService({ prismaClient, clock = () => new Date(), encryptionKey }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
 
   async function enqueueEmailInTransaction(tx, message, idempotencyKey) {
@@ -13,7 +13,7 @@ export function createOutboxService({ prismaClient, clock = () => new Date() }) 
       throw new TypeError("An email idempotency key is required.");
     }
 
-    const encryptedPayload = encryptJobPayload(message);
+    const encryptedPayload = encryptJobPayload(message, encryptionKey);
     return tx.outboxJob.upsert({
       where: { idempotencyKey },
       create: {
