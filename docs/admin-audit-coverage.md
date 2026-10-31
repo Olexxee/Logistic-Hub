@@ -35,9 +35,10 @@ This document records mutation-level audit coverage for Phase 3A.2. Route presen
 
 1. **Provider webhooks and system-originated state changes:** the Prisma model already permits `actorUserId = null` and uses `onDelete: SetNull`; the earlier statement that the field was required was inaccurate. The gap was in the shared writer, which required a human actor, and the refund webhook repository path, which updated state without an audit event. Phase 3A.4 adds explicit `actorType: SYSTEM` events with a mandatory `systemSource`, stores the actor type/source in metadata, and audits webhook transitions in the same transaction. No migration or fabricated human actor is required. This convention must be used by future system-originated writers; a dedicated typed actor column remains a possible future schema improvement, not a prerequisite.
 2. **Role policy:** the 3A.1 inventory flagged SUPPORT access to payout settlement confirmation and refund review. This PR preserves existing access; changing it requires a separate explicit authorization decision and tests.
-3. **Full route-level authorization matrix:** audit coverage does not replace HTTP-level authorization tests. The 3A.1 inventory identifies missing route tests for several admin modules; those remain a separate acceptance item.
-4. **Audit immutability and retention:** verify database privileges, retention policy, export and pagination controls separately. Application-level append-only usage is not equivalent to database-enforced immutability.
-5. **Correlation/request IDs:** Express already generates `req.id` with `pino-http` and returns it as `X-Request-ID`. That identifier is not yet consistently passed through controllers/services into audit metadata. The audit schema has no dedicated request-ID column; adding end-to-end correlation requires a separate propagation pass and a decision on metadata versus a dedicated column.
+3. **Full route-level authorization matrix:** representative route and service-level adversarial tests exist, but the 3A.1 inventory still identifies route tests to add for geography, support, finance, operational cases, partner execution and partner settlement. This is a tracked test-coverage gap; existing service authorization checks must not be inferred from router declarations alone.
+4. **Audit immutability:** application code exposes no update/delete operation for audit events and domain writers only insert. This is application-level append-only behavior, not database-enforced immutability. Strong enforcement requires a separate database role/privilege and/or trigger design, validated against the actual production database roles. No schema migration or production privilege change is included in this phase because that requires explicit approval and deployment-specific verification.
+5. **Retention and export:** the API supports bounded, deterministic page reads (maximum 100 records per request). There is no automatic deletion/retention job or dedicated bulk export endpoint. Do not invent a retention duration: Legal/compliance requirements and operational storage needs must determine it. Until then, retain audit records indefinitely and use the paginated ADMIN-only endpoint for controlled retrieval. A bulk export job requires a separately scoped authorization, rate-limit, field-redaction and audit trail design.
+6. **Correlation/request IDs:** the HTTP layer creates a UUID request ID and returns X-Request-ID. Phase 3A.5 uses AsyncLocalStorage to propagate that ID through asynchronous service calls and includes it in audit metadata when a mutation originates from an HTTP request. System/background events without an HTTP request remain valid and omit requestId. No schema migration is required.
 
 ## Tests
 
@@ -57,3 +58,13 @@ A module should only be marked complete after its mutation path, transaction bou
 - Refund webhook status transitions are now audited transactionally. Re-delivery of the same terminal status does not create a duplicate event because only rows whose status differs are selected and conditionally updated.
 - The event stores only the provider event name and provider reference/status snapshots; it does not store raw webhook payloads or secrets.
 - No Prisma schema or migration changes were made.
+
+
+## Phase 3A.4 / 3A.5 implementation notes
+
+- actorUserId is nullable in the existing Prisma model. HUMAN remains the default writer mode and requires an actor; SYSTEM requires an explicit systemSource and forbids a human actor ID.
+- Refund webhook transitions are audited transactionally and guarded against duplicate or stale status transitions.
+- Audit query validation now accepts any bounded entity type instead of a hard-coded five-value enum, so new audited modules remain queryable.
+- Audit reads remain ADMIN-only and page size is capped at 100 with deterministic ordering by creation time and ID.
+- Request IDs are carried using Node AsyncLocalStorage after pino-http establishes req.id; the audit writer merges the active request ID into metadata without replacing caller-supplied metadata.
+- Audit data has no update/delete API. Database-enforced immutability, role grants, retention duration and bulk export remain explicit operational governance decisions; no production schema or privilege changes are made here.
