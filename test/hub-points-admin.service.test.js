@@ -44,6 +44,7 @@ test("hub activation writes its audit event in the same transaction", async () =
   let auditData;
   const prismaClient = prismaFor(hub);
   prismaClient.$transaction = async callback => callback({
+    $queryRaw: async () => [],
     hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
     operationalAuditEvent: { create: async ({ data }) => { auditData = data; return { id: "audit-1" }; } },
   });
