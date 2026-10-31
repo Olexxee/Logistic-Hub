@@ -1,7 +1,7 @@
 # Phase 3B — Geography and service-coverage administration
 
-**Status:** Implementation in progress on `feat/phase-3b-geography-coverage-integrity`.  
-**Baseline:** `main` after merged Phase 3A PR #49.  
+**Status:** Core implementation merged in PR #50; final transaction-integrity hardening is tracked in the Phase 3B closeout PR.  
+**Baseline:** `main` after merged Phase 3B PR #50.  
 **Scope:** Country → state → LGA hierarchy, service-zone lifecycle, per-service availability and operational hub consistency.
 
 ## Acceptance criteria
@@ -10,6 +10,7 @@
 - Country, state and LGA administration remains ADMIN-only.
 - Child records can only be created beneath active parent geography.
 - Parent geography cannot be deactivated while active child coverage remains.
+- Parent geography activation/deactivation and child creation use serializable transactions with bounded retry for Prisma serialization conflicts.
 - Geography references cannot be silently re-parented through update payloads.
 - Referenced LGAs cannot be deleted.
 
@@ -46,7 +47,8 @@
 - Block LGA reassignment while active hubs remain.
 - Block parcel-delivery disablement or future/expired availability windows while active hubs remain.
 - Perform hub create/update/activation checks transactionally.
-- Use serializable transactions with up to two retries for Prisma `P2034` conflicts.
+- Use serializable transactions with up to two retries for Prisma `P2034` conflicts across service-zone lifecycle and hub mutations.
+- Apply the same serializable transaction/retry policy to country, state and LGA administration so parent deactivation cannot race child creation.
 - Prevent active hub operator verification from being downgraded.
 - Expand audit snapshots to include service-zone boundary GeoJSON and hub coordinates; record only a configChanged flag for arbitrary availability config.
 - Add admin route authorization and service-level invariant tests.
@@ -59,10 +61,13 @@
 - **Operational impact policy:** this change requires active hubs to be suspended before disabling their parcel coverage. It does not cancel or rewrite existing bookings/delivery legs; in-flight work must continue using its persisted service-zone references.
 - No Prisma schema changes, migrations, production data edits, payment activation or role-grant changes are included.
 
-## Verification checklist
+## Closeout verification
 
-- [ ] Prisma schema and client validation.
-- [ ] OpenAPI and mounted-route contract validation.
-- [ ] Geography/service-zone/hub unit tests.
-- [ ] Full API and PostgreSQL integrity suite.
-- [ ] Review CI before merge; repository owner performs the merge.
+- [x] Phase 3B core implementation merged in PR #50.
+- [x] Geography, service-zone and hub lifecycle invariants have unit/integration coverage.
+- [ ] Final parent-geography serializable transaction hardening passes CI.
+- [ ] Full API and PostgreSQL integrity suite passes on the closeout PR.
+
+## Deferred by explicit scope boundary
+
+- Geospatial containment, authoritative geography import and admin pagination/search remain separate follow-up work. They are not silently treated as delivered by this phase. Pagination/search should be coordinated with the admin frontend contract; a geography import must use a verified authoritative source; geofence enforcement requires an agreed pickup/destination containment policy.
