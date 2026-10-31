@@ -3412,7 +3412,7 @@ paths:
         - { name: status, in: query, schema: { type: string, enum: [OPEN, TRIAGED, IN_PROGRESS, RESOLVED, CLOSED] } }
         - { name: type, in: query, schema: { type: string, enum: [FAILED_HANDOVER, DAMAGED_PARCEL, MISSING_PARCEL, FAILED_DELIVERY, PARTNER_DELAY, ROUTE_DISRUPTION, PRICING_EXCEPTION, CUSTOMER_DISPUTE, OTHER] } }
         - { name: priority, in: query, schema: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL] } }
-        - { name: q, in: query, description: Case public reference, title or description search (2–120 characters)., schema: { type: string, minLength: 2, maxLength: 120 } }
+        - { name: q, in: query, description: 'Case public reference, title or description search (2–120 characters).', schema: { type: string, minLength: 2, maxLength: 120 } }
         - { name: assignedToUserId, in: query, schema: { type: string } }
         - { name: unassignedOnly, in: query, schema: { type: boolean } }
         - { name: createdFrom, in: query, schema: { type: string, format: date-time } }
