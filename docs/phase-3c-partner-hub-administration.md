@@ -27,7 +27,7 @@ Phase 3C hardens those existing modules. It does not introduce duplicate models 
 ### 3C.2 Partner membership and ownership
 - Only active, email-verified accounts can be activated as partner members.
 - Suspended or closed partners cannot receive newly activated memberships.
-- Every partner with an active OWNER membership retains at least one active OWNER; the final owner cannot be demoted or deactivated.
+- An ACTIVE partner retains at least one active OWNER; the final owner cannot be demoted or deactivated until the partner is suspended.
 - Membership changes are serialized with partner lifecycle changes.
 - Global user-role demotion continues only after checking both partner and hub memberships.
 
@@ -40,7 +40,7 @@ Phase 3C hardens those existing modules. It does not introduce duplicate models 
 ### 3C.4 Hub operator governance and decommissioning
 - Only active, email-verified accounts can be activated as hub operators.
 - A permanently closed hub cannot receive or reactivate operator memberships.
-- Every hub with active MANAGER membership retains at least one active MANAGER; the final manager cannot be demoted or deactivated.
+- An ACTIVE hub retains at least one active MANAGER; the final manager cannot be demoted or deactivated until the hub is suspended.
 - A hub cannot be permanently closed while active operator memberships, non-terminal delivery legs, received/exception intakes, pending handovers or unresolved operational cases remain.
 - Hub closure and hub-scoped intake, handover and exception writes coordinate through a row lock so an operation cannot be created concurrently with permanent closure.
 - Suspension remains the immediate operational stop control; permanent closure is a decommissioning action.
@@ -68,8 +68,8 @@ Phase 3C hardens those existing modules. It does not introduce duplicate models 
 ## Explicitly out of scope / follow-up decisions
 
 - **External partner payouts:** settlement batches are internal accounting and reconciliation records. No bank transfer, Paystack transfer, or external payout execution is enabled by Phase 3C.
-- **Partner suspension policy for in-flight work:** existing assignments are not automatically cancelled or rewritten when a partner is suspended. The operational policy for accepting/starting/finishing already-assigned work must be explicitly approved before changing those state transitions.
-- **Hub suspension policy for in-flight work:** suspension prevents new hub operations that require an ACTIVE hub; it does not rewrite persisted delivery plans. Reassignment/continuation policy for parcels already in hub custody requires a separate operational decision.
+- **Partner suspension policy for in-flight work:** existing assignments are not automatically cancelled or rewritten when a partner is suspended. The operational policy for accepting/starting/finishing already-assigned work must be explicitly approved before changing those state transitions. Partner decommissioning follows SUSPEND → deactivate members/terminate agreements → settle obligations → CLOSE.
+- **Hub suspension policy for in-flight work:** suspension prevents new hub operations that require an ACTIVE hub; it does not rewrite persisted delivery plans. Reassignment/continuation policy for parcels already in hub custody requires a separate operational decision. Hub decommissioning follows SUSPEND → deactivate operators → resolve custody/operational obligations → CLOSE.
 - **Admin pagination/search:** existing partner and hub admin list contracts are not silently changed in this integrity slice. Pagination and filtering should be delivered as a coordinated API/frontend contract change.
 - No Prisma schema changes, migrations, production data edits, payment activation or role-grant changes are included.
 
