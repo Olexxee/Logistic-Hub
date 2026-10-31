@@ -7,7 +7,7 @@ function availabilityIsEffective(value, now) {
   return Boolean(value?.isEnabled && (!value.startsAt || value.startsAt <= now) && (!value.endsAt || value.endsAt >= now));
 }
 
-export function createServiceZonesAdminService({ prismaClient }) {
+export function createServiceZonesAdminService({ prismaClient, clock = () => new Date() }) {
   const read = createServiceZonesAdminRepository({ prismaClient });
   async function mutate(actorUserId, callback) {
     return prismaClient.$transaction(async tx => callback(tx, createServiceZonesAdminRepository({ prismaClient: tx })));
@@ -69,7 +69,7 @@ export function createServiceZonesAdminService({ prismaClient }) {
             startsAt: Object.hasOwn(data, "startsAt") ? data.startsAt : previous?.startsAt ?? null,
             endsAt: Object.hasOwn(data, "endsAt") ? data.endsAt : previous?.endsAt ?? null,
           };
-          if (!availabilityIsEffective(nextAvailability, new Date())) {
+          if (!availabilityIsEffective(nextAvailability, clock())) {
             const activeHubs = await tx.hubPoint.count({ where: { serviceZoneId: id, status: "ACTIVE" } });
             if (activeHubs) throw conflict("ACTIVE_HUBS_EXIST", "Suspend all active hubs before disabling or scheduling parcel-delivery availability outside its active window.");
           }
