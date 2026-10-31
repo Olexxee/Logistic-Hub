@@ -14,7 +14,9 @@ function prismaFor(hub) {
     hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
     serviceZone: {},
     $transaction: async callback => callback({
+      $queryRaw: async () => [],
       hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
+      hubPointOperator: { count: async () => 0 },
       operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
     }),
   };
@@ -61,10 +63,12 @@ test("an active hub cannot lose verified operator status without first being sus
   const prismaClient = prismaFor(hub);
   let updateCalled = false;
   prismaClient.$transaction = async callback => callback({
+    $queryRaw: async () => [],
     hubPoint: {
       findUnique: async () => hub,
       update: async ({ data }) => { updateCalled = true; return { ...hub, ...data }; },
     },
+    hubPointOperator: { count: async () => 0 },
     operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
   });
   const service = createHubPointsAdminService({ prismaClient });
@@ -81,10 +85,12 @@ test("a hub with an active delivery leg cannot be permanently closed", async () 
   const prismaClient = prismaFor(hub);
   let updateCalled = false;
   prismaClient.$transaction = async callback => callback({
+    $queryRaw: async () => [],
     hubPoint: {
       findUnique: async () => hub,
       update: async ({ data }) => { updateCalled = true; return { ...hub, ...data }; },
     },
+    hubPointOperator: { count: async () => 0 },
     deliveryLeg: { count: async () => 1 },
     hubIntakeRecord: { count: async () => 0 },
     custodyHandover: { count: async () => 0 },
@@ -94,6 +100,31 @@ test("a hub with an active delivery leg cannot be permanently closed", async () 
   const service = createHubPointsAdminService({ prismaClient });
   await assert.rejects(service.setStatus("hub-1", "CLOSED", "admin-1"), {
     code: "HUB_HAS_OPEN_OPERATIONS", statusCode: 409,
+  });
+  assert.equal(updateCalled, false);
+});
+
+
+test("a hub cannot close while active operator memberships remain", async () => {
+  const hub = readyHub();
+  const prismaClient = prismaFor(hub);
+  let updateCalled = false;
+  prismaClient.$transaction = async callback => callback({
+    $queryRaw: async () => [],
+    hubPoint: {
+      findUnique: async () => hub,
+      update: async ({ data }) => { updateCalled = true; return { ...hub, ...data }; },
+    },
+    hubPointOperator: { count: async () => 1 },
+    deliveryLeg: { count: async () => 0 },
+    hubIntakeRecord: { count: async () => 0 },
+    custodyHandover: { count: async () => 0 },
+    operationalCase: { count: async () => 0 },
+    operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.setStatus("hub-1", "CLOSED", "admin-1"), {
+    code: "ACTIVE_HUB_OPERATORS_EXIST", statusCode: 409,
   });
   assert.equal(updateCalled, false);
 });
