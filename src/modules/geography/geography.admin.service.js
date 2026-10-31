@@ -4,10 +4,22 @@ import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit
 function conflict(code, message) { const e = new Error(message); e.statusCode = 409; e.code = code; return e; }
 function snapshot(value) { return value ? { id: value.id, code: value.code, name: value.name, isActive: value.isActive, countryId: value.countryId, stateId: value.stateId } : null; }
 
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt >= 2) throw error;
+    }
+  }
+}
+
 export function createGeographyAdminService({ prismaClient }) {
   const read = createGeographyAdminRepository({ prismaClient });
   async function mutate(actorUserId, callback) {
-    return prismaClient.$transaction(async tx => callback(tx, createGeographyAdminRepository({ prismaClient: tx })));
+    return serializableTransaction(prismaClient, async tx =>
+      callback(tx, createGeographyAdminRepository({ prismaClient: tx })),
+    );
   }
   return {
     listCountries: () => read.listCountries(),
