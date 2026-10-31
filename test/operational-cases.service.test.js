@@ -109,5 +109,6 @@ test("operational case cursor pagination returns a stable next cursor without re
   const secondPage = await service.list({ limit: 2, cursor: firstPage.nextCursor });
   assert.deepEqual(received.cursor, { id: "case-2" });
   assert.equal(received.skip, 1);
-  assert.deepEqual(secondPage.items.map(item => item.id), ["case-3"]);\n  assert.equal(secondPage.nextCursor, null);
+  assert.deepEqual(secondPage.items.map(item => item.id), ["case-3"]);
+  assert.equal(secondPage.nextCursor, null);
 });
