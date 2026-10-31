@@ -132,3 +132,36 @@ test("partner lifecycle mutations use serializable transactions", async () => {
   await service.setPartnerStatus({ partnerId: "partner-1", input: { status: "ACTIVE" }, actorUserId: "admin-1" });
   assert.deepEqual(options, { isolationLevel: "Serializable" });
 });
+
+
+test("a closed partner cannot be modified even by repeating CLOSED with a verification change", async () => {
+  let updateCalled = false;
+  const tx = {
+    transportPartner: {
+      findUnique: async () => ({ id: "partner-1", status: "CLOSED", verificationStatus: "VERIFIED", verifiedAt: new Date() }),
+      update: async () => { updateCalled = true; },
+    },
+  };
+  const result = await serviceWith(tx).setPartnerStatus({
+    partnerId: "partner-1",
+    input: { status: "CLOSED", verificationStatus: "EXPIRED" },
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "PARTNER_CLOSED");
+  assert.equal(updateCalled, false);
+});
+
+test("partner cannot transition from ACTIVE back to PENDING", async () => {
+  let updateCalled = false;
+  const tx = {
+    transportPartner: {
+      findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED", verifiedAt: new Date() }),
+      update: async () => { updateCalled = true; },
+    },
+  };
+  const result = await serviceWith(tx).setPartnerStatus({
+    partnerId: "partner-1", input: { status: "PENDING" }, actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "PARTNER_STATUS_TRANSITION_INVALID");
+  assert.equal(updateCalled, false);
+});
