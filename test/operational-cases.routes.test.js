@@ -73,3 +73,26 @@ test("operational case queue rejects conflicting assignee filters and inverted d
     assert.equal(getReceived(), undefined);
   });
 });
+
+
+test("operational case queue remains behind authenticated ADMIN authorization", async () => {
+  let authCalls = 0;
+  let queried = false;
+  const requestedRoles = [];
+  const app = express();
+  app.use("/api/v1", createOperationalCasesRouter({
+    prismaClient: { operationalCase: { findMany: async () => { queried = true; return []; } } },
+    authMiddleware: (_req, _res, next) => { authCalls += 1; next(); },
+    roleMiddleware: role => {
+      requestedRoles.push(role);
+      return (_req, res) => res.status(403).json({ success: false, error: { code: "FORBIDDEN" } });
+    },
+  }));
+  await withServer(app, async base => {
+    const response = await fetch(`${base}/api/v1/admin/operational-cases`);
+    assert.equal(response.status, 403);
+    assert.equal(authCalls, 1);
+    assert.deepEqual(requestedRoles, ["ADMIN"]);
+    assert.equal(queried, false);
+  });
+});
