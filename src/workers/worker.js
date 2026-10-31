@@ -23,10 +23,13 @@ function log(level, event, details = {}) {
 async function poll() {
   while (!stopping) {
     try {
-      const results = await worker.runOnce();
-      if (results.length) log("info", "outbox.batch.processed", { count: results.length, results });
+      await worker.runOnce();
     } catch (error) {
-      log("error", "outbox.poll.failed", { errorName: error?.name, errorCode: error?.code ?? "WORKER_ERROR" });
+      log("error", "outbox.poll.failed", {
+        errorName: error?.name,
+        errorCode: error?.code ?? "WORKER_ERROR",
+        message: error?.message,
+      });
     }
     if (!stopping) await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
