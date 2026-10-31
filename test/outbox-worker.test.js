@@ -7,7 +7,7 @@ const key = Buffer.alloc(32, 5).toString("base64");
 
 test("worker sends an encrypted email job and marks it successful", async () => {
   const payload = { to: "customer@example.com", subject: "Hello", text: "World", notificationId: "notification_1" };
-  const calls = { sent: [], jobUpdates: [], notificationUpdates: [] };
+  const calls = { sent: [], jobUpdates: [], notificationUpdates: [], logs: [] };
   const prismaClient = {
     $queryRaw: async () => [{
       id: "job_1", topic: "email.send", encryptedPayload: encryptJobPayload(payload, key),
@@ -19,6 +19,7 @@ test("worker sends an encrypted email job and marks it successful", async () => 
   const worker = createOutboxWorker({
     prismaClient,
     email: { send: async (input) => { calls.sent.push(input); return { id: "resend_1" }; } },
+    logger: { info: (entry) => calls.logs.push(entry) },
     workerId: "worker_1", encryptionKey: key,
   });
   const result = await worker.runOnce();
@@ -26,11 +27,16 @@ test("worker sends an encrypted email job and marks it successful", async () => 
   assert.equal(calls.sent[0].idempotencyKey, "email-1");
   assert.equal(calls.notificationUpdates[0].data.emailStatus, "SENT");
   assert.equal(calls.jobUpdates[0].data.status, "SUCCEEDED");
+  assert.equal(calls.logs[0].event, "outbox.email.sent");
+  assert.equal(calls.logs[0].recipient, "c***@example.com");
+  assert.equal(calls.logs[0].providerId, "resend_1");
+  assert.equal(JSON.stringify(calls.logs).includes("World"), false);
 });
 
 test("worker retries provider failures and does not expose email payloads in logs", async () => {
   const payload = { to: "customer@example.com", subject: "Hello", text: "private body" };
   const logged = [];
+  const emailLogs = [];
   const prismaClient = {
     $queryRaw: async () => [{
       id: "job_2", topic: "email.send", encryptedPayload: encryptJobPayload(payload, key),
@@ -42,11 +48,14 @@ test("worker retries provider failures and does not expose email payloads in log
   const worker = createOutboxWorker({
     prismaClient,
     email: { send: async () => { const error = new Error("provider down"); error.code = "EMAIL_PROVIDER_UNAVAILABLE"; throw error; } },
-    logger: { error: (entry) => logged.push(entry) },
+    logger: { error: (entry) => emailLogs.push(entry) },
     workerId: "worker_2", encryptionKey: key,
   });
   const result = await worker.runOnce();
   assert.equal(result[0].status, "PENDING");
   assert.equal(logged.some((entry) => JSON.stringify(entry).includes("private body")), false);
+  assert.equal(emailLogs[0].event, "outbox.email.failed");
+  assert.equal(emailLogs[0].recipient, "c***@example.com");
+  assert.equal(JSON.stringify(emailLogs).includes("private body"), false);
   assert.equal(logged.find((entry) => entry.data)?.data.status, "PENDING");
 });

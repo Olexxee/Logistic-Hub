@@ -9,6 +9,14 @@ function retryDelayMs(attempt) {
   return Math.min(60 * 60_000, 1_000 * (2 ** Math.max(0, attempt - 1)));
 }
 
+function maskEmail(value) {
+  const address = Array.isArray(value) ? value[0] : value;
+  if (typeof address !== "string") return "unknown";
+  const [local, domain] = address.split("@");
+  if (!local || !domain) return "unknown";
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
 export function createOutboxWorker({
   prismaClient,
   email,
@@ -49,13 +57,15 @@ export function createOutboxWorker({
   }
 
   async function processJob(job) {
+    const startedAt = Date.now();
+    let payload;
     try {
       if (job.topic !== "email.send") {
         const error = new Error("Unsupported outbox topic.");
         error.code = "UNSUPPORTED_OUTBOX_TOPIC";
         throw error;
       }
-      const payload = decryptJobPayload(job.encryptedPayload, encryptionKey);
+      payload = decryptJobPayload(job.encryptedPayload, encryptionKey);
       const result = await email.send({ ...payload, idempotencyKey: job.idempotencyKey });
       if (payload.notificationId) {
         await prismaClient.notification.updateMany({
@@ -73,6 +83,14 @@ export function createOutboxWorker({
           lastErrorCode: null,
         },
       });
+      logger.info?.({
+        event: "outbox.email.sent",
+        jobId: job.id,
+        recipient: maskEmail(payload.to),
+        subject: payload.subject,
+        providerId: result?.id ?? null,
+        durationMs: Date.now() - startedAt,
+      }, "Email accepted by provider");
       return { id: job.id, status: "SUCCEEDED", providerId: result?.id ?? null };
     } catch (error) {
       const terminal = job.attempts >= maxAttempts;
@@ -101,14 +119,18 @@ export function createOutboxWorker({
         },
       });
       logger.error?.({
-        event: "outbox.job.failed",
+        event: "outbox.email.failed",
         jobId: job.id,
-        topic: job.topic,
+        recipient: maskEmail(payload?.to),
+        subject: payload?.subject,
         attempt: job.attempts,
         terminal,
+        errorName: error?.name,
         errorCode: code,
+        message: error?.message,
         updated: update.count === 1,
-      });
+        durationMs: Date.now() - startedAt,
+      }, terminal ? "Email moved to dead-letter queue" : "Email delivery failed; retry scheduled");
       return { id: job.id, status: terminal ? "DEAD" : "PENDING", errorCode: code };
     }
   }
