@@ -21,7 +21,8 @@ const inventoriedAdminRouteFiles = [
   "src/modules/partner-execution/partner-execution.routes.js",
   "src/modules/partner-pricing/partner-pricing.admin.routes.js",
   "src/modules/partner-pricing/partner-pricing.routes.js",
-  "src/modules/partner-settlement/partner-settlement.routes.js",\n  "src/modules/payments/financial.routes.js",
+  "src/modules/partner-settlement/partner-settlement.routes.js",
+  "src/modules/payments/financial.routes.js",
   "src/modules/support/support.routes.js",
 ].sort();
 
