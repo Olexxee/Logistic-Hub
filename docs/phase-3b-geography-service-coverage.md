@@ -25,7 +25,7 @@
 - An active hub requires its zone's parcel-delivery availability to be effective now.
 - Disabling parcel delivery or moving its effective window outside the current time is rejected while active hubs remain.
 - Other service types remain independently configurable.
-- Availability configuration and boundary changes are included in audit snapshots.
+- Availability state/window and boundary changes are included in audit snapshots; arbitrary availability config is not copied into audit JSON, but config changes are flagged in metadata to avoid leaking unvalidated secrets.
 
 ### 3B.4 Hub operational consistency
 - Hub creation, update and status changes read and validate coverage within the same database transaction as the write.
@@ -47,7 +47,7 @@
 - Perform hub create/update/activation checks transactionally.
 - Use serializable transactions with up to two retries for Prisma `P2034` conflicts.
 - Prevent active hub operator verification from being downgraded.
-- Expand audit snapshots to include service-zone boundary GeoJSON, availability config and hub coordinates.
+- Expand audit snapshots to include service-zone boundary GeoJSON and hub coordinates; record only a configChanged flag for arbitrary availability config.
 - Add admin route authorization and service-level invariant tests.
 
 ## Explicitly out of scope / decisions still required
