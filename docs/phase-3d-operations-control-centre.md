@@ -22,9 +22,17 @@
 - No new database model, schema migration, production data change or payment activation.
 - Existing operational-case lifecycle remains the authorized exception-resolution workflow. This slice does not broaden SUPPORT permissions or change existing ADMIN-only case administration.
 
+## 3D.2 Operational case queue
+
+- [x] Add case search across public reference, title and description.
+- [x] Add filters for assignee, unassigned cases and creation date range.
+- [x] Keep cursor pagination and existing priority/age ordering.
+- [x] Explicitly select list response fields so evidence JSON and unrelated scalar fields are never returned by the queue endpoint.
+- [x] Validate conflicting assignee filters and invalid date ranges.
+
 ## Remaining 3D work
 
-- Extend operational-case triage with stronger concurrency and filtering/search.
+- Add stronger integration coverage for queue filters and cursor boundaries.
 - Review exception creation coverage and make sure operational failures produce traceable cases without duplicate cases.
 - Add a unified exception work queue only where source records can be correlated reliably and the action remains within existing domain state machines.
 - Complete operational authorization, integration and PostgreSQL regression coverage.
