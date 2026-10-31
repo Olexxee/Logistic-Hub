@@ -6,6 +6,7 @@ import { createOperationsControlRouter } from "../src/modules/operations-control
 
 async function serve(role, run) {
   const prismaClient = {
+    $transaction: async (callback) => callback(prismaClient),
     parcelBooking: { count: async () => 10 },
     deliveryLeg: { count: async ({ where }) => where.status === "FAILED" ? 2 : 7 },
     custodyHandover: { count: async () => 3 },
