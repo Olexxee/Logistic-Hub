@@ -91,6 +91,13 @@ function emailActionUrl(path, token, baseUrl = env.APP_BASE_URL) {
   return url.toString();
 }
 
+function maskEmail(address) {
+  if (typeof address !== "string") return "unknown";
+  const [local, domain] = address.split("@");
+  if (!local || !domain) return "unknown";
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
 export function createAuthRouter({
   prismaClient = prisma,
   secret = env.JWT_ACCESS_SECRET,
@@ -138,6 +145,12 @@ export function createAuthRouter({
         }, "auth-email-verification-" + actionToken.id);
         return user;
       });
+
+      req.log?.info?.({
+        event: "email.verification.queued",
+        recipient: maskEmail(registration.email),
+        userId: registration.id,
+      }, "Verification email queued");
 
       return res.status(201).json({
         success: true,
@@ -238,6 +251,11 @@ export function createAuthRouter({
             tags: [{ name: "category", value: "account-verification" }],
           }, "auth-email-verification-" + actionToken.id);
         });
+        req.log?.info?.({
+          event: "email.verification.resent.queued",
+          recipient: maskEmail(user.email),
+          userId: user.id,
+        }, "Verification email resend queued");
       }
 
       return res.status(202).json({
@@ -315,6 +333,11 @@ export function createAuthRouter({
             tags: [{ name: "category", value: "password-reset" }],
           }, "auth-password-reset-" + actionToken.id);
         });
+        req.log?.info?.({
+          event: "email.password-reset.queued",
+          recipient: maskEmail(user.email),
+          userId: user.id,
+        }, "Password reset email queued");
       }
       return res.status(202).json({
         success: true,
