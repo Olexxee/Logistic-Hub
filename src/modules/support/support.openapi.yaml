@@ -50,6 +50,84 @@ paths:
         '403': { description: Internal notes are restricted to support staff. }
         '404': { description: Ticket not found or not accessible. }
         '409': { description: Ticket is closed. }
+
+  /support/tickets/{ticketId}/attachments:
+    get:
+      operationId: listSupportTicketAttachments
+      summary: List private evidence attached to a support ticket
+      description: Customers can list attachments on their own tickets. ADMIN and SUPPORT can list attachments for tickets they can access.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: ticketId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Evidence metadata; storage paths and public URLs are never returned. }
+        '401': { description: Authentication required. }
+        '404': { description: Ticket not found or not accessible. }
+    post:
+      operationId: uploadSupportTicketAttachment
+      summary: Upload private evidence to a support ticket
+      description: Upload raw file bytes as application/octet-stream. Supply x-file-content-type and x-file-name headers. JPEG, PNG, WebP and PDF files up to 10 MB are accepted after content-signature validation.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: ticketId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: x-file-content-type
+          required: true
+          schema: { type: string, enum: [image/jpeg, image/png, image/webp, application/pdf] }
+        - in: header
+          name: x-file-name
+          required: true
+          schema: { type: string, maxLength: 160 }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201': { description: Evidence stored privately and metadata/audit event persisted. }
+        '400': { description: Invalid evidence content or closed ticket. }
+        '401': { description: Authentication required. }
+        '404': { description: Ticket not found or not accessible. }
+        '413': { description: Evidence exceeds 10 MB. }
+        '415': { description: Unsupported upload content type. }
+        '503': { description: Firebase Storage is not configured or unavailable. }
+  /support/tickets/{ticketId}/attachments/{attachmentId}/download:
+    get:
+      operationId: downloadSupportTicketAttachment
+      summary: Download private support-ticket evidence
+      description: Downloads evidence only after ticket ownership or ADMIN/SUPPORT access is verified. Download access is audited.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: ticketId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: attachmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Private evidence bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '401': { description: Authentication required. }
+        '404': { description: Ticket or attachment not found or not accessible. }
+        '503': { description: Firebase Storage is unavailable. }
+
 components:
   securitySchemes:
     bearerAuth:
