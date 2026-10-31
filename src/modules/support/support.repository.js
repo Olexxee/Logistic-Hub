@@ -43,8 +43,28 @@ export function createSupportRepository(prismaClient = prisma) {
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
     },
-    findById(id) {
-      return prismaClient.supportTicket.findUnique({ where: { id } });
+    findById(id, client = prismaClient) {
+      return client.supportTicket.findUnique({ where: { id } });
+    },
+    listMessages({ ticketId, includeInternal }) {
+      return prismaClient.supportTicketMessage.findMany({
+        where: { ticketId, ...(includeInternal ? {} : { visibility: "PUBLIC" }) },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 100,
+        select: {
+          id: true, ticketId: true, visibility: true, body: true, createdAt: true,
+          author: { select: { id: true, fullName: true, role: true } },
+        },
+      });
+    },
+    createMessage({ ticketId, authorId, visibility, body }, client = prismaClient) {
+      return client.supportTicketMessage.create({
+        data: { ticketId, authorId, visibility, body },
+        select: {
+          id: true, ticketId: true, visibility: true, body: true, createdAt: true,
+          author: { select: { id: true, fullName: true, role: true } },
+        },
+      });
     },
     updateTicket({ id, data, now }) {
       const terminal = ["RESOLVED", "CLOSED"].includes(data.status);
