@@ -285,7 +285,7 @@ The following are present on the baseline branch. Their presence does **not** me
 | Slice | Status | Evidence |
 |---|---|---|
 | 3A.1 — Route and permission inventory | Implemented on the current work branch; CI validation pending | [Administrative route and permission inventory](docs/admin-route-permission-inventory.md); `test/admin-route-permission-inventory.test.js` |
-| 3A.2 — Audit coverage and safe admin mutation primitives | Not started | Depends on review of the 3A.1 inventory and CI result |
+| 3A.2 — Audit coverage and safe admin mutation primitives | Implementation in progress; CI validation pending | Shared transaction-bound audit writer and mutation coverage across drivers, geography, service zones, hubs, support and finance; see [audit coverage matrix](docs/admin-audit-coverage.md). Partner execution/pricing/settlement, custody and operational cases already have transaction-bound audit paths. System-originated webhook actor design and final route-by-route verification remain open |
 
 3A.1 is deliberately documentation and regression protection only. It does not introduce granular permissions or change current role access.
 
