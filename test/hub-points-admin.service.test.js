@@ -152,3 +152,27 @@ test("an active hub cannot be moved backwards to PENDING", async () => {
   await assert.rejects(service.setStatus("hub-1", "PENDING", "admin-1"), { code: "HUB_INVALID_STATUS_TRANSITION", statusCode: 409 });
   assert.equal(updateCalled, false);
 });
+
+
+test("an active hub cannot demote its last manager through operator upsert", async () => {
+  const hub = readyHub();
+  hub.status = "ACTIVE";
+  let upsertCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub },
+    user: { findUnique: async () => ({ id: "manager-1", status: "ACTIVE", emailVerifiedAt: new Date(), role: "HUB_OPERATOR" }) },
+    hubPointOperator: {
+      findUnique: async () => ({ id: "operator-1", role: "MANAGER", isActive: true }),
+      count: async () => 0,
+      upsert: async () => { upsertCalled = true; },
+    },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubOperator({
+    hubPointId: "hub-1", userId: "manager-1", role: "OPERATOR", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
+  assert.equal(upsertCalled, false);
+});
