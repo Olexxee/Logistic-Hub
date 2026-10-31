@@ -67,8 +67,10 @@ async function scanModule(modulePath, prefix) {
 for (const entry of mounted) await scanModule(entry.modulePath, entry.prefix);
 
 const api = await SwaggerParser.validate(specPath);
+const supportSpecPath = path.join(root, "src/modules/support/support.openapi.yaml");
+const supportApi = await SwaggerParser.validate(supportSpecPath);
 const documented = new Set();
-for (const [route, pathItem] of Object.entries(api.paths ?? {})) {
+for (const [route, pathItem] of Object.entries({ ...(api.paths ?? {}), ...(supportApi.paths ?? {}) })) {
   for (const [method, operation] of Object.entries(pathItem)) {
     if (["get", "post", "put", "patch", "delete", "head", "options"].includes(method.toLowerCase())) {
       documented.add(`${method.toUpperCase()} ${normalizePath(route)}`);
