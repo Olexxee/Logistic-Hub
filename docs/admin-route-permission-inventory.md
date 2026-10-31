@@ -53,6 +53,10 @@ These are findings to resolve in 3A.2 and later slices, not permission changes m
 6. **No admin user-role mutation route was found in the reviewed route modules:** the user directory is read-only. Phone verification is a separate privileged action.
 7. **No generic admin shipment-status override route was found in the reviewed route modules:** preserve this boundary.
 
+### Legacy privileged router — not mounted
+
+`src/modules/payments/financial.routes.js` declares legacy financial routes guarded by authentication and either ADMIN/SUPPORT or ADMIN. The current `src/app.js` explicitly states that this legacy `financialRouter` is intentionally not mounted; finance operations are mounted under `/api/v1/finance`. These declarations are included in the source-level regression allow-list so dormant code cannot silently become active or be mistaken for the current API contract. Do not document or call its route paths as live endpoints.
+
 ## 2. Other authenticated routes with operational impact
 
 These routes are not ADMIN-only, but they affect privileged operational resources and must be included in the broader security review.
@@ -91,7 +95,7 @@ The regression test scans every `src/modules/**/*.routes.js` file and compares d
 - `src/modules/partner-execution/partner-execution.routes.js`
 - `src/modules/partner-pricing/partner-pricing.admin.routes.js`
 - `src/modules/partner-pricing/partner-pricing.routes.js`
-- `src/modules/partner-settlement/partner-settlement.routes.js`
+- `src/modules/partner-settlement/partner-settlement.routes.js`\n- `src/modules/payments/financial.routes.js` (legacy router; not mounted)
 - `src/modules/support/support.routes.js`
 
 The source-level test detects route modules containing administrative paths or ADMIN role declarations, verifies the module is represented in this inventory, and verifies the source contains authentication and role-guard declarations. It is a change-detection safeguard, not a substitute for HTTP integration tests or review of service-level ownership checks.
