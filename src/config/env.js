@@ -60,7 +60,20 @@ if (parsed.data.NODE_ENV === "production" && parsed.data.JWT_ACCESS_SECRET.lengt
   throw new Error("JWT_ACCESS_SECRET must contain at least 32 characters in production.");
 }
 
-if (Boolean(parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) !== Boolean(parsed.data.FIREBASE_STORAGE_BUCKET.trim())) {\n  throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 and FIREBASE_STORAGE_BUCKET must be configured together.");\n}\n\nif (parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) {\n  try {\n    const credentials = JSON.parse(Buffer.from(parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8"));\n    if (!credentials.project_id || !credentials.client_email || !credentials.private_key) throw new Error("Missing required service-account fields.");\n  } catch {\n    throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 must contain a valid base64-encoded Firebase service-account JSON document.");\n  }\n}\n\nif (parsed.data.PAYMENTS_ENABLED) {
+if (Boolean(parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) !== Boolean(parsed.data.FIREBASE_STORAGE_BUCKET.trim())) {
+  throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 and FIREBASE_STORAGE_BUCKET must be configured together.");
+}
+
+if (parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) {
+  try {
+    const credentials = JSON.parse(Buffer.from(parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8"));
+    if (!credentials.project_id || !credentials.client_email || !credentials.private_key) throw new Error("Missing required service-account fields.");
+  } catch {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 must contain a valid base64-encoded Firebase service-account JSON document.");
+  }
+}
+
+if (parsed.data.PAYMENTS_ENABLED) {
   throw new Error(
     "PAYMENTS_ENABLED=true is blocked until the project owner explicitly approves live payment activation and deployment.",
   );
