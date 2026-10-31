@@ -94,6 +94,22 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         });
         if (!current) return null;
         if (current.status === "CLOSED" && status !== "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reopened.");
+        if (status === "CLOSED" && current.status !== "CLOSED") {
+          const [openLegs, openIntakes, pendingHandovers, openCases] = await Promise.all([
+            tx.deliveryLeg.count({
+              where: {
+                status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] },
+                OR: [{ originHubPointId: id }, { destinationHubPointId: id }],
+              },
+            }),
+            tx.hubIntakeRecord.count({ where: { hubPointId: id, status: { in: ["RECEIVED", "EXCEPTION"] } } }),
+            tx.custodyHandover.count({ where: { hubPointId: id, status: "PENDING_CONFIRMATION" } }),
+            tx.operationalCase.count({ where: { hubPointId: id, status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] } } }),
+          ]);
+          if (openLegs || openIntakes || pendingHandovers || openCases) {
+            throw conflict("HUB_HAS_OPEN_OPERATIONS", "Resolve or reassign all active delivery legs, hub intakes, pending handovers and open operational cases before closing this hub.");
+          }
+        }
         if (status === "ACTIVE") {
           const now = clock();
           const availability = current.serviceZone.availability.find(item =>
