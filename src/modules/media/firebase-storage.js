@@ -8,7 +8,7 @@ export function createFirebaseStorage({ fetchImpl = fetch, clock = () => Date.no
   let cachedToken = null;
 
   function credentials() {
-    if (!process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || !process.env.FIREBASE_STORAGE_BUCKET) {
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || !process.process.env.FIREBASE_STORAGE_BUCKET) {
       throw new ServiceUnavailableError("Evidence storage is not configured.", "MEDIA_STORAGE_NOT_CONFIGURED");
     }
     try {
@@ -67,21 +67,21 @@ export function createFirebaseStorage({ fetchImpl = fetch, clock = () => Date.no
   }
 
   return {
-    get bucket() { return process.env.FIREBASE_STORAGE_BUCKET ?? ""; },
+    get bucket() { return process.process.env.FIREBASE_STORAGE_BUCKET ?? ""; },
     async upload({ objectPath, buffer, mimeType }) {
-      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(process.env.FIREBASE_STORAGE_BUCKET)}/o`);
+      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(process.process.env.FIREBASE_STORAGE_BUCKET)}/o`);
       url.searchParams.set("uploadType", "media");
       url.searchParams.set("name", objectPath);
       await request(url, { method: "POST", headers: { "Content-Type": mimeType }, body: buffer });
     },
     async download({ objectPath }) {
-      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(env.FIREBASE_STORAGE_BUCKET)}/o/${encodeURIComponent(objectPath)}`);
+      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(process.env.FIREBASE_STORAGE_BUCKET)}/o/${encodeURIComponent(objectPath)}`);
       url.searchParams.set("alt", "media");
       const response = await request(url);
       return Buffer.from(await response.arrayBuffer());
     },
     async delete({ objectPath }) {
-      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(env.FIREBASE_STORAGE_BUCKET)}/o/${encodeURIComponent(objectPath)}`);
+      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(process.env.FIREBASE_STORAGE_BUCKET)}/o/${encodeURIComponent(objectPath)}`);
       await request(url, { method: "DELETE" });
     },
   };
