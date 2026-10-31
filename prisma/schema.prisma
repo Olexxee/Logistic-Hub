@@ -323,6 +323,11 @@ enum AuthTokenPurpose {
   PASSWORD_RESET
 }
 
+enum SupportTicketMessageVisibility {
+  PUBLIC
+  INTERNAL
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // IDENTITY & AUTH
 // ═════════════════════════════════════════════════════════════════════════════
@@ -363,6 +368,7 @@ model User {
   reconciledPartnerSettlementBatches PartnerSettlementBatch[] @relation("PartnerSettlementBatchReconciler")
   partnerSettlementReconciliations PartnerSettlementReconciliation[] @relation("PartnerSettlementReconciliationActor")
   receivedHubIntakes HubIntakeRecord[] @relation("HubIntakeReceiver")
+  supportTicketMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
 
   @@index([role, status])
   @@map("users")
@@ -1170,7 +1176,25 @@ model SupportTicket {
   @@index([assignedToUserId, status])
   @@index([parcelBookingId, status])   // NEW
   @@index([rideBookingId, status])     // NEW
+  messages SupportTicketMessage[]
+
   @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id          String                        @id @default(cuid())
+  ticketId    String
+  authorId    String
+  visibility  SupportTicketMessageVisibility @default(PUBLIC)
+  body        String
+  createdAt   DateTime                      @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User          @relation("SupportTicketMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, visibility, createdAt, id])
+  @@index([authorId, createdAt])
+  @@map("support_ticket_messages")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

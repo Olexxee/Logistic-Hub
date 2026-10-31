@@ -8,6 +8,11 @@ export const createTicketSchema = z.object({
   description: z.string().trim().min(10).max(5000),
 }).strict();
 
+export const createTicketMessageSchema = z.object({
+  visibility: z.enum(["PUBLIC", "INTERNAL"]).default("PUBLIC"),
+  body: z.string().trim().min(1).max(5000),
+}).strict();
+
 export const updateTicketSchema = z.object({
   status: z.enum(["OPEN", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "RESOLVED", "CLOSED"]),
   priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).optional(),
