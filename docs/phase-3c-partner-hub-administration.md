@@ -9,6 +9,7 @@
 ### 3C.1 Transport-partner lifecycle
 - Activation requires VERIFIED status and at least one active OWNER membership belonging to an active, email-verified user.
 - Verification cannot be downgraded while a partner remains ACTIVE.
+- Partner status transitions are forward-only; ACTIVE or SUSPENDED partners cannot be reset to PENDING.
 - CLOSED is terminal; closed partners cannot be reopened or receive new memberships or agreements.
 - Suspension and closure are blocked while assignments are ASSIGNED, ACCEPTED or IN_TRANSIT.
 - Suspending a partner also suspends its active agreements in the same serializable transaction, auditing each dependent transition.
@@ -28,6 +29,7 @@
 - Rate-card publication requires an eligible active agreement, active verified partner, effective dates and at least one active rate.
 
 ### 3C.4 Hub operator governance
+- Hub status transitions are forward-only; ACTIVE or SUSPENDED hubs cannot be reset to PENDING.
 - Closed hubs cannot receive new operators or have memberships changed.
 - An ACTIVE hub must retain at least one active MANAGER membership belonging to an active, email-verified user.
 - The last active MANAGER cannot be deactivated while the hub remains ACTIVE.
