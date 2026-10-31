@@ -126,6 +126,8 @@ test("admin can add an existing partner operator as a hub operator without downg
     user: { findUnique: async () => ({ id: "operator-1", status: "ACTIVE", role: "PARTNER_OPERATOR", emailVerifiedAt: now }) },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
     hubPointOperator: {
+      findUnique: async () => null,
+      count: async () => 1,
       upsert: async ({ create }) => ({ id: "hub-operator-1", ...create }),
     },
   });
