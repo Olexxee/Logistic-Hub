@@ -1,6 +1,8 @@
 import { z } from "zod";
+
 export const auditListSchema = z.object({
-  entityType: z.enum(["DRIVER_PROFILE", "HUB_POINT", "TRANSPORT_PARTNER", "PARTNER_AGREEMENT", "PARTNER_RATE_CARD"]).optional(),
+  // Entity types are intentionally extensible: every module may emit audit events.
+  entityType: z.string().trim().min(1).max(80).optional(),
   entityId: z.string().trim().min(1).max(128).optional(),
   action: z.string().trim().min(1).max(100).optional(),
   actorUserId: z.string().trim().min(1).max(128).optional(),
