@@ -61,7 +61,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
         }
         const updated = await tx.hubPoint.update({ where: { id }, data: input });
-        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", before: { serviceZoneId: current.serviceZoneId, name: current.name, address: current.address, operatorName: current.operatorName, operatorPhone: current.operatorPhone, openingHours: current.openingHours, acceptedParcelTypes: current.acceptedParcelTypes, capacityConfig: current.capacityConfig }, after: { serviceZoneId: updated.serviceZoneId, name: updated.name, address: updated.address, operatorName: updated.operatorName, operatorPhone: updated.operatorPhone, openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes, capacityConfig: updated.capacityConfig } });
+        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", before: { serviceZoneId: current.serviceZoneId, name: current.name, address: current.address, latitude: current.latitude, longitude: current.longitude, operatorName: current.operatorName, operatorPhone: current.operatorPhone, openingHours: current.openingHours, acceptedParcelTypes: current.acceptedParcelTypes, capacityConfig: current.capacityConfig }, after: { serviceZoneId: updated.serviceZoneId, name: updated.name, address: updated.address, latitude: updated.latitude, longitude: updated.longitude, operatorName: updated.operatorName, operatorPhone: updated.operatorPhone, openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes, capacityConfig: updated.capacityConfig } });
         return updated;
       });
     },
@@ -70,6 +70,9 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         const current = await tx.hubPoint.findUnique({ where: { id } });
         if (!current) return null;
         if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reviewed.");
+        if (current.status === "ACTIVE" && verificationStatus !== "VERIFIED") {
+          throw conflict("ACTIVE_HUB_OPERATOR_VERIFICATION_REQUIRED", "Suspend the hub before changing its operator verification away from VERIFIED.");
+        }
         const updated = await tx.hubPoint.update({
           where: { id },
           data: { operatorVerificationStatus: verificationStatus, operatorVerifiedAt: verificationStatus === "VERIFIED" ? clock() : null, operatorVerificationNotes: notes ?? null },
