@@ -3,6 +3,7 @@ export function createOperationsControlRepository({ prismaClient }) {
 
   return {
     async getOverview() {
+      return prismaClient.$transaction(async tx => {
       const activeCaseWhere = { status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] } };
       const [
         activeShipments,
@@ -15,7 +16,7 @@ export function createOperationsControlRepository({ prismaClient }) {
         unassignedOperationalCases,
         activePartnerAssignments,
       ] = await Promise.all([
-        prismaClient.parcelBooking.count({
+        tx.parcelBooking.count({
           where: { status: { in: [
             "MATCHING", "AWAITING_CUSTOMER_ACCEPTANCE", "AWAITING_PAYMENT",
             "PAYMENT_PENDING", "DRIVER_ASSIGNED", "PICKUP_VERIFICATION_PENDING",
@@ -23,14 +24,14 @@ export function createOperationsControlRepository({ prismaClient }) {
             "CANCELLATION_PENDING",
           ] } },
         }),
-        prismaClient.deliveryLeg.count({ where: { status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] } } }),
+        tx.deliveryLeg.count({ where: { status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] } } }),
         prismaClient.deliveryLeg.count({ where: { status: "FAILED" } }),
-        prismaClient.custodyHandover.count({ where: { status: "PENDING_CONFIRMATION" } }),
-        prismaClient.hubIntakeRecord.count({ where: { status: "EXCEPTION" } }),
-        prismaClient.operationalCase.count({ where: activeCaseWhere }),
+        tx.custodyHandover.count({ where: { status: "PENDING_CONFIRMATION" } }),
+        tx.hubIntakeRecord.count({ where: { status: "EXCEPTION" } }),
+        tx.operationalCase.count({ where: activeCaseWhere }),
         prismaClient.operationalCase.count({ where: { ...activeCaseWhere, priority: "CRITICAL" } }),
         prismaClient.operationalCase.count({ where: { ...activeCaseWhere, assignedToUserId: null } }),
-        prismaClient.partnerDeliveryAssignment.count({ where: { status: { in: ["ASSIGNED", "ACCEPTED", "IN_TRANSIT"] } } }),
+        tx.partnerDeliveryAssignment.count({ where: { status: { in: ["ASSIGNED", "ACCEPTED", "IN_TRANSIT"] } } }),
       ]);
 
       return {
@@ -44,6 +45,7 @@ export function createOperationsControlRepository({ prismaClient }) {
         unassignedOperationalCases,
         activePartnerAssignments,
       };
+      }, { isolationLevel: "RepeatableRead" });
     },
   };
 }
