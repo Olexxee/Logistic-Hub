@@ -1,6 +1,6 @@
 # Phase 3C — Transport-partner and hub administration
 
-**Status:** Implementation in progress.  
+**Status:** Complete. Merged in PR #52 (merge commit `8564416f5c2835b08bba93dc9a92842115024a90`).  
 **Baseline:** `main` after Phase 3B closeout PR #51.  
 **Scope:** Transport-partner lifecycle, partner ownership and membership, partner agreements and rate-card lifecycle, delivery assignments, and hub operator governance.
 
