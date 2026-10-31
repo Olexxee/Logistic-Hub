@@ -63,9 +63,10 @@ auditActor = await prisma.user.create({ data: { fullName: "Hub Integration Admin
     });
     assert.ok(hubs.data.some((item) => item.id === hub.id));
 
-    await zoneAdmin.setAvailability(zone.id, { serviceType: "PARCEL_DELIVERY", isEnabled: false }, auditActor.id);
-
+    // Coverage cannot be withdrawn while a hub is ACTIVE. Suspend it first,
+    // then disable the service and verify that reactivation is rejected.
     await hubAdmin.setStatus(hub.id, "SUSPENDED", auditActor.id);
+    await zoneAdmin.setAvailability(zone.id, { serviceType: "PARCEL_DELIVERY", isEnabled: false }, auditActor.id);
     await assert.rejects(
       () => hubAdmin.setStatus(hub.id, "ACTIVE", auditActor.id),
       (error) => error.code === "HUB_ZONE_UNAVAILABLE",
