@@ -79,7 +79,7 @@ export function createOutboxWorker({
       const code = typeof error?.code === "string" ? error.code.slice(0, 80) : "EMAIL_DELIVERY_FAILED";
       if (terminal) {
         try {
-          const payload = decryptJobPayload(job.encryptedPayload);
+          const payload = decryptJobPayload(job.encryptedPayload, encryptionKey);
           if (payload.notificationId) {
             await prismaClient.notification.updateMany({
               where: { id: payload.notificationId, emailStatus: "PENDING" },
