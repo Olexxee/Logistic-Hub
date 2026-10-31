@@ -276,6 +276,31 @@ paths:
           description: Email verified and account activated.
         '400':
           $ref: '#/components/responses/ValidationError'
+  /auth/verify-email/resend:
+    post:
+      tags: [Authentication]
+      operationId: resendVerificationEmail
+      summary: Queue a fresh verification email for an unverified account
+      description: Returns the same generic response for unknown, active, and pending accounts to avoid disclosing account existence. Requests are rate limited.
+      x-implementation-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '202':
+          description: Generic response; a message is queued only when an unverified account exists.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /auth/login:
     post:
       tags: [Authentication]
