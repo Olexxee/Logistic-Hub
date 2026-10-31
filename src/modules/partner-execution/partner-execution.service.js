@@ -49,7 +49,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const currentMembership = await tx.transportPartnerMember.findUnique({
           where: { partnerId_userId: { partnerId, userId } },
         });
-        if (currentMembership?.isActive && currentMembership.role === "OWNER" && role !== "OWNER") {
+        if (partner.status === "ACTIVE" && currentMembership?.isActive && currentMembership.role === "OWNER" && role !== "OWNER") {
           const otherOwners = await tx.transportPartnerMember.count({
             where: { partnerId, isActive: true, role: "OWNER", id: { not: currentMembership.id } },
           });
@@ -83,7 +83,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           const user = await tx.user.findUnique({ where: { id: member.userId } });
           if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         }
-        if (!isActive && member.isActive && member.role === "OWNER") {
+        if (!isActive && partner.status === "ACTIVE" && member.isActive && member.role === "OWNER") {
           const otherOwners = await tx.transportPartnerMember.count({
             where: { partnerId, isActive: true, role: "OWNER", id: { not: member.id } },
           });
