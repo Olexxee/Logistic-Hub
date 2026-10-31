@@ -54,9 +54,8 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         if (current.status === "ACTIVE" && !hasOperationalDetails(next)) {
           throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
         }
-        const before = await tx.hubPoint.findUnique({ where: { id } });
         const updated = await tx.hubPoint.update({ where: { id }, data: input });
-        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", before: { serviceZoneId: before.serviceZoneId, name: before.name, address: before.address, operatorName: before.operatorName, operatorPhone: before.operatorPhone, openingHours: before.openingHours, acceptedParcelTypes: before.acceptedParcelTypes, capacityConfig: before.capacityConfig }, after: { serviceZoneId: updated.serviceZoneId, name: updated.name, address: updated.address, operatorName: updated.operatorName, operatorPhone: updated.operatorPhone, openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes, capacityConfig: updated.capacityConfig } });
+        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", before: { serviceZoneId: current.serviceZoneId, name: current.name, address: current.address, operatorName: current.operatorName, operatorPhone: current.operatorPhone, openingHours: current.openingHours, acceptedParcelTypes: current.acceptedParcelTypes, capacityConfig: current.capacityConfig }, after: { serviceZoneId: updated.serviceZoneId, name: updated.name, address: updated.address, operatorName: updated.operatorName, operatorPhone: updated.operatorPhone, openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes, capacityConfig: updated.capacityConfig } });
         return updated;
       });
     },
