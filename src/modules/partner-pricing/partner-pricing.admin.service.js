@@ -45,6 +45,12 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
             : { blocker: "PARTNER_CLOSED" };
         }
         if (current.status === input.status && nextVerification === current.verificationStatus) return { partner: current, replay: true };
+        const allowedTransitions = {
+          PENDING: ["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"],
+          ACTIVE: ["ACTIVE", "SUSPENDED", "CLOSED"],
+          SUSPENDED: ["SUSPENDED", "ACTIVE", "CLOSED"],
+        };
+        if (!allowedTransitions[current.status]?.includes(input.status)) return { blocker: "PARTNER_INVALID_STATUS_TRANSITION" };
         if (input.status === "ACTIVE" && nextVerification !== "VERIFIED") return { blocker: "PARTNER_NOT_VERIFIED" };
         if (current.status === "ACTIVE" && nextVerification !== "VERIFIED" && !["SUSPENDED", "CLOSED"].includes(input.status)) {
           return { blocker: "PARTNER_MUST_BE_SUSPENDED" };
