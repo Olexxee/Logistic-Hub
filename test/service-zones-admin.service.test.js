@@ -80,9 +80,10 @@ test("active hubs may remain when parcel availability is updated without closing
   const f = fixture({ activeHubs: 1 });
   const result = await f.service.setAvailability("zone-1", {
     serviceType: "PARCEL_DELIVERY", isEnabled: true,
-    endsAt: new Date("2026-11-30T23:59:59.000Z"),
+    endsAt: new Date("2026-11-30T23:59:59.000Z"), config: { maxDailyBookings: 40 },
   }, "admin-1");
   assert.equal(result.isEnabled, true);
   assert.equal(f.auditEvents.length, 1);
   assert.equal(f.auditEvents[0].action, "SERVICE_ZONE_AVAILABILITY_UPDATED");
+  assert.deepEqual(f.auditEvents[0].after.config, { maxDailyBookings: 40 });
 });
