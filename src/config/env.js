@@ -11,6 +11,7 @@ const envSchema = z.object({
   EMAIL_PROVIDER: z.enum(["none", "resend"]).default("none"),
   RESEND_API_KEY: z.string().optional().default(""),
   RESEND_FROM_EMAIL: z.string().optional().default(""),
+  OUTBOX_ENCRYPTION_KEY: z.string().optional().default(""),
   APP_BASE_URL: z.string().url().optional().default("http://localhost:3000"),
   JWT_ACCESS_SECRET: z.string().optional().default(""),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
