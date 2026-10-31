@@ -96,3 +96,20 @@ test("partner closure is blocked while agreements remain open", async () => {
   const result = await serviceWith(tx).setPartnerStatus({ partnerId: "partner-1", input: { status: "CLOSED" }, actorUserId: "admin-1" });
   assert.equal(result.blocker, "PARTNER_HAS_OPEN_AGREEMENTS");
 });
+
+
+test("partner activation is blocked until an active verified owner exists", async () => {
+  let updateCalled = false;
+  const tx = {
+    transportPartner: {
+      findUnique: async () => ({ id: "partner-1", status: "PENDING", verificationStatus: "VERIFIED", verifiedAt: null }),
+      update: async () => { updateCalled = true; },
+    },
+    transportPartnerMember: { count: async () => 0 },
+  };
+  const result = await serviceWith(tx).setPartnerStatus({
+    partnerId: "partner-1", input: { status: "ACTIVE" }, actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "PARTNER_OWNER_REQUIRED");
+  assert.equal(updateCalled, false);
+});
