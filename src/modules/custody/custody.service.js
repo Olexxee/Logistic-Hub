@@ -646,10 +646,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         await requireActiveUser(tx, userId);
         const membership = await repo.findHubOperator(hubPointId, userId, tx);
         if (!membership?.isActive) throw forbidden();
+        await repo.lockDeliveryLeg(deliveryLegId, tx);
         await repo.lockHubCapacity(hubPointId, tx);
         const hub = await repo.findHubForParty(hubPointId, tx);
         if (!hub || hub.status !== "ACTIVE") return { notFound: true };
-        await repo.lockDeliveryLeg(deliveryLegId, tx);
         const leg = await repo.findBookingLeg(deliveryLegId, tx);
         if (!leg || ![leg.originHubPointId, leg.destinationHubPointId].includes(hubPointId)) return { notFound: true };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
