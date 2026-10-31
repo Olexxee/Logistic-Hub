@@ -84,8 +84,9 @@ export function createServiceZonesAdminService({ prismaClient, clock = () => new
         await writeOperationalAuditEvent(tx, {
           actorUserId, entityType: "SERVICE_AVAILABILITY", entityId: updated.id,
           action: "SERVICE_ZONE_AVAILABILITY_UPDATED",
-          before: previous ? { serviceZoneId: id, serviceType, isEnabled: previous.isEnabled, startsAt: previous.startsAt, endsAt: previous.endsAt, config: previous.config ?? null } : null,
-          after: { serviceZoneId: id, serviceType, isEnabled: updated.isEnabled, startsAt: updated.startsAt, endsAt: updated.endsAt, config: updated.config ?? null },
+          before: previous ? { serviceZoneId: id, serviceType, isEnabled: previous.isEnabled, startsAt: previous.startsAt, endsAt: previous.endsAt } : null,
+          after: { serviceZoneId: id, serviceType, isEnabled: updated.isEnabled, startsAt: updated.startsAt, endsAt: updated.endsAt },
+          metadata: { configChanged: JSON.stringify(previous?.config ?? null) !== JSON.stringify(updated.config ?? null) },
         });
         return updated;
       });
