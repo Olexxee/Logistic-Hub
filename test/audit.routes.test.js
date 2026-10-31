@@ -38,3 +38,24 @@ test("admin audit history supports entity and action filters", async () => {
     assert.deepEqual(getQuery().where, { entityType: "DRIVER_PROFILE", entityId: "driver-1", action: "DRIVER_SUSPENDED" });
   });
 });
+
+test("audit history accepts entity types emitted by other operational modules", async () => {
+  await serve("ADMIN", async (base, getQuery) => {
+    const response = await fetch(`${base}/admin/audit-events?entityType=REFUND_REQUEST&action=REFUND_PROVIDER_WEBHOOK_STATUS_UPDATED`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(getQuery().where, {
+      entityType: "REFUND_REQUEST",
+      action: "REFUND_PROVIDER_WEBHOOK_STATUS_UPDATED",
+    });
+  });
+});
+
+test("audit history rejects oversized entity filters and unbounded page sizes", async () => {
+  await serve("ADMIN", async base => {
+    const longEntityType = "x".repeat(81);
+    const invalidEntity = await fetch(`${base}/admin/audit-events?entityType=${longEntityType}`);
+    assert.equal(invalidEntity.status, 400);
+    const invalidLimit = await fetch(`${base}/admin/audit-events?limit=101`);
+    assert.equal(invalidLimit.status, 400);
+  });
+});

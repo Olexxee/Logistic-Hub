@@ -44,3 +44,57 @@ test("payout settlement confirmation is audited in its transaction", async () =>
   assert.deepEqual(audit.before, { status: "ELIGIBLE", providerReference: null });
   assert.deepEqual(audit.after, { status: "PAID", providerReference: "bank-ref-1" });
 });
+
+test("provider refund webhook transition and system audit event share one transaction", async () => {
+  const audits = [];
+  let current = { id: "refund-webhook-1", status: "PROCESSING", providerReference: "provider-ref-1" };
+  const prismaClient = {
+    $transaction: callback => callback({
+      refundRequest: {
+        findMany: async ({ where }) => where.status.in.includes(current.status) ? [{ ...current }] : [],
+        updateMany: async ({ where, data }) => {
+          if (where.id !== current.id || !where.status.in.includes(current.status)) return { count: 0 };
+          current = { ...current, ...data };
+          return { count: 1 };
+        },
+      },
+      operationalAuditEvent: {
+        create: async ({ data }) => { audits.push(data); return { id: "system-audit-1" }; },
+      },
+    }),
+  };
+  const repo = createFinanceRepository(prismaClient);
+  const result = await repo.updateRefundFromWebhook({
+    providerReference: "provider-ref-1",
+    status: "PROCESSED",
+    providerResponse: { event: "refund.processed", id: "provider-ref-1" },
+  });
+  assert.deepEqual(result, { count: 1 });
+  assert.equal(current.status, "PROCESSED");
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].actorUserId, null);
+  assert.equal(audits[0].entityId, "refund-webhook-1");
+  assert.equal(audits[0].action, "REFUND_PROVIDER_WEBHOOK_STATUS_UPDATED");
+  assert.deepEqual(audits[0].before, { status: "PROCESSING", providerReference: "provider-ref-1" });
+  assert.deepEqual(audits[0].after, { status: "PROCESSED", providerReference: "provider-ref-1" });
+  assert.equal(audits[0].metadata.actorType, "SYSTEM");
+  assert.equal(audits[0].metadata.systemSource, "PAYSTACK_REFUND_WEBHOOK");
+
+  const duplicate = await repo.updateRefundFromWebhook({
+    providerReference: "provider-ref-1",
+    status: "PROCESSED",
+    providerResponse: { event: "refund.processed", id: "provider-ref-1" },
+  });
+  assert.deepEqual(duplicate, { count: 0 });
+  assert.equal(audits.length, 1);
+
+  current.status = "REJECTED";
+  const staleWebhook = await repo.updateRefundFromWebhook({
+    providerReference: "provider-ref-1",
+    status: "PROCESSED",
+    providerResponse: { event: "refund.processed", id: "provider-ref-1" },
+  });
+  assert.deepEqual(staleWebhook, { count: 0 });
+  assert.equal(current.status, "REJECTED");
+  assert.equal(audits.length, 1);
+});

@@ -1,6 +1,6 @@
 # Phase 3A.3 — Route-level authorization coverage
 
-**Status:** Initial route-level regression suite added; policy unchanged.  
+**Status:** Route-level regression suite added for representative administrative surfaces; policy unchanged. Remaining authorization grants and coverage gaps are documented.  
 **Baseline:** merged Phase 3A.2 source on `main`, 31 October 2026.
 
 ## Coverage added
@@ -33,6 +33,6 @@ This is route-guard regression coverage, not a substitute for service-level obje
 ## Remaining Phase 3A governance work
 
 1. Decide whether SUPPORT may confirm payout settlement and review refunds.
-2. Define a system-principal strategy for system/webhook-originated audit events without fabricating a human actor or weakening audit actor integrity.
-3. Add service-layer adversarial tests for custody/hub membership and ownership boundaries.
-4. Review audit storage immutability, retention/export and correlation-ID propagation.
+2. [x] Define a system-originated audit convention using the existing nullable actorUserId field; webhook refund transitions now emit SYSTEM audit events in the same transaction (Phase 3A.4).
+3. [x] Add service-layer adversarial tests for custody/hub membership and ownership boundaries (merged in PR #48).
+4. [x] Review audit storage immutability, retention/export and correlation-ID propagation. Application-level append-only behavior is documented; DB-enforced immutability and retention duration remain deployment/governance decisions requiring explicit approval.
