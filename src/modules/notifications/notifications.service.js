@@ -19,9 +19,9 @@ function serializeNotification(item) {
   };
 }
 
-export function createNotificationsService({ prismaClient, clock = () => new Date() }) {
+export function createNotificationsService({ prismaClient, clock = () => new Date(), encryptionKey }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
-  const outbox = createOutboxService({ prismaClient });
+  const outbox = createOutboxService({ prismaClient, encryptionKey });
 
   return {
     async createAndDeliver({ userId, type, title, body, data, deliveryKey, emailSubject }) {
