@@ -19,7 +19,7 @@ test("worker sends an encrypted email job and marks it successful", async () => 
   const worker = createOutboxWorker({
     prismaClient,
     email: { send: async (input) => { calls.sent.push(input); return { id: "resend_1" }; } },
-    workerId: "worker_1",
+    workerId: "worker_1", encryptionKey: key,
   });
   const result = await worker.runOnce();
   assert.equal(result[0].status, "SUCCEEDED");
@@ -43,7 +43,7 @@ test("worker retries provider failures and does not expose email payloads in log
     prismaClient,
     email: { send: async () => { const error = new Error("provider down"); error.code = "EMAIL_PROVIDER_UNAVAILABLE"; throw error; } },
     logger: { error: (entry) => logged.push(entry) },
-    workerId: "worker_2",
+    workerId: "worker_2", encryptionKey: key,
   });
   const result = await worker.runOnce();
   assert.equal(result[0].status, "PENDING");
