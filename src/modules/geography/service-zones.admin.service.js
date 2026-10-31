@@ -3,6 +3,12 @@ import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit
 
 function conflict(code, message) { const error = new Error(message); error.statusCode = 409; error.code = code; return error; }
 function snapshot(value) { return value ? { id: value.id, stateId: value.stateId, lgaId: value.lgaId, code: value.code, name: value.name, isActive: value.isActive } : null; }
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
 function availabilityIsEffective(value, now) {
   return Boolean(value?.isEnabled && (!value.startsAt || value.startsAt <= now) && (!value.endsAt || value.endsAt >= now));
 }
@@ -10,7 +16,7 @@ function availabilityIsEffective(value, now) {
 export function createServiceZonesAdminService({ prismaClient, clock = () => new Date() }) {
   const read = createServiceZonesAdminRepository({ prismaClient });
   async function mutate(actorUserId, callback) {
-    return prismaClient.$transaction(async tx => callback(tx, createServiceZonesAdminRepository({ prismaClient: tx })));
+    return serializableTransaction(prismaClient, async tx => callback(tx, createServiceZonesAdminRepository({ prismaClient: tx })));
   }
   return {
     list: () => read.list(),
