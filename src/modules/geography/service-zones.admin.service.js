@@ -3,6 +3,9 @@ import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit
 
 function conflict(code, message) { const error = new Error(message); error.statusCode = 409; error.code = code; return error; }
 function snapshot(value) { return value ? { id: value.id, stateId: value.stateId, lgaId: value.lgaId, code: value.code, name: value.name, isActive: value.isActive } : null; }
+function availabilityIsEffective(value, now) {
+  return Boolean(value?.isEnabled && (!value.startsAt || value.startsAt <= now) && (!value.endsAt || value.endsAt >= now));
+}
 
 export function createServiceZonesAdminService({ prismaClient }) {
   const read = createServiceZonesAdminRepository({ prismaClient });
@@ -32,6 +35,10 @@ export function createServiceZonesAdminService({ prismaClient }) {
           const lga = await tx.lGA.findUnique({ where: { id: input.lgaId } });
           if (!lga || lga.stateId !== current.stateId) throw conflict("LGA_STATE_MISMATCH", "The selected LGA must belong to the service zone's state.");
         }
+        if (Object.hasOwn(input, "lgaId") && input.lgaId !== current.lgaId) {
+          const activeHubs = await tx.hubPoint.count({ where: { serviceZoneId: id, status: "ACTIVE" } });
+          if (activeHubs) throw conflict("ACTIVE_HUBS_EXIST", "Suspend all active hubs before changing the service zone's LGA.");
+        }
         const updated = await r.update(id, input);
         await writeOperationalAuditEvent(tx, { actorUserId, entityType: "SERVICE_ZONE", entityId: id, action: "SERVICE_ZONE_UPDATED", before: snapshot(current), after: snapshot(updated) });
         return updated;
@@ -41,6 +48,10 @@ export function createServiceZonesAdminService({ prismaClient }) {
       return mutate(actorUserId, async (tx, r) => {
         const current = await r.findById(id); if (!current) return null;
         if (isActive && (!current.state.isActive || !current.state.country.isActive)) throw conflict("GEOGRAPHY_INACTIVE", "A service zone cannot be activated while its state or country is inactive.");
+        if (!isActive) {
+          const activeHubs = await tx.hubPoint.count({ where: { serviceZoneId: id, status: "ACTIVE" } });
+          if (activeHubs) throw conflict("ACTIVE_HUBS_EXIST", "Suspend all active hubs before deactivating this service zone.");
+        }
         const updated = await r.update(id, { isActive });
         await writeOperationalAuditEvent(tx, { actorUserId, entityType: "SERVICE_ZONE", entityId: id, action: "SERVICE_ZONE_STATUS_UPDATED", before: snapshot(current), after: snapshot(updated) });
         return updated;
@@ -52,6 +63,17 @@ export function createServiceZonesAdminService({ prismaClient }) {
         if (input.isEnabled && (!current.isActive || !current.state.isActive || !current.state.country.isActive)) throw conflict("SERVICE_ZONE_INACTIVE", "Availability can only be enabled in an active zone, state, and country.");
         const { serviceType, ...data } = input;
         const previous = current.availability.find(item => item.serviceType === serviceType) ?? null;
+        if (serviceType === "PARCEL_DELIVERY") {
+          const nextAvailability = {
+            isEnabled: input.isEnabled,
+            startsAt: Object.hasOwn(data, "startsAt") ? data.startsAt : previous?.startsAt ?? null,
+            endsAt: Object.hasOwn(data, "endsAt") ? data.endsAt : previous?.endsAt ?? null,
+          };
+          if (!availabilityIsEffective(nextAvailability, new Date())) {
+            const activeHubs = await tx.hubPoint.count({ where: { serviceZoneId: id, status: "ACTIVE" } });
+            if (activeHubs) throw conflict("ACTIVE_HUBS_EXIST", "Suspend all active hubs before disabling or scheduling parcel-delivery availability outside its active window.");
+          }
+        }
         const updated = await r.upsertAvailability(id, serviceType, data);
         await writeOperationalAuditEvent(tx, {
           actorUserId, entityType: "SERVICE_AVAILABILITY", entityId: updated.id,
