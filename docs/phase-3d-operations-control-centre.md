@@ -12,6 +12,7 @@
 - [x] Keep the endpoint aggregate-only; do not expose customer addresses, recipient contact data, evidence, payment details or raw shipment records.
 - [x] Restrict the endpoint to authenticated ADMIN users.
 - [x] Add service-level regression coverage and OpenAPI/mounted-route parity.
+- [x] Serialize operational-case updates and retry bounded Prisma serialization conflicts.
 
 ## Explicit boundaries
 
