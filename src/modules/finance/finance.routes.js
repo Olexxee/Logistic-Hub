@@ -25,52 +25,46 @@ export function requireFinanceIdempotencyKey(req, res, next) {
   return next();
 }
 
-export function createFinanceRouter({ prismaClient = prisma } = {}) {
-  const r = Router();
-  const c = createFinanceController(createFinanceService({ prismaClient }));
+export function createFinanceRouter({
+  prismaClient = prisma,
+  authMiddleware = requireAuth,
+  roleMiddleware = requireRole,
+} = {}) {
+  const router = Router();
+  const controller = createFinanceController(createFinanceService({ prismaClient }));
   const refundId = z.object({ refundId: z.string().trim().min(1).max(128) });
   const payoutId = z.object({ payoutId: z.string().trim().min(1).max(128) });
-  r.post(
+  const supportFinanceAccess = roleMiddleware("ADMIN", "SUPPORT");
+  const adminAccess = roleMiddleware("ADMIN");
+
+  router.post(
     "/refund-requests",
-    requireAuth,
+    authMiddleware,
     validate(refundRequestSchema),
     requireFinanceIdempotencyKey,
-    c.requestRefund,
+    controller.requestRefund,
   );
-  r.get(
-    "/admin/refunds",
-    requireAuth,
-    requireRole("ADMIN", "SUPPORT"),
-    c.refunds,
-  );
-  r.patch(
+  router.get("/admin/refunds", authMiddleware, supportFinanceAccess, controller.refunds);
+  router.patch(
     "/admin/refunds/:refundId",
-    requireAuth,
-    requireRole("ADMIN", "SUPPORT"),
+    authMiddleware,
+    supportFinanceAccess,
     validate(refundId, "params"),
     validate(reviewRefundSchema),
-    c.reviewRefund,
+    controller.reviewRefund,
   );
-  r.get(
-    "/admin/payouts",
-    requireAuth,
-    requireRole("ADMIN", "SUPPORT"),
-    c.payouts,
-  );
-  r.patch(
+  router.get("/admin/payouts", authMiddleware, supportFinanceAccess, controller.payouts);
+  router.patch(
     "/admin/payouts/:payoutId/confirm-settlement",
-    requireAuth,
-    requireRole("ADMIN", "SUPPORT"),
+    authMiddleware,
+    supportFinanceAccess,
     validate(payoutId, "params"),
     validate(confirmPayoutSchema),
-    c.confirmPayout,
+    controller.confirmPayout,
   );
-  r.get(
-    "/admin/reconciliation",
-    requireAuth,
-    requireRole("ADMIN"),
-    c.reconciliation,
-  );
-  return r;
+  router.get("/admin/reconciliation", authMiddleware, adminAccess, controller.reconciliation);
+
+  return router;
 }
+
 export const financeRouter = createFinanceRouter();
