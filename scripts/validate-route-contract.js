@@ -69,8 +69,9 @@ for (const entry of mounted) await scanModule(entry.modulePath, entry.prefix);
 const api = await SwaggerParser.validate(specPath);
 const supportSpecPath = path.join(root, "src/modules/support/support.openapi.yaml");
 const supportApi = await SwaggerParser.validate(supportSpecPath);
+const documentedPaths = { ...(api.paths ?? {}), ...(supportApi.paths ?? {}) };
 const documented = new Set();
-for (const [route, pathItem] of Object.entries({ ...(api.paths ?? {}), ...(supportApi.paths ?? {}) })) {
+for (const [route, pathItem] of Object.entries(documentedPaths)) {
   for (const [method, operation] of Object.entries(pathItem)) {
     if (["get", "post", "put", "patch", "delete", "head", "options"].includes(method.toLowerCase())) {
       documented.add(`${method.toUpperCase()} ${normalizePath(route)}`);
@@ -82,7 +83,7 @@ const invalidStatuses = [...actual].filter(route => {
   const split = route.indexOf(" ");
   const method = route.slice(0, split).toLowerCase();
   const routePath = route.slice(split + 1);
-  const status = api.paths?.[routePath]?.[method]?.["x-implementation-status"];
+  const status = documentedPaths?.[routePath]?.[method]?.["x-implementation-status"];
   return !["implemented", "planned-disabled"].includes(status);
 }).sort();
 if (missing.length || invalidStatuses.length) {
