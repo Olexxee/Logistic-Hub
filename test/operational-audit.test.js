@@ -55,6 +55,6 @@ test("operational audit rejects system events without an explicit source or with
     entityId: "refund-1",
     action: "REFUND_PROVIDER_WEBHOOK_STATUS_UPDATED",
   };
-  await assert.rejects(writeOperationalAuditEvent(tx, base), /systemSource is required/);
+  await assert.rejects(writeOperationalAuditEvent(tx, base), /require systemSource/);
   await assert.rejects(writeOperationalAuditEvent(tx, { ...base, systemSource: "PAYSTACK_REFUND_WEBHOOK", actorUserId: "admin-1" }), /cannot claim a human actor/);
 });
