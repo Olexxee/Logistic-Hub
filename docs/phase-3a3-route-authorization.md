@@ -12,6 +12,16 @@
 
 The route set covers support, refund review, payout review/settlement, reconciliation, geography, service zones, custody administration, partner membership/assignment administration, operational cases and partner settlement.
 
+## Service-layer adversarial coverage added
+
+The custody service suite now verifies that:
+- Users without active hub membership cannot list hub intakes, handovers or dispatchable legs.
+- A hub operator cannot query another hub by supplying its ID.
+- Repository reads are constrained to the caller's active hub memberships.
+- Non-members cannot initiate hub handovers or report hub operational exceptions; the service rejects before reading or locking the target delivery leg.
+
+These tests exercise service authorization and data-scope predicates, rather than only route middleware.
+
 ## Important limits
 
 This is route-guard regression coverage, not a substitute for service-level object ownership and membership tests. In particular:
