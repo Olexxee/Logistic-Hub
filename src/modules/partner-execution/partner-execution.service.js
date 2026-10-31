@@ -49,10 +49,13 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const existingMember = await tx.transportPartnerMember.findUnique({
           where: { partnerId_userId: { partnerId, userId } },
         });
-        if (partner.status === "ACTIVE" && existingMember?.isActive && existingMember.role === "OWNER" && role !== "OWNER") {
-          const otherOwners = await tx.transportPartnerMember.count({
-            where: { partnerId, isActive: true, role: "OWNER", id: { not: existingMember.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
-          });
+        if (partner.status === "ACTIVE" && role !== "OWNER") {
+          const ownerWhere = {
+            partnerId, isActive: true, role: "OWNER",
+            user: { status: "ACTIVE", emailVerifiedAt: { not: null } },
+            ...(existingMember ? { id: { not: existingMember.id } } : {}),
+          };
+          const otherOwners = await tx.transportPartnerMember.count({ where: ownerWhere });
           if (!otherOwners) return { blocker: "LAST_ACTIVE_OWNER" };
         }
         const member = await tx.transportPartnerMember.upsert({
@@ -78,10 +81,15 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const partner = await repository.findPartner(partnerId, tx);
         if (partner?.status === "CLOSED") return { blocker: "PARTNER_CLOSED" };
         if (partner?.status === "ACTIVE" && member.isActive && member.role === "OWNER" && !isActive) {
-          const otherOwners = await tx.transportPartnerMember.count({
-            where: { partnerId, isActive: true, role: "OWNER", id: { not: member.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+          const memberUser = await tx.user.findUnique({
+            where: { id: member.userId }, select: { status: true, emailVerifiedAt: true },
           });
-          if (!otherOwners) return { blocker: "LAST_ACTIVE_OWNER" };
+          if (memberUser?.status === "ACTIVE" && memberUser.emailVerifiedAt) {
+            const otherOwners = await tx.transportPartnerMember.count({
+              where: { partnerId, isActive: true, role: "OWNER", id: { not: member.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+            });
+            if (!otherOwners) return { blocker: "LAST_ACTIVE_OWNER" };
+          }
         }
         const updated = await tx.transportPartnerMember.update({
           where: { id: member.id }, data: { isActive },
