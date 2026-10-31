@@ -171,6 +171,7 @@ export function createPartnerSettlementService({ prismaClient, clock = () => new
         throw new ConflictError("Settlement period must have a valid start before its end.", "INVALID_SETTLEMENT_PERIOD");
       }
       return repo.transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "transport_partners" WHERE "id" = ${partnerId} FOR UPDATE`;
         const existing = await tx.partnerSettlementBatch.findUnique({ where: { idempotencyKey }, include: { items: true } });
         if (existing) {
           if (existing.partnerId !== partnerId || existing.periodStart.getTime() !== start.getTime() || existing.periodEnd.getTime() !== end.getTime()) {
@@ -180,6 +181,7 @@ export function createPartnerSettlementService({ prismaClient, clock = () => new
         }
         const partner = await tx.transportPartner.findUnique({ where: { id: partnerId } });
         if (!partner) throw new NotFoundError("Transport partner not found.");
+        if (partner.status === "CLOSED") throw new ConflictError("Settlement batches cannot be created for a closed transport partner.", "PARTNER_CLOSED");
         const payables = await tx.partnerPayable.findMany({
           where: { partnerId, status: "APPROVED", generatedAt: { gte: start, lt: end }, batchItem: null, amountMinor: { gt: 0n } },
           orderBy: [{ generatedAt: "asc" }, { id: "asc" }],
