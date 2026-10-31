@@ -55,8 +55,8 @@ test("operational case queue accepts supported filters and returns case summarie
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.success, true);
-    assert.equal(body.data[0].publicReference, "CASE-001");
-    assert.equal(body.data[0].evidence, undefined);
+    assert.equal(body.data.items[0].publicReference, "CASE-001");
+    assert.equal(body.data.items[0].evidence, undefined);
     assert.equal(getReceived().where.assignedToUserId, null);
     assert.equal(getReceived().where.OR[0].publicReference.contains, "CASE-001");
     assert.equal(getReceived().take, 11);
