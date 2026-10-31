@@ -1654,3 +1654,24 @@ model PartnerSettlementReconciliation {
   @@index([batchId, createdAt])
   @@map("partner_settlement_reconciliations")
 }
+
+
+model OutboxJob {
+  id               String    @id @default(cuid())
+  topic            String
+  encryptedPayload String
+  idempotencyKey   String    @unique
+  status           String    @default("PENDING")
+  attempts         Int       @default(0)
+  availableAt      DateTime  @default(now())
+  lockedAt         DateTime?
+  lockedBy         String?
+  lastErrorCode    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  processedAt      DateTime?
+
+  @@index([status, availableAt, createdAt])
+  @@index([status, lockedAt])
+  @@map("outbox_jobs")
+}

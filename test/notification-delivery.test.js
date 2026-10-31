@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createNotificationsService } from "../src/modules/notifications/notifications.service.js";
+import { decryptJobPayload } from "../src/shared/jobs/outbox-crypto.js";
+
+const encryptionKey = Buffer.alloc(32, 9).toString("base64");
 
 function mockPrisma({ existing = null } = {}) {
-  const calls = { created: [], updated: [], emailLookups: 0 };
+  const calls = { created: [], updated: [], queued: [], emailLookups: 0 };
   const notification = {
     id: "notification_1",
     userId: "user_1",
@@ -19,41 +22,40 @@ function mockPrisma({ existing = null } = {}) {
     deliveryKey: "delivery_1",
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
   };
-  return {
-    calls,
-    client: {
-      notification: {
-        findUnique: async () => existing,
-        create: async ({ data }) => {
-          calls.created.push(data);
-          return { ...notification, ...data };
-        },
-        update: async ({ data }) => {
-          calls.updated.push(data);
-          return { ...notification, ...data };
-        },
-        findMany: async () => [],
-        count: async () => 0,
-        findFirst: async () => null,
-        updateMany: async () => ({ count: 0 }),
+  const client = {
+    $transaction: async (callback) => callback(client),
+    notification: {
+      findUnique: async () => existing,
+      create: async ({ data }) => {
+        calls.created.push(data);
+        return { ...notification, ...data };
       },
-      user: { findUnique: async () => {
-        calls.emailLookups += 1;
-        return { email: "customer@example.com", status: "ACTIVE", emailVerifiedAt: new Date() };
-      } },
+      update: async ({ data }) => {
+        calls.updated.push(data);
+        return { ...notification, ...data };
+      },
+      findMany: async () => [],
+      count: async () => 0,
+      findFirst: async () => null,
+      updateMany: async () => ({ count: 0 }),
     },
-    notification,
+    user: { findUnique: async () => {
+      calls.emailLookups += 1;
+      return { email: "customer@example.com", status: "ACTIVE", emailVerifiedAt: new Date() };
+    } },
+    outboxJob: {
+      upsert: async ({ create }) => {
+        calls.queued.push(create);
+        return { id: "job_1", status: "PENDING" };
+      },
+    },
   };
+  return { calls, client, notification };
 }
 
-test("notification delivery persists a sent state and provider id", async () => {
+test("notification and encrypted email job are persisted without calling the provider", async () => {
   const mock = mockPrisma();
-  let sent;
-  const service = createNotificationsService({
-    prismaClient: mock.client,
-    email: { send: async (input) => { sent = input; return { id: "resend_123", accepted: true }; } },
-    clock: () => new Date("2026-01-02T00:00:00.000Z"),
-  });
+  const service = createNotificationsService({ prismaClient: mock.client, encryptionKey });
   const result = await service.createAndDeliver({
     userId: "user_1",
     type: "BOOKING_UPDATE",
@@ -63,18 +65,20 @@ test("notification delivery persists a sent state and provider id", async () => 
     deliveryKey: "delivery_1",
     emailSubject: "Your booking has an update",
   });
-  assert.equal(result.emailStatus, "SENT");
-  assert.equal(mock.calls.updated[0].emailProviderId, "resend_123");
-  assert.equal(sent.idempotencyKey, "delivery_1");
-  assert.equal(sent.to, "customer@example.com");
+  assert.equal(result.emailStatus, "PENDING");
+  assert.equal(mock.calls.created.length, 1);
+  assert.equal(mock.calls.queued.length, 1);
+  assert.equal(mock.calls.queued[0].idempotencyKey, "delivery_1");
+  const payload = decryptJobPayload(mock.calls.queued[0].encryptedPayload, encryptionKey);
+  assert.equal(payload.to, "customer@example.com");
+  assert.equal(payload.subject, "Your booking has an update");
+  assert.equal(payload.notificationId, "notification_1");
 });
 
-test("notification delivery records a safe failure code and keeps the in-app notification", async () => {
+test("notification is retained and marked failed when recipient email is unavailable", async () => {
   const mock = mockPrisma();
-  const service = createNotificationsService({
-    prismaClient: mock.client,
-    email: { send: async () => { const error = new Error("private error"); error.code = "EMAIL_PROVIDER_UNAVAILABLE"; throw error; } },
-  });
+  mock.client.user.findUnique = async () => null;
+  const service = createNotificationsService({ prismaClient: mock.client, encryptionKey });
   const result = await service.createAndDeliver({
     userId: "user_1",
     type: "BOOKING_UPDATE",
@@ -84,17 +88,13 @@ test("notification delivery records a safe failure code and keeps the in-app not
     emailSubject: "Your booking has an update",
   });
   assert.equal(result.emailStatus, "FAILED");
-  assert.equal(mock.calls.updated[0].emailErrorCode, "EMAIL_PROVIDER_UNAVAILABLE");
-  assert.equal(mock.calls.created.length, 1);
+  assert.equal(mock.calls.queued.length, 0);
+  assert.equal(mock.calls.updated[0].emailErrorCode, "RECIPIENT_EMAIL_UNAVAILABLE");
 });
 
-test("already delivered notification is idempotently returned without resending", async () => {
+test("already delivered notification is idempotently returned without queueing another job", async () => {
   const mock = mockPrisma({ existing: { ...mockPrisma().notification, emailStatus: "SENT" } });
-  let sends = 0;
-  const service = createNotificationsService({
-    prismaClient: mock.client,
-    email: { send: async () => { sends += 1; return { id: "unused" }; } },
-  });
+  const service = createNotificationsService({ prismaClient: mock.client, encryptionKey });
   const result = await service.createAndDeliver({
     userId: "user_1",
     type: "BOOKING_UPDATE",
@@ -104,5 +104,5 @@ test("already delivered notification is idempotently returned without resending"
     emailSubject: "Your booking has an update",
   });
   assert.equal(result.emailStatus, "SENT");
-  assert.equal(sends, 0);
+  assert.equal(mock.calls.queued.length, 0);
 });

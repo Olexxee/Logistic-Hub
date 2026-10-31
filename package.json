@@ -15,7 +15,8 @@
     "test": "node --test",
     "api:validate": "node scripts/validate-openapi.js && node scripts/validate-route-contract.js",
     "db:validate-initial-migration": "node scripts/validate-initial-migration.js",
-    "postinstall": "npm run db:generate"
+    "postinstall": "npm run db:generate",
+    "worker": "node src/workers/worker.js"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
