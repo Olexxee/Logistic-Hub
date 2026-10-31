@@ -2,30 +2,46 @@ import { prisma } from "../../db/prisma.js";
 
 export function createRateLimitRepository(prismaClient = prisma) {
   return {
-    consume({ key, windowStartedAt, windowEndsAt, limit }) {
-      return prismaClient.$transaction(async (tx) => {
-        const current = await tx.rateLimitBucket.findUnique({ where: { key } });
-        if (!current || current.windowEndsAt <= windowStartedAt) {
-          await tx.rateLimitBucket.upsert({
-            where: { key },
-            create: { key, count: 1, windowStartedAt, windowEndsAt },
-            update: { count: 1, windowStartedAt, windowEndsAt },
-          });
-          return { allowed: true, remaining: Math.max(0, limit - 1), retryAfterSeconds: Math.ceil((windowEndsAt - windowStartedAt) / 1000) };
-        }
-        if (current.count >= limit) {
-          return { allowed: false, remaining: 0, retryAfterSeconds: Math.max(1, Math.ceil((current.windowEndsAt - windowStartedAt) / 1000)) };
-        }
-        const changed = await tx.rateLimitBucket.updateMany({
-          where: { key, count: current.count, windowEndsAt: current.windowEndsAt },
-          data: { count: { increment: 1 } },
-        });
-        if (changed.count !== 1) {
-          const latest = await tx.rateLimitBucket.findUnique({ where: { key } });
-          return { allowed: Boolean(latest && latest.count < limit), remaining: Math.max(0, limit - (latest?.count ?? limit)), retryAfterSeconds: Math.max(1, Math.ceil(((latest?.windowEndsAt ?? windowEndsAt) - windowStartedAt) / 1000)) };
-        }
-        return { allowed: true, remaining: Math.max(0, limit - current.count - 1), retryAfterSeconds: Math.ceil((current.windowEndsAt - windowStartedAt) / 1000) };
-      });
+    async consume({ key, windowStartedAt, windowEndsAt, limit }) {
+      const rows = await prismaClient.$queryRaw`
+        INSERT INTO "rate_limit_buckets" AS bucket
+          ("key", "count", "windowStartedAt", "windowEndsAt", "updatedAt")
+        VALUES
+          (${key}, 1, ${windowStartedAt}, ${windowEndsAt}, CURRENT_TIMESTAMP)
+        ON CONFLICT ("key") DO UPDATE
+        SET
+          "count" = CASE
+            WHEN bucket."windowEndsAt" <= EXCLUDED."windowStartedAt" THEN 1
+            ELSE bucket."count" + 1
+          END,
+          "windowStartedAt" = CASE
+            WHEN bucket."windowEndsAt" <= EXCLUDED."windowStartedAt" THEN EXCLUDED."windowStartedAt"
+            ELSE bucket."windowStartedAt"
+          END,
+          "windowEndsAt" = CASE
+            WHEN bucket."windowEndsAt" <= EXCLUDED."windowStartedAt" THEN EXCLUDED."windowEndsAt"
+            ELSE bucket."windowEndsAt"
+          END,
+          "updatedAt" = CURRENT_TIMESTAMP
+        RETURNING "count", "windowEndsAt"
+      `;
+
+      const bucket = rows[0];
+      if (!bucket) {
+        throw new Error("Rate limit bucket upsert did not return a row");
+      }
+
+      const count = Number(bucket.count);
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((new Date(bucket.windowEndsAt).getTime() - Date.now()) / 1000),
+      );
+
+      return {
+        allowed: count <= limit,
+        remaining: Math.max(0, limit - count),
+        retryAfterSeconds,
+      };
     },
   };
 }
