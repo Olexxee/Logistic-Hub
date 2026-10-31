@@ -17,42 +17,44 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
   return {
     list() { return repository.list(); },
     async create(input, actorUserId) {
-      const zone = await prismaClient.serviceZone.findUnique({
-        where: { id: input.serviceZoneId }, include: { state: { include: { country: true } } },
-      });
-      if (!zone) return null;
-      if (!zone.isActive || !zone.state.isActive || !zone.state.country.isActive) {
-        throw conflict("SERVICE_ZONE_INACTIVE", "A hub can only be registered in an active service zone.");
-      }
-      const { latitude, longitude, ...data } = input;
       return prismaClient.$transaction(async tx => {
+        const zone = await tx.serviceZone.findUnique({
+          where: { id: input.serviceZoneId }, include: { state: { include: { country: true } } },
+        });
+        if (!zone) return null;
+        if (!zone.isActive || !zone.state.isActive || !zone.state.country.isActive) {
+          throw conflict("SERVICE_ZONE_INACTIVE", "A hub can only be registered in an active service zone.");
+        }
+        const { latitude, longitude, ...data } = input;
         const created = await tx.hubPoint.create({ data: { ...data, latitude, longitude, status: "PENDING" } });
         await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: created.id, action: "HUB_POINT_CREATED", after: { serviceZoneId: created.serviceZoneId, name: created.name, status: created.status } });
         return created;
       });
     },
     async update(id, input, actorUserId) {
-      const current = await repository.findById(id);
-      if (!current) return null;
-      if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be edited.");
-      if (current.status === "ACTIVE" && input.serviceZoneId) {
-        throw conflict("ACTIVE_HUB_ZONE_IMMUTABLE", "Suspend a hub before changing its service zone.");
-      }
-      if (input.serviceZoneId) {
-        const zone = await prismaClient.serviceZone.findUnique({
-          where: { id: input.serviceZoneId }, include: { state: { include: { country: true } } },
-        });
-        if (!zone || !zone.isActive || !zone.state?.isActive || !zone.state.country?.isActive) {
-          throw conflict("SERVICE_ZONE_INACTIVE", "The selected service zone and its parent geography must be active.");
-        }
-      }
-      const next = { ...current, ...input };
-      if (current.status === "ACTIVE" && !hasOperationalDetails(next)) {
-        throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
-      }
       return prismaClient.$transaction(async tx => {
+        const current = await tx.hubPoint.findUnique({
+          where: { id },
+          include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
+        });
+        if (!current) return null;
+        if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be edited.");
+        if (current.status === "ACTIVE" && input.serviceZoneId) {
+          throw conflict("ACTIVE_HUB_ZONE_IMMUTABLE", "Suspend a hub before changing its service zone.");
+        }
+        if (input.serviceZoneId) {
+          const zone = await tx.serviceZone.findUnique({
+            where: { id: input.serviceZoneId }, include: { state: { include: { country: true } } },
+          });
+          if (!zone || !zone.isActive || !zone.state?.isActive || !zone.state.country?.isActive) {
+            throw conflict("SERVICE_ZONE_INACTIVE", "The selected service zone and its parent geography must be active.");
+          }
+        }
+        const next = { ...current, ...input };
+        if (current.status === "ACTIVE" && !hasOperationalDetails(next)) {
+          throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
+        }
         const before = await tx.hubPoint.findUnique({ where: { id } });
-        if (!before) return null;
         const updated = await tx.hubPoint.update({ where: { id }, data: input });
         await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", before: { serviceZoneId: before.serviceZoneId, name: before.name, address: before.address, operatorName: before.operatorName, operatorPhone: before.operatorPhone, openingHours: before.openingHours, acceptedParcelTypes: before.acceptedParcelTypes, capacityConfig: before.capacityConfig }, after: { serviceZoneId: updated.serviceZoneId, name: updated.name, address: updated.address, operatorName: updated.operatorName, operatorPhone: updated.operatorPhone, openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes, capacityConfig: updated.capacityConfig } });
         return updated;
@@ -77,23 +79,26 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       });
     },
     async setStatus(id, status, actorUserId) {
-      const current = await repository.findById(id);
-      if (!current) return null;
-      if (current.status === "CLOSED" && status !== "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reopened.");
-      if (status === "ACTIVE") {
-        const now = clock();
-        const availability = current.serviceZone.availability.find(item =>
-          item.serviceType === PARCEL_SERVICE && item.isEnabled &&
-          (!item.startsAt || item.startsAt <= now) && (!item.endsAt || item.endsAt >= now));
-        if (!current.serviceZone.isActive || !current.serviceZone.state.isActive ||
-          !current.serviceZone.state.country.isActive || !availability) {
-          throw conflict("HUB_ZONE_UNAVAILABLE", "The hub's service zone and parcel-delivery availability must be active before the hub can be activated.");
-        }
-        if (!hasOperationalDetails(current)) {
-          throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "Before activation, provide verified operator details, valid opening hours for all weekdays, accepted parcel types, and a valid capacity configuration.");
-        }
-      }
       return prismaClient.$transaction(async tx => {
+        const current = await tx.hubPoint.findUnique({
+          where: { id },
+          include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
+        });
+        if (!current) return null;
+        if (current.status === "CLOSED" && status !== "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reopened.");
+        if (status === "ACTIVE") {
+          const now = clock();
+          const availability = current.serviceZone.availability.find(item =>
+            item.serviceType === PARCEL_SERVICE && item.isEnabled &&
+            (!item.startsAt || item.startsAt <= now) && (!item.endsAt || item.endsAt >= now));
+          if (!current.serviceZone.isActive || !current.serviceZone.state.isActive ||
+            !current.serviceZone.state.country.isActive || !availability) {
+            throw conflict("HUB_ZONE_UNAVAILABLE", "The hub's service zone and parcel-delivery availability must be active before the hub can be activated.");
+          }
+          if (!hasOperationalDetails(current)) {
+            throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "Before activation, provide verified operator details, valid opening hours for all weekdays, accepted parcel types, and a valid capacity configuration.");
+          }
+        }
         const updated = await tx.hubPoint.update({ where: { id }, data: { status } });
         await writeOperationalAuditEvent(tx, {
           actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_STATUS_UPDATED",
