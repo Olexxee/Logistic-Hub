@@ -39,7 +39,16 @@ export function createPartnerPricingAdminController({ prismaClient }) {
       try {
         const result = await service.setPartnerStatus({ partnerId: id, input: parsed.data, actorUserId: req.user.id });
         if (result.notFound) return failure(res, "NOT_FOUND", "Transport partner not found.", 404);
-        if (result.blocker) return failure(res, "PARTNER_NOT_VERIFIED", "A partner must be verified before activation.");
+        const blockers = {
+          PARTNER_NOT_VERIFIED: ["PARTNER_NOT_VERIFIED", "A partner must be verified before activation."],
+          PARTNER_CLOSED: ["PARTNER_CLOSED", "A closed transport partner cannot be reopened or changed."],
+          ACTIVE_PARTNER_MEMBERS_EXIST: ["ACTIVE_PARTNER_MEMBERS_EXIST", "Deactivate all partner memberships before closing this partner."],
+          ACTIVE_PARTNER_AGREEMENTS_EXIST: ["ACTIVE_PARTNER_AGREEMENTS_EXIST", "Suspend, expire or terminate active agreements before closing this partner."],
+          ACTIVE_PARTNER_ASSIGNMENTS_EXIST: ["ACTIVE_PARTNER_ASSIGNMENTS_EXIST", "Complete or cancel active partner assignments before closing this partner."],
+          OPEN_PARTNER_PAYABLES_EXIST: ["OPEN_PARTNER_PAYABLES_EXIST", "Resolve all outstanding partner payables before closing this partner."],
+          OPEN_PARTNER_SETTLEMENT_BATCHES_EXIST: ["OPEN_PARTNER_SETTLEMENT_BATCHES_EXIST", "Reconcile or void open settlement batches before closing this partner."],
+        };
+        if (result.blocker) return failure(res, ...(blockers[result.blocker] ?? [result.blocker, "The partner lifecycle transition is not permitted."]));
         return res.status(200).json({ success: true, data: result });
       } catch (error) { return next(error); }
     },
