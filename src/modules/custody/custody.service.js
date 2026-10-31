@@ -130,6 +130,19 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const user = await repo.findUser(userId, tx);
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         if (!["CUSTOMER", "HUB_OPERATOR", "PARTNER_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
+        const existingOperator = await tx.hubPointOperator.findUnique({
+          where: { hubPointId_userId: { hubPointId, userId } },
+        });
+        if (hub.status === "ACTIVE" && role !== "MANAGER") {
+          const otherManagers = await tx.hubPointOperator.count({
+            where: {
+              hubPointId, isActive: true, role: "MANAGER",
+              ...(existingOperator ? { id: { not: existingOperator.id } } : {}),
+              user: { status: "ACTIVE", emailVerifiedAt: { not: null } },
+            },
+          });
+          if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
+        }
         const operator = await repo.upsertHubOperator({ hubPointId, userId, role, isActive: true }, tx);
         if (user.role === "CUSTOMER") await repo.setUserRole(userId, "HUB_OPERATOR", tx);
         await repo.createAudit({
