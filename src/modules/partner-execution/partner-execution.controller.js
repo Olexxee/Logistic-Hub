@@ -12,8 +12,13 @@ export function createPartnerExecutionController(service) {
       try {
         const result = await service.addMember({ ...req.body, partnerId: req.params.partnerId, actorUserId: req.user.id });
         if (result.notFound) return res.status(404).json({ success: false, error: { code: "PARTNER_NOT_FOUND", message: "Transport partner not found." } });
-        if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be added to a partner." } });
-        if (result.blocker === "USER_ROLE_CONFLICT") return res.status(409).json({ success: false, error: { code: "USER_ROLE_CONFLICT", message: "This user already has a role that cannot be converted to a partner operator." } });
+        const blockers = {
+          USER_NOT_ACTIVE: "Only active, email-verified users can be added to a partner.",
+          USER_ROLE_CONFLICT: "This user already has a role that cannot be converted to a partner operator.",
+          PARTNER_NOT_ELIGIBLE: "Members cannot be added to a suspended or closed partner.",
+          LAST_ACTIVE_PARTNER_OWNER: "A partner must retain at least one active owner.",
+        };
+        if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: blockers[result.blocker] ?? "The partner membership change is not permitted." } });
         return res.status(201).json({ success: true, data: { member: result.member } });
       } catch (error) { return next(error); }
     },
@@ -21,6 +26,12 @@ export function createPartnerExecutionController(service) {
       try {
         const result = await service.setMemberStatus({ partnerId: req.params.partnerId, memberId: req.params.memberId, isActive: req.body.isActive, actorUserId: req.user.id });
         if (result.notFound) return res.status(404).json({ success: false, error: { code: "PARTNER_MEMBER_NOT_FOUND", message: "Partner member not found." } });
+        const blockers = {
+          USER_NOT_ACTIVE: "Only active, email-verified users can be reactivated.",
+          PARTNER_NOT_ELIGIBLE: "Membership cannot be reactivated for a suspended or closed partner.",
+          LAST_ACTIVE_PARTNER_OWNER: "A partner must retain at least one active owner.",
+        };
+        if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: blockers[result.blocker] ?? "The partner membership change is not permitted." } });
         return res.status(200).json({ success: true, data: { member: result.member } });
       } catch (error) { return next(error); }
     },
