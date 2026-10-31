@@ -42,7 +42,10 @@ if (parsed.data.EMAIL_PROVIDER === "resend") {
 
 if (parsed.data.NODE_ENV === "production") {
   const outboxKey = Buffer.from(parsed.data.OUTBOX_ENCRYPTION_KEY, "base64");
-  if (outboxKey.length !== 32) {
+  if (
+    outboxKey.length !== 32
+    || outboxKey.toString("base64").replace(/=+$/, "") !== parsed.data.OUTBOX_ENCRYPTION_KEY.trim().replace(/=+$/, "")
+  ) {
     throw new Error("OUTBOX_ENCRYPTION_KEY must be a base64-encoded 32-byte key in production.");
   }
 }
