@@ -9,6 +9,15 @@ function fail(statusCode, code, message) {
 }
 const conflict = (code, message) => fail(409, code, message);
 const forbidden = () => fail(403, "CUSTODY_PARTY_REQUIRED", "Only an authenticated member of the receiving or releasing party may perform this action.");
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt >= 2) throw error;
+    }
+  }
+}
 
 export function createCustodyService({ prismaClient, clock = () => new Date() }) {
   const repo = createCustodyRepository({ prismaClient });
@@ -116,12 +125,21 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async addHubOperator({ hubPointId, userId, role = "OPERATOR", actorUserId }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
+        await tx.$queryRaw`SELECT "id" FROM "hub_points" WHERE "id" = ${hubPointId} FOR UPDATE`;
         const hub = await repo.findHub(hubPointId, tx);
         if (!hub) return { notFound: true };
+        if (hub.status === "CLOSED") return { blocker: "HUB_CLOSED" };
         const user = await repo.findUser(userId, tx);
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         if (!["CUSTOMER", "HUB_OPERATOR", "PARTNER_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
+        const currentMembership = await repo.findHubOperator(hubPointId, userId, tx);
+        if (currentMembership?.isActive && currentMembership.role === "MANAGER" && role !== "MANAGER") {
+          const otherManagers = await tx.hubPointOperator.count({
+            where: { hubPointId, isActive: true, role: "MANAGER", id: { not: currentMembership.id } },
+          });
+          if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
+        }
         const operator = await repo.upsertHubOperator({ hubPointId, userId, role, isActive: true }, tx);
         if (user.role === "CUSTOMER") await repo.setUserRole(userId, "HUB_OPERATOR", tx);
         await repo.createAudit({
@@ -135,9 +153,23 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async setHubOperatorStatus({ hubPointId, operatorId, isActive, actorUserId }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
+        await tx.$queryRaw`SELECT "id" FROM "hub_points" WHERE "id" = ${hubPointId} FOR UPDATE`;
+        const hub = await repo.findHub(hubPointId, tx);
+        if (!hub) return { notFound: true };
         const current = await repo.findHubOperatorById(hubPointId, operatorId, tx);
         if (!current) return { notFound: true };
+        if (isActive && hub.status === "CLOSED") return { blocker: "HUB_CLOSED" };
+        if (isActive) {
+          const user = await repo.findUser(current.userId, tx);
+          if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
+        }
+        if (!isActive && current.isActive && current.role === "MANAGER") {
+          const otherManagers = await tx.hubPointOperator.count({
+            where: { hubPointId, isActive: true, role: "MANAGER", id: { not: current.id } },
+          });
+          if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
+        }
         const operator = await repo.updateHubOperator(operatorId, isActive, tx);
         const activeCount = await repo.countActiveHubMemberships(current.userId, tx);
         const partnerCount = await tx.transportPartnerMember.count({ where: { userId: current.userId, isActive: true } });
@@ -157,6 +189,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         await repo.lockDeliveryLeg(input.deliveryLegId, tx);
         const leg = await repo.findBookingLeg(input.deliveryLegId, tx);
         if (!leg || leg.parcelBookingId !== input.parcelBookingId) return { notFound: true };
+        const involvedHubId = input.fromPartyType === "HUB" ? input.fromPartyId : input.toPartyType === "HUB" ? input.toPartyId : null;
+        if (involvedHubId) await repo.lockHubCapacity(involvedHubId, tx);
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
         if (["COMPLETED", "FAILED", "CANCELLED"].includes(leg.status)) return { blocker: "LEG_TERMINAL" };
         if (input.fromPartyType === "TRANSPORT_PARTNER"
