@@ -280,6 +280,15 @@ The following are present on the baseline branch. Their presence does **not** me
 | Cancellations | Customer-owned cancellation request endpoint | Cancellation policy is service/repository-driven. Verify all booking/fulfilment/payment states and support escalation paths; no automatic refund assumption. |
 | Partner administration | Partner pricing and execution modules, agreements, rate cards, quotes and memberships | Significant groundwork exists. Audit partner onboarding/status, membership assignment/revocation, agreement lifecycle and operator access before adding endpoints. |
 
+### Phase Three implementation progress
+
+| Slice | Status | Evidence |
+|---|---|---|
+| 3A.1 — Route and permission inventory | Implemented on the current work branch; CI validation pending | [Administrative route and permission inventory](docs/admin-route-permission-inventory.md); `test/admin-route-permission-inventory.test.js` |
+| 3A.2 — Audit coverage and safe admin mutation primitives | Not started | Depends on review of the 3A.1 inventory and CI result |
+
+3A.1 is deliberately documentation and regression protection only. It does not introduce granular permissions or change current role access.
+
 ### 3A — Administrative security and audit foundation
 
 **Purpose:** establish a consistent authorization and audit boundary before expanding administrative powers.
