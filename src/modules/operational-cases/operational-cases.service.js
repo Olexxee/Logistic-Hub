@@ -7,6 +7,13 @@ const transitions = {
   RESOLVED: new Set(["CLOSED"]),
   CLOSED: new Set(),
 };
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
+
 function conflict(code, message) {
   const error = new Error(message);
   error.statusCode = 409;
@@ -24,7 +31,7 @@ export function createOperationalCasesService({ prismaClient, clock = () => new 
       return { items, nextCursor: hasMore ? items.at(-1).id : null };
     },
     async update({ caseId, actorUserId, status, priority, assignedToUserId, resolution }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const current = await repo.findById(caseId, tx);
         if (!current) return { notFound: true };
         if (assignedToUserId !== undefined && assignedToUserId !== null) {
