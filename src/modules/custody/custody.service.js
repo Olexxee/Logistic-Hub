@@ -10,6 +10,13 @@ function fail(statusCode, code, message) {
 const conflict = (code, message) => fail(409, code, message);
 const forbidden = () => fail(403, "CUSTODY_PARTY_REQUIRED", "Only an authenticated member of the receiving or releasing party may perform this action.");
 
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
+
 export function createCustodyService({ prismaClient, clock = () => new Date() }) {
   const repo = createCustodyRepository({ prismaClient });
 
@@ -116,12 +123,26 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async addHubOperator({ hubPointId, userId, role = "OPERATOR", actorUserId }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const hub = await repo.findHub(hubPointId, tx);
         if (!hub) return { notFound: true };
+        if (hub.status === "CLOSED") return { blocker: "HUB_CLOSED" };
         const user = await repo.findUser(userId, tx);
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         if (!["CUSTOMER", "HUB_OPERATOR", "PARTNER_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
+        const existingOperator = await tx.hubPointOperator.findUnique({
+          where: { hubPointId_userId: { hubPointId, userId } },
+        });
+        if (hub.status === "ACTIVE" && role !== "MANAGER") {
+          const otherManagers = await tx.hubPointOperator.count({
+            where: {
+              hubPointId, isActive: true, role: "MANAGER",
+              ...(existingOperator ? { id: { not: existingOperator.id } } : {}),
+              user: { status: "ACTIVE", emailVerifiedAt: { not: null } },
+            },
+          });
+          if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
+        }
         const operator = await repo.upsertHubOperator({ hubPointId, userId, role, isActive: true }, tx);
         if (user.role === "CUSTOMER") await repo.setUserRole(userId, "HUB_OPERATOR", tx);
         await repo.createAudit({
@@ -135,9 +156,17 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async setHubOperatorStatus({ hubPointId, operatorId, isActive, actorUserId }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const current = await repo.findHubOperatorById(hubPointId, operatorId, tx);
         if (!current) return { notFound: true };
+        const hub = await repo.findHub(hubPointId, tx);
+        if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
+        if (current.isActive && current.role === "MANAGER" && !isActive && hub?.status === "ACTIVE") {
+          const otherManagers = await tx.hubPointOperator.count({
+            where: { hubPointId, isActive: true, role: "MANAGER", id: { not: current.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+          });
+          if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
+        }
         const operator = await repo.updateHubOperator(operatorId, isActive, tx);
         const activeCount = await repo.countActiveHubMemberships(current.userId, tx);
         const partnerCount = await tx.transportPartnerMember.count({ where: { userId: current.userId, isActive: true } });
@@ -222,7 +251,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async confirmHandover({ handoverId, userId, conditionAtReceipt, evidence, rejectReason, weightGrams, lengthMm, widthMm, heightMm }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         await requireActiveUser(tx, userId);
         await repo.lockHandover(handoverId, tx);
         const handover = await repo.findHandover(handoverId, tx);

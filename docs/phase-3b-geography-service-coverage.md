@@ -1,7 +1,7 @@
 # Phase 3B — Geography and service-coverage administration
 
-**Status:** Core implementation merged in PR #50; final transaction-integrity hardening is tracked in the Phase 3B closeout PR.  
-**Baseline:** `main` after merged Phase 3B PR #50.  
+**Status:** Complete. Core implementation merged in PR #50; parent-geography transaction-integrity hardening merged in PR #51.  
+**Baseline:** `main` after merged Phase 3B PRs #50 and #51.  
 **Scope:** Country → state → LGA hierarchy, service-zone lifecycle, per-service availability and operational hub consistency.
 
 ## Acceptance criteria
@@ -65,8 +65,8 @@
 
 - [x] Phase 3B core implementation merged in PR #50.
 - [x] Geography, service-zone and hub lifecycle invariants have unit/integration coverage.
-- [ ] Final parent-geography serializable transaction hardening passes CI.
-- [ ] Full API and PostgreSQL integrity suite passes on the closeout PR.
+- [x] Final parent-geography serializable transaction hardening merged in PR #51.
+- [x] Full API and PostgreSQL integrity suite passed on the Phase 3B closeout workflow.
 
 ## Deferred by explicit scope boundary
 

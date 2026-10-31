@@ -21,6 +21,8 @@ test("public geography and hub discovery expose only currently eligible operatio
   let availability;
   let hub;
   let auditActor;
+  let hubManager;
+  let hubManagerMembership;
 
   try {
     country = await prisma.country.create({
@@ -48,6 +50,12 @@ auditActor = await prisma.user.create({ data: { fullName: "Hub Integration Admin
       capacityConfig: { maxParcels: 80 },
     }, auditActor.id);
     assert.equal(hub.status, "PENDING");
+    hubManager = await prisma.user.create({
+      data: { fullName: "Hub Manager " + suffix, email: "hub-manager-" + suffix.toLowerCase() + "@example.test", role: "HUB_OPERATOR", status: "ACTIVE", emailVerifiedAt: new Date() },
+    });
+    hubManagerMembership = await prisma.hubPointOperator.create({
+      data: { hubPointId: hub.id, userId: hubManager.id, role: "MANAGER", isActive: true },
+    });
     hub = await hubAdmin.setStatus(hub.id, "ACTIVE", auditActor.id);
     assert.equal(hub.status, "ACTIVE");
 
@@ -85,8 +93,10 @@ auditActor = await prisma.user.create({ data: { fullName: "Hub Integration Admin
     assert.equal(unavailableHubs.data.some((item) => item.id === hub.id), false);
   } finally {
     if (hub || zone || availability) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: { in: [hub?.id, zone?.id, availability?.id].filter(Boolean) } } });
-    if (auditActor) await prisma.user.delete({ where: { id: auditActor.id } });
+    if (hubManagerMembership) await prisma.hubPointOperator.deleteMany({ where: { id: hubManagerMembership.id } });
     if (hub) await prisma.hubPoint.deleteMany({ where: { id: hub.id } });
+    if (hubManager) await prisma.user.delete({ where: { id: hubManager.id } });
+    if (auditActor) await prisma.user.delete({ where: { id: auditActor.id } });
     if (availability) await prisma.serviceAvailability.deleteMany({ where: { id: availability.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
     if (state) await prisma.state.deleteMany({ where: { id: state.id } });

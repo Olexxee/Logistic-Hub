@@ -6,6 +6,13 @@ function conflict(code, message) {
   error.code = code;
   return error;
 }
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
+
 function forbidden(message = "You are not an active member of this transport partner.") {
   const error = new Error(message);
   error.statusCode = 403;
@@ -19,20 +26,37 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
   async function requirePartnerMembership(tx, partnerId, userId) {
     const membership = await repository.findMembership(partnerId, userId, tx);
     if (!membership?.isActive) throw forbidden();
+    const partner = await repository.findPartner(partnerId, tx);
+    if (!partner || partner.status !== "ACTIVE" || partner.verificationStatus !== "VERIFIED") {
+      throw conflict("PARTNER_NOT_OPERATIONAL", "The transport partner is not active and verified.");
+    }
     return membership;
   }
 
   return {
     async addMember({ partnerId, userId, role = "OPERATIONS", actorUserId }) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const partner = await repository.findPartner(partnerId, tx);
         if (!partner) return { notFound: true };
+        if (partner.status === "CLOSED") return { blocker: "PARTNER_CLOSED" };
         const user = await tx.user.findUnique({ where: { id: userId } });
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) {
           return { blocker: "USER_NOT_ACTIVE" };
         }
         if (!["CUSTOMER", "PARTNER_OPERATOR", "HUB_OPERATOR"].includes(user.role)) {
           return { blocker: "USER_ROLE_CONFLICT" };
+        }
+        const existingMember = await tx.transportPartnerMember.findUnique({
+          where: { partnerId_userId: { partnerId, userId } },
+        });
+        if (partner.status === "ACTIVE" && role !== "OWNER") {
+          const ownerWhere = {
+            partnerId, isActive: true, role: "OWNER",
+            user: { status: "ACTIVE", emailVerifiedAt: { not: null } },
+            ...(existingMember ? { id: { not: existingMember.id } } : {}),
+          };
+          const otherOwners = await tx.transportPartnerMember.count({ where: ownerWhere });
+          if (!otherOwners) return { blocker: "LAST_ACTIVE_OWNER" };
         }
         const member = await tx.transportPartnerMember.upsert({
           where: { partnerId_userId: { partnerId, userId } },
@@ -51,9 +75,22 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
     },
 
     async setMemberStatus({ partnerId, memberId, isActive, actorUserId }) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const member = await tx.transportPartnerMember.findFirst({ where: { id: memberId, partnerId } });
         if (!member) return { notFound: true };
+        const partner = await repository.findPartner(partnerId, tx);
+        if (partner?.status === "CLOSED") return { blocker: "PARTNER_CLOSED" };
+        if (partner?.status === "ACTIVE" && member.isActive && member.role === "OWNER" && !isActive) {
+          const memberUser = await tx.user.findUnique({
+            where: { id: member.userId }, select: { status: true, emailVerifiedAt: true },
+          });
+          if (memberUser?.status === "ACTIVE" && memberUser.emailVerifiedAt) {
+            const otherOwners = await tx.transportPartnerMember.count({
+              where: { partnerId, isActive: true, role: "OWNER", id: { not: member.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+            });
+            if (!otherOwners) return { blocker: "LAST_ACTIVE_OWNER" };
+          }
+        }
         const updated = await tx.transportPartnerMember.update({
           where: { id: member.id }, data: { isActive },
         });
@@ -79,7 +116,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
     },
 
     async assignLeg({ deliveryLegId, partnerId, idempotencyKey, actorUserId }) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const existing = await repository.findAssignmentByIdempotencyKey(idempotencyKey, tx);
         if (existing) {
           if (existing.deliveryLegId !== deliveryLegId || existing.partnerId !== partnerId) {
@@ -157,7 +194,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
     },
 
     async acceptAssignment({ assignmentId, userId }) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const assignment = await repository.findAssignment(assignmentId, tx);
         if (!assignment) return { notFound: true };
         await requirePartnerMembership(tx, assignment.partnerId, userId);
@@ -179,7 +216,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
     },
 
     async startAssignment({ assignmentId, userId }) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const assignment = await repository.findAssignment(assignmentId, tx);
         if (!assignment) return { notFound: true };
         await requirePartnerMembership(tx, assignment.partnerId, userId);

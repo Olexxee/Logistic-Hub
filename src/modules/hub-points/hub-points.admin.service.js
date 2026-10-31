@@ -93,7 +93,15 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
         });
         if (!current) return null;
-        if (current.status === "CLOSED" && status !== "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reopened.");
+        const allowedTransitions = {
+          PENDING: ["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"],
+          ACTIVE: ["ACTIVE", "SUSPENDED", "CLOSED"],
+          SUSPENDED: ["SUSPENDED", "ACTIVE", "CLOSED"],
+          CLOSED: ["CLOSED"],
+        };
+        if (!allowedTransitions[current.status]?.includes(status)) {
+          throw conflict("HUB_INVALID_STATUS_TRANSITION", "Hub status cannot move backwards in its lifecycle. Suspend an active hub to stop operations.");
+        }
         if (status === "CLOSED" && current.status !== "CLOSED") {
           const [openLegs, openIntakes, pendingHandovers, openCases] = await Promise.all([
             tx.deliveryLeg.count({
@@ -111,6 +119,12 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           }
         }
         if (status === "ACTIVE") {
+          const activeManagers = await tx.hubPointOperator.count({
+            where: { hubPointId: id, isActive: true, role: "MANAGER", user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+          });
+          if (!activeManagers) {
+            throw conflict("HUB_MANAGER_REQUIRED", "An active hub must have at least one active, verified manager membership.");
+          }
           const now = clock();
           const availability = current.serviceZone.availability.find(item =>
             item.serviceType === PARCEL_SERVICE && item.isEnabled &&

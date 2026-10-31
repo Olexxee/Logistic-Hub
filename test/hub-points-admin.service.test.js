@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHubPointsAdminService } from "../src/modules/hub-points/hub-points.admin.service.js";
+import { createCustodyService } from "../src/modules/custody/custody.service.js";
 import { openingHoursAdminSchema, capacityConfigAdminSchema } from "../src/modules/hub-points/hub-points.admin.validators.js";
 
 const openingHours = Object.fromEntries(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"].map(day => [day, [{ opensAt: "08:00", closesAt: "18:00" }]]));
@@ -15,6 +16,7 @@ function prismaFor(hub) {
     serviceZone: {},
     $transaction: async callback => callback({
       hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
+      hubPointOperator: { count: async () => 1 },
       operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
     }),
   };
@@ -43,6 +45,7 @@ test("hub activation writes its audit event in the same transaction", async () =
   const prismaClient = prismaFor(hub);
   prismaClient.$transaction = async callback => callback({
     hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
+    hubPointOperator: { count: async () => 1 },
     operationalAuditEvent: { create: async ({ data }) => { auditData = data; return { id: "audit-1" }; } },
   });
   const service = createHubPointsAdminService({ prismaClient });
@@ -96,4 +99,80 @@ test("a hub with an active delivery leg cannot be permanently closed", async () 
     code: "HUB_HAS_OPEN_OPERATIONS", statusCode: 409,
   });
   assert.equal(updateCalled, false);
+});
+
+
+test("hub activation requires an active manager membership", async () => {
+  const hub = readyHub();
+  let updated = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub, update: async ({ data }) => { updated = true; return { ...hub, ...data }; } },
+    hubPointOperator: { count: async () => 0 },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), { code: "HUB_MANAGER_REQUIRED", statusCode: 409 });
+  assert.equal(updated, false);
+});
+
+
+test("the last active manager cannot be deactivated while a hub is active", async () => {
+  const hub = readyHub();
+  hub.status = "ACTIVE";
+  let updateCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub },
+    hubPointOperator: {
+      findFirst: async () => ({ id: "manager-1", role: "MANAGER", isActive: true }),
+      count: async () => 0,
+      update: async () => { updateCalled = true; },
+    },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "manager-1", isActive: false, actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
+  assert.equal(updateCalled, false);
+});
+
+
+test("an active hub cannot be moved backwards to PENDING", async () => {
+  const hub = readyHub();
+  hub.status = "ACTIVE";
+  let updateCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub, update: async ({ data }) => { updateCalled = true; return { ...hub, ...data }; } },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.setStatus("hub-1", "PENDING", "admin-1"), { code: "HUB_INVALID_STATUS_TRANSITION", statusCode: 409 });
+  assert.equal(updateCalled, false);
+});
+
+
+test("an active hub cannot demote its last manager through operator upsert", async () => {
+  const hub = readyHub();
+  hub.status = "ACTIVE";
+  let upsertCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub },
+    user: { findUnique: async () => ({ id: "manager-1", status: "ACTIVE", emailVerifiedAt: new Date(), role: "HUB_OPERATOR" }) },
+    hubPointOperator: {
+      findUnique: async () => ({ id: "operator-1", role: "MANAGER", isActive: true }),
+      count: async () => 0,
+      upsert: async () => { upsertCalled = true; },
+    },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubOperator({
+    hubPointId: "hub-1", userId: "manager-1", role: "OPERATOR", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
+  assert.equal(upsertCalled, false);
 });
