@@ -31,7 +31,7 @@ export function createHubPointsAdminController({ prismaClient }) {
       const parsed = createHubPointAdminSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const hubPoint = await service.create(parsed.data);
+        const hubPoint = await service.create(parsed.data, req.user.id);
         if (!hubPoint) return res.status(404).json({ success: false, error: { code: "SERVICE_ZONE_NOT_FOUND", message: "Service zone not found." } });
         return res.status(201).json({ success: true, data: { hubPoint } });
       } catch (error) { return next(error); }
@@ -40,7 +40,7 @@ export function createHubPointsAdminController({ prismaClient }) {
       const parsed = updateHubPointAdminSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const hubPoint = await service.update(id(req), parsed.data);
+        const hubPoint = await service.update(id(req), parsed.data, req.user.id);
         if (!hubPoint) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Hub point not found." } });
         return res.status(200).json({ success: true, data: { hubPoint } });
       } catch (error) { return next(error); }
