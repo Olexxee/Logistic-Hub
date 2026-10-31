@@ -100,7 +100,7 @@ test("operational case cursor pagination returns a stable next cursor without re
   let received;
   db.operationalCase.findMany = async args => {
     received = args;
-    return rows.slice(0, args.take);
+    return (args.cursor ? rows.filter(item => item.id > args.cursor.id) : rows).slice(0, args.take);
   };
   const service = createOperationalCasesService({ prismaClient: db, clock: () => now });
   const firstPage = await service.list({ limit: 2 });
@@ -109,5 +109,5 @@ test("operational case cursor pagination returns a stable next cursor without re
   const secondPage = await service.list({ limit: 2, cursor: firstPage.nextCursor });
   assert.deepEqual(received.cursor, { id: "case-2" });
   assert.equal(received.skip, 1);
-  assert.equal(secondPage.nextCursor, "case-2");
+  assert.deepEqual(secondPage.items.map(item => item.id), ["case-3"]);\n  assert.equal(secondPage.nextCursor, null);
 });
