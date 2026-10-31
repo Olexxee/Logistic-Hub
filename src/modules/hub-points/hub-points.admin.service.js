@@ -1,17 +1,15 @@
 import { createHubPointsAdminRepository } from "./hub-points.admin.repository.js";
 import { openingHoursAdminSchema, capacityConfigAdminSchema } from "./hub-points.admin.validators.js";
+import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
 
 const PARCEL_SERVICE = "PARCEL_DELIVERY";
 function conflict(code, message) { const error = new Error(message); error.statusCode = 409; error.code = code; return error; }
 function hasOperationalDetails(hub) {
-  return Boolean(
-    hub.operatorName?.trim() &&
-    hub.operatorPhone?.trim() &&
+  return Boolean(hub.operatorName?.trim() && hub.operatorPhone?.trim() &&
     hub.operatorVerificationStatus === "VERIFIED" &&
     Array.isArray(hub.acceptedParcelTypes) && hub.acceptedParcelTypes.length > 0 &&
     openingHoursAdminSchema.safeParse(hub.openingHours).success &&
-    capacityConfigAdminSchema.safeParse(hub.capacityConfig).success
-  );
+    capacityConfigAdminSchema.safeParse(hub.capacityConfig).success);
 }
 
 export function createHubPointsAdminService({ prismaClient, clock = () => new Date() }) {
@@ -46,32 +44,37 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       }
       const next = { ...current, ...input };
       if (current.status === "ACTIVE" && !hasOperationalDetails(next)) {
-        throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain a operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
+        throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
       }
       return repository.update(id, input);
     },
     async reviewOperator({ id, verificationStatus, notes, actorUserId }) {
-      const current = await repository.findById(id);
-      if (!current) return null;
-      if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reviewed.");
       return prismaClient.$transaction(async tx => {
-        const updated = await tx.hubPoint.update({ where: { id }, data: { operatorVerificationStatus: verificationStatus, operatorVerifiedAt: verificationStatus === "VERIFIED" ? clock() : null, operatorVerificationNotes: notes ?? null } });
-        await tx.operationalAuditEvent.create({ data: { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_OPERATOR_VERIFICATION_REVIEWED", reason: notes ?? null, before: { operatorVerificationStatus: current.operatorVerificationStatus, operatorVerifiedAt: current.operatorVerifiedAt }, after: { operatorVerificationStatus: updated.operatorVerificationStatus, operatorVerifiedAt: updated.operatorVerifiedAt } } });
+        const current = await tx.hubPoint.findUnique({ where: { id } });
+        if (!current) return null;
+        if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reviewed.");
+        const updated = await tx.hubPoint.update({
+          where: { id },
+          data: { operatorVerificationStatus: verificationStatus, operatorVerifiedAt: verificationStatus === "VERIFIED" ? clock() : null, operatorVerificationNotes: notes ?? null },
+        });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_OPERATOR_VERIFICATION_REVIEWED",
+          reason: notes,
+          before: { operatorVerificationStatus: current.operatorVerificationStatus, operatorVerifiedAt: current.operatorVerifiedAt },
+          after: { operatorVerificationStatus: updated.operatorVerificationStatus, operatorVerifiedAt: updated.operatorVerifiedAt },
+        });
         return updated;
       });
     },
     async setStatus(id, status, actorUserId) {
       const current = await repository.findById(id);
       if (!current) return null;
-      if (current.status === "CLOSED" && status !== "CLOSED") {
-        throw conflict("HUB_CLOSED", "Closed hubs cannot be reopened.");
-      }
+      if (current.status === "CLOSED" && status !== "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reopened.");
       if (status === "ACTIVE") {
         const now = clock();
         const availability = current.serviceZone.availability.find(item =>
           item.serviceType === PARCEL_SERVICE && item.isEnabled &&
-          (!item.startsAt || item.startsAt <= now) && (!item.endsAt || item.endsAt >= now)
-        );
+          (!item.startsAt || item.startsAt <= now) && (!item.endsAt || item.endsAt >= now));
         if (!current.serviceZone.isActive || !current.serviceZone.state.isActive ||
           !current.serviceZone.state.country.isActive || !availability) {
           throw conflict("HUB_ZONE_UNAVAILABLE", "The hub's service zone and parcel-delivery availability must be active before the hub can be activated.");
@@ -82,10 +85,10 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       }
       return prismaClient.$transaction(async tx => {
         const updated = await tx.hubPoint.update({ where: { id }, data: { status } });
-        await tx.operationalAuditEvent.create({ data: {
-          actorUserId, entityType: "HUB_POINT", entityId: id,
-          action: "HUB_STATUS_UPDATED", before: { status: current.status }, after: { status: updated.status },
-        } });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_STATUS_UPDATED",
+          before: { status: current.status }, after: { status: updated.status },
+        });
         return updated;
       });
     },

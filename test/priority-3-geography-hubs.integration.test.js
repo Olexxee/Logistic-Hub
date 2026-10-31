@@ -46,7 +46,7 @@ test("public geography and hub discovery expose only currently eligible operatio
       capacityConfig: { maxParcels: 80 },
     });
     assert.equal(hub.status, "PENDING");
-    hub = await hubAdmin.setStatus(hub.id, "ACTIVE");
+    hub = await hubAdmin.setStatus(hub.id, "ACTIVE", "integration-admin");
     assert.equal(hub.status, "ACTIVE");
 
     const zones = await createServiceZonesService({ prismaClient: prisma }).listActive({
@@ -63,9 +63,9 @@ test("public geography and hub discovery expose only currently eligible operatio
 
     await zoneAdmin.setAvailability(zone.id, { serviceType: "PARCEL_DELIVERY", isEnabled: false });
 
-    await hubAdmin.setStatus(hub.id, "SUSPENDED");
+    await hubAdmin.setStatus(hub.id, "SUSPENDED", "integration-admin");
     await assert.rejects(
-      () => hubAdmin.setStatus(hub.id, "ACTIVE"),
+      () => hubAdmin.setStatus(hub.id, "ACTIVE", "integration-admin"),
       (error) => error.code === "HUB_ZONE_UNAVAILABLE",
     );
 

@@ -9,6 +9,16 @@ const readyHub = () => ({
   openingHours, acceptedParcelTypes: ["DOCUMENTS", "SMALL_PARCEL"], capacityConfig: { maxParcels: 80 },
   serviceZone: { isActive: true, state: { isActive: true, country: { isActive: true } }, availability: [{ serviceType: "PARCEL_DELIVERY", isEnabled: true, startsAt: null, endsAt: null }] },
 });
+function prismaFor(hub) {
+  return {
+    hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
+    serviceZone: {},
+    $transaction: async callback => callback({
+      hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
+      operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
+    }),
+  };
+}
 
 test("opening hours require all weekdays and valid, ordered time windows", () => {
   assert.equal(openingHoursAdminSchema.safeParse(openingHours).success, true);
@@ -23,23 +33,23 @@ test("capacity configuration requires a positive parcel limit", () => {
 test("hub activation is blocked until operational details are complete", async () => {
   const hub = readyHub();
   hub.operatorPhone = null;
-  const prismaClient = {
-    hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
-    serviceZone: {},
-    $transaction: async callback => callback({ hubPoint: { update: async ({ data }) => ({ ...hub, ...data }) }, operationalAuditEvent: { create: async () => ({}) } }),
-  };
-  const service = createHubPointsAdminService({ prismaClient });
-  await assert.rejects(service.setStatus("hub-1", "ACTIVE"), { code: "HUB_OPERATIONAL_DETAILS_REQUIRED", statusCode: 409 });
+  const service = createHubPointsAdminService({ prismaClient: prismaFor(hub) });
+  await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), { code: "HUB_OPERATIONAL_DETAILS_REQUIRED", statusCode: 409 });
 });
 
-test("hub activation succeeds only when operational details and service eligibility are complete", async () => {
+test("hub activation writes its audit event in the same transaction", async () => {
   const hub = readyHub();
-  const prismaClient = {
+  let auditData;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
     hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
-    serviceZone: {},
-    $transaction: async callback => callback({ hubPoint: { update: async ({ data }) => ({ ...hub, ...data }) }, operationalAuditEvent: { create: async () => ({}) } }),
-  };
+    operationalAuditEvent: { create: async ({ data }) => { auditData = data; return { id: "audit-1" }; } },
+  });
   const service = createHubPointsAdminService({ prismaClient });
-  const result = await service.setStatus("hub-1", "ACTIVE");
+  const result = await service.setStatus("hub-1", "ACTIVE", "admin-1");
   assert.equal(result.status, "ACTIVE");
+  assert.equal(auditData.actorUserId, "admin-1");
+  assert.equal(auditData.action, "HUB_STATUS_UPDATED");
+  assert.deepEqual(auditData.before, { status: "PENDING" });
+  assert.deepEqual(auditData.after, { status: "ACTIVE" });
 });
