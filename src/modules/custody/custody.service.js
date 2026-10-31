@@ -10,6 +10,13 @@ function fail(statusCode, code, message) {
 const conflict = (code, message) => fail(409, code, message);
 const forbidden = () => fail(403, "CUSTODY_PARTY_REQUIRED", "Only an authenticated member of the receiving or releasing party may perform this action.");
 
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
+
 export function createCustodyService({ prismaClient, clock = () => new Date() }) {
   const repo = createCustodyRepository({ prismaClient });
 
@@ -116,7 +123,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async addHubOperator({ hubPointId, userId, role = "OPERATOR", actorUserId }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const hub = await repo.findHub(hubPointId, tx);
         if (!hub) return { notFound: true };
         if (hub.status === "CLOSED") return { blocker: "HUB_CLOSED" };
@@ -136,7 +143,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async setHubOperatorStatus({ hubPointId, operatorId, isActive, actorUserId }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const current = await repo.findHubOperatorById(hubPointId, operatorId, tx);
         if (!current) return { notFound: true };
         const hub = await repo.findHub(hubPointId, tx);
