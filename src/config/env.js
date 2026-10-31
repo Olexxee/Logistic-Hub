@@ -40,6 +40,10 @@ if (parsed.data.EMAIL_PROVIDER === "resend") {
   }
 }
 
+if (parsed.data.NODE_ENV === "production" && parsed.data.EMAIL_PROVIDER !== "resend") {
+  throw new Error("EMAIL_PROVIDER=resend is required in production for transactional email delivery.");
+}
+
 if (parsed.data.NODE_ENV === "production") {
   const outboxKey = Buffer.from(parsed.data.OUTBOX_ENCRYPTION_KEY, "base64");
   if (
