@@ -39,6 +39,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
     },
     async update(id, input, actorUserId) {
       return serializableTransaction(prismaClient, async tx => {
+        await tx.$queryRaw`SELECT "id" FROM "hub_points" WHERE "id" = ${id} FOR UPDATE`;
         const current = await tx.hubPoint.findUnique({
           where: { id },
           include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
@@ -95,7 +96,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         if (!current) return null;
         if (current.status === "CLOSED" && status !== "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be reopened.");
         if (status === "CLOSED" && current.status !== "CLOSED") {
-          const [openLegs, openIntakes, pendingHandovers, openCases] = await Promise.all([
+          const [openLegs, openIntakes, pendingHandovers, openCases, activeOperators] = await Promise.all([
             tx.deliveryLeg.count({
               where: {
                 status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] },
@@ -105,7 +106,11 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
             tx.hubIntakeRecord.count({ where: { hubPointId: id, status: { in: ["RECEIVED", "EXCEPTION"] } } }),
             tx.custodyHandover.count({ where: { hubPointId: id, status: "PENDING_CONFIRMATION" } }),
             tx.operationalCase.count({ where: { hubPointId: id, status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] } } }),
+            tx.hubPointOperator.count({ where: { hubPointId: id, isActive: true } }),
           ]);
+          if (activeOperators) {
+            throw conflict("ACTIVE_HUB_OPERATORS_EXIST", "Deactivate all hub operator memberships before permanently closing this hub.");
+          }
           if (openLegs || openIntakes || pendingHandovers || openCases) {
             throw conflict("HUB_HAS_OPEN_OPERATIONS", "Resolve or reassign all active delivery legs, hub intakes, pending handovers and open operational cases before closing this hub.");
           }
