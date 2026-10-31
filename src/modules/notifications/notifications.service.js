@@ -1,4 +1,4 @@
-import { emailService } from "../../shared/email/email.service.js";
+import { createOutboxService } from "../../shared/jobs/outbox.service.js";
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -19,8 +19,9 @@ function serializeNotification(item) {
   };
 }
 
-export function createNotificationsService({ prismaClient, email = emailService, clock = () => new Date() }) {
+export function createNotificationsService({ prismaClient, clock = () => new Date() }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
+  const outbox = createOutboxService({ prismaClient });
 
   return {
     async createAndDeliver({
@@ -87,36 +88,21 @@ export function createNotificationsService({ prismaClient, email = emailService,
         return { notification: serializeNotification(updated), emailStatus: "FAILED", replay: false };
       }
 
-      try {
-        const result = await email.send({
+      await prismaClient.$transaction(async (tx) => {
+        await outbox.enqueueEmailInTransaction(tx, {
           to: user.email,
           subject: emailSubject,
           text: body,
-          html: `<h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p>`,
-          ...(deliveryKey ? { idempotencyKey: deliveryKey } : {}),
+          html: "<h1>" + escapeHtml(title) + "</h1><p>" + escapeHtml(body) + "</p>",
           tags: [{ name: "category", value: "transactional-notification" }],
-        });
-        const updated = await prismaClient.notification.update({
+        }, deliveryKey || "notification-email-" + notification.id);
+        await tx.notification.update({
           where: { id: notification.id },
-          data: {
-            emailStatus: "SENT",
-            emailSentAt: clock(),
-            emailProviderId: result.id,
-            emailErrorCode: null,
-          },
+          data: { emailStatus: "PENDING", emailErrorCode: null },
         });
-        return { notification: serializeNotification(updated), emailStatus: "SENT", replay: false };
-      } catch (error) {
-        const safeCodes = new Set(["EMAIL_NOT_CONFIGURED", "EMAIL_DELIVERY_FAILED", "EMAIL_PROVIDER_UNAVAILABLE"]);
-        const updated = await prismaClient.notification.update({
-          where: { id: notification.id },
-          data: {
-            emailStatus: "FAILED",
-            emailErrorCode: safeCodes.has(error.code) ? error.code : "EMAIL_DELIVERY_FAILED",
-          },
-        });
-        return { notification: serializeNotification(updated), emailStatus: "FAILED", replay: false };
-      }
+      });
+      const updated = await prismaClient.notification.findUnique({ where: { id: notification.id } });
+      return { notification: serializeNotification(updated), emailStatus: "PENDING", replay: false };
     },
 
     async listForUser({ userId, cursor, limit }) {
