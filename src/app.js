@@ -32,6 +32,7 @@ import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { auditRouter } from "./modules/audit/audit.routes.js";
 import { discoveryRouter } from "./modules/discovery/discovery.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
+import { runWithAuditContext } from "./shared/audit/audit-context.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
 export const app = express();
@@ -81,7 +82,7 @@ app.use(pinoHttp({
 
 app.use((req, res, next) => {
   res.setHeader("X-Request-ID", req.id);
-  next();
+  runWithAuditContext({ requestId: req.id }, next);
 });
 
 app.get("/", (_req, res) => {
