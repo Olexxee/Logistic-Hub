@@ -356,3 +356,59 @@ test("hub exception reporting denies a user who is not an active member of the r
   );
   assert.equal(legLocks, 0);
 });
+
+
+test("a hub cannot demote its final active manager", async () => {
+  let upsertCalled = false;
+  const { db } = tx({
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
+    user: { findUnique: async () => ({ id: "manager-1", status: "ACTIVE", role: "HUB_OPERATOR", emailVerifiedAt: now }) },
+    hubPointOperator: {
+      findUnique: async () => ({ id: "operator-1", hubPointId: "hub-1", userId: "manager-1", role: "MANAGER", isActive: true }),
+      count: async () => 0,
+      upsert: async () => { upsertCalled = true; },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.addHubOperator({
+    hubPointId: "hub-1", userId: "manager-1", role: "OPERATOR", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
+  assert.equal(upsertCalled, false);
+});
+
+test("a hub cannot deactivate its final active manager", async () => {
+  let updateCalled = false;
+  const { db } = tx({
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
+    hubPointOperator: {
+      findFirst: async () => ({ id: "operator-1", hubPointId: "hub-1", userId: "manager-1", role: "MANAGER", isActive: true }),
+      count: async () => 0,
+      update: async () => { updateCalled = true; },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "operator-1", isActive: false, actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
+  assert.equal(updateCalled, false);
+});
+
+test("hub operator reactivation requires an active verified account", async () => {
+  let updateCalled = false;
+  const { db } = tx({
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
+    hubPointOperator: {
+      findFirst: async () => ({ id: "operator-1", hubPointId: "hub-1", userId: "operator-1", role: "OPERATOR", isActive: false }),
+      update: async () => { updateCalled = true; },
+    },
+    user: { findUnique: async () => ({ id: "operator-1", status: "SUSPENDED", role: "HUB_OPERATOR", emailVerifiedAt: now }) },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "operator-1", isActive: true, actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "USER_NOT_ACTIVE");
+  assert.equal(updateCalled, false);
+});
