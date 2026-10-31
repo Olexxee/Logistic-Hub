@@ -223,3 +223,30 @@ Existing parcel-booking list work is tracked in [PR #8](https://github.com/Olexx
 The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payments are hard-disabled and must not be enabled through configuration alone.
 
 **Release guardrails:** do not merge into `main`, apply production migrations, or accept live bookings/payments until implementation, tests, security review and applicable regulatory checks are complete and the repository owner explicitly approves the next step.
+
+
+## Background email delivery
+
+Transactional email is persisted to PostgreSQL before the API acknowledges the operation. Registration, password-reset and notification flows enqueue encrypted email jobs; they do not call the email provider in the request lifecycle.
+
+### Required configuration
+
+- `EMAIL_PROVIDER=resend`
+- `RESEND_API_KEY` and `RESEND_FROM_EMAIL`
+- `APP_BASE_URL` set to the deployed frontend origin
+- `OUTBOX_ENCRYPTION_KEY` set to a base64-encoded 32-byte key. Generate one with `openssl rand -base64 32`. Use the same key for the API service and worker. Keep it stable; rotating it requires a deliberate re-encryption/rotation procedure because pending jobs depend on it.
+
+### Run locally
+
+1. Apply migrations and regenerate Prisma Client: `npx prisma migrate deploy && npx prisma generate`.
+2. Start the API: `npm start`.
+3. Start the background worker in a second process: `npm run worker`.
+
+### Render deployment
+
+Deploy two services from the same repository and commit:
+
+- **Web Service:** build `npm install`, start `npm start`.
+- **Background Worker:** build `npm install`, start `npm run worker`.
+
+Both services must use the same PostgreSQL `DATABASE_URL`, Resend configuration and `OUTBOX_ENCRYPTION_KEY`. Apply the migration before starting either service. The worker uses PostgreSQL row locks with `SKIP LOCKED`, a lease for crashed-worker recovery, provider idempotency keys and exponential retry delays. Jobs are marked `DEAD` after eight failed attempts; inspect `outbox_jobs` and the `lastErrorCode` field for operational recovery. Never log decrypted job payloads or one-time tokens.
