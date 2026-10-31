@@ -18,6 +18,10 @@ export function createSupportService({ prismaClient, clock = () => new Date() })
       if (input.bookingId && !input.bookingType) {
         throw new ValidationError("bookingType is required when a bookingId is supplied.");
       }
+      if (input.bookingId) {
+        const booking = await repo.findOwnedBooking({ bookingType: input.bookingType, bookingId: input.bookingId, userId: user.id });
+        if (!booking) throw new NotFoundError("The related booking was not found or is not owned by this account.");
+      }
       return repo.createTicket({
         publicReference: "SUP-" + randomBytes(5).toString("hex").toUpperCase(),
         customerId: user.id,
