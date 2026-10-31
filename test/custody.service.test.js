@@ -306,9 +306,10 @@ test("hub operational reads scope repository queries to only the caller's active
   await service.listHubDispatchable({ userId: "hub-operator-1" });
 
   assert.deepEqual(queries.intakes.where.hubPointId, { in: ["hub-1"] });
-  assert.deepEqual(queries.handovers.where.OR, [
-    { toPartyType: "HUB", toPartyId: { in: ["hub-1"] } },
-  ]);
+  assert.deepEqual(queries.handovers.where, {
+    toPartyType: "HUB",
+    toPartyId: { in: ["hub-1"] },
+  });
   assert.deepEqual(queries.dispatchable.where.originHubPointId, { in: ["hub-1"] });
 });
 
