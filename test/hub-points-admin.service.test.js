@@ -114,3 +114,26 @@ test("hub activation requires an active manager membership", async () => {
   await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), { code: "HUB_MANAGER_REQUIRED", statusCode: 409 });
   assert.equal(updated, false);
 });
+
+
+test("the last active manager cannot be deactivated while a hub is active", async () => {
+  const hub = readyHub();
+  hub.status = "ACTIVE";
+  let updateCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub },
+    hubPointOperator: {
+      findFirst: async () => ({ id: "manager-1", role: "MANAGER", isActive: true }),
+      count: async () => 0,
+      update: async () => { updateCalled = true; },
+    },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "manager-1", isActive: false, actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
+  assert.equal(updateCalled, false);
+});
