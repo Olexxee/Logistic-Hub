@@ -71,7 +71,7 @@ export function createCustodyController(service) {
       const result = await service.reportHubException(req.body, req.user.id);
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_LEG_NOT_FOUND", message: "Hub or delivery leg not found for this shipment." } });
       if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "A hub exception cannot be reported for this shipment state." } });
-      return res.status(201).json({ success: true, data: result });
+      return res.status(result.replay ? 200 : 201).json({ success: true, data: result });
     },
     listMyHandovers: async (req, res) => {
       const items = await service.listMyHandovers(req.user.id);
