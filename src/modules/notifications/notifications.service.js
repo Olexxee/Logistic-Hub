@@ -90,6 +90,7 @@ export function createNotificationsService({ prismaClient, clock = () => new Dat
 
       await prismaClient.$transaction(async (tx) => {
         await outbox.enqueueEmailInTransaction(tx, {
+          notificationId: notification.id,
           to: user.email,
           subject: emailSubject,
           text: body,
