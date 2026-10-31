@@ -89,6 +89,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
     },
     async setStatus(id, status, actorUserId) {
       return serializableTransaction(prismaClient, async tx => {
+        await tx.$queryRaw`SELECT "id" FROM "hub_points" WHERE "id" = ${id} FOR UPDATE`;
         const current = await tx.hubPoint.findUnique({
           where: { id },
           include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
