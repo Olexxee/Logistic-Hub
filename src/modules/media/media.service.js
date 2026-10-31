@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { createFirebaseStorage } from "./firebase-storage.js";
-import { ForbiddenError, NotFoundError, ValidationError } from "../../shared/http/app-error.js";
+import { NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
