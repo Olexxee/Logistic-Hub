@@ -25,12 +25,12 @@ export function createOperationsControlRepository({ prismaClient }) {
           ] } },
         }),
         tx.deliveryLeg.count({ where: { status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] } } }),
-        prismaClient.deliveryLeg.count({ where: { status: "FAILED" } }),
+        tx.deliveryLeg.count({ where: { status: "FAILED" } }),
         tx.custodyHandover.count({ where: { status: "PENDING_CONFIRMATION" } }),
         tx.hubIntakeRecord.count({ where: { status: "EXCEPTION" } }),
         tx.operationalCase.count({ where: activeCaseWhere }),
-        prismaClient.operationalCase.count({ where: { ...activeCaseWhere, priority: "CRITICAL" } }),
-        prismaClient.operationalCase.count({ where: { ...activeCaseWhere, assignedToUserId: null } }),
+        tx.operationalCase.count({ where: { ...activeCaseWhere, priority: "CRITICAL" } }),
+        tx.operationalCase.count({ where: { ...activeCaseWhere, assignedToUserId: null } }),
         tx.partnerDeliveryAssignment.count({ where: { status: { in: ["ASSIGNED", "ACCEPTED", "IN_TRANSIT"] } } }),
       ]);
 
