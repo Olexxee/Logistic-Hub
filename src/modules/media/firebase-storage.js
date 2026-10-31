@@ -3,6 +3,7 @@ import { ServiceUnavailableError } from "../../shared/http/app-error.js";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const STORAGE_API = "https://storage.googleapis.com/storage/v1";
+const STORAGE_UPLOAD_API = "https://storage.googleapis.com/upload/storage/v1";
 
 export function createFirebaseStorage({ fetchImpl = fetch, clock = () => Date.now() } = {}) {
   let cachedToken = null;
@@ -69,7 +70,7 @@ export function createFirebaseStorage({ fetchImpl = fetch, clock = () => Date.no
   return {
     get bucket() { return process.env.FIREBASE_STORAGE_BUCKET ?? ""; },
     async upload({ objectPath, buffer, mimeType }) {
-      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(process.env.FIREBASE_STORAGE_BUCKET)}/o`);
+      const url = new URL(`${STORAGE_UPLOAD_API}/b/${encodeURIComponent(process.env.FIREBASE_STORAGE_BUCKET)}/o`);
       url.searchParams.set("uploadType", "media");
       url.searchParams.set("name", objectPath);
       await request(url, { method: "POST", headers: { "Content-Type": mimeType }, body: buffer });
