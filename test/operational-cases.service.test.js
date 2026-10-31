@@ -88,3 +88,27 @@ test("operational case updates retry bounded Prisma serialization conflicts", as
   assert.equal(result.operationalCase.priority, "CRITICAL");
   assert.equal(attempts, 3);
 });
+
+
+test("operational case cursor pagination returns a stable next cursor without repeating the boundary row", async () => {
+  const rows = [
+    { id: "case-1", publicReference: "CASE-001" },
+    { id: "case-2", publicReference: "CASE-002" },
+    { id: "case-3", publicReference: "CASE-003" },
+  ];
+  const { db } = setup();
+  let received;
+  db.operationalCase.findMany = async args => {
+    received = args;
+    return (args.cursor ? rows.filter(item => item.id > args.cursor.id) : rows).slice(0, args.take);
+  };
+  const service = createOperationalCasesService({ prismaClient: db, clock: () => now });
+  const firstPage = await service.list({ limit: 2 });
+  assert.deepEqual(firstPage.items.map(item => item.id), ["case-1", "case-2"]);
+  assert.equal(firstPage.nextCursor, "case-2");
+  const secondPage = await service.list({ limit: 2, cursor: firstPage.nextCursor });
+  assert.deepEqual(received.cursor, { id: "case-2" });
+  assert.equal(received.skip, 1);
+  assert.deepEqual(secondPage.items.map(item => item.id), ["case-3"]);
+  assert.equal(secondPage.nextCursor, null);
+});

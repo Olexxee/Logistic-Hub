@@ -647,6 +647,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const leg = await repo.findBookingLeg(deliveryLegId, tx);
         if (!leg || ![leg.originHubPointId, leg.destinationHubPointId].includes(hubPointId)) return { notFound: true };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
+        const existingCase = await repo.findActiveHubOperationalCase({ deliveryLegId: leg.id, hubPointId, type }, tx);
+        if (existingCase) return { operationalCase: existingCase, replay: true };
         const operationalCase = await repo.createOperationalCase({
           publicReference: "CASE-" + randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase(),
           type, status: "OPEN", priority,

@@ -11,9 +11,20 @@ const listSchema = z.object({
   status: z.enum(["OPEN", "TRIAGED", "IN_PROGRESS", "RESOLVED", "CLOSED"]).optional(),
   type: z.enum(["FAILED_HANDOVER", "DAMAGED_PARCEL", "MISSING_PARCEL", "FAILED_DELIVERY", "PARTNER_DELAY", "ROUTE_DISRUPTION", "PRICING_EXCEPTION", "CUSTOMER_DISPUTE", "OTHER"]).optional(),
   priority: z.enum(["LOW", "NORMAL", "HIGH", "CRITICAL"]).optional(),
+  q: z.string().trim().min(2).max(120).optional(),
+  assignedToUserId: id.optional(),
+  unassignedOnly: z.enum(["true", "false"]).transform(value => value === "true").optional(),
+  createdFrom: z.coerce.date().optional(),
+  createdTo: z.coerce.date().optional(),
   cursor: id.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
-}).strict();
+}).strict().refine(value => !(value.assignedToUserId && value.unassignedOnly), {
+  message: "assignedToUserId and unassignedOnly cannot be used together.",
+  path: ["assignedToUserId"],
+}).refine(value => !(value.createdFrom && value.createdTo && value.createdFrom > value.createdTo), {
+  message: "createdFrom must be earlier than or equal to createdTo.",
+  path: ["createdFrom"],
+});
 const updateSchema = z.object({
   status: z.enum(["OPEN", "TRIAGED", "IN_PROGRESS", "RESOLVED", "CLOSED"]).optional(),
   priority: z.enum(["LOW", "NORMAL", "HIGH", "CRITICAL"]).optional(),

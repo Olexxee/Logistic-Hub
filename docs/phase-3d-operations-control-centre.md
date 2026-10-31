@@ -22,9 +22,29 @@
 - No new database model, schema migration, production data change or payment activation.
 - Existing operational-case lifecycle remains the authorized exception-resolution workflow. This slice does not broaden SUPPORT permissions or change existing ADMIN-only case administration.
 
+## 3D.2 Operational case queue
+
+- [x] Add case search across public reference, title and description.
+- [x] Add filters for assignee, unassigned cases and creation date range.
+- [x] Keep cursor pagination and existing priority/age ordering.
+- [x] Explicitly select list response fields so evidence JSON and unrelated scalar fields are never returned by the queue endpoint.
+- [x] Validate conflicting assignee filters and invalid date ranges.
+
+## 3D.3 Exception correlation and duplicate prevention
+
+- [x] Correlate active hub exceptions by delivery leg, hub and exception type before creating a new case.
+- [x] Return the existing active case as an idempotent replay instead of creating a duplicate.
+- [x] Preserve the rejected-handover to FAILED_HANDOVER case linkage; the handover lifecycle prevents repeat creation.
+- [x] Keep the unified queue grounded in OperationalCase records and their existing booking, delivery-leg, custody, partner and hub relations. Do not manufacture a second shipment-status or exception-state system.
+
+## 3D.4 Regression coverage
+
+- [x] Cover operational-case search/filter composition, safe projection, cursor boundaries and invalid filter combinations.
+- [x] Cover ADMIN-only queue access.
+- [x] Cover repeated hub exception reporting and replay response semantics.
+- [x] Validate OpenAPI response pagination shape and run PostgreSQL migration/integrity CI.
+
 ## Remaining 3D work
 
-- Extend operational-case triage with stronger concurrency and filtering/search.
-- Review exception creation coverage and make sure operational failures produce traceable cases without duplicate cases.
-- Add a unified exception work queue only where source records can be correlated reliably and the action remains within existing domain state machines.
-- Complete operational authorization, integration and PostgreSQL regression coverage.
+- Complete a final end-to-end verification against the deployed backend and frontend after both PRs are merged.
+- Confirm production CORS and same-origin proxy configuration; no production deployment or data mutation is included in this phase.
