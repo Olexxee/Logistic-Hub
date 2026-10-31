@@ -95,7 +95,8 @@ The regression test scans every `src/modules/**/*.routes.js` file and compares d
 - `src/modules/partner-execution/partner-execution.routes.js`
 - `src/modules/partner-pricing/partner-pricing.admin.routes.js`
 - `src/modules/partner-pricing/partner-pricing.routes.js`
-- `src/modules/partner-settlement/partner-settlement.routes.js`\n- `src/modules/payments/financial.routes.js` (legacy router; not mounted)
+- `src/modules/partner-settlement/partner-settlement.routes.js`
+- `src/modules/payments/financial.routes.js` (legacy router; not mounted)
 - `src/modules/support/support.routes.js`
 
 The source-level test detects route modules containing administrative paths or ADMIN role declarations, verifies the module is represented in this inventory, and verifies the source contains authentication and role-guard declarations. It is a change-detection safeguard, not a substitute for HTTP integration tests or review of service-level ownership checks.
