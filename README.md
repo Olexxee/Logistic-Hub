@@ -250,3 +250,182 @@ Deploy two services from the same repository and commit:
 - **Background Worker:** build `npm install`, start `npm run worker`.
 
 Both services must use the same PostgreSQL `DATABASE_URL`, Resend configuration and `OUTBOX_ENCRYPTION_KEY`. Apply the migration before starting either service. The worker uses PostgreSQL row locks with `SKIP LOCKED`, a lease for crashed-worker recovery, provider idempotency keys and exponential retry delays. Jobs are marked `DEAD` after eight failed attempts; inspect `outbox_jobs` and the `lastErrorCode` field for operational recovery. Never log decrypted job payloads or one-time tokens.
+
+
+## Phase Three — Operations, Administration and Support
+
+**Status: Blueprint approved for implementation planning; not an implementation-completion claim.**  
+**Baseline:** `main` at `21fea0517f68e1fa58c005fb8e4def99d0c637c9` (31 October 2026).  
+**Implementation rule:** audit and extend the existing modules. Do not recreate APIs or schema that already satisfy the requirements. Keep all work on reviewable feature branches; do not merge to `main` without repository-owner approval.
+
+### Phase Three objective
+
+Deliver a secure operations console API and reliable administrative workflows for managing users, service coverage, transport partners, hubs, shipment exceptions and customer support. Every privileged mutation must be authorized server-side, validated against the relevant domain lifecycle, attributable to an actor, and auditable.
+
+This phase does not authorize live payment activation, external partner transfers, production database migrations, or arbitrary shipment-status overrides.
+
+### Existing baseline confirmed in source
+
+The following are present on the baseline branch. Their presence does **not** mean the complete Phase Three acceptance criteria are already met.
+
+| Capability | Existing implementation | Initial assessment |
+|---|---|---|
+| Admin user directory | `GET /api/v1/admin/users`; search, role/status filters and pagination in the discovery module | Read-only directory. No verified user-role/permission administration workflow established by this endpoint. |
+| Audit events | `GET /api/v1/admin/audit-events`; ADMIN-only router | Read-only audit listing exists. Audit coverage and query/filter controls require a systematic audit. |
+| Geography | Admin country/state/LGA routes under `/api/v1/geography/admin` | CRUD/status operations exist; verify deletion constraints, pagination, audit coverage and safe deactivation behavior. |
+| Service zones | Admin service-zone CRUD and per-service availability operations | Core controls exist; verify overlap/route semantics, history, audit coverage and effects on active bookings/assignments. |
+| Hubs | Hub administration service supports create/update, operator verification review and status changes | Existing operational validation and audit events exist for selected mutations. Verify operator membership lifecycle, delegated permissions, capacity and closure behavior end to end. |
+| Operational cases | Admin list/update endpoints with status transitions, priority, assignee and resolution | Core triage lifecycle exists. Verify concurrency, authorization, complete audit history, filters and case creation/linkage from every exception source. |
+| Support tickets | Customer create/list and ADMIN/SUPPORT queue/update endpoints | Basic ticket workflow exists. Verify assignment eligibility, transition rules, internal notes, customer-visible replies, escalation and audit trail. |
+| Cancellations | Customer-owned cancellation request endpoint | Cancellation policy is service/repository-driven. Verify all booking/fulfilment/payment states and support escalation paths; no automatic refund assumption. |
+| Partner administration | Partner pricing and execution modules, agreements, rate cards, quotes and memberships | Significant groundwork exists. Audit partner onboarding/status, membership assignment/revocation, agreement lifecycle and operator access before adding endpoints. |
+
+### 3A — Administrative security and audit foundation
+
+**Purpose:** establish a consistent authorization and audit boundary before expanding administrative powers.
+
+Work:
+- Inventory every privileged route and mutation in the existing application, including geography, service zones, hubs, partners, users, operational cases, support, custody and finance.
+- Document the current role model and all role checks. Identify where ADMIN-only access is intentional and where ADMIN/SUPPORT or a narrower capability is required.
+- Define a permission matrix for actions, not just pages. Candidate capabilities include user read/manage, geography manage, partner manage, hub manage, dispatch intervene, case triage, support manage, finance review and audit read.
+- Keep permission checks in backend middleware/services. UI visibility is not an authorization control.
+- Do not let an administrator grant their own privileges, elevate another administrator, or remove the last effective owner/admin without a separately approved recovery policy.
+- Make privileged mutations record actor, action, entity, timestamp, reason where appropriate, correlation/request ID, and minimal before/after state. Never store passwords, tokens, verification codes, raw payment payloads or unnecessary personal data in audit metadata.
+- Add audit coverage for currently unaudited privileged mutations. Audit records should be append-only to application roles; correction is a new event, not an edit to history.
+- Add tests for unauthenticated access, role denial, permission denial, cross-tenant/object scoping and audit emission.
+
+**Acceptance criteria:**
+- Every privileged route is represented in a permission matrix and tested.
+- A user without the exact permission receives a consistent 403 response even when calling the API directly.
+- Every successful privileged mutation emits exactly one durable audit event in the same transaction as the mutation where feasible.
+- Failed mutations do not emit misleading success events.
+- Audit reads are paginated, filterable and restricted; sensitive values are redacted.
+
+### 3B — Geography and service-coverage administration
+
+**Purpose:** make operational coverage configurable without creating invalid or contradictory geography.
+
+Work:
+- Verify country/state/LGA and service-zone CRUD contracts, validation and referential constraints.
+- Define safe deactivation behavior when a zone has active hubs, workers, assignments or bookings. Do not silently invalidate in-flight fulfilment.
+- Verify per-service availability windows, effective dates and parent geography activation rules.
+- Define whether zone boundaries/overlaps and route coverage are supported by current data. Do not imply polygon-based coverage if only relational zone membership is implemented.
+- Ensure quote/dispatch eligibility consumes the same authoritative coverage rules as the admin console.
+- Add audit events for create, update, activation/deactivation and availability changes, including reason and before/after values.
+- Add pagination/search where operational datasets can grow; preserve stable sorting and cursor semantics.
+
+**Acceptance criteria:**
+- Invalid parent-child geography relationships are rejected.
+- A zone cannot be enabled under inactive parent geography.
+- Deactivation cannot silently break active assignments or accepted shipments; the service returns a defined conflict or applies an explicitly documented grandfathering rule.
+- Booking, quote and dispatch eligibility agree with the admin-configured availability.
+- All changes are auditable and covered by integration tests.
+
+### 3C — Transport-partner and hub administration
+
+**Purpose:** provide a controlled lifecycle for commercial providers and physical/digital operating points.
+
+Work:
+- Audit existing partner, agreement, rate-card, quote, partner membership and partner execution modules before adding anything.
+- Define partner lifecycle states and permitted transitions: onboarding/review, active, suspended and closed, including effects on new assignments versus already accepted assignments.
+- Define agreement and rate-card lifecycle rules: effective dates, versioning, route/category scope, expiry, supersession and immutable historical quote snapshots.
+- Complete membership administration: add/remove partner operators, verify eligibility, prevent duplicate active memberships, and revoke access promptly when a partner is suspended or membership ends.
+- Complete hub operator membership and delegated capability management. Separate operator identity verification from hub activation and permission to perform intake, custody, dispatch or pricing actions.
+- Validate hub opening hours, capacity, accepted parcel types, service-zone availability and operator verification before activation.
+- Record auditable reasons for partner/hub activation, suspension, closure, verification review and membership changes.
+- Preserve accepted quotes and in-flight custody/assignments when a partner or hub is suspended; block new work according to explicit policy rather than rewriting history.
+
+**Acceptance criteria:**
+- Only eligible, active partner members can access partner execution operations.
+- Suspended/closed partners cannot receive new assignments or quotes; existing work follows a documented safe completion/escalation path.
+- Rate-card changes do not alter accepted quote snapshots.
+- Hub activation requires active coverage, verified operator details and valid operating/capacity configuration.
+- Hub operators can perform only explicitly delegated actions and cannot impersonate a receiver or override customer-approved pricing.
+- Membership and lifecycle changes are audited and tested.
+
+### 3D — Operations control centre and exception management
+
+**Purpose:** give operations a reliable view of work requiring intervention without bypassing domain state machines.
+
+Work:
+- Audit operational-case creation sources and ensure failed handovers, damage/loss reports, failed delivery, partner delay, route disruption, pricing exceptions and customer disputes create or link to a case consistently.
+- Extend case queues with validated filters, pagination, stable sorting, assignment and priority controls.
+- Enforce the case lifecycle already represented in code: OPEN → TRIAGED → IN_PROGRESS → RESOLVED → CLOSED. Require a resolution summary before resolution; do not permit reopening through an undocumented status patch.
+- Validate assignees as active, verified staff with the required operational role/capability.
+- Add concurrency protection so simultaneous updates cannot overwrite each other or emit duplicate transitions/audit events.
+- Provide controlled shipment interventions as explicit domain actions (for example, request reassignment, record an approved exception, or coordinate cancellation), each with its own eligibility checks and audit reason.
+- Never expose a generic endpoint that lets staff set arbitrary booking, payment, assignment, custody or delivery-leg status.
+- Ensure operations reads expose only the customer/recipient/driver data needed for the task.
+
+**Acceptance criteria:**
+- Every supported exception has a deterministic case creation/linking path.
+- Case transitions and assignment changes are atomic, validated and audited.
+- An invalid lifecycle transition is rejected with a stable conflict response.
+- Staff cannot use case-management permissions to mutate shipment or financial state outside explicitly authorized domain actions.
+- Queue pagination/filtering and object-level access are covered by tests.
+
+### 3E — Customer support and cancellation coordination
+
+**Purpose:** support customer enquiries and cancellation/dispute handling without conflating support workflow with shipment or refund state.
+
+Work:
+- Audit ticket creation, customer-owned listing, admin/support queue and ticket updates.
+- Define ticket statuses, allowed transitions, priority, category, assignment, escalation and closure/reopen policy.
+- Validate ticket assignees as active ADMIN/SUPPORT users; reject arbitrary or inactive user IDs.
+- Separate customer-visible replies from internal notes. Enforce visibility at the API boundary and prevent internal notes from leaking through customer ticket reads or notifications.
+- Add a customer-visible response history and durable timestamps/actor attribution if not already present.
+- Link tickets to parcel/ride bookings and operational cases without duplicating authoritative booking state.
+- Define cancellation outcomes by booking, payment and fulfilment state. Unpaid cancellation may release eligible reservations; paid or in-progress cancellation must enter policy review/support coordination. Never infer refund approval or issue a refund automatically from ticket closure.
+- Add escalation paths for damage, loss, failed custody, recipient unavailability, safety and payment/refund disputes.
+
+**Acceptance criteria:**
+- Customers can access only their own tickets and customer-visible messages.
+- ADMIN/SUPPORT can access the queue according to explicit permissions and assignment policy.
+- Only eligible staff can be assigned.
+- Internal notes are never returned to customer-facing endpoints.
+- Cancellation requests follow a documented state matrix and do not silently mutate payment/refund records.
+- Ticket and cancellation actions are audited and tested.
+
+### 3F — Contract, integration and release hardening
+
+**Purpose:** ensure the operations API is safe to consume from the frontend and safe to deploy.
+
+Work:
+- Reconcile README, API contracts, frontend readiness, OpenAPI implementation metadata and actual mounted Express routes.
+- Correct stale documentation that refers to old feature branches or retired authentication/payment behavior.
+- Resolve the refresh-token contract conflict: `docs/api-contracts.md` currently describes HttpOnly cookie behavior, while `docs/frontend-contract-readiness.md` currently says tokens are returned in JSON. Source code and tests must decide the canonical behavior; then update all documentation and OpenAPI consistently.
+- Verify all Phase Three routes have strict request schemas, consistent response/error envelopes, pagination limits and stable operation IDs.
+- Add integration coverage for permissions, ownership, state transitions, idempotency, audit emission, concurrent updates and privacy boundaries.
+- Run `npm test`, `npm run api:validate` and `npm run db:validate` (plus the repository's full CI suite) on each implementation slice.
+- Verify deployment environment configuration separately; repository code does not prove production CORS, email or maps credentials are correct.
+- Keep payment initialization disabled and partner external transfers out of scope.
+
+**Acceptance criteria:**
+- Mounted routes and OpenAPI are in parity.
+- No stale or contradictory contract remains for the workflows delivered in this phase.
+- All required tests and CI checks pass.
+- No production migration or live financial action occurs without explicit approval.
+
+### Delivery order and pull-request boundaries
+
+Implement in this order; later slices depend on the security and lifecycle guarantees established earlier:
+
+1. **3A.1 — Route/permission inventory and authorization matrix** (documentation + tests; no broad permission refactor before the inventory is reviewed).
+2. **3A.2 — Audit coverage and safe admin mutation primitives.**
+3. **3B — Geography/service-zone safety and audit gaps.**
+4. **3C — Partner/hub lifecycle and membership administration gaps.**
+5. **3D — Operational case completeness and controlled interventions.**
+6. **3E — Support workflow and cancellation policy gaps.**
+7. **3F — OpenAPI parity, documentation reconciliation and full regression hardening.**
+
+Each slice must be independently reviewable, include tests and update the API contract. Do not combine unrelated schema redesigns with endpoint work. Create migrations only when the source audit proves they are necessary.
+
+### Phase Three completion gate
+
+Phase Three is complete only when all 3A–3F acceptance criteria are met, the permission matrix matches the mounted routes, all privileged mutations are auditable, operational cases and support workflows are lifecycle-safe, OpenAPI matches runtime behavior, and full CI passes. Existing endpoint presence or a passing frontend-readiness document alone is not sufficient evidence of completion.
+
+### Known documentation reconciliation items
+
+- `docs/api-contracts.md` and `docs/frontend-contract-readiness.md` disagree about refresh-token storage/transport. Verify implementation and tests, then choose one canonical contract.
+- `docs/operational-workflows.md` still describes endpoints as belonging to `feat/secure-lifecycle-payments` and says they are not deployed by that branch. Update its status and route descriptions to match the current default branch.
+- The README's older Priority 5 progress paragraph describes multi-leg routing and hub/partner custody as incomplete, while later Priority 6 progress and current source modules describe these capabilities as implemented. Reconcile the progress narrative against current code and tests before using it as a release checklist.
