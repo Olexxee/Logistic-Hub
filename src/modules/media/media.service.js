@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { basename, extname } from "node:path";
+import { basename } from "node:path";
 import { createFirebaseStorage } from "./firebase-storage.js";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
