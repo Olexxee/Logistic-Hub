@@ -50,7 +50,16 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         await tx.$queryRaw`SELECT "id" FROM "transport_partners" WHERE "id" = ${partnerId} FOR UPDATE`;
         const current = await tx.transportPartner.findUnique({ where: { id: partnerId } });
         if (!current) return { notFound: true };
-        if (current.status === "CLOSED" && input.status !== "CLOSED") return { blocker: "PARTNER_CLOSED" };
+        if (current.status === "CLOSED") return { blocker: "PARTNER_CLOSED" };
+        const allowedTransitions = {
+          PENDING: ["ACTIVE", "SUSPENDED", "CLOSED"],
+          ACTIVE: ["SUSPENDED", "CLOSED"],
+          SUSPENDED: ["ACTIVE", "CLOSED"],
+          CLOSED: [],
+        };
+        if (input.status !== current.status && !allowedTransitions[current.status]?.includes(input.status)) {
+          return { blocker: "PARTNER_STATUS_TRANSITION_INVALID" };
+        }
         const nextVerification = input.verificationStatus ?? current.verificationStatus;
         if (input.status === "ACTIVE" && nextVerification !== "VERIFIED") return { blocker: "PARTNER_NOT_VERIFIED" };
         if (input.status === "CLOSED" && current.status !== "CLOSED") {
