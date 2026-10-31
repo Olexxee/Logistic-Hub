@@ -53,3 +53,23 @@ test("hub activation writes its audit event in the same transaction", async () =
   assert.deepEqual(auditData.before, { status: "PENDING" });
   assert.deepEqual(auditData.after, { status: "ACTIVE" });
 });
+
+
+test("an active hub cannot lose verified operator status without first being suspended", async () => {
+  const hub = readyHub();
+  hub.status = "ACTIVE";
+  const prismaClient = prismaFor(hub);
+  let updateCalled = false;
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: {
+      findUnique: async () => hub,
+      update: async ({ data }) => { updateCalled = true; return { ...hub, ...data }; },
+    },
+    operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.reviewOperator({
+    id: "hub-1", verificationStatus: "REJECTED", notes: "Verification withdrawn", actorUserId: "admin-1",
+  }), { code: "ACTIVE_HUB_OPERATOR_VERIFICATION_REQUIRED", statusCode: 409 });
+  assert.equal(updateCalled, false);
+});
