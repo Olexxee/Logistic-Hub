@@ -3405,12 +3405,18 @@ paths:
       tags: [Admin]
       operationId: listOperationalCases
       summary: List operational exceptions for admin triage
+      description: Search by public reference, title or description. Filter by status, type, priority, assignee, unassigned state and creation date range. The response omits evidence JSON.
       security: [{ bearerAuth: [] }]
       x-implementation-status: implemented
       parameters:
         - { name: status, in: query, schema: { type: string, enum: [OPEN, TRIAGED, IN_PROGRESS, RESOLVED, CLOSED] } }
         - { name: type, in: query, schema: { type: string, enum: [FAILED_HANDOVER, DAMAGED_PARCEL, MISSING_PARCEL, FAILED_DELIVERY, PARTNER_DELAY, ROUTE_DISRUPTION, PRICING_EXCEPTION, CUSTOMER_DISPUTE, OTHER] } }
         - { name: priority, in: query, schema: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL] } }
+        - { name: q, in: query, description: Case public reference, title or description search (2–120 characters)., schema: { type: string, minLength: 2, maxLength: 120 } }
+        - { name: assignedToUserId, in: query, schema: { type: string } }
+        - { name: unassignedOnly, in: query, schema: { type: boolean } }
+        - { name: createdFrom, in: query, schema: { type: string, format: date-time } }
+        - { name: createdTo, in: query, schema: { type: string, format: date-time } }
         - { name: cursor, in: query, schema: { type: string } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
       responses:
