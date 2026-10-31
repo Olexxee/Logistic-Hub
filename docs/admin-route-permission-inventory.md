@@ -35,6 +35,7 @@ All paths below are absolute API paths after the mounts in `src/app.js`.
 | Partner quote issuance | `POST /api/v1/admin/parcel-bookings/:bookingId/quotes` | Route-level auth + ADMIN | ADMIN |
 | Partner quote listing | `GET /api/v1/admin/quotes` | Route-level auth + ADMIN or SUPPORT | ADMIN, SUPPORT |
 | Operational cases | `GET /api/v1/admin/operational-cases`; `PATCH /api/v1/admin/operational-cases/:caseId` | Scoped router auth + ADMIN | ADMIN |
+| Operations control centre | `GET /api/v1/admin/operations/overview` | Route-level auth + ADMIN | ADMIN |
 | Support queue | `GET /api/v1/support/admin/tickets`; `PATCH /api/v1/support/admin/tickets/:ticketId` | Route-level auth + ADMIN or SUPPORT | ADMIN, SUPPORT |
 | Finance — refund review | `GET /api/v1/finance/admin/refunds`; `PATCH /api/v1/finance/admin/refunds/:refundId` | Route-level auth + ADMIN or SUPPORT | ADMIN, SUPPORT |
 | Finance — payout settlement confirmation | `GET /api/v1/finance/admin/payouts`; `PATCH /api/v1/finance/admin/payouts/:payoutId/confirm-settlement` | Route-level auth + ADMIN or SUPPORT | ADMIN, SUPPORT |
@@ -92,6 +93,7 @@ The regression test scans every `src/modules/**/*.routes.js` file and compares d
 - `src/modules/geography/service-zones.routes.js`
 - `src/modules/hub-points/hub-points.routes.js`
 - `src/modules/operational-cases/operational-cases.routes.js`
+- `src/modules/operations-control/operations-control.routes.js`
 - `src/modules/partner-execution/partner-execution.routes.js`
 - `src/modules/partner-pricing/partner-pricing.admin.routes.js`
 - `src/modules/partner-pricing/partner-pricing.routes.js`
