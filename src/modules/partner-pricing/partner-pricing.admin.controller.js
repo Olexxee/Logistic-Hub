@@ -43,6 +43,7 @@ export function createPartnerPricingAdminController({ prismaClient }) {
           PARTNER_NOT_VERIFIED: ["PARTNER_NOT_VERIFIED", "A partner must be verified before activation."],
           PARTNER_OWNER_REQUIRED: ["PARTNER_OWNER_REQUIRED", "An active partner must have at least one active, verified OWNER membership."],
           PARTNER_CLOSED: ["PARTNER_CLOSED", "Closed transport partners cannot be reopened or modified."],
+          PARTNER_INVALID_STATUS_TRANSITION: ["PARTNER_INVALID_STATUS_TRANSITION", "Partners cannot move back to PENDING after onboarding has started. Use SUSPENDED for operational stops."],
           PARTNER_MUST_BE_SUSPENDED: ["PARTNER_MUST_BE_SUSPENDED", "Suspend the partner before changing its verification away from VERIFIED."],
           PARTNER_HAS_ACTIVE_ASSIGNMENTS: ["PARTNER_HAS_ACTIVE_ASSIGNMENTS", "Complete or resolve all active assignments before suspending or closing this partner."],
           PARTNER_HAS_ACTIVE_MEMBERS: ["PARTNER_HAS_ACTIVE_MEMBERS", "Deactivate all partner memberships before closing this partner."],
