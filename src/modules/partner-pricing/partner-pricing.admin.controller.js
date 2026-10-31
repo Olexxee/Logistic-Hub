@@ -42,6 +42,7 @@ export function createPartnerPricingAdminController({ prismaClient }) {
         const blockers = {
           PARTNER_NOT_VERIFIED: ["PARTNER_NOT_VERIFIED", "A partner must be verified before activation."],
           PARTNER_CLOSED: ["PARTNER_CLOSED", "A closed transport partner cannot be reopened or changed."],
+          PARTNER_STATUS_TRANSITION_INVALID: ["PARTNER_STATUS_TRANSITION_INVALID", "The requested transport-partner status transition is not permitted."],
           ACTIVE_PARTNER_MEMBERS_EXIST: ["ACTIVE_PARTNER_MEMBERS_EXIST", "Deactivate all partner memberships before closing this partner."],
           ACTIVE_PARTNER_AGREEMENTS_EXIST: ["ACTIVE_PARTNER_AGREEMENTS_EXIST", "Suspend, expire or terminate active agreements before closing this partner."],
           ACTIVE_PARTNER_ASSIGNMENTS_EXIST: ["ACTIVE_PARTNER_ASSIGNMENTS_EXIST", "Complete or cancel active partner assignments before closing this partner."],
