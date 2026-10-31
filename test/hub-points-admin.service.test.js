@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHubPointsAdminService } from "../src/modules/hub-points/hub-points.admin.service.js";
+import { createCustodyService } from "../src/modules/custody/custody.service.js";
 import { openingHoursAdminSchema, capacityConfigAdminSchema } from "../src/modules/hub-points/hub-points.admin.validators.js";
 
 const openingHours = Object.fromEntries(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"].map(day => [day, [{ opensAt: "08:00", closesAt: "18:00" }]]));
