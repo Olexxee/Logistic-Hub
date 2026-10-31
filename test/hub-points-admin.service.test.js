@@ -138,3 +138,17 @@ test("the last active manager cannot be deactivated while a hub is active", asyn
   assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
   assert.equal(updateCalled, false);
 });
+
+
+test("an active hub cannot be moved backwards to PENDING", async () => {
+  const hub = readyHub();
+  hub.status = "ACTIVE";
+  let updateCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub, update: async ({ data }) => { updateCalled = true; return { ...hub, ...data }; } },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.setStatus("hub-1", "PENDING", "admin-1"), { code: "HUB_INVALID_STATUS_TRANSITION", statusCode: 409 });
+  assert.equal(updateCalled, false);
+});
