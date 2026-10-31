@@ -18,6 +18,7 @@ export function createOutboxWorker({
   batchSize = DEFAULT_BATCH_SIZE,
   leaseMs = DEFAULT_LEASE_MS,
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
+  encryptionKey,
 }) {
   if (!prismaClient || !email) throw new Error("Prisma and an email provider are required.");
 
@@ -54,7 +55,7 @@ export function createOutboxWorker({
         error.code = "UNSUPPORTED_OUTBOX_TOPIC";
         throw error;
       }
-      const payload = decryptJobPayload(job.encryptedPayload);
+      const payload = decryptJobPayload(job.encryptedPayload, encryptionKey);
       const result = await email.send({ ...payload, idempotencyKey: job.idempotencyKey });
       if (payload.notificationId) {
         await prismaClient.notification.updateMany({
