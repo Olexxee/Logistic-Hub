@@ -1,3 +1,58 @@
 openapi: 3.1.0
-info: { title: Support API, version: 1.0.0 }
-paths: {}
+info:
+  title: Logistic Hub Support API
+  version: 1.0.0
+paths:
+  /support/tickets/{ticketId}/messages:
+    get:
+      operationId: listSupportTicketMessages
+      summary: List ticket conversation messages
+      description: Customers can read only their own public messages. ADMIN and SUPPORT can also read internal notes.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: ticketId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Ticket messages returned with role-based visibility. }
+        '401': { description: Authentication required. }
+        '404': { description: Ticket not found or not accessible. }
+    post:
+      operationId: createSupportTicketMessage
+      summary: Add a public reply or internal note
+      description: Customers may create PUBLIC replies only. ADMIN and SUPPORT may create PUBLIC replies or INTERNAL notes. Closed tickets reject messages.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: ticketId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                visibility: { type: string, enum: [PUBLIC, INTERNAL], default: PUBLIC }
+                body: { type: string, minLength: 1, maxLength: 5000 }
+      responses:
+        '201': { description: Message created and audit event recorded. }
+        '400': { description: Invalid message payload. }
+        '401': { description: Authentication required. }
+        '403': { description: Internal notes are restricted to support staff. }
+        '404': { description: Ticket not found or not accessible. }
+        '409': { description: Ticket is closed. }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
