@@ -51,9 +51,9 @@ test("provider refund webhook transition and system audit event share one transa
   const prismaClient = {
     $transaction: callback => callback({
       refundRequest: {
-        findMany: async () => current.status === "PROCESSED" ? [] : [{ ...current }],
+        findMany: async ({ where }) => where.status.in.includes(current.status) ? [{ ...current }] : [],
         updateMany: async ({ where, data }) => {
-          if (where.id !== current.id || where.status !== current.status) return { count: 0 };
+          if (where.id !== current.id || !where.status.in.includes(current.status)) return { count: 0 };
           current = { ...current, ...data };
           return { count: 1 };
         },
@@ -86,5 +86,15 @@ test("provider refund webhook transition and system audit event share one transa
     providerResponse: { event: "refund.processed", id: "provider-ref-1" },
   });
   assert.deepEqual(duplicate, { count: 0 });
+  assert.equal(audits.length, 1);
+
+  current.status = "REJECTED";
+  const staleWebhook = await repo.updateRefundFromWebhook({
+    providerReference: "provider-ref-1",
+    status: "PROCESSED",
+    providerResponse: { event: "refund.processed", id: "provider-ref-1" },
+  });
+  assert.deepEqual(staleWebhook, { count: 0 });
+  assert.equal(current.status, "REJECTED");
   assert.equal(audits.length, 1);
 });
