@@ -4,7 +4,8 @@ import { createPartnerSettlementService } from "../src/modules/partner-settlemen
 
 const now = new Date("2026-10-30T12:00:00.000Z");
 function db(tx) {
-  return { ...tx, $transaction: async callback => callback(tx) };
+  const client = { $queryRaw: async () => [], ...tx };
+  return { ...client, $transaction: async callback => callback(client) };
 }
 
 test("settlement batch total and line items are derived from approved payable records", async () => {
@@ -66,5 +67,24 @@ test("matched reconciliation requires exact amount and external reference", asyn
       externalReference: "bank-ref-1", actorUserId: "admin-1",
     }),
     error => error.code === "RECONCILIATION_MATCH_INVALID",
+  );
+});
+
+
+test("settlement batch creation is rejected for a closed partner", async () => {
+  const tx = {
+    partnerSettlementBatch: { findUnique: async () => null },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "CLOSED" }) },
+  };
+  const service = createPartnerSettlementService({ prismaClient: db(tx), clock: () => now });
+  await assert.rejects(
+    service.createBatch({
+      partnerId: "partner-1",
+      periodStart: "2026-10-01T00:00:00.000Z",
+      periodEnd: "2026-11-01T00:00:00.000Z",
+      idempotencyKey: "batch-key-00002",
+      actorUserId: "admin-1",
+    }),
+    error => error.code === "PARTNER_CLOSED",
   );
 });
