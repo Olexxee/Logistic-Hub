@@ -12,8 +12,12 @@ function prismaWithCounts(counts = {}) {
       return counts[name] ?? 0;
     },
   });
-  return {
+  const client = {
     calls,
+    $transaction: async (callback, options) => {
+      client.transactionOptions = options;
+      return callback(client);
+    },
     parcelBooking: model("parcelBooking"),
     deliveryLeg: model("deliveryLeg"),
     custodyHandover: model("custodyHandover"),
@@ -21,6 +25,7 @@ function prismaWithCounts(counts = {}) {
     operationalCase: model("operationalCase"),
     partnerDeliveryAssignment: model("partnerDeliveryAssignment"),
   };
+  return client;
 }
 
 test("operations overview returns bounded aggregate metrics without exposing shipment records", async () => {
@@ -48,6 +53,7 @@ test("operations overview returns bounded aggregate metrics without exposing shi
     activePartnerAssignments: 4,
   });
   assert.equal(prismaClient.calls.length, 9);
+  assert.deepEqual(prismaClient.transactionOptions, { isolationLevel: "RepeatableRead" });
   assert.equal(prismaClient.calls.some(call => call.model === "parcelBooking" && call.args.where.status.in.includes("DRAFT")), false);
   assert.equal(prismaClient.calls.some(call => call.model === "deliveryLeg" && call.args.where.status === "FAILED"), true);
   assert.equal(prismaClient.calls.some(call => call.model === "operationalCase" && call.args.where.assignedToUserId === null), true);
