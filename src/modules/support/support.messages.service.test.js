@@ -67,3 +67,11 @@ test("closed tickets reject new conversation messages", async () => {
     error => error.code === "SUPPORT_TICKET_CLOSED",
   );
 });
+
+test("support agents can create internal investigation notes", async () => {
+  const { service, state, user } = setup({ ticket: { id: "ticket-1", customerId: "customer-1", status: "IN_PROGRESS" }, role: "SUPPORT" });
+  const message = await service.createMessage({ ticketId: "ticket-1", user, input: { visibility: "INTERNAL", body: "Carrier trace requested." } });
+  assert.equal(message.visibility, "INTERNAL");
+  assert.equal(state.created.authorId, "support-1");
+  assert.equal(state.audit.metadata.visibility, "INTERNAL");
+});
