@@ -31,6 +31,7 @@
 - Hub creation, update and status changes read and validate coverage within the same database transaction as the write.
 - Hub activation requires active country/state/zone and effective parcel-delivery availability.
 - An active hub cannot have operator verification downgraded until the hub is suspended.
+- A hub cannot be permanently closed while it still has non-terminal delivery legs, received/exception intakes, pending custody handovers or unresolved operational cases. Emergency suspension remains available to stop new operations immediately.
 - Active hub operational details remain validated on update.
 - Coverage lifecycle mutations and hub activation use serializable transactions with bounded retry for Prisma serialization conflicts, preventing concurrent write-skew between disabling coverage and activating a hub.
 
