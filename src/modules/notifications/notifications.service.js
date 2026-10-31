@@ -30,6 +30,7 @@ export function createNotificationsService({ prismaClient, clock = () => new Dat
         let notification = deliveryKey
           ? await tx.notification.findUnique({ where: { deliveryKey } })
           : null;
+        const replay = Boolean(notification);
 
         if (notification && (
           notification.userId !== userId
@@ -86,7 +87,7 @@ export function createNotificationsService({ prismaClient, clock = () => new Dat
           where: { id: notification.id },
           data: { emailStatus: "PENDING", emailErrorCode: null },
         });
-        return { notification: serializeNotification(updated), emailStatus: "PENDING", replay: Boolean(deliveryKey) };
+        return { notification: serializeNotification(updated), emailStatus: "PENDING", replay };
       });
     },
 
