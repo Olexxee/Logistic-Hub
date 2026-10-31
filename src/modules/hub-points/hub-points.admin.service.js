@@ -3,6 +3,12 @@ import { openingHoursAdminSchema, capacityConfigAdminSchema } from "./hub-points
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
 
 const PARCEL_SERVICE = "PARCEL_DELIVERY";
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
 function conflict(code, message) { const error = new Error(message); error.statusCode = 409; error.code = code; return error; }
 function hasOperationalDetails(hub) {
   return Boolean(hub.operatorName?.trim() && hub.operatorPhone?.trim() &&
@@ -17,7 +23,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
   return {
     list() { return repository.list(); },
     async create(input, actorUserId) {
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const zone = await tx.serviceZone.findUnique({
           where: { id: input.serviceZoneId }, include: { state: { include: { country: true } } },
         });
