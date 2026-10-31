@@ -40,6 +40,45 @@ export function createSupportService({ prismaClient, clock = () => new Date() })
       const rows = await repo.listAdmin({ status, category, priority, assignedToUserId, unassignedOnly, q, cursor, limit });
       return { data: rows.slice(0, limit), nextCursor: rows.length > limit ? rows[limit - 1]?.id ?? null : null };
     },
+    async listMessages({ ticketId, user }) {
+      const ticket = await repo.findById(ticketId);
+      if (!ticket) throw new NotFoundError("Support ticket not found.");
+      const isSupport = ["ADMIN", "SUPPORT"].includes(user.role);
+      if (!isSupport && ticket.customerId !== user.id) throw new NotFoundError("Support ticket not found.");
+      return {
+        data: await repo.listMessages({ ticketId, includeInternal: isSupport }),
+      };
+    },
+    async createMessage({ ticketId, user, input }) {
+      const isSupport = ["ADMIN", "SUPPORT"].includes(user.role);
+      if (!isSupport && input.visibility === "INTERNAL") {
+        throw new ForbiddenError("Customers cannot create internal support notes.");
+      }
+      return prismaClient.$transaction(async tx => {
+        const txRepo = createSupportRepository(tx);
+        const ticket = await txRepo.findById(ticketId);
+        if (!ticket || (!isSupport && ticket.customerId !== user.id)) {
+          throw new NotFoundError("Support ticket not found.");
+        }
+        if (ticket.status === "CLOSED") {
+          throw new ConflictError("Closed support tickets cannot receive new messages.", "SUPPORT_TICKET_CLOSED");
+        }
+        const message = await txRepo.createMessage({
+          ticketId,
+          authorId: user.id,
+          visibility: isSupport ? input.visibility : "PUBLIC",
+          body: input.body,
+        }, tx);
+        await writeOperationalAuditEvent(tx, {
+          actorUserId: user.id,
+          entityType: "SUPPORT_TICKET",
+          entityId: ticketId,
+          action: "SUPPORT_TICKET_MESSAGE_CREATED",
+          metadata: { messageId: message.id, visibility: message.visibility },
+        });
+        return message;
+      });
+    },
     async update({ id, user, input }) {
       if (!["ADMIN", "SUPPORT"].includes(user.role)) throw new ForbiddenError();
       return prismaClient.$transaction(async tx => {
