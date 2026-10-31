@@ -101,10 +101,18 @@ test("SUPPORT access remains limited to the currently documented support and fin
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
-    const supportAllowed = await fetch(base + "/support/admin/tickets", { headers: { "x-test-role": "SUPPORT" } });
-    // The role guard permits SUPPORT; the downstream service may fail because this test deliberately
-    // supplies no database. A 403 here would mean the documented role policy regressed.
-    assert.notEqual(supportAllowed.status, 403);
+    // These routes intentionally preserve the current ADMIN/SUPPORT grants. The downstream
+    // service may fail because this test deliberately supplies no database; a 403 would mean
+    // the existing role policy regressed.
+    for (const path of [
+      "/support/admin/tickets",
+      "/finance/admin/refunds",
+      "/finance/admin/payouts",
+      "/finance/admin/payouts/payout-1/confirm-settlement",
+    ]) {
+      const response = await fetch(base + path, { headers: { "x-test-role": "SUPPORT" } });
+      assert.notEqual(response.status, 403, `SUPPORT route grant unexpectedly removed: ${path}`);
+    }
 
     const reconciliationDenied = await fetch(base + "/finance/admin/reconciliation", { headers: { "x-test-role": "SUPPORT" } });
     assert.equal(reconciliationDenied.status, 403);
