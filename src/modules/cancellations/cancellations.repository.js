@@ -1,5 +1,18 @@
 import {prisma} from "../../db/prisma.js";
 export function createCancellationsRepository(prismaClient=prisma){return{
+ listMine({userId,cursor,limit=20}) {
+  return prismaClient.bookingEvent.findMany({
+   where:{actorUserId:userId,eventType:{in:["BOOKING_CANCELLED","CANCELLATION_REVIEW_REQUESTED"]}},
+   orderBy:[{createdAt:"desc"},{id:"desc"}],
+   take:limit+1,
+   ...(cursor?{cursor:{id:cursor},skip:1}:{}),
+   select:{
+    id:true,eventType:true,fromStatus:true,toStatus:true,metadata:true,createdAt:true,
+    parcelBooking:{select:{id:true,publicReference:true,status:true,paymentStatus:true,cancellationReason:true,cancelledAt:true,refunds:{where:{requestedByUserId:userId},select:{id:true,publicReference:true,amountMinor:true,currency:true,reason:true,status:true,reviewedAt:true,processedAt:true,createdAt:true},orderBy:{createdAt:"desc"}}}},
+    rideBooking:{select:{id:true,publicReference:true,status:true,paymentStatus:true,cancellationReason:true,cancelledAt:true,refunds:{where:{requestedByUserId:userId},select:{id:true,publicReference:true,amountMinor:true,currency:true,reason:true,status:true,reviewedAt:true,processedAt:true,createdAt:true},orderBy:{createdAt:"desc"}}}}
+   }
+  });
+ },
  cancel({bookingType,bookingId,userId,reason,now}){return prismaClient.$transaction(async tx=>{
   const isParcel=bookingType==="PARCEL";
   const booking=isParcel?await tx.parcelBooking.findFirst({where:{id:bookingId,senderId:userId}}):await tx.rideBooking.findFirst({where:{id:bookingId,passengerId:userId}});

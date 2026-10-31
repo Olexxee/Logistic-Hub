@@ -3750,6 +3750,26 @@ paths:
       responses:
         '200': { description: All refresh tokens revoked. }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /cancellations/mine:
+    get:
+      tags: [Cancellations]
+      operationId: listMyCancellationHistory
+      summary: List the authenticated customer's cancellation history and refund review state
+      description: Returns only cancellation events initiated by the authenticated customer. Related refund records are restricted to requests made by that same customer.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Paginated cancellation history with related refund status. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /cancellations:
     post:
       tags: [Cancellations]
