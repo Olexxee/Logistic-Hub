@@ -202,6 +202,53 @@ export function createAuthRouter({
     }
   });
 
+  router.post("/verify-email/resend", authRateLimit, async (req, res, next) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) return genericValidationError(res, parsed.error.issues);
+
+    try {
+      const user = await prismaClient.user.findUnique({
+        where: { email: parsed.data.email },
+        select: { id: true, fullName: true, email: true, status: true, emailVerifiedAt: true },
+      });
+
+      // Keep the response identical for unknown, active, and pending accounts.
+      if (user && user.status !== "ACTIVE" && !user.emailVerifiedAt) {
+        const rawToken = createOpaqueToken();
+        const verificationUrl = emailActionUrl("/verify-email", rawToken, appBaseUrl);
+        await prismaClient.$transaction(async (tx) => {
+          await tx.authActionToken.updateMany({
+            where: { userId: user.id, purpose: "EMAIL_VERIFICATION", consumedAt: null },
+            data: { consumedAt: new Date() },
+          });
+          const actionToken = await tx.authActionToken.create({
+            data: {
+              userId: user.id,
+              purpose: "EMAIL_VERIFICATION",
+              tokenHash: hashOpaqueToken(rawToken),
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            },
+            select: { id: true },
+          });
+          await outbox.enqueueEmailInTransaction(tx, {
+            to: user.email,
+            subject: "Verify your Logistic Hub account",
+            html: "<p>Hello " + escapeHtml(user.fullName) + ",</p><p>Verify your email to activate your Logistic Hub account.</p><p><a href=\"" + verificationUrl + "\">Verify email address</a></p><p>This link expires in 24 hours.</p>",
+            text: "Hello " + user.fullName + ", verify your Logistic Hub account using this link: " + verificationUrl + ". This link expires in 24 hours.",
+            tags: [{ name: "category", value: "account-verification" }],
+          }, "auth-email-verification-" + actionToken.id);
+        });
+      }
+
+      return res.status(202).json({
+        success: true,
+        data: { message: "If an unverified account exists for that email, a verification email will be sent." },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   router.post("/login", requireTrustedBrowserRequest, authRateLimit, async (req, res, next) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
