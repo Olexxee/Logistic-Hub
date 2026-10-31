@@ -3388,6 +3388,18 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
 
 
+  /admin/operations/overview:
+    get:
+      tags: [Admin]
+      operationId: getAdminOperationsOverview
+      summary: Get aggregate operational metrics for the operations control centre
+      description: Returns aggregate counts only. Customer contact details, shipment addresses, evidence and payment details are not included. ADMIN access is required.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/operational-cases:
     get:
       tags: [Admin]
