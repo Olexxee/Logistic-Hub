@@ -56,6 +56,12 @@ export function createOutboxWorker({
       }
       const payload = decryptJobPayload(job.encryptedPayload);
       const result = await email.send({ ...payload, idempotencyKey: job.idempotencyKey });
+      if (payload.notificationId) {
+        await prismaClient.notification.updateMany({
+          where: { id: payload.notificationId, emailStatus: "PENDING" },
+          data: { emailStatus: "SENT", emailSentAt: clock(), emailProviderId: result?.id ?? null, emailErrorCode: null },
+        });
+      }
       await prismaClient.outboxJob.updateMany({
         where: { id: job.id, status: "PROCESSING", lockedBy: workerId },
         data: {
@@ -70,6 +76,19 @@ export function createOutboxWorker({
     } catch (error) {
       const terminal = job.attempts >= maxAttempts;
       const code = typeof error?.code === "string" ? error.code.slice(0, 80) : "EMAIL_DELIVERY_FAILED";
+      if (terminal) {
+        try {
+          const payload = decryptJobPayload(job.encryptedPayload);
+          if (payload.notificationId) {
+            await prismaClient.notification.updateMany({
+              where: { id: payload.notificationId, emailStatus: "PENDING" },
+              data: { emailStatus: "FAILED", emailErrorCode: code },
+            });
+          }
+        } catch {
+          // A corrupt payload is dead-lettered without exposing its contents.
+        }
+      }
       const update = await prismaClient.outboxJob.updateMany({
         where: { id: job.id, status: "PROCESSING", lockedBy: workerId },
         data: {
