@@ -20,6 +20,7 @@ test("public geography and hub discovery expose only currently eligible operatio
   let zone;
   let availability;
   let hub;
+  let auditActor;
 
   try {
     country = await prisma.country.create({
@@ -31,6 +32,7 @@ test("public geography and hub discovery expose only currently eligible operatio
     const zoneAdmin = createServiceZonesAdminService({ prismaClient: prisma });
     zone = await zoneAdmin.create({ stateId: state.id, code: `Z${suffix}`, name: `Hub Test Zone ${suffix}`, isActive: true });
     availability = await zoneAdmin.setAvailability(zone.id, { serviceType: "PARCEL_DELIVERY", isEnabled: true });
+    auditActor = await prisma.user.create({ data: { fullName: "Hub Integration Admin " + suffix, email: "hub-admin-" + suffix.toLowerCase() + "@example.test", role: "ADMIN", status: "ACTIVE", emailVerifiedAt: new Date() } });
     const hubAdmin = createHubPointsAdminService({ prismaClient: prisma });
     hub = await hubAdmin.create({
       serviceZoneId: zone.id,
@@ -44,7 +46,7 @@ test("public geography and hub discovery expose only currently eligible operatio
       openingHours: Object.fromEntries(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map((day) => [day, [{ opensAt: "08:00", closesAt: "18:00" }]])),
       acceptedParcelTypes: ["DOCUMENTS", "SMALL_PARCEL"],
       capacityConfig: { maxParcels: 80 },
-    });
+    }, auditActor.id);
     assert.equal(hub.status, "PENDING");
     hub = await hubAdmin.setStatus(hub.id, "ACTIVE", "integration-admin");
     assert.equal(hub.status, "ACTIVE");
@@ -82,6 +84,7 @@ test("public geography and hub discovery expose only currently eligible operatio
     assert.equal(unavailableHubs.data.some((item) => item.id === hub.id), false);
   } finally {
     if (hub) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: hub.id } });
+    if (auditActor) await prisma.user.delete({ where: { id: auditActor.id } });
     if (hub) await prisma.hubPoint.deleteMany({ where: { id: hub.id } });
     if (availability) await prisma.serviceAvailability.deleteMany({ where: { id: availability.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });

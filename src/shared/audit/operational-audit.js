@@ -1,12 +1,12 @@
 const REQUIRED_FIELDS = ["actorUserId", "entityType", "entityId", "action"];
 
 /**
- * Persist an operational audit event using the caller's transaction client.
- * Callers must pass the same Prisma transaction used for the domain mutation.
+ * Persist an operational audit event through an interactive Prisma transaction.
+ * A root PrismaClient exposes $transaction; the interactive transaction client does not.
  */
 export async function writeOperationalAuditEvent(tx, event) {
-  if (!tx?.operationalAuditEvent?.create) {
-    throw new TypeError("A Prisma transaction client with operationalAuditEvent.create is required.");
+  if (!tx?.operationalAuditEvent?.create || typeof tx.$transaction === "function") {
+    throw new TypeError("An interactive Prisma transaction client is required.");
   }
   for (const field of REQUIRED_FIELDS) {
     if (typeof event?.[field] !== "string" || !event[field].trim()) {

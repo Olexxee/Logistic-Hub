@@ -25,7 +25,7 @@ export function createServiceZonesAdminController({ prismaClient }) {
       const parsed = createServiceZoneAdminSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const zone = await service.create(parsed.data);
+        const zone = await service.create(parsed.data, req.user.id);
         if (!zone) return res.status(404).json({ success: false, error: { code: "STATE_NOT_FOUND", message: "State not found." } });
         return res.status(201).json({ success: true, data: { serviceZone: zone } });
       } catch (error) { return next(error); }
@@ -34,7 +34,7 @@ export function createServiceZonesAdminController({ prismaClient }) {
       const parsed = updateServiceZoneAdminSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const zone = await service.update(req.params.serviceZoneId, parsed.data);
+        const zone = await service.update(req.params.serviceZoneId, parsed.data, req.user.id);
         if (!zone) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Service zone not found." } });
         return res.status(200).json({ success: true, data: { serviceZone: zone } });
       } catch (error) { return next(error); }
@@ -43,7 +43,7 @@ export function createServiceZonesAdminController({ prismaClient }) {
       const parsed = serviceZoneStatusAdminSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const zone = await service.setActive(req.params.serviceZoneId, parsed.data.isActive);
+        const zone = await service.setActive(req.params.serviceZoneId, parsed.data.isActive, req.user.id);
         if (!zone) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Service zone not found." } });
         return res.status(200).json({ success: true, data: { serviceZone: zone } });
       } catch (error) { return next(error); }
@@ -52,7 +52,7 @@ export function createServiceZonesAdminController({ prismaClient }) {
       const parsed = serviceAvailabilityAdminSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const availability = await service.setAvailability(req.params.serviceZoneId, parsed.data);
+        const availability = await service.setAvailability(req.params.serviceZoneId, parsed.data, req.user.id);
         if (!availability) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Service zone not found." } });
         return res.status(200).json({ success: true, data: { availability } });
       } catch (error) { return next(error); }

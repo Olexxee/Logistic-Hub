@@ -16,7 +16,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
   const repository = createHubPointsAdminRepository({ prismaClient });
   return {
     list() { return repository.list(); },
-    async create(input) {
+    async create(input, actorUserId) {
       const zone = await prismaClient.serviceZone.findUnique({
         where: { id: input.serviceZoneId }, include: { state: { include: { country: true } } },
       });
@@ -25,9 +25,13 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         throw conflict("SERVICE_ZONE_INACTIVE", "A hub can only be registered in an active service zone.");
       }
       const { latitude, longitude, ...data } = input;
-      return repository.create({ ...data, latitude, longitude, status: "PENDING" });
+      return prismaClient.$transaction(async tx => {
+        const created = await tx.hubPoint.create({ data: { ...data, latitude, longitude, status: "PENDING" } });
+        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: created.id, action: "HUB_POINT_CREATED", after: { serviceZoneId: created.serviceZoneId, name: created.name, status: created.status } });
+        return created;
+      });
     },
-    async update(id, input) {
+    async update(id, input, actorUserId) {
       const current = await repository.findById(id);
       if (!current) return null;
       if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be edited.");
@@ -46,7 +50,13 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       if (current.status === "ACTIVE" && !hasOperationalDetails(next)) {
         throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
       }
-      return repository.update(id, input);
+      return prismaClient.$transaction(async tx => {
+        const before = await tx.hubPoint.findUnique({ where: { id } });
+        if (!before) return null;
+        const updated = await tx.hubPoint.update({ where: { id }, data: input });
+        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", before: { serviceZoneId: before.serviceZoneId, name: before.name, address: before.address, operatorName: before.operatorName, operatorPhone: before.operatorPhone, openingHours: before.openingHours, acceptedParcelTypes: before.acceptedParcelTypes, capacityConfig: before.capacityConfig }, after: { serviceZoneId: updated.serviceZoneId, name: updated.name, address: updated.address, operatorName: updated.operatorName, operatorPhone: updated.operatorPhone, openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes, capacityConfig: updated.capacityConfig } });
+        return updated;
+      });
     },
     async reviewOperator({ id, verificationStatus, notes, actorUserId }) {
       return prismaClient.$transaction(async tx => {

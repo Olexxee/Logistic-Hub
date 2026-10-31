@@ -8,13 +8,20 @@ function prismaMock(overrides = {}) {
     state: { findUnique: async () => null, create: async ({ data }) => data, update: async ({ data }) => data, count: async () => 0, ...overrides.state },
     lGA: { findUnique: async () => null, create: async ({ data }) => data, update: async ({ data }) => data, delete: async ({ where }) => where, ...overrides.lGA },
     serviceZone: { count: async () => 0, ...overrides.serviceZone },
+    $transaction: async callback => callback({
+      country: { findUnique: async () => null, create: async ({ data }) => data, update: async ({ data }) => data, count: async () => 0, ...overrides.country },
+      state: { findUnique: async () => null, create: async ({ data }) => data, update: async ({ data }) => data, count: async () => 0, ...overrides.state },
+      lGA: { findUnique: async () => null, create: async ({ data }) => data, update: async ({ data }) => data, delete: async ({ where }) => where, ...overrides.lGA },
+      serviceZone: { count: async () => 0, ...overrides.serviceZone },
+      operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
+    }),
   };
 }
 
 test("state creation requires an active country and normalizes its code", async () => {
   const prisma = prismaMock({ country: { findUnique: async () => ({ id: "country-1", isActive: true }) } });
   const service = createGeographyAdminService({ prismaClient: prisma });
-  const state = await service.createState({ countryId: "country-1", code: "lag", name: "Lagos" });
+  const state = await service.createState({ countryId: "country-1", code: "lag", name: "Lagos" }, "admin-1");
   assert.equal(state.code, "LAG");
 });
 
@@ -36,7 +43,7 @@ test("state deactivation is blocked while active service zones remain", async ()
 test("LGA creation requires active parent geography and normalizes an optional code", async () => {
   const prisma = prismaMock({ state: { findUnique: async () => ({ id: "state-1", isActive: true, country: { isActive: true } }) } });
   const service = createGeographyAdminService({ prismaClient: prisma });
-  const lga = await service.createLga({ stateId: "state-1", code: "ikeja", name: "Ikeja" });
+  const lga = await service.createLga({ stateId: "state-1", code: "ikeja", name: "Ikeja" }, "admin-1");
   assert.equal(lga.code, "IKEJA");
 });
 
