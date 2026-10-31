@@ -238,7 +238,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     },
 
     async confirmHandover({ handoverId, userId, conditionAtReceipt, evidence, rejectReason, weightGrams, lengthMm, widthMm, heightMm }) {
-      return repo.transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         await requireActiveUser(tx, userId);
         await repo.lockHandover(handoverId, tx);
         const handover = await repo.findHandover(handoverId, tx);
