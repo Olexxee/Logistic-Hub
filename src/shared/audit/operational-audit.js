@@ -1,3 +1,5 @@
+import { getAuditContext } from "./audit-context.js";
+
 const HUMAN_REQUIRED_FIELDS = ["actorUserId", "entityType", "entityId", "action"];
 const COMMON_REQUIRED_FIELDS = ["entityType", "entityId", "action"];
 
@@ -32,13 +34,16 @@ export async function writeOperationalAuditEvent(tx, event) {
     }
   }
 
-  const metadata = actorType === "SYSTEM"
-    ? {
-        ...(event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata) ? event.metadata : {}),
-        actorType: "SYSTEM",
-        systemSource: event.systemSource,
-      }
-    : event.metadata ?? undefined;
+  const requestId = getAuditContext()?.requestId ?? null;
+  const suppliedMetadata = event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+    ? event.metadata
+    : {};
+  const metadata = {
+    ...suppliedMetadata,
+    ...(actorType === "SYSTEM" ? { actorType: "SYSTEM", systemSource: event.systemSource } : {}),
+    ...(requestId ? { requestId } : {}),
+  };
+
 
   return tx.operationalAuditEvent.create({
     data: {
@@ -49,7 +54,7 @@ export async function writeOperationalAuditEvent(tx, event) {
       reason: event.reason ?? null,
       before: event.before ?? undefined,
       after: event.after ?? undefined,
-      metadata,
+      metadata: Object.keys(metadata).length ? metadata : undefined,
     },
   });
 }
