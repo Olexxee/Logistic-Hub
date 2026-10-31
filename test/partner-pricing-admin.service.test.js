@@ -113,3 +113,19 @@ test("partner activation is blocked until an active verified owner exists", asyn
   assert.equal(result.blocker, "PARTNER_OWNER_REQUIRED");
   assert.equal(updateCalled, false);
 });
+
+
+test("an active partner cannot be moved backwards to PENDING", async () => {
+  let updateCalled = false;
+  const tx = {
+    transportPartner: {
+      findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }),
+      update: async () => { updateCalled = true; },
+    },
+  };
+  const result = await serviceWith(tx).setPartnerStatus({
+    partnerId: "partner-1", input: { status: "PENDING" }, actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "PARTNER_INVALID_STATUS_TRANSITION");
+  assert.equal(updateCalled, false);
+});
