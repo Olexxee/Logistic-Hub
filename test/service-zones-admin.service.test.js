@@ -85,5 +85,6 @@ test("active hubs may remain when parcel availability is updated without closing
   assert.equal(result.isEnabled, true);
   assert.equal(f.auditEvents.length, 1);
   assert.equal(f.auditEvents[0].action, "SERVICE_ZONE_AVAILABILITY_UPDATED");
-  assert.deepEqual(f.auditEvents[0].after.config, { maxDailyBookings: 40 });
+  assert.equal(f.auditEvents[0].metadata.configChanged, true);
+  assert.equal(Object.hasOwn(f.auditEvents[0].after, "config"), false);
 });
