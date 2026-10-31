@@ -51,3 +51,58 @@ test("an LGA referenced by a service zone cannot be deleted", async () => {
   const service = createGeographyAdminService({ prismaClient: prisma });
   await assert.rejects(service.deleteLga("lga-1", "admin-1"), { code: "LGA_IN_USE", statusCode: 409 });
 });
+
+
+test("geography mutations use serializable transactions", async () => {
+  let options;
+  const prisma = prismaMock();
+  prisma.$transaction = async (callback, transactionOptions) => {
+    options = transactionOptions;
+    return callback({
+      country: { create: async ({ data }) => ({ id: "country-1", ...data }) },
+      operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
+    });
+  };
+  const service = createGeographyAdminService({ prismaClient: prisma });
+
+  await service.createCountry({ code: "ng", name: "Nigeria" }, "admin-1");
+
+  assert.deepEqual(options, { isolationLevel: "Serializable" });
+});
+
+test("geography mutations retry serialization conflicts up to two times", async () => {
+  let attempts = 0;
+  const prisma = prismaMock();
+  prisma.$transaction = async (callback, transactionOptions) => {
+    assert.deepEqual(transactionOptions, { isolationLevel: "Serializable" });
+    attempts += 1;
+    if (attempts < 3) {
+      const error = new Error("Serialization conflict");
+      error.code = "P2034";
+      throw error;
+    }
+    return callback({
+      country: { create: async ({ data }) => ({ id: "country-1", ...data }) },
+      operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
+    });
+  };
+  const service = createGeographyAdminService({ prismaClient: prisma });
+
+  await service.createCountry({ code: "ng", name: "Nigeria" }, "admin-1");
+
+  assert.equal(attempts, 3);
+});
+
+test("geography mutations do not retry non-serialization failures", async () => {
+  let attempts = 0;
+  const failure = new Error("Database unavailable");
+  const prisma = prismaMock();
+  prisma.$transaction = async () => {
+    attempts += 1;
+    throw failure;
+  };
+  const service = createGeographyAdminService({ prismaClient: prisma });
+
+  await assert.rejects(service.createCountry({ code: "ng", name: "Nigeria" }, "admin-1"), failure);
+  assert.equal(attempts, 1);
+});
