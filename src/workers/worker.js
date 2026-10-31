@@ -48,6 +48,9 @@ process.on("unhandledRejection", (error) => {
   void shutdown("unhandledRejection").finally(() => { process.exitCode = 1; });
 });
 
+if (!emailService.configured) {
+  throw new Error("Configure EMAIL_PROVIDER=resend, RESEND_API_KEY and RESEND_FROM_EMAIL before starting the outbox worker.");
+}
 await prisma.$queryRaw`SELECT 1`;
 log("info", "worker.started", { workerId: worker.workerId });
 activePoll = poll();
