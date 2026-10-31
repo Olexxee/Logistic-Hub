@@ -1,5 +1,4 @@
 import { createSign } from "node:crypto";
-import { env } from "../../config/env.js";
 import { ServiceUnavailableError } from "../../shared/http/app-error.js";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -9,11 +8,11 @@ export function createFirebaseStorage({ fetchImpl = fetch, clock = () => Date.no
   let cachedToken = null;
 
   function credentials() {
-    if (!env.FIREBASE_SERVICE_ACCOUNT_BASE64 || !env.FIREBASE_STORAGE_BUCKET) {
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || !process.env.FIREBASE_STORAGE_BUCKET) {
       throw new ServiceUnavailableError("Evidence storage is not configured.", "MEDIA_STORAGE_NOT_CONFIGURED");
     }
     try {
-      return JSON.parse(Buffer.from(env.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8"));
+      return JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8"));
     } catch {
       throw new ServiceUnavailableError("Evidence storage credentials are invalid.", "MEDIA_STORAGE_CONFIGURATION_INVALID");
     }
@@ -68,9 +67,9 @@ export function createFirebaseStorage({ fetchImpl = fetch, clock = () => Date.no
   }
 
   return {
-    bucket: env.FIREBASE_STORAGE_BUCKET,
+    get bucket() { return process.env.FIREBASE_STORAGE_BUCKET ?? ""; },
     async upload({ objectPath, buffer, mimeType }) {
-      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(env.FIREBASE_STORAGE_BUCKET)}/o`);
+      const url = new URL(`${STORAGE_API}/b/${encodeURIComponent(process.env.FIREBASE_STORAGE_BUCKET)}/o`);
       url.searchParams.set("uploadType", "media");
       url.searchParams.set("name", objectPath);
       await request(url, { method: "POST", headers: { "Content-Type": mimeType }, body: buffer });
