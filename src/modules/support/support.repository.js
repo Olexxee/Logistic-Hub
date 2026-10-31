@@ -2,6 +2,15 @@ import { prisma } from "../../db/prisma.js";
 
 export function createSupportRepository(prismaClient = prisma) {
   return {
+    findOwnedBooking({ bookingType, bookingId, userId }) {
+      if (bookingType === "PARCEL") {
+        return prismaClient.parcelBooking.findFirst({ where: { id: bookingId, senderId: userId }, select: { id: true } });
+      }
+      if (bookingType === "RIDE") {
+        return prismaClient.rideBooking.findFirst({ where: { id: bookingId, passengerId: userId }, select: { id: true } });
+      }
+      return null;
+    },
     createTicket(data) {
       return prismaClient.supportTicket.create({ data });
     },
