@@ -119,6 +119,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       return repo.transaction(async tx => {
         const hub = await repo.findHub(hubPointId, tx);
         if (!hub) return { notFound: true };
+        if (hub.status === "CLOSED") return { blocker: "HUB_CLOSED" };
         const user = await repo.findUser(userId, tx);
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         if (!["CUSTOMER", "HUB_OPERATOR", "PARTNER_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
@@ -138,6 +139,14 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       return repo.transaction(async tx => {
         const current = await repo.findHubOperatorById(hubPointId, operatorId, tx);
         if (!current) return { notFound: true };
+        const hub = await repo.findHub(hubPointId, tx);
+        if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
+        if (current.isActive && current.role === "MANAGER" && !isActive && hub?.status === "ACTIVE") {
+          const otherManagers = await tx.hubPointOperator.count({
+            where: { hubPointId, isActive: true, role: "MANAGER", id: { not: current.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+          });
+          if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
+        }
         const operator = await repo.updateHubOperator(operatorId, isActive, tx);
         const activeCount = await repo.countActiveHubMemberships(current.userId, tx);
         const partnerCount = await tx.transportPartnerMember.count({ where: { userId: current.userId, isActive: true } });

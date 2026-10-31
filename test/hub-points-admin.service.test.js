@@ -15,6 +15,7 @@ function prismaFor(hub) {
     serviceZone: {},
     $transaction: async callback => callback({
       hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
+      hubPointOperator: { count: async () => 1 },
       operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
     }),
   };
@@ -43,6 +44,7 @@ test("hub activation writes its audit event in the same transaction", async () =
   const prismaClient = prismaFor(hub);
   prismaClient.$transaction = async callback => callback({
     hubPoint: { findUnique: async () => hub, update: async ({ data }) => ({ ...hub, ...data }) },
+    hubPointOperator: { count: async () => 1 },
     operationalAuditEvent: { create: async ({ data }) => { auditData = data; return { id: "audit-1" }; } },
   });
   const service = createHubPointsAdminService({ prismaClient });
@@ -96,4 +98,19 @@ test("a hub with an active delivery leg cannot be permanently closed", async () 
     code: "HUB_HAS_OPEN_OPERATIONS", statusCode: 409,
   });
   assert.equal(updateCalled, false);
+});
+
+
+test("hub activation requires an active manager membership", async () => {
+  const hub = readyHub();
+  let updated = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: { findUnique: async () => hub, update: async ({ data }) => { updated = true; return { ...hub, ...data }; } },
+    hubPointOperator: { count: async () => 0 },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), { code: "HUB_MANAGER_REQUIRED", statusCode: 409 });
+  assert.equal(updated, false);
 });

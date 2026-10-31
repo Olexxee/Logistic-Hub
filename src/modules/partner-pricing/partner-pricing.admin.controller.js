@@ -39,7 +39,17 @@ export function createPartnerPricingAdminController({ prismaClient }) {
       try {
         const result = await service.setPartnerStatus({ partnerId: id, input: parsed.data, actorUserId: req.user.id });
         if (result.notFound) return failure(res, "NOT_FOUND", "Transport partner not found.", 404);
-        if (result.blocker) return failure(res, "PARTNER_NOT_VERIFIED", "A partner must be verified before activation.");
+        const blockers = {
+          PARTNER_NOT_VERIFIED: ["PARTNER_NOT_VERIFIED", "A partner must be verified before activation."],
+          PARTNER_OWNER_REQUIRED: ["PARTNER_OWNER_REQUIRED", "An active partner must have at least one active, verified OWNER membership."],
+          PARTNER_CLOSED: ["PARTNER_CLOSED", "Closed transport partners cannot be reopened or modified."],
+          PARTNER_MUST_BE_SUSPENDED: ["PARTNER_MUST_BE_SUSPENDED", "Suspend the partner before changing its verification away from VERIFIED."],
+          PARTNER_HAS_ACTIVE_ASSIGNMENTS: ["PARTNER_HAS_ACTIVE_ASSIGNMENTS", "Complete or resolve all active assignments before suspending or closing this partner."],
+          PARTNER_HAS_ACTIVE_MEMBERS: ["PARTNER_HAS_ACTIVE_MEMBERS", "Deactivate all partner memberships before closing this partner."],
+          PARTNER_HAS_OPEN_AGREEMENTS: ["PARTNER_HAS_OPEN_AGREEMENTS", "Suspend or terminate all agreements before closing this partner."],
+          PARTNER_HAS_UNSETTLED_PAYABLES: ["PARTNER_HAS_UNSETTLED_PAYABLES", "Settle or void all outstanding partner payables before closing this partner."],
+        };
+        if (result.blocker) return failure(res, ...blockers[result.blocker]);
         return res.status(200).json({ success: true, data: result });
       } catch (error) { return next(error); }
     },
@@ -50,6 +60,7 @@ export function createPartnerPricingAdminController({ prismaClient }) {
       try {
         const result = await service.createAgreement({ partnerId: id, input: parsed.data, actorUserId: req.user.id });
         if (result.notFound) return failure(res, "NOT_FOUND", "Transport partner not found.", 404);
+        if (result.blocker === "PARTNER_CLOSED") return failure(res, "PARTNER_CLOSED", "Closed transport partners cannot receive new agreements.");
         return res.status(201).json({ success: true, data: result });
       } catch (error) { return next(error); }
     },
@@ -77,6 +88,7 @@ export function createPartnerPricingAdminController({ prismaClient }) {
         if (result.notFound) return failure(res, "NOT_FOUND", "Partner agreement not found.", 404);
         if (result.blocker === "AGREEMENT_TERMINAL") return failure(res, "AGREEMENT_TERMINAL", "Expired or terminated agreements cannot be changed.");
         if (result.blocker === "USE_ACTIVATION_ENDPOINT") return failure(res, "USE_ACTIVATION_ENDPOINT", "Use the agreement activation endpoint to enforce partner and effective-date checks.");
+        if (result.blocker === "AGREEMENT_HAS_ACTIVE_ASSIGNMENTS") return failure(res, "AGREEMENT_HAS_ACTIVE_ASSIGNMENTS", "Complete or resolve all active assignments before suspending or terminating this agreement.");
         return res.status(200).json({ success: true, data: result });
       } catch (error) { return next(error); }
     },

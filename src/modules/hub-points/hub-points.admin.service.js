@@ -111,6 +111,12 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           }
         }
         if (status === "ACTIVE") {
+          const activeManagers = await tx.hubPointOperator.count({
+            where: { hubPointId: id, isActive: true, role: "MANAGER", user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
+          });
+          if (!activeManagers) {
+            throw conflict("HUB_MANAGER_REQUIRED", "An active hub must have at least one active, verified manager membership.");
+          }
           const now = clock();
           const availability = current.serviceZone.availability.find(item =>
             item.serviceType === PARCEL_SERVICE && item.isEnabled &&

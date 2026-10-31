@@ -26,6 +26,7 @@ test("partner status transition persists an audit event in the same transaction"
       findUnique: async () => ({ id: "partner-1", status: "PENDING", verificationStatus: "VERIFIED", verifiedAt: null }),
       update: async ({ data }) => ({ id: "partner-1", ...data }),
     },
+    transportPartnerMember: { count: async () => 1 },
     operationalAuditEvent: { create: async ({ data }) => { events.push(data); } },
   };
   const result = await serviceWith(tx).setPartnerStatus({ partnerId: "partner-1", input: { status: "ACTIVE" }, actorUserId: "admin-1" });
@@ -51,4 +52,47 @@ test("rate-card publishing is blocked when no active rates exist", async () => {
   };
   const result = await serviceWith(tx).publishRateCard({ rateCardId: "card-1", actorUserId: "admin-1" });
   assert.equal(result.blocker, "NO_ACTIVE_RATES");
+});
+
+
+test("partner suspension is blocked while assignments are active", async () => {
+  const tx = {
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }) },
+    partnerDeliveryAssignment: { count: async () => 1 },
+  };
+  const result = await serviceWith(tx).setPartnerStatus({ partnerId: "partner-1", input: { status: "SUSPENDED" }, actorUserId: "admin-1" });
+  assert.equal(result.blocker, "PARTNER_HAS_ACTIVE_ASSIGNMENTS");
+});
+
+test("partner suspension suspends active agreements and audits the dependent transition", async () => {
+  const events = [];
+  let agreementUpdates = 0;
+  const tx = {
+    transportPartner: {
+      findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED", verifiedAt: new Date("2026-10-01T00:00:00Z") }),
+      update: async ({ data }) => ({ id: "partner-1", ...data }),
+    },
+    partnerDeliveryAssignment: { count: async () => 0 },
+    partnerAgreement: {
+      findMany: async () => [{ id: "agreement-1", status: "ACTIVE" }],
+      updateMany: async () => { agreementUpdates += 1; return { count: 1 }; },
+    },
+    operationalAuditEvent: { create: async ({ data }) => { events.push(data); } },
+  };
+  const result = await serviceWith(tx).setPartnerStatus({ partnerId: "partner-1", input: { status: "SUSPENDED" }, actorUserId: "admin-1" });
+  assert.equal(result.partner.status, "SUSPENDED");
+  assert.equal(agreementUpdates, 1);
+  assert.equal(events.some(event => event.action === "PARTNER_AGREEMENT_SUSPENDED_WITH_PARTNER"), true);
+});
+
+test("partner closure is blocked while agreements remain open", async () => {
+  const tx = {
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "SUSPENDED", verificationStatus: "VERIFIED" }) },
+    partnerDeliveryAssignment: { count: async () => 0 },
+    transportPartnerMember: { count: async () => 0 },
+    partnerAgreement: { count: async () => 1 },
+    partnerPayable: { count: async () => 0 },
+  };
+  const result = await serviceWith(tx).setPartnerStatus({ partnerId: "partner-1", input: { status: "CLOSED" }, actorUserId: "admin-1" });
+  assert.equal(result.blocker, "PARTNER_HAS_OPEN_AGREEMENTS");
 });
