@@ -22,6 +22,8 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
   let destinationZone;
   let partner;
   let adminUser;
+  let ownerUser;
+  let ownerMembership;
   let agreement;
   let rateCard;
   let server;
@@ -74,6 +76,13 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     });
     assert.equal(blockedActivation.status, 409);
     assert.equal(blockedActivation.json.error.code, "PARTNER_NOT_VERIFIED");
+
+    ownerUser = await prisma.user.create({
+      data: { fullName: `Partner Owner ${tag}`, role: "PARTNER_OPERATOR", status: "ACTIVE", emailVerifiedAt: new Date() },
+    });
+    ownerMembership = await prisma.transportPartnerMember.create({
+      data: { partnerId: partner.id, userId: ownerUser.id, role: "OWNER", isActive: true },
+    });
 
     const verifiedPartner = await call(`/admin/transport-partners/${partner.id}/status`, {
       method: "PATCH",
@@ -149,6 +158,8 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     if (rateCard) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: rateCard.id } });
     if (agreement) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: agreement.id } });
     if (partner) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: partner.id } });
+    if (ownerMembership) await prisma.transportPartnerMember.deleteMany({ where: { id: ownerMembership.id } });
+    if (ownerUser) await prisma.user.deleteMany({ where: { id: ownerUser.id } });
     if (rateCard) await prisma.partnerRate.deleteMany({ where: { rateCardId: rateCard.id } });
     if (rateCard) await prisma.partnerRateCard.deleteMany({ where: { id: rateCard.id } });
     if (agreement) await prisma.partnerAgreement.deleteMany({ where: { id: agreement.id } });
