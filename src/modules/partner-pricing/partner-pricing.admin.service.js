@@ -78,6 +78,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
     },
     async createAgreement({ partnerId, input, actorUserId }) {
       return transaction(async tx => {
+        await tx.$queryRaw`SELECT "id" FROM "transport_partners" WHERE "id" = ${partnerId} FOR UPDATE`;
         const partner = await tx.transportPartner.findUnique({ where: { id: partnerId }, select: { id: true, status: true } });
         if (!partner) return { notFound: true };
         if (partner.status === "CLOSED") return { blocker: "PARTNER_CLOSED" };
@@ -93,6 +94,9 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
     },
     async activateAgreement({ agreementId, actorUserId }) {
       return transaction(async tx => {
+        const initial = await tx.partnerAgreement.findUnique({ where: { id: agreementId }, select: { id: true, partnerId: true } });
+        if (!initial) return { notFound: true };
+        await tx.$queryRaw`SELECT "id" FROM "transport_partners" WHERE "id" = ${initial.partnerId} FOR UPDATE`;
         const agreement = await tx.partnerAgreement.findUnique({ where: { id: agreementId }, include: { partner: true } });
         if (!agreement) return { notFound: true };
         const now = clock();
@@ -108,6 +112,9 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
     },
     async setAgreementStatus({ agreementId, status, actorUserId }) {
       return transaction(async tx => {
+        const initial = await tx.partnerAgreement.findUnique({ where: { id: agreementId }, select: { id: true, partnerId: true } });
+        if (!initial) return { notFound: true };
+        await tx.$queryRaw`SELECT "id" FROM "transport_partners" WHERE "id" = ${initial.partnerId} FOR UPDATE`;
         const current = await tx.partnerAgreement.findUnique({ where: { id: agreementId } });
         if (!current) return { notFound: true };
         if (["TERMINATED", "EXPIRED"].includes(current.status)) return { blocker: "AGREEMENT_TERMINAL" };
