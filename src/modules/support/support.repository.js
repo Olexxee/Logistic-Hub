@@ -49,7 +49,7 @@ export function createSupportRepository(prismaClient = prisma) {
     listMessages({ ticketId, includeInternal }) {
       return prismaClient.supportTicketMessage.findMany({
         where: { ticketId, ...(includeInternal ? {} : { visibility: "PUBLIC" }) },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 100,
         select: {
           id: true, ticketId: true, visibility: true, body: true, createdAt: true,
