@@ -120,6 +120,28 @@ test("hub cannot release custody to a driver who has not arrived", async () => {
   assert.equal(result.blocker, "DRIVER_NOT_ARRIVED_AT_HUB");
 });
 
+test("repeated active hub exception reports return the existing correlated case", async () => {
+  const existing = { id: "case-existing", publicReference: "CASE-EXISTING", type: "DAMAGED_PARCEL", status: "IN_PROGRESS" };
+  const { db, calls } = setup({
+    operationalCase: {
+      findFirst: async ({ where }) => where?.hubPointId
+        ? existing
+        : null,
+      create: async ({ data }) => { const item = { id: "case-new", ...data }; calls.cases.push(item); return item; },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.reportHubException({
+    hubPointId: "hub-1", deliveryLegId: "leg-1", type: "DAMAGED_PARCEL",
+    priority: "HIGH", title: "Packaging damaged",
+    description: "The outer packaging was torn when the parcel arrived.",
+  }, "hub-user-1");
+  assert.equal(result.replay, true);
+  assert.equal(result.operationalCase.id, "case-existing");
+  assert.equal(calls.cases.length, 0);
+  assert.equal(calls.audits.length, 0);
+});
+
 test("hub exception report is tied to an actively operated hub on the delivery leg", async () => {
   const { db, calls } = setup();
   const service = createCustodyService({ prismaClient: db, clock: () => now });
