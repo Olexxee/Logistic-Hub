@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { prisma } from "../../db/prisma.js";
-import { emailService } from "../../shared/email/email.service.js";
+import { createOutboxService } from "../../shared/jobs/outbox.service.js";
 import {
   createOpaqueToken,
   hashOpaqueToken,
@@ -93,7 +93,6 @@ function emailActionUrl(path, token, baseUrl = env.APP_BASE_URL) {
 
 export function createAuthRouter({
   prismaClient = prisma,
-  email = emailService,
   secret = env.JWT_ACCESS_SECRET,
   appBaseUrl = env.APP_BASE_URL,
 } = {}) {
@@ -103,17 +102,11 @@ export function createAuthRouter({
   const authRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-write", limit: 10, windowMs: 15 * 60_000 });
   const refreshRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-refresh", limit: 30, windowMs: 15 * 60_000 });
   const sessions = createAuthSessionsService({ prismaClient, secret });
+  const outbox = createOutboxService({ prismaClient });
 
   router.post("/register", authRateLimit, async (req, res, next) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) return genericValidationError(res, parsed.error.issues);
-    if (!email.configured) {
-      return res.status(503).json({
-        success: false,
-        error: { code: "EMAIL_NOT_CONFIGURED", message: "Registration is temporarily unavailable." },
-      });
-    }
-
     const { fullName, email: address, password } = parsed.data;
     try {
       const existing = await prismaClient.user.findUnique({ where: { email: address }, select: { id: true } });
@@ -126,48 +119,29 @@ export function createAuthRouter({
 
       const passwordHash = await hashPassword(password);
       const rawToken = createOpaqueToken();
-      const user = await prismaClient.user.create({
-        data: { fullName, email: address, passwordHash, role: "CUSTOMER", status: "PENDING" },
-        select: { id: true, fullName: true, email: true },
-      });
-      const actionToken = await prismaClient.authActionToken.create({
-        data: {
-          userId: user.id,
-          purpose: "EMAIL_VERIFICATION",
-          tokenHash: hashOpaqueToken(rawToken),
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
-        select: { id: true },
-      });
-
-      try {
-        const verificationUrl = emailActionUrl("/verify-email", rawToken, appBaseUrl);
-        await email.send({
+      const verificationUrl = emailActionUrl("/verify-email", rawToken, appBaseUrl);
+      const registration = await prismaClient.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: { fullName, email: address, passwordHash, role: "CUSTOMER", status: "PENDING" },
+          select: { id: true, fullName: true, email: true },
+        });
+        const actionToken = await tx.authActionToken.create({
+          data: { userId: user.id, purpose: "EMAIL_VERIFICATION", tokenHash: hashOpaqueToken(rawToken), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+          select: { id: true },
+        });
+        await outbox.enqueueEmailInTransaction(tx, {
           to: address,
           subject: "Verify your Logistic Hub account",
-          html: `<p>Hello ${escapeHtml(fullName)},</p><p>Verify your email to activate your Logistic Hub account.</p><p><a href="${verificationUrl}">Verify email address</a></p><p>This link expires in 24 hours.</p>`,
-          text: `Hello ${fullName}, verify your Logistic Hub account using this link: ${verificationUrl}. This link expires in 24 hours.`,
-          idempotencyKey: `auth-email-verification-${actionToken.id}`,
+          html: "<p>Hello " + escapeHtml(fullName) + ",</p><p>Verify your email to activate your Logistic Hub account.</p><p><a href=\"" + verificationUrl + "\">Verify email address</a></p><p>This link expires in 24 hours.</p>",
+          text: "Hello " + fullName + ", verify your Logistic Hub account using this link: " + verificationUrl + ". This link expires in 24 hours.",
           tags: [{ name: "category", value: "account-verification" }],
-        });
-      } catch (error) {
-        await prismaClient.authActionToken.deleteMany({ where: { userId: user.id, purpose: "EMAIL_VERIFICATION" } });
-        await prismaClient.user.deleteMany({ where: { id: user.id, status: "PENDING", emailVerifiedAt: null } });
-        if (error.code === "EMAIL_NOT_CONFIGURED") {
-          return res.status(503).json({
-            success: false,
-            error: { code: "EMAIL_NOT_CONFIGURED", message: "Registration is temporarily unavailable." },
-          });
-        }
-        return res.status(503).json({
-          success: false,
-          error: { code: "EMAIL_DELIVERY_FAILED", message: "We could not send the verification email. Please try again." },
-        });
-      }
+        }, "auth-email-verification-" + actionToken.id);
+        return user;
+      });
 
       return res.status(201).json({
         success: true,
-        data: { message: "Check your email to verify your account.", email: user.email },
+        data: { message: "Check your email to verify your account.", email: registration.email },
       });
     } catch (error) {
       if (error.code === "P2002") {
@@ -278,34 +252,22 @@ export function createAuthRouter({
         where: { email: parsed.data.email },
         select: { id: true, fullName: true, email: true, status: true },
       });
-      if (user?.email && user.status === "ACTIVE" && email.configured) {
+      if (user?.email && user.status === "ACTIVE") {
         const rawToken = createOpaqueToken();
-        const actionToken = await prismaClient.authActionToken.create({
-          data: {
-            userId: user.id,
-            purpose: "PASSWORD_RESET",
-            tokenHash: hashOpaqueToken(rawToken),
-            expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-          },
-          select: { id: true },
-        });
         const resetUrl = emailActionUrl("/reset-password", rawToken, appBaseUrl);
-        try {
-          await email.send({
+        await prismaClient.$transaction(async (tx) => {
+          const actionToken = await tx.authActionToken.create({
+            data: { userId: user.id, purpose: "PASSWORD_RESET", tokenHash: hashOpaqueToken(rawToken), expiresAt: new Date(Date.now() + 30 * 60 * 1000) },
+            select: { id: true },
+          });
+          await outbox.enqueueEmailInTransaction(tx, {
             to: user.email,
             subject: "Reset your Logistic Hub password",
-            html: `<p>Hello ${escapeHtml(user.fullName)},</p><p>Use the link below to reset your password.</p><p><a href="${resetUrl}">Reset password</a></p><p>This link expires in 30 minutes. If you did not request this, ignore this email.</p>`,
-            text: `Reset your Logistic Hub password using this link: ${resetUrl}. This link expires in 30 minutes.`,
-            idempotencyKey: `auth-password-reset-${actionToken.id}`,
+            html: "<p>Hello " + escapeHtml(user.fullName) + ",</p><p>Use the link below to reset your password.</p><p><a href=\"" + resetUrl + "\">Reset password</a></p><p>This link expires in 30 minutes. If you did not request this, ignore this email.</p>",
+            text: "Reset your Logistic Hub password using this link: " + resetUrl + ". This link expires in 30 minutes.",
             tags: [{ name: "category", value: "password-reset" }],
-          });
-        } catch (error) {
-          await prismaClient.authActionToken.updateMany({
-            where: { id: actionToken.id, consumedAt: null },
-            data: { consumedAt: new Date() },
-          });
-          req.log?.warn({ code: error.code ?? "EMAIL_DELIVERY_FAILED" }, "Password reset email was not accepted");
-        }
+          }, "auth-password-reset-" + actionToken.id);
+        });
       }
       return res.status(202).json({
         success: true,

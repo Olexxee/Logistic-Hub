@@ -232,7 +232,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: registerCustomer
-      summary: Register a customer and send an email verification link
+      summary: Register a customer and queue an email verification link
       x-implementation-status: implemented
       security: []
       requestBody:
@@ -249,13 +249,11 @@ paths:
                 password: { type: string, minLength: 10, maxLength: 128 }
       responses:
         '201':
-          description: Account created; verification email accepted.
+          description: Account created and verification email durably queued for background delivery.
         '400':
           $ref: '#/components/responses/ValidationError'
         '409':
           description: Email is already registered.
-        '503':
-          description: Email service is unavailable.
   /auth/verify-email:
     post:
       tags: [Authentication]
