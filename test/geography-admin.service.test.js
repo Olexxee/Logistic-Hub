@@ -59,7 +59,7 @@ test("geography mutations use serializable transactions", async () => {
   prisma.$transaction = async (callback, transactionOptions) => {
     options = transactionOptions;
     return callback({
-      ...prisma,
+      country: { create: async ({ data }) => ({ id: "country-1", ...data }) },
       operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
     });
   };
@@ -82,7 +82,7 @@ test("geography mutations retry serialization conflicts up to two times", async 
       throw error;
     }
     return callback({
-      ...prisma,
+      country: { create: async ({ data }) => ({ id: "country-1", ...data }) },
       operationalAuditEvent: { create: async ({ data }) => ({ id: "audit-1", ...data }) },
     });
   };
