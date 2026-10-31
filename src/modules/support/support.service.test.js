@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createSupportService } from "./support.service.js";
 
-function setup({ ticket, assignee = { id: "support-2", role: "SUPPORT" } } = {}) {
+function setup({ ticket, assignee = { id: "support-2", role: "SUPPORT" }, ownedBooking = true } = {}) {
   const writes = { ticket: null, audit: null };
   const tx = {
     supportTicket: {
@@ -20,7 +20,7 @@ function setup({ ticket, assignee = { id: "support-2", role: "SUPPORT" } } = {})
   const prismaClient = {
     $transaction: async callback => callback(tx),
     supportTicket: { create: async ({ data }) => data },
-    parcelBooking: { findFirst: async () => ({ id: "booking-1" }) },
+    parcelBooking: { findFirst: async () => ownedBooking ? ({ id: "booking-1" }) : null },
     rideBooking: { findFirst: async () => ({ id: "ride-1" }) },
   };
   const service = createSupportService({ prismaClient, clock: () => new Date("2026-10-31T12:00:00.000Z") });
@@ -75,7 +75,7 @@ test("valid support ticket resolution is audited", async () => {
 });
 
 test("support requests cannot reference another customer's booking", async () => {
-  const { service } = setup();
+  const { service } = setup({ ownedBooking: false });
   await assert.rejects(
     service.create({
       user: { id: "customer-1", role: "CUSTOMER" },
