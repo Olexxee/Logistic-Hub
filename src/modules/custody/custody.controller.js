@@ -12,13 +12,24 @@ export function createCustodyController(service) {
     addHubOperator: async (req, res) => {
       const result = await service.addHubOperator({ ...req.body, hubPointId: req.params.hubPointId, actorUserId: req.user.id });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_NOT_FOUND", message: "Hub point not found." } });
-      if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be added as hub operators." } });
-      if (result.blocker === "USER_ROLE_CONFLICT") return res.status(409).json({ success: false, error: { code: "USER_ROLE_CONFLICT", message: "This user has an incompatible account role." } });
+      const blockers = {
+        USER_NOT_ACTIVE: "Only active, email-verified users can be added as hub operators.",
+        USER_ROLE_CONFLICT: "This user has an incompatible account role.",
+        HUB_CLOSED: "Operators cannot be added to a permanently closed hub.",
+        LAST_ACTIVE_HUB_MANAGER: "A hub must retain at least one active manager.",
+      };
+      if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: blockers[result.blocker] ?? "The hub membership change is not permitted." } });
       return res.status(201).json({ success: true, data: { operator: result.operator } });
     },
     setHubOperatorStatus: async (req, res) => {
       const result = await service.setHubOperatorStatus({ hubPointId: req.params.hubPointId, operatorId: req.params.operatorId, isActive: req.body.isActive, actorUserId: req.user.id });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_OPERATOR_NOT_FOUND", message: "Hub operator not found." } });
+      const blockers = {
+        USER_NOT_ACTIVE: "Only active, email-verified users can be reactivated as hub operators.",
+        HUB_CLOSED: "Membership cannot be reactivated for a permanently closed hub.",
+        LAST_ACTIVE_HUB_MANAGER: "A hub must retain at least one active manager.",
+      };
+      if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: blockers[result.blocker] ?? "The hub membership change is not permitted." } });
       return res.status(200).json({ success: true, data: { operator: result.operator } });
     },
     createHandover: async (req, res) => {
