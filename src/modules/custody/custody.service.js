@@ -134,7 +134,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         if (!["CUSTOMER", "HUB_OPERATOR", "PARTNER_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
         const currentMembership = await repo.findHubOperator(hubPointId, userId, tx);
-        if (currentMembership?.isActive && currentMembership.role === "MANAGER" && role !== "MANAGER") {
+        if (hub.status === "ACTIVE" && currentMembership?.isActive && currentMembership.role === "MANAGER" && role !== "MANAGER") {
           const otherManagers = await tx.hubPointOperator.count({
             where: { hubPointId, isActive: true, role: "MANAGER", id: { not: currentMembership.id } },
           });
@@ -164,7 +164,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           const user = await repo.findUser(current.userId, tx);
           if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         }
-        if (!isActive && current.isActive && current.role === "MANAGER") {
+        if (!isActive && hub.status === "ACTIVE" && current.isActive && current.role === "MANAGER") {
           const otherManagers = await tx.hubPointOperator.count({
             where: { hubPointId, isActive: true, role: "MANAGER", id: { not: current.id } },
           });
