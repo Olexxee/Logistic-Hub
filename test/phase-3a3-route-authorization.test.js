@@ -11,8 +11,10 @@ import { createPartnerExecutionRouter } from "../src/modules/partner-execution/p
 import { createOperationalCasesRouter } from "../src/modules/operational-cases/operational-cases.routes.js";
 import { createPartnerSettlementRouter } from "../src/modules/partner-settlement/partner-settlement.routes.js";
 
-const authMiddleware = (req, _res, next) => {
-  req.user = { id: "authorization-test-user", role: req.get("x-test-role") ?? "CUSTOMER" };
+const authMiddleware = (req, res, next) => {
+  const role = req.get("x-test-role");
+  if (!role) return res.status(401).json({ success: false, error: { code: "UNAUTHORIZED" } });
+  req.user = { id: "authorization-test-user", role };
   return next();
 };
 const roleMiddleware = (...roles) => (req, res, next) => {
