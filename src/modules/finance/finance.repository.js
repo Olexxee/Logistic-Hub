@@ -2,25 +2,37 @@ import {prisma} from "../../db/prisma.js";
 import {writeOperationalAuditEvent} from "../../shared/audit/operational-audit.js";
 export function createFinanceRepository(prismaClient=prisma){return{
  async createRefundRequest({userId,paymentAttemptId,amountMinor,reason,idempotencyKey,publicReference}) {
-  return prismaClient.$transaction(async tx => {
-   const attempt=await tx.paymentAttempt.findUnique({where:{id:paymentAttemptId},include:{parcelBooking:true,rideBooking:true}});
-   if(!attempt)return{notFound:true};
-   const owner=attempt.parcelBooking?.senderId??attempt.rideBooking?.passengerId;
-   if(owner!==userId)return{forbidden:true};
-   const amount=BigInt(amountMinor);
-   const prior=await tx.refundRequest.findUnique({where:{idempotencyKey}});
-   if(prior){
-    if(prior.paymentAttemptId!==paymentAttemptId||prior.amountMinor!==amount||prior.requestedByUserId!==userId||prior.reason!==reason)return{conflict:true};
-    return {refund:prior,replay:true};
+  for(let attemptNumber=0;;attemptNumber++){
+   try {
+    return await prismaClient.$transaction(async tx => {
+     const attempt=await tx.paymentAttempt.findUnique({where:{id:paymentAttemptId},include:{parcelBooking:true,rideBooking:true}});
+     if(!attempt)return{notFound:true};
+     const owner=attempt.parcelBooking?.senderId??attempt.rideBooking?.passengerId;
+     if(owner!==userId)return{forbidden:true};
+     const amount=BigInt(amountMinor);
+     const prior=await tx.refundRequest.findUnique({where:{idempotencyKey}});
+     if(prior){
+      if(prior.paymentAttemptId!==paymentAttemptId||prior.amountMinor!==amount||prior.requestedByUserId!==userId||prior.reason!==reason)return{conflict:true};
+      return {refund:prior,replay:true};
+     }
+     if(attempt.status!=="SUCCEEDED")return{conflict:true};
+     if(amount<=0n||amount>attempt.amountMinor)return{conflict:true};
+     const already=await tx.refundRequest.aggregate({where:{paymentAttemptId,status:{in:["PENDING_REVIEW","PROCESSING","PROCESSED"]}},_sum:{amountMinor:true}});
+     if((already._sum.amountMinor??0n)+amount>attempt.amountMinor)return{conflict:true};
+     const refund=await tx.refundRequest.create({data:{publicReference,paymentAttemptId,amountMinor:amount,currency:attempt.currency,reason,requestedByUserId:userId,idempotencyKey}});
+     await writeOperationalAuditEvent(tx,{actorUserId:userId,entityType:"REFUND_REQUEST",entityId:refund.id,action:"REFUND_REQUESTED",after:{publicReference, paymentAttemptId, amountMinor:amount.toString(), currency:attempt.currency}});
+     return {refund,replay:false};
+    },{isolationLevel:"Serializable"});
+   } catch(error) {
+    if(error?.code==="P2034"&&attemptNumber<2)continue;
+    if(error?.code==="P2002"){
+     const prior=await prismaClient.refundRequest.findUnique({where:{idempotencyKey}});
+     if(prior&&prior.paymentAttemptId===paymentAttemptId&&prior.amountMinor===BigInt(amountMinor)&&prior.requestedByUserId===userId&&prior.reason===reason)return{refund:prior,replay:true};
+     if(prior)return{conflict:true};
+    }
+    throw error;
    }
-   if(attempt.status!=="SUCCEEDED")return{conflict:true};
-   if(amount<=0n||amount>attempt.amountMinor)return{conflict:true};
-   const already=await tx.refundRequest.aggregate({where:{paymentAttemptId,status:{in:["PENDING_REVIEW","PROCESSING","PROCESSED"]}},_sum:{amountMinor:true}});
-   if((already._sum.amountMinor??0n)+amount>attempt.amountMinor)return{conflict:true};
-   const refund=await tx.refundRequest.create({data:{publicReference,paymentAttemptId,amountMinor:amount,currency:attempt.currency,reason,requestedByUserId:userId,idempotencyKey}});
-   await writeOperationalAuditEvent(tx,{actorUserId:userId,entityType:"REFUND_REQUEST",entityId:refund.id,action:"REFUND_REQUESTED",after:{publicReference, paymentAttemptId, amountMinor:amount.toString(), currency:attempt.currency}});
-   return {refund,replay:false};
-  },{isolationLevel:"Serializable"});
+  }
  },
  listRefunds({status}){return prismaClient.refundRequest.findMany({where:status?{status}:{},orderBy:{createdAt:"desc"},take:100,select:{id:true,publicReference:true,paymentAttemptId:true,parcelBookingId:true,rideBookingId:true,amountMinor:true,currency:true,reason:true,status:true,requestedByUserId:true,reviewedByUserId:true,providerReference:true,reviewedAt:true,processedAt:true,createdAt:true,updatedAt:true}});},
  findRefund(id){return prismaClient.refundRequest.findUnique({where:{id},include:{paymentAttempt:{select:{status:true,providerReference:true,amountMinor:true,currency:true}}}});},
