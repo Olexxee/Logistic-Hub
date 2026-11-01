@@ -22,7 +22,7 @@ export function createHubApplicationsController({ prismaClient, clock }) {
       return res.status(200).json({ success: true, data: result });
     },
     approve: async (req, res) => {
-      const result = await service.approve(req.params.applicationId, req.user.id);
+      const result = await service.approve(req.params.applicationId, req.body.reason, req.user.id);
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_APPLICATION_NOT_FOUND", message: "Hub application not found." } });
       if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "The hub application cannot be approved in its current state." } });
       return res.status(200).json({ success: true, data: result });
