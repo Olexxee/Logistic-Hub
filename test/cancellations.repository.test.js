@@ -165,3 +165,21 @@ test("booking ownership is enforced before cancellation", async () => {
   assert.equal(calls.bookingUpdates.length, 0);
   assert.equal(calls.bookingEvents.length, 0);
 });
+
+test("a second cancellation request is rejected while the first is awaiting review", async () => {
+  const { calls, repository } = fixture({
+    status: "CANCELLATION_PENDING",
+    paymentStatus: "SUCCEEDED",
+  });
+  const result = await repository.cancel({
+    bookingType: "PARCEL",
+    bookingId: "booking-1",
+    userId: "customer-1",
+    reason: "Please cancel this booking again",
+    now: new Date("2026-10-30T12:00:00.000Z"),
+  });
+  assert.deepEqual(result, { conflict: true, status: "CANCELLATION_PENDING" });
+  assert.equal(calls.bookingUpdates.length, 0);
+  assert.equal(calls.refundRequests.length, 0);
+  assert.equal(calls.supportTickets.length, 0);
+});
