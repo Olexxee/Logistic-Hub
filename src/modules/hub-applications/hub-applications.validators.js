@@ -17,6 +17,10 @@ export const createHubApplicationSchema = z.object({
 }).strict();
 
 export const hubApplicationParamsSchema = z.object({ applicationId: id }).strict();
+export const approveHubApplicationSchema = z.object({
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+
 export const rejectHubApplicationSchema = z.object({
   reason: z.string().trim().min(5).max(1000),
 }).strict();
