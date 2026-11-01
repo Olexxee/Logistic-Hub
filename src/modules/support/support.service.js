@@ -1,7 +1,14 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createSupportRepository } from "./support.repository.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
+
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
 
 const ALLOWED_TRANSITIONS = {
   OPEN: ["IN_PROGRESS", "WAITING_FOR_CUSTOMER", "RESOLVED", "CLOSED"],
@@ -77,6 +84,65 @@ export function createSupportService({ prismaClient, clock = () => new Date() })
           metadata: { messageId: message.id, visibility: message.visibility },
         });
         return message;
+      });
+    },
+    async escalate({ id, user, input }) {
+      if (!["ADMIN", "SUPPORT"].includes(user.role)) throw new ForbiddenError();
+      return serializableTransaction(prismaClient, async tx => {
+        const ticket = await tx.supportTicket.findUnique({ where: { id } });
+        if (!ticket) throw new NotFoundError("Support ticket not found.");
+        if (ticket.operationalCaseId) {
+          const operationalCase = await tx.operationalCase.findUnique({ where: { id: ticket.operationalCaseId } });
+          if (operationalCase) return { ticket, operationalCase, replay: true };
+        }
+        if (ticket.bookingType !== "PARCEL" || !(ticket.parcelBookingId || ticket.bookingId)) {
+          throw new ConflictError("Only support tickets linked to a parcel booking can be escalated to a parcel operational case.", "PARCEL_BOOKING_REQUIRED");
+        }
+        const parcelBookingId = ticket.parcelBookingId || ticket.bookingId;
+        const booking = await tx.parcelBooking.findFirst({
+          where: { id: parcelBookingId, senderId: ticket.customerId },
+          select: { id: true, publicReference: true },
+        });
+        if (!booking) throw new ConflictError("The ticket's parcel booking could not be verified.", "PARCEL_BOOKING_NOT_FOUND");
+        const operationalCase = await tx.operationalCase.create({
+          data: {
+            publicReference: "CASE-" + randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase(),
+            type: input.caseType,
+            status: "OPEN",
+            priority: input.priority ?? "NORMAL",
+            parcelBookingId: booking.id,
+            reportedByUserId: ticket.customerId,
+            title: ticket.subject,
+            description: ticket.description + "\n\nEscalated from support ticket " + ticket.publicReference + ".",
+            evidence: { supportTicketId: ticket.id, supportTicketReference: ticket.publicReference },
+          },
+        });
+        const updatedTicket = await tx.supportTicket.update({
+          where: { id },
+          data: { operationalCaseId: operationalCase.id },
+        });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId: user.id,
+          entityType: "OPERATIONAL_CASE",
+          entityId: operationalCase.id,
+          action: "OPERATIONAL_CASE_CREATED_FROM_SUPPORT_TICKET",
+          after: {
+            supportTicketId: ticket.id,
+            supportTicketReference: ticket.publicReference,
+            parcelBookingId: booking.id,
+            type: operationalCase.type,
+            priority: operationalCase.priority,
+          },
+        });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId: user.id,
+          entityType: "SUPPORT_TICKET",
+          entityId: id,
+          action: "SUPPORT_TICKET_ESCALATED_TO_OPERATIONAL_CASE",
+          before: { operationalCaseId: ticket.operationalCaseId ?? null },
+          after: { operationalCaseId: operationalCase.id, operationalCaseReference: operationalCase.publicReference },
+        });
+        return { ticket: updatedTicket, operationalCase, replay: false };
       });
     },
     async update({ id, user, input }) {
