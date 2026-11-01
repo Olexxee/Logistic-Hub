@@ -22,7 +22,20 @@ export function createAdminUsersService({ prismaClient, clock = () => new Date()
         if (actorUserId === userId) return { blocker: "SELF_ACCOUNT_MODIFICATION" };
         if (user.role === "ADMIN") return { blocker: "ADMIN_ACCOUNT_PROTECTED" };
         if (user.status === "CLOSED") return { blocker: "ACCOUNT_CLOSED" };
-        if (user.status === status) return { user: userView(user), replay: true, revokedCount: 0 };
+        if (user.status === status) {
+          if (status !== "SUSPENDED") return { user: userView(user), replay: true, revokedCount: 0 };
+          const revoked = await repository.revokeActiveSessions(userId, clock(), tx);
+          if (revoked.count) {
+            await repository.createAudit({
+              actorUserId, entityType: "USER_ACCOUNT", entityId: userId,
+              action: "ADMIN_USER_SUSPENSION_SESSION_CLEANUP",
+              reason,
+              before: { status: user.status },
+              after: { status: user.status, revokedSessionCount: revoked.count },
+            }, tx);
+          }
+          return { user: userView(user), replay: true, revokedCount: revoked.count };
+        }
         if (status === "SUSPENDED" && user.status !== "ACTIVE") return { blocker: "ACCOUNT_NOT_SUSPENDABLE" };
         if (status === "ACTIVE" && user.status !== "SUSPENDED") return { blocker: "ACCOUNT_NOT_REACTIVATABLE" };
         if (status === "ACTIVE" && !user.emailVerifiedAt) return { blocker: "EMAIL_VERIFICATION_REQUIRED" };
