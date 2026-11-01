@@ -4,13 +4,6 @@ function userView(user) {
   return { id: user.id, fullName: user.fullName, email: user.email, role: user.role, status: user.status };
 }
 
-function forbidden(code, message) {
-  const error = new Error(message);
-  error.statusCode = 403;
-  error.code = code;
-  return error;
-}
-
 export function createAdminUsersService({ prismaClient, clock = () => new Date() }) {
   const repository = createAdminUsersRepository({ prismaClient });
 
