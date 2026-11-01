@@ -417,7 +417,7 @@ Work:
 Work:
 - Reconcile README, API contracts, frontend readiness, OpenAPI implementation metadata and actual mounted Express routes.
 - Correct stale documentation that refers to old feature branches or retired authentication/payment behavior.
-- Resolve the refresh-token contract conflict: `docs/api-contracts.md` currently describes HttpOnly cookie behavior, while `docs/frontend-contract-readiness.md` currently says tokens are returned in JSON. Source code and tests must decide the canonical behavior; then update all documentation and OpenAPI consistently.
+- Keep the canonical refresh-token contract consistent across source, tests, API docs, frontend readiness and OpenAPI: the refresh token is an HttpOnly cookie, the short-lived access token is returned in JSON, and the retired JSON compatibility route returns HTTP 410.
 - Verify all Phase Three routes have strict request schemas, consistent response/error envelopes, pagination limits and stable operation IDs.
 - Add integration coverage for permissions, ownership, state transitions, idempotency, audit emission, concurrent updates and privacy boundaries.
 - Run `npm test`, `npm run api:validate` and `npm run db:validate` (plus the repository's full CI suite) on each implementation slice.
