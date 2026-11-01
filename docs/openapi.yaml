@@ -4097,6 +4097,97 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/users/{userId}/status:
+    patch:
+      tags: [Admin]
+      operationId: updateAdminUserAccountStatus
+      summary: Suspend or reactivate a non-admin user account
+      description: ADMIN-only. Self-modification and modification of ADMIN accounts are blocked. Suspension revokes all unexpired sessions in the same transaction. Reactivation requires a previously suspended, email-verified account. A reason is mandatory.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [ACTIVE, SUSPENDED] }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Account status updated; suspension also revokes active sessions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [user, replay, revokedCount]
+                    properties:
+                      user: { type: object }
+                      replay: { type: boolean }
+                      revokedCount: { type: integer, minimum: 0 }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: User not found. }
+        '409': { description: Invalid account status transition or protected administrator account. }
+  /admin/users/{userId}/sessions/revoke-all:
+    post:
+      tags: [Admin]
+      operationId: revokeAdminUserSessions
+      summary: Revoke all active sessions for a non-admin user
+      description: ADMIN-only. Cannot target the acting administrator or another ADMIN account. A reason is mandatory. Does not change account status.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Active sessions revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [revokedCount]
+                    properties:
+                      revokedCount: { type: integer, minimum: 0 }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: User not found. }
+        '409': { description: Self-session revocation or protected administrator account. }
   /admin/quotes:
     get:
       tags: [Admin]
