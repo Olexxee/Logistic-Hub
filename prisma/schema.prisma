@@ -369,6 +369,7 @@ model User {
   partnerSettlementReconciliations PartnerSettlementReconciliation[] @relation("PartnerSettlementReconciliationActor")
   receivedHubIntakes HubIntakeRecord[] @relation("HubIntakeReceiver")
   supportTicketMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
+  uploadedMediaAssets MediaAsset[] @relation("MediaAssetUploader")
 
   @@index([role, status])
   @@map("users")
@@ -1177,6 +1178,7 @@ model SupportTicket {
   @@index([parcelBookingId, status])   // NEW
   @@index([rideBookingId, status])     // NEW
   messages SupportTicketMessage[]
+  attachments SupportTicketAttachment[]
 
   @@map("support_tickets")
 }
@@ -1195,6 +1197,42 @@ model SupportTicketMessage {
   @@index([ticketId, visibility, createdAt, id])
   @@index([authorId, createdAt])
   @@map("support_ticket_messages")
+}
+
+model MediaAsset {
+  id             String    @id @default(cuid())
+  storageProvider String   @default("FIREBASE")
+  bucket         String
+  objectPath     String    @unique
+  originalName   String
+  mimeType       String
+  sizeBytes      BigInt
+  sha256         String
+  uploadedById   String
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  uploadedBy User @relation("MediaAssetUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  ticketAttachments SupportTicketAttachment[]
+
+  @@index([uploadedById, createdAt])
+  @@index([deletedAt, createdAt])
+  @@map("media_assets")
+}
+
+model SupportTicketAttachment {
+  id           String   @id @default(cuid())
+  ticketId     String
+  mediaAssetId String
+  createdAt    DateTime @default(now())
+
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset    @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([ticketId, mediaAssetId])
+  @@index([ticketId, createdAt])
+  @@index([mediaAssetId])
+  @@map("support_ticket_attachments")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

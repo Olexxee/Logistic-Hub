@@ -20,6 +20,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { paymentsRouter } from "./modules/payments/payments.routes.js";
 import { assignmentsRouter } from "./modules/assignments/assignments.routes.js";
 import { supportRouter } from "./modules/support/support.routes.js";
+import { mediaRouter } from "./modules/media/media.routes.js";
 import { cancellationsRouter } from "./modules/cancellations/cancellations.routes.js";
 import { financeRouter } from "./modules/finance/finance.routes.js";
 import { partnerPricingRouter } from "./modules/partner-pricing/partner-pricing.routes.js";
@@ -46,7 +47,7 @@ const allowedOrigins = env.CORS_ORIGINS
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF"] }));
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF", "X-File-Content-Type", "X-File-Name"] }));
 app.use(express.json({
   limit: "1mb",
   verify: (req, _res, buffer) => {
@@ -113,6 +114,7 @@ app.use("/api/v1/assignments", assignmentsRouter);
 // Legacy financialRouter is intentionally not mounted. Finance operations live under /api/v1/finance.
 app.use("/api/v1/payments", paymentsRouter);
 app.use("/api/v1/support", supportRouter);
+app.use("/api/v1/support", mediaRouter);
 app.use("/api/v1/maps", requireAuth, mapsRouter);
 app.use("/api/v1/parcel-bookings", requireAuth, parcelBookingsRouter);
 app.use("/api/v1/ride-bookings", requireAuth, rideBookingsRouter);

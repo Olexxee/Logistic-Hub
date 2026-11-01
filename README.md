@@ -438,3 +438,23 @@ Phase Three is complete only when all 3A–3F acceptance criteria are met, the p
 - `docs/api-contracts.md` and `docs/frontend-contract-readiness.md` disagree about refresh-token storage/transport. Verify implementation and tests, then choose one canonical contract.
 - `docs/operational-workflows.md` still describes endpoints as belonging to `feat/secure-lifecycle-payments` and says they are not deployed by that branch. Update its status and route descriptions to match the current default branch.
 - The README's older Priority 5 progress paragraph describes multi-leg routing and hub/partner custody as incomplete, while later Priority 6 progress and current source modules describe these capabilities as implemented. Reconcile the progress narrative against current code and tests before using it as a release checklist.
+
+
+## Private support evidence storage
+
+Support-ticket evidence is stored in a private Firebase Storage bucket. The API authenticates to Google Cloud Storage server-to-server using a Base64-encoded Firebase service-account JSON document. The browser never receives service-account credentials or a public object URL.
+
+Configure both backend environment variables:
+
+- `FIREBASE_SERVICE_ACCOUNT_BASE64`: Base64-encoded service-account JSON.
+- `FIREBASE_STORAGE_BUCKET`: the exact bucket name shown in Firebase Storage settings (for example, the project-specific `.firebasestorage.app` bucket name).
+
+PowerShell example for encoding the downloaded service-account JSON locally:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes(".\firebase-service-account.json"))
+```
+
+Copy the command output into the backend secret store as `FIREBASE_SERVICE_ACCOUNT_BASE64`. Do not commit the JSON file or encoded value. Grant the service account permission to create, read and delete objects in the evidence bucket. Keep the bucket private; access is mediated by authenticated API endpoints.
+
+Evidence uploads use raw bytes with `Content-Type: application/octet-stream` and the `x-file-content-type` and `x-file-name` headers. Supported files are JPEG, PNG, WebP and PDF, up to 10 MB.
