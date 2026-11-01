@@ -34,3 +34,9 @@ export const listTicketsQuerySchema = z.object({
     context.addIssue({ code: "custom", path: ["assignedToUserId"], message: "Do not combine assignedToUserId with unassignedOnly=true." });
   }
 });
+
+
+export const escalateTicketSchema = z.object({
+  caseType: z.enum(["FAILED_HANDOVER", "DAMAGED_PARCEL", "MISSING_PARCEL", "FAILED_DELIVERY", "PARTNER_DELAY", "ROUTE_DISRUPTION", "PRICING_EXCEPTION", "CUSTOMER_DISPUTE", "OTHER"]),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "CRITICAL"]).default("NORMAL"),
+}).strict();
