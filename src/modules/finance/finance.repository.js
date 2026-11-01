@@ -43,13 +43,13 @@ export function createFinanceRepository(prismaClient=prisma){return{
    if(!["PENDING_REVIEW","FAILED"].includes(current.status))return null;
    const changed=await tx.refundRequest.updateMany({where:{id,status:current.status},data:{
     status:decision==="REJECT"?"REJECTED":"PROCESSING",
-    reviewedByUserId:reviewerId,reviewedAt:new Date(),providerResponse:{reviewNote:note??null,...(submissionToken?{submissionToken}:{})},
+    reviewedByUserId:reviewerId,reviewedAt:new Date(),providerResponse:{...(current.providerResponse??{}),reviewNote:note??null,...(submissionToken?{submissionToken}:{})},
     ...(decision==="APPROVE"&&current.status==="FAILED"?{providerReference:null}:{}),
    }});
    if(changed.count!==1)return null;
    const updated=await tx.refundRequest.findUnique({where:{id}});
    await writeOperationalAuditEvent(tx,{actorUserId:reviewerId,entityType:"REFUND_REQUEST",entityId:id,action:decision==="REJECT"?"REFUND_REQUEST_REJECTED":"REFUND_REQUEST_APPROVED_FOR_PROCESSING",reason:note,before:{status:current.status},after:{status:updated.status,reviewedByUserId:reviewerId}});
-   if(decision==="REJECT"&&current.idempotencyKey?.startsWith("cancel-refund-")){
+   if(decision==="REJECT"&&current.providerResponse?.source==="CANCELLATION"){
     const bookingType=current.parcelBookingId?"PARCEL":(current.rideBookingId?"RIDE":null);
     if(bookingType){
      const where=bookingType==="PARCEL"?{id:current.parcelBookingId}:{id:current.rideBookingId};
@@ -72,7 +72,7 @@ export function createFinanceRepository(prismaClient=prisma){return{
   return prismaClient.$transaction(async tx=>{
    const current=await tx.refundRequest.findUnique({where:{id}});
    if(!current)return null;
-   const providerResponse={submissionOutcome:"UNKNOWN",reconciliationRequired:true,...(submissionToken?{submissionToken}:{})};
+   const providerResponse={...(current.providerResponse??{}),submissionOutcome:"UNKNOWN",reconciliationRequired:true,...(submissionToken?{submissionToken}:{})};
    const updated=await tx.refundRequest.update({where:{id},data:{providerResponse}});
    await writeOperationalAuditEvent(tx,{actorUserId,entityType:"REFUND_REQUEST",entityId:id,action:"REFUND_PROVIDER_OUTCOME_UNKNOWN",before:{status:current.status},after:{status:updated.status,...providerResponse}});
    return updated;
