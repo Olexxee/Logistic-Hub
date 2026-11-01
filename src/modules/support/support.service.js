@@ -91,6 +91,7 @@ export function createSupportService({ prismaClient, clock = () => new Date() })
       return serializableTransaction(prismaClient, async tx => {
         const ticket = await tx.supportTicket.findUnique({ where: { id } });
         if (!ticket) throw new NotFoundError("Support ticket not found.");
+        if (ticket.status === "CLOSED") throw new ConflictError("Closed support tickets cannot be escalated.", "SUPPORT_TICKET_CLOSED");
         if (ticket.operationalCaseId) {
           const operationalCase = await tx.operationalCase.findUnique({ where: { id: ticket.operationalCaseId } });
           if (operationalCase) return { ticket, operationalCase, replay: true };
@@ -111,7 +112,7 @@ export function createSupportService({ prismaClient, clock = () => new Date() })
             status: "OPEN",
             priority: input.priority ?? "NORMAL",
             parcelBookingId: booking.id,
-            reportedByUserId: ticket.customerId,
+            reportedByUserId: user.id,
             title: ticket.subject,
             description: ticket.description + "\n\nEscalated from support ticket " + ticket.publicReference + ".",
             evidence: { supportTicketId: ticket.id, supportTicketReference: ticket.publicReference },
