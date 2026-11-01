@@ -56,3 +56,14 @@ export function validatePaymentReference(req, _res, next) {
   req.validated = { ...(req.validated ?? {}), params: { reference: parsed.data } };
   return next();
 }
+
+const refundRejectSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+}).strict();
+
+export function validateRefundReject(req, _res, next) {
+  const parsed = refundRejectSchema.safeParse(req.body);
+  if (!parsed.success) return next(new ValidationError("The refund rejection reason is invalid.", parsed.error.issues.map(({ path, message }) => ({ path: path.join("."), message }))));
+  req.validated = { ...(req.validated ?? {}), body: parsed.data };
+  return next();
+}
