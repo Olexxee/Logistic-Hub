@@ -66,6 +66,10 @@ const operatorStatusSchema = z.object({
   isActive: z.boolean(),
   reason: z.string().trim().min(5).max(1000),
 }).strict();
+const dispatchPermissionSchema = z.object({
+  canDispatch: z.boolean(),
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
 const operatorRoleSchema = z.object({
   role: z.enum(["MANAGER", "OPERATOR"]),
   reason: z.string().trim().min(5).max(1000),
@@ -148,6 +152,7 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
   router.post("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, validate(operatorSchema), asyncWrapper(controller.addHubOperator));
   router.patch("/admin/hub-points/:hubPointId/operators/:operatorId", authMiddleware, admin, validateParams, validate(operatorStatusSchema), asyncWrapper(controller.setHubOperatorStatus));
   router.patch("/admin/hub-points/:hubPointId/operators/:operatorId/role", authMiddleware, admin, validateParams, validate(operatorRoleSchema), asyncWrapper(controller.updateHubOperatorRole));
+  router.patch("/admin/hub-points/:hubPointId/operators/:operatorId/dispatch-permission", authMiddleware, admin, validateParams, validate(dispatchPermissionSchema), asyncWrapper(controller.setHubOperatorDispatchPermission));
   router.get("/hub-operations/hubs/:hubPointId/operators", authMiddleware, validateParams, (req, res, next) => {
     const parsed = hubOperatorsQuerySchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ success: false, error: {
