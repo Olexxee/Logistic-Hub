@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createCustodyService } from "../src/modules/custody/custody.service.js";
 
-function createPrisma({ hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" }, operator = { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "MANAGER", isActive: true }, otherManagers = 1, user = { id: "user-1", status: "ACTIVE", emailVerifiedAt: new Date() } } = {}) {
+function createPrisma({ hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" }, operator = { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "MANAGER", isActive: true, canDispatch: false }, otherManagers = 1, user = { id: "user-1", status: "ACTIVE", emailVerifiedAt: new Date() } } = {}) {
   const state = { audits: [], updates: [] };
   const tx = {
     user: { findUnique: async () => user },
@@ -65,8 +65,8 @@ test("a hub operator role change is audited with actor, reason and before/after 
   assert.equal(result.operator.role, "OPERATOR");
   assert.equal(state.audits[0].actorUserId, "admin-1");
   assert.equal(state.audits[0].reason, "Manager responsibilities reassigned");
-  assert.deepEqual(state.audits[0].before, { role: "MANAGER", isActive: true });
-  assert.deepEqual(state.audits[0].after, { role: "OPERATOR", isActive: true });
+  assert.deepEqual(state.audits[0].before, { role: "MANAGER", isActive: true, canDispatch: false });
+  assert.deepEqual(state.audits[0].after, { role: "OPERATOR", isActive: true, canDispatch: false });
 });
 
 test("deactivating a hub membership records the administrative reason", async () => {
@@ -78,8 +78,8 @@ test("deactivating a hub membership records the administrative reason", async ()
   });
   assert.equal(result.operator.isActive, false);
   assert.equal(state.audits[0].reason, "Operator left the organization");
-  assert.deepEqual(state.audits[0].before, { isActive: true });
-  assert.deepEqual(state.audits[0].after, { isActive: false });
+  assert.deepEqual(state.audits[0].before, { isActive: true, canDispatch: false });
+  assert.deepEqual(state.audits[0].after, { isActive: false, canDispatch: false });
 });
 
 
