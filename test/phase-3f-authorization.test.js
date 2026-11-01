@@ -24,7 +24,12 @@ test("a customer cannot read another customer's parcel booking by changing the b
 
 test("ADMIN and SUPPORT retain authorized operational visibility of parcel bookings", async () => {
   const service = createParcelBookingsService({
-    repository: { findById: async () => ({ id: "parcel-1", senderId: "customer-owner" }) },
+    repository: { findById: async () => ({
+      id: "parcel-1", senderId: "customer-owner",
+      pickupLatitude: 6.5, pickupLongitude: 3.4,
+      destinationLatitude: 6.6, destinationLongitude: 3.5,
+      connectionFeeMinor: 0n, otherChargesMinor: 0n,
+    }) },
   });
   for (const role of ["ADMIN", "SUPPORT"]) {
     const result = await service.getVisibleBooking({
