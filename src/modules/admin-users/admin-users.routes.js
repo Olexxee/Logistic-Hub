@@ -24,7 +24,8 @@ export function createAdminUsersRouter({
     "/:userId/status",
     authMiddleware,
     admin,
-    validate({ params: adminUserParamsSchema, body: adminUserStatusSchema }),
+    validate(adminUserParamsSchema, "params"),
+    validate(adminUserStatusSchema, "body"),
     asyncWrapper(controller.updateStatus),
   );
 
@@ -32,7 +33,8 @@ export function createAdminUsersRouter({
     "/:userId/sessions/revoke-all",
     authMiddleware,
     admin,
-    validate({ params: adminUserParamsSchema, body: adminUserSessionRevocationSchema }),
+    validate(adminUserParamsSchema, "params"),
+    validate(adminUserSessionRevocationSchema, "body"),
     asyncWrapper(controller.revokeAllSessions),
   );
 
