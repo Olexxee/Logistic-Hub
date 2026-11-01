@@ -33,6 +33,14 @@ export function createPaymentsService({ prismaClient, repository = createPayment
       }));
       return { data, nextCursor: hasMore ? data.at(-1)?.id ?? null : null };
     },
+
+    async rejectRefund({ refundId, actor, reason }) {
+      if (actor?.role !== "ADMIN") throw new ForbiddenError("Only an administrator can reject a refund request.");
+      const result = await repository.rejectRefundRequest({ refundId, actorUserId: actor.id, reason, now: clock() });
+      if (result.notFound) throw new NotFoundError("Refund request not found.", "REFUND_NOT_FOUND");
+      if (result.conflict) throw new ConflictError("This refund request cannot be rejected from its current state: " + result.conflict + ".", "REFUND_NOT_REJECTABLE");
+      return { ...result.refund, amountMinor: result.refund.amountMinor.toString(), replay: result.replay };
+    },
     async processRefund({ refundId, actor }) {
       if (actor?.role !== "ADMIN") throw new ForbiddenError("Only an administrator can approve and submit a refund.");
       if (!refundsEnabled) throw new ServiceUnavailableError("Provider refund processing is disabled. Refund requests can be reviewed, but no money will be moved until REFUNDS_ENABLED is explicitly approved.", "REFUNDS_DISABLED");
