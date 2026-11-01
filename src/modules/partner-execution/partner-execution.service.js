@@ -46,7 +46,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           { phone: { contains: search, mode: "insensitive" } },
         ] } } : {}),
       };
-      const result = await repository.listPartnerMembers(partnerId, where, (page - 1) * limit, limit);
+      const result = await repository.listPartnerMembers(partnerId, { where, skip: (page - 1) * limit, take: limit });
       return {
         items: result.items,
         pagination: { page, limit, total: result.total, totalPages: Math.ceil(result.total / limit) },
