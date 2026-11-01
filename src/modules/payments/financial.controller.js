@@ -5,6 +5,7 @@ export function createFinancialController({ service }) {
       return res.status(data.replay ? 200 : 201).json({ success: true, data });
     },
     processRefund: async (req, res) => res.status(202).json({ success: true, data: await service.processRefund({ refundId: req.validated.params.refundId, actor: req.user }) }),
+    rejectRefund: async (req, res) => res.status(200).json({ success: true, data: await service.rejectRefund({ refundId: req.validated.params.refundId, actor: req.user, reason: req.validated.body.reason }) }),
     listRefunds: async (req, res) => res.status(200).json({ success: true, ...await service.listRefunds(req.validated.query) }),
     requestPayout: async (req, res) => res.status(202).json({ success: true, data: await service.requestPayout({
       ...req.validated.body, user: req.user, idempotencyKey: req.validated.idempotencyKey,
