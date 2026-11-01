@@ -3213,10 +3213,29 @@ paths:
         '409': { description: Assignment is not ready to start. }
 
   /admin/hub-points/{hubPointId}/operators:
+    get:
+      tags: [Hub points, Admin]
+      operationId: listHubPointOperators
+      summary: List scoped memberships for a hub point
+      description: ADMIN-only. Returns paginated hub operator memberships and limited account contact/status fields.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: isActive, in: query, schema: { type: boolean } }
+      responses:
+        '200': { description: Hub summary, scoped memberships and pagination metadata. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub not found. }
     post:
       tags: [Hub points, Admin]
       operationId: addHubPointOperator
       summary: Add or reactivate a verified user as a hub operator
+      description: ADMIN-only. Requires an administrative reason. Membership role is scoped to this hub and does not change the user's global account role.
       security: [{ bearerAuth: [] }]
       x-implementation-status: implemented
       parameters:
@@ -3228,22 +3247,25 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [userId]
+              required: [userId, reason]
               properties:
                 userId: { type: string, minLength: 1 }
                 role: { type: string, enum: [MANAGER, OPERATOR], default: OPERATOR }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
+        '200': { description: Idempotent replay of an existing active membership. }
         '201': { description: Hub operator membership created or reactivated. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Hub not found. }
-        '409': { description: User is inactive or has an incompatible role. }
+        '409': { description: User is inactive, hub is closed, or the last active manager safeguard would be violated. }
   /admin/hub-points/{hubPointId}/operators/{operatorId}:
     patch:
       tags: [Hub points, Admin]
       operationId: setHubPointOperatorStatus
       summary: Activate or suspend a hub operator membership
+      description: ADMIN-only. Requires a reason. Active hubs must retain at least one active manager.
       security: [{ bearerAuth: [] }]
       x-implementation-status: implemented
       parameters:
@@ -3256,15 +3278,46 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [isActive]
+              required: [isActive, reason]
               properties:
                 isActive: { type: boolean }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
-        '200': { description: Hub operator membership status updated. }
+        '200': { description: Hub operator membership status updated or idempotently replayed. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Hub operator not found. }
+        '409': { description: Closed hub or last active manager safeguard. }
+  /admin/hub-points/{hubPointId}/operators/{operatorId}/role:
+    patch:
+      tags: [Hub points, Admin]
+      operationId: updateHubPointOperatorRole
+      summary: Change a user's role within one hub
+      description: ADMIN-only. Requires a reason. This changes only HubOperatorRole for the selected hub; it never changes User.role. An active hub must retain at least one active manager.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: path, required: true, schema: { type: string } }
+        - { name: operatorId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role, reason]
+              properties:
+                role: { type: string, enum: [MANAGER, OPERATOR] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Hub operator role updated or idempotently replayed. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub operator not found. }
+        '409': { description: Closed hub or last active manager safeguard. }
   /driver/hub-handovers:
     post:
       tags: [Delivery legs]
