@@ -1947,6 +1947,7 @@ paths:
       tags: [Payments]
       operationId: requestBookingRefund
       summary: Request a refund against a successfully captured payment
+      description: CUSTOMER only. The request must identify a captured payment attempt owned by the customer. The requested amount cannot exceed the remaining refundable balance. An Idempotency-Key is required.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -1959,16 +1960,18 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [bookingType, bookingId, reason]
+              required: [paymentAttemptId, amountMinor, reason]
               properties:
-                bookingType: { type: string, enum: [PASSENGER_RIDE, PARCEL_DELIVERY] }
-                bookingId: { type: string, minLength: 1 }
-                reason: { type: string, minLength: 5, maxLength: 1000 }
+                paymentAttemptId: { type: string, minLength: 1, maxLength: 128 }
+                amountMinor: { type: string, pattern: '^[1-9][0-9]{0,14}$' }
+                reason: { type: string, minLength: 10, maxLength: 1000 }
       responses:
-        '201': { description: Refund request recorded for review. }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Existing refund request returned for an idempotent replay. }
+        '201': { description: Refund request recorded for administrator review. }
+        '400': { description: Invalid request or missing idempotency key. }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Booking is not eligible for a refund request. }
+        '404': { description: Payment attempt not found. }
+        '409': { description: Payment is not captured or the requested amount exceeds the remaining refundable balance. }
   /finance/admin/refunds:
     get:
       tags: [Payments]
