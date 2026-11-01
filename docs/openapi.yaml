@@ -3416,7 +3416,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Hub is suspended/closed, target is ineligible, or administrator review is required. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /hub-operations/intakes:
     get:
       tags: [Delivery legs]
