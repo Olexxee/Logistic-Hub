@@ -20,6 +20,11 @@ export const updateTicketSchema = z.object({
   assignedToUserId: z.string().trim().min(1).max(128).nullable().optional(),
 }).strict();
 
+export const listMyTicketsQuerySchema = z.object({
+  cursor: z.string().trim().min(1).max(128).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+}).strict();
+
 export const listTicketsQuerySchema = z.object({
   status: z.enum(["OPEN", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "RESOLVED", "CLOSED"]).optional(),
   category: z.enum(["PAYMENT", "DELIVERY", "DRIVER", "ACCOUNT", "REFUND", "OTHER"]).optional(),
