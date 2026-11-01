@@ -213,7 +213,7 @@ test("a suspended partner can deactivate its final owner before closure", async 
     partnerId: "partner-1", memberId: "member-1", isActive: false, reason: "Removing this operator access.", actorUserId: "admin-1",
   });
   assert.equal(result.member.isActive, false);
-  assert.deepEqual(updatedMembership, { isActive: false });
+  assert.deepEqual(updatedMembership, { isActive: false, role: "OWNER" });
 });
 
 
@@ -331,4 +331,32 @@ test("an inactive or unverified account cannot have partner membership reactivat
     reason: "Reactivation requested.", actorUserId: "admin-1",
   });
   assert.equal(result.blocker, "USER_NOT_ACTIVE");
+});
+
+
+test("changing an active owner's role preserves the last active OWNER safeguard", async () => {
+  const audit = [];
+  let updateData;
+  const tx = {
+    transportPartnerMember: {
+      findFirst: async () => ({ id: "member-1", partnerId: "partner-1", userId: "owner-1", role: "OWNER", isActive: true }),
+      count: async ({ where }) => {
+        assert.equal(where.role, "OWNER");
+        assert.equal(where.id.not, "member-1");
+        return 0;
+      },
+      update: async ({ data }) => { updateData = data; return { id: "member-1", userId: "owner-1", ...data }; },
+    },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE" }) },
+    user: { findUnique: async () => ({ status: "ACTIVE", emailVerifiedAt: now }) },
+    operationalAuditEvent: { create: async ({ data }) => { audit.push(data); } },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const blocked = await service.setMemberStatus({
+    partnerId: "partner-1", memberId: "member-1", role: "OPERATIONS",
+    reason: "Change owner role after staffing review.", actorUserId: "admin-1",
+  });
+  assert.equal(blocked.blocker, "LAST_ACTIVE_OWNER");
+  assert.equal(updateData, undefined);
+  assert.equal(audit.length, 0);
 });
