@@ -360,3 +360,32 @@ test("changing an active owner's role preserves the last active OWNER safeguard"
   assert.equal(updateData, undefined);
   assert.equal(audit.length, 0);
 });
+
+
+test("reactivating a non-owner is blocked when an active partner has no eligible owner", async () => {
+  let updateAttempts = 0;
+  const tx = {
+    transportPartnerMember: {
+      findFirst: async () => ({ id: "member-1", partnerId: "partner-1", userId: "operator-1", role: "OPERATIONS", isActive: false }),
+      count: async ({ where }) => {
+        assert.equal(where.partnerId, "partner-1");
+        assert.equal(where.role, "OWNER");
+        assert.equal(where.isActive, true);
+        assert.equal(where.id.not, "member-1");
+        return 0;
+      },
+      update: async () => { updateAttempts += 1; },
+    },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE" }) },
+    user: { findUnique: async () => ({ status: "ACTIVE", emailVerifiedAt: now }) },
+    operationalAuditEvent: { create: async () => { throw new Error("Blocked membership changes must not be audited as successful."); } },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.setMemberStatus({
+    partnerId: "partner-1", memberId: "member-1", isActive: true,
+    reason: "Restore operator after account verification.",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "LAST_ACTIVE_OWNER");
+  assert.equal(updateAttempts, 0);
+});
