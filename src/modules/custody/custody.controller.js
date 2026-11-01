@@ -36,6 +36,7 @@ export function createCustodyController(service) {
         ...req.body, actorUserId: req.user.id,
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_OPERATOR_NOT_FOUND", message: "Hub operator not found." } });
+      if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can hold an active hub membership or become a manager." } });
       if (result.blocker === "HUB_CLOSED") return res.status(409).json({ success: false, error: { code: "HUB_CLOSED", message: "Closed hub memberships cannot be modified." } });
       if (result.blocker === "LAST_ACTIVE_HUB_MANAGER") return res.status(409).json({ success: false, error: { code: "LAST_ACTIVE_HUB_MANAGER", message: "An active hub must retain at least one active manager." } });
       return res.status(200).json({ success: true, data: { operator: result.operator, replay: Boolean(result.replay) } });
