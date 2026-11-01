@@ -3226,7 +3226,7 @@ paths:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
         - { name: isActive, in: query, schema: { type: boolean } }
       responses:
-        '200': { description: Hub summary, scoped memberships and pagination metadata. }
+        '200': { description: "Hub summary, scoped memberships and pagination metadata." }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
