@@ -13,7 +13,7 @@ export function createPaymentsRepository(prismaClient = prisma) {
     if (!allowed.includes(refund.status)) return { count: 0 };
     const updated = await tx.refundRequest.updateMany({
      where: { id: refund.id, status: { in: allowed } },
-     data: { status, providerResponse, processedAt: new Date() },
+     data: { status, providerResponse: { ...(refund.providerResponse ?? {}), ...providerResponse }, processedAt: new Date() },
     });
     if (updated.count !== 1) return { count: 0 };
     await tx.operationalAuditEvent.create({ data: {
