@@ -14,6 +14,9 @@ export function createAdminUsersRepository({ prismaClient }) {
     updateUserStatus(userId, status, tx = prismaClient) {
       return tx.user.update({ where: { id: userId }, data: { status } });
     },
+    countActiveSessions(userId, now, tx = prismaClient) {
+      return tx.authSession.count({ where: { userId, revokedAt: null, expiresAt: { gt: now } } });
+    },
     revokeActiveSessions(userId, now, tx = prismaClient) {
       return tx.authSession.updateMany({
         where: { userId, revokedAt: null, expiresAt: { gt: now } },
