@@ -50,7 +50,7 @@ export function createCancellationsRepository(prismaClient=prisma){return{
       publicReference:refundRequestReference,paymentAttemptId:paymentAttempt.id,
       ...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),
       amountMinor:remaining,currency:paymentAttempt.currency,reason,
-      status:"PENDING_REVIEW",requestedByUserId:userId,idempotencyKey,
+      status:"PENDING_REVIEW",requestedByUserId:userId,idempotencyKey,providerResponse:{source:"CANCELLATION"},
      }});
      await tx.operationalAuditEvent.create({data:{
       actorUserId:userId,entityType:"REFUND_REQUEST",entityId:refund.id,
