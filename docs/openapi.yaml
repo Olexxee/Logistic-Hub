@@ -802,7 +802,7 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200': { description: Applications submitted by the authenticated user, including review status and created hub reference. }
+        '200': { description: "Applications submitted by the authenticated user, including review status and created hub reference." }
         '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [Partner]
@@ -866,7 +866,7 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200': { description: Applications with partner, applicant, service-zone, reviewer and resulting hub details. }
+        '200': { description: "Applications with partner, applicant, service-zone, reviewer and resulting hub details." }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /admin/hub-applications/{applicationId}/approve:
