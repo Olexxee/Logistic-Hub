@@ -15,6 +15,12 @@ export function createHubApplicationsController({ prismaClient, clock }) {
       const items = await service.listAdmin();
       return res.status(200).json({ success: true, data: { items } });
     },
+    withdraw: async (req, res) => {
+      const result = await service.withdraw(req.params.applicationId, req.user.id);
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_APPLICATION_NOT_FOUND", message: "Hub application not found." } });
+      if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "Only pending hub applications can be withdrawn." } });
+      return res.status(200).json({ success: true, data: result });
+    },
     approve: async (req, res) => {
       const result = await service.approve(req.params.applicationId, req.user.id);
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_APPLICATION_NOT_FOUND", message: "Hub application not found." } });
