@@ -5,13 +5,19 @@ export function createHubPointsAdminRepository({ prismaClient }) {
     list() {
       return prismaClient.hubPoint.findMany({
         orderBy: [{ createdAt: "desc" }],
-        include: { serviceZone: { include: { lga: true, state: { include: { country: true } } } } },
+        include: {
+          partner: { select: { id: true, displayName: true, status: true, verificationStatus: true } },
+          serviceZone: { include: { lga: true, state: { include: { country: true } } } },
+        },
       });
     },
     findById(id) {
       return prismaClient.hubPoint.findUnique({
         where: { id },
-        include: { serviceZone: { include: { lga: true, state: { include: { country: true } }, availability: true } } },
+        include: {
+          partner: { select: { id: true, displayName: true, status: true, verificationStatus: true } },
+          serviceZone: { include: { lga: true, state: { include: { country: true } }, availability: true } },
+        },
       });
     },
     create(data) {
