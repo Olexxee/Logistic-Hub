@@ -138,7 +138,7 @@ test("ambiguous provider network failure leaves refund locked for reconciliation
 test("admin reconciliation finds an ambiguous Paystack submission without resubmitting it", async () => {
   const { refund, prismaClient } = fixture();
   refund.status = "PROCESSING";
-  refund.providerResponse = { submissionOutcome: "UNKNOWN", reconciliationRequired: true };
+  refund.providerResponse = { submissionOutcome: "UNKNOWN", reconciliationRequired: true, submissionToken: "ABC123" };
   const calls = [];
   const service = createFinanceService({
     prismaClient, secretKey: "paystack-test-secret", refundsEnabled: false,
@@ -146,7 +146,7 @@ test("admin reconciliation finds an ambiguous Paystack submission without resubm
       calls.push(url);
       assert.equal(options.headers.Authorization, "Bearer paystack-test-secret");
       if (url.includes("/refund?transaction=")) {
-        return { ok: true, json: async () => ({ status: true, data: [{ id: 87654, merchant_note: "Logistic Hub refund REF-TEST | reviewed" }] }) };
+        return { ok: true, json: async () => ({ status: true, data: [{ id: 87654, merchant_note: "Logistic Hub refund REF-TEST attempt ABC123 | reviewed" }] }) };
       }
       return { ok: true, json: async () => ({ status: true, data: { id: 87654, status: "processing", amount: 4300, currency: "NGN" } }) };
     },
