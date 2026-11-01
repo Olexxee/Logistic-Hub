@@ -3163,9 +3163,10 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [isActive, reason]
+              required: [reason]
               properties:
                 isActive: { type: boolean }
+                role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER] }
                 reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200': { description: Membership status updated. }
