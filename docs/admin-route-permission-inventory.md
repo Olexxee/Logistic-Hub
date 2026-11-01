@@ -24,6 +24,8 @@ All paths below are absolute API paths after the mounts in `src/app.js`.
 |---|---|---|---|
 | Audit history | `GET /api/v1/admin/audit-events` | Router-wide `requireAuth` + `requireRole("ADMIN")` | ADMIN |
 | User directory | `GET /api/v1/admin/users` | Route-level auth + ADMIN | ADMIN |
+| User account status | `PATCH /api/v1/admin/users/:userId/status` | Route-level auth + ADMIN | ADMIN; non-admin target only; reason required; suspension revokes active sessions |
+| Target-user session revocation | `POST /api/v1/admin/users/:userId/sessions/revoke-all` | Route-level auth + ADMIN | ADMIN; non-admin target only; reason required |
 | Geography administration | `GET/POST/PATCH /api/v1/geography/admin/countries*`; `GET/POST/PATCH /api/v1/geography/admin/states*`; `GET/POST/PATCH/DELETE /api/v1/geography/admin/lgas*` | Router-wide auth + ADMIN | ADMIN |
 | Service-zone administration | `GET/POST /api/v1/service-zones/admin`; `PATCH /api/v1/service-zones/admin/:serviceZoneId`; `PATCH /api/v1/service-zones/admin/:serviceZoneId/status`; `PUT /api/v1/service-zones/admin/:serviceZoneId/availability` | Route-level auth + ADMIN | ADMIN |
 | Hub administration | `GET/POST /api/v1/hub-points/admin`; `PATCH /api/v1/hub-points/admin/:hubPointId`; `PATCH /api/v1/hub-points/admin/:hubPointId/status`; `PATCH /api/v1/hub-points/admin/:hubPointId/operator-verification` | Route-level auth + ADMIN | ADMIN |
@@ -51,7 +53,7 @@ These are findings to resolve in 3A.2 and later slices, not permission changes m
 3. **Partner quote access:** SUPPORT can list admin quotes, while quote issuance is ADMIN-only. Confirm that read access is necessary and ensure customer/partner-sensitive pricing data is appropriately scoped.
 4. **Audit coverage is not uniform:** an ADMIN-only audit read endpoint exists, and selected services emit operational audit events. The presence of an audit module does not prove every privileged mutation emits an event.
 5. **Custody and hub operations:** several routes are authenticated but do not have a route-level role guard. Their safety depends on service-level party, membership and object-scope checks. Those checks need explicit review and tests; do not classify them as generally accessible merely because the router lacks `requireRole`.
-6. **No admin user-role mutation route was found in the reviewed route modules:** the user directory is read-only. Phone verification is a separate privileged action.
+6. **Global role mutation remains intentionally unavailable:** no platform OWNER role exists to authorize ADMIN grants/revocations safely. The admin user controls support account suspension/reactivation and target-user session revocation only. Phone verification is a separate privileged action.
 7. **No generic admin shipment-status override route was found in the reviewed route modules:** preserve this boundary.
 
 ### Legacy privileged router — not mounted
