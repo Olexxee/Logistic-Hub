@@ -18,7 +18,7 @@ export function createCancellationsRepository(prismaClient=prisma){return{
   const isParcel=bookingType==="PARCEL";
   const booking=isParcel?await tx.parcelBooking.findFirst({where:{id:bookingId,senderId:userId}}):await tx.rideBooking.findFirst({where:{id:bookingId,passengerId:userId}});
   if(!booking)return null;
-  if(["COMPLETED","CANCELLED","FAILED"].includes(booking.status))return{conflict:true,status:booking.status};
+  if(["COMPLETED","CANCELLED","FAILED","CANCELLATION_PENDING"].includes(booking.status))return{conflict:true,status:booking.status};
   const paid=booking.paymentStatus==="SUCCEEDED";
   const nextStatus=paid?"CANCELLATION_PENDING":"CANCELLED";
   if(isParcel)await tx.parcelBooking.update({where:{id:booking.id},data:{status:nextStatus,...(!paid?{cancelledAt:now}:{}),cancellationReason:reason}});
