@@ -63,14 +63,13 @@ export function createMediaService({ prismaClient, storage = createFirebaseStora
       if (ticket.status === "CLOSED") throw new ValidationError("Evidence cannot be added to a closed support ticket.");
       if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new ValidationError("A non-empty file is required.");
       if (buffer.length > MAX_FILE_BYTES) throw new ValidationError("Evidence files must not exceed 10 MB.");
-      const normalizedMimeType = String(mimeType ?? "").toLowerCase();
-      const type = ALLOWED_TYPES.get(normalizedMimeType);
+      const type = ALLOWED_TYPES.get(String(mimeType ?? "").toLowerCase());
       if (!type || !type.signature(buffer)) throw new ValidationError("Only valid JPEG, PNG, WebP, and PDF evidence files are accepted.");
       const name = safeOriginalName(originalName);
       const objectPath = `support-tickets/${ticketId}/${randomUUID()}${type.extension}`;
       const sha256 = createHash("sha256").update(buffer).digest("hex");
 
-      await storage.upload({ objectPath, buffer, mimeType: normalizedMimeType });
+      await storage.upload({ objectPath, buffer, mimeType });
       try {
         const created = await prismaClient.$transaction(async tx => {
           const asset = await tx.mediaAsset.create({
@@ -79,7 +78,7 @@ export function createMediaService({ prismaClient, storage = createFirebaseStora
               bucket: storage.bucket,
               objectPath,
               originalName: name,
-              mimeType: normalizedMimeType,
+              mimeType,
               sizeBytes: BigInt(buffer.length),
               sha256,
               uploadedById: user.id,
@@ -93,7 +92,7 @@ export function createMediaService({ prismaClient, storage = createFirebaseStora
             entityType: "SUPPORT_TICKET",
             entityId: ticketId,
             action: "SUPPORT_TICKET_EVIDENCE_UPLOADED",
-            metadata: { attachmentId: attachment.id, mediaAssetId: asset.id, mimeType: normalizedMimeType, sizeBytes: buffer.length, sha256 },
+            metadata: { attachmentId: attachment.id, mediaAssetId: asset.id, mimeType, sizeBytes: buffer.length, sha256 },
           });
           return { attachmentId: attachment.id, ...publicAsset({ ...asset, uploadedBy: { id: user.id, fullName: user.fullName } }) };
         });
