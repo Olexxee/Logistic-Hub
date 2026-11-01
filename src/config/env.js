@@ -16,6 +16,8 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().optional().default(""),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   PAYSTACK_SECRET_KEY: z.string().optional().default(""),
+  FIREBASE_SERVICE_ACCOUNT_BASE64: z.string().optional().default(""),
+  FIREBASE_STORAGE_BUCKET: z.string().optional().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -56,6 +58,19 @@ if (parsed.data.NODE_ENV === "production") {
 
 if (parsed.data.NODE_ENV === "production" && parsed.data.JWT_ACCESS_SECRET.length < 32) {
   throw new Error("JWT_ACCESS_SECRET must contain at least 32 characters in production.");
+}
+
+if (Boolean(parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) !== Boolean(parsed.data.FIREBASE_STORAGE_BUCKET.trim())) {
+  throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 and FIREBASE_STORAGE_BUCKET must be configured together.");
+}
+
+if (parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) {
+  try {
+    const credentials = JSON.parse(Buffer.from(parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8"));
+    if (!credentials.project_id || !credentials.client_email || !credentials.private_key) throw new Error("Missing required service-account fields.");
+  } catch {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 must contain a valid base64-encoded Firebase service-account JSON document.");
+  }
 }
 
 if (parsed.data.PAYMENTS_ENABLED) {
