@@ -3,7 +3,7 @@ import { prisma } from "../../db/prisma.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { createHubApplicationsController } from "./hub-applications.controller.js";
-import { createHubApplicationSchema, hubApplicationParamsSchema, rejectHubApplicationSchema } from "./hub-applications.validators.js";
+import { approveHubApplicationSchema, createHubApplicationSchema, hubApplicationParamsSchema, rejectHubApplicationSchema } from "./hub-applications.validators.js";
 
 function validate(schema, source = "body") {
   return (req, res, next) => {
@@ -26,7 +26,7 @@ export function createHubApplicationsRouter({ prismaClient = prisma, authMiddlew
   router.get("/partner/hub-applications", authMiddleware, asyncWrapper(controller.listMine));
   router.post("/partner/hub-applications/:applicationId/withdraw", authMiddleware, validate(hubApplicationParamsSchema, "params"), asyncWrapper(controller.withdraw));
   router.get("/admin/hub-applications", authMiddleware, admin, asyncWrapper(controller.listAdmin));
-  router.post("/admin/hub-applications/:applicationId/approve", authMiddleware, admin, validate(hubApplicationParamsSchema, "params"), asyncWrapper(controller.approve));
+  router.post("/admin/hub-applications/:applicationId/approve", authMiddleware, admin, validate(hubApplicationParamsSchema, "params"), validate(approveHubApplicationSchema), asyncWrapper(controller.approve));
   router.post("/admin/hub-applications/:applicationId/reject", authMiddleware, admin, validate(hubApplicationParamsSchema, "params"), validate(rejectHubApplicationSchema), asyncWrapper(controller.reject));
 
   return router;
