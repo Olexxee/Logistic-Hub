@@ -2788,6 +2788,30 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Quote is no longer available. }
+  /hub-operations/hubs/{hubPointId}/delivery-legs/{legId}/request-matching:
+    post:
+      tags: [Hub Operations, Delivery legs]
+      operationId: requestHubDelegatedDeliveryLegDriverMatching
+      summary: Request local driver offers for a delivery leg originating at the manager's hub
+      description: Requires an active hub membership with the administrator-granted canDispatch permission for the exact origin hub. The leg must originate at that hub, the hub must be ACTIVE, and the leg must be a ready local-driver leg. This permission does not grant fare acceptance or booking ownership.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: hubPointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: legId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202': { description: Matching request accepted or replayed. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /delivery-legs/{legId}/request-matching:
     post:
       tags: [Delivery legs]
@@ -3289,6 +3313,35 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Hub operator not found. }
         '409': { description: "Inactive user, closed hub or last active manager safeguard." }
+  /admin/hub-points/{hubPointId}/operators/{operatorId}/dispatch-permission:
+    patch:
+      tags: [Hub points, Admin]
+      operationId: setHubPointOperatorDispatchPermission
+      summary: Grant or revoke hub-scoped driver dispatch permission
+      description: ADMIN-only. Requires a reason. Grants are permitted only for an active hub and an active, email-verified hub membership. Deactivation, role changes and new membership creation clear this permission. Revocation remains available when the hub or membership is inactive.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: hubPointId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: operatorId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [canDispatch, reason]
+              properties:
+                canDispatch: { type: boolean }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Permission updated or idempotently replayed. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Hub operator membership not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/hub-points/{hubPointId}/operators/{operatorId}/role:
     patch:
       tags: [Hub points, Admin]
