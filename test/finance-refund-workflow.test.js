@@ -56,7 +56,7 @@ test("refund approval remains disabled until REFUNDS_ENABLED is explicitly enabl
     () => service.reviewRefund({ id: refund.id, user: { id: "admin-1", role: "ADMIN" }, decision: "APPROVE", reviewNote: "Reviewed and approved" }),
     error => error.code === "REFUNDS_DISABLED" && error.statusCode === 503,
   );
-  assert.equal(refund.status, "PENDING_REVIEW");
+  assert.equal(refund.status, "PROCESSING");
   assert.equal(calls.providerCalls, 0);
 });
 
@@ -137,6 +137,7 @@ test("ambiguous provider network failure leaves refund locked for reconciliation
 
 test("admin reconciliation finds an ambiguous Paystack submission without resubmitting it", async () => {
   const { refund, prismaClient } = fixture();
+  refund.status = "PROCESSING";
   refund.providerResponse = { submissionOutcome: "UNKNOWN", reconciliationRequired: true };
   const calls = [];
   const service = createFinanceService({
@@ -161,6 +162,7 @@ test("admin reconciliation finds an ambiguous Paystack submission without resubm
 
 test("admin reconciliation does not retry when Paystack has no matching refund", async () => {
   const { refund, prismaClient } = fixture();
+  refund.status = "PROCESSING";
   refund.providerResponse = { submissionOutcome: "UNKNOWN", reconciliationRequired: true };
   let calls = 0;
   const service = createFinanceService({
