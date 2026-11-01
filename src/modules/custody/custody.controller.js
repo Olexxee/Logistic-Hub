@@ -20,14 +20,14 @@ export function createCustodyController(service) {
       if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be added as hub operators." } });
       if (result.blocker === "HUB_CLOSED") return res.status(409).json({ success: false, error: { code: "HUB_CLOSED", message: "Closed hubs cannot receive new operators." } });
       if (result.blocker === "LAST_ACTIVE_HUB_MANAGER") return res.status(409).json({ success: false, error: { code: "LAST_ACTIVE_HUB_MANAGER", message: "An active hub must retain at least one active manager." } });
-      return res.status(201).json({ success: true, data: { operator: result.operator } });
+      return res.status(result.replay ? 200 : 201).json({ success: true, data: { operator: result.operator, replay: Boolean(result.replay) } });
     },
     setHubOperatorStatus: async (req, res) => {
       const result = await service.setHubOperatorStatus({ hubPointId: req.params.hubPointId, operatorId: req.params.operatorId, ...req.body, actorUserId: req.user.id });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_OPERATOR_NOT_FOUND", message: "Hub operator not found." } });
       if (result.blocker === "HUB_CLOSED") return res.status(409).json({ success: false, error: { code: "HUB_CLOSED", message: "Closed hub memberships cannot be modified." } });
       if (result.blocker === "LAST_ACTIVE_HUB_MANAGER") return res.status(409).json({ success: false, error: { code: "LAST_ACTIVE_HUB_MANAGER", message: "An active hub must retain at least one active manager." } });
-      return res.status(200).json({ success: true, data: { operator: result.operator } });
+      return res.status(200).json({ success: true, data: { operator: result.operator, replay: Boolean(result.replay) } });
     },
     updateHubOperatorRole: async (req, res) => {
       const result = await service.updateHubOperatorRole({
