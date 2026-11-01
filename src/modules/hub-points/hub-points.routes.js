@@ -31,7 +31,10 @@ export function createHubPointsRouter({ prismaClient = prisma, authMiddleware = 
     }
     try {
       const result = await service.listActive(parsed.data);
-      return res.status(200).json({ success: true, data: result.data, page: { nextCursor: result.nextCursor } });
+      return res.status(200).json({
+        success: true,
+        data: { items: result.data, nextCursor: result.nextCursor },
+      });
     } catch (error) {
       return next(error);
     }
