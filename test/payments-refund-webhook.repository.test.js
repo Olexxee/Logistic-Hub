@@ -27,8 +27,8 @@ function fixture({ refundedTotal = 4300n, bookingStatus = "CANCELLATION_PENDING"
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
     paymentAttempt: { update: async ({ data }) => { calls.paymentAttemptUpdates.push(data); Object.assign(refund.paymentAttempt, data); } },
     parcelBooking: {
-      findUnique: async () => booking,
-      update: async ({ data }) => { calls.bookingUpdates.push(data); Object.assign(booking, data); },
+      findUnique: async () => ({ ...booking }),
+      update: async ({ data }) => { calls.bookingUpdates.push(data); Object.assign(booking, data); return booking; },
     },
     bookingEvent: { create: async ({ data }) => { calls.bookingEvents.push(data); return data; } },
     ledgerEntry: { findFirst: async () => ({ id: "already-posted" }) },
