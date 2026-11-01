@@ -14,7 +14,17 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - **Customer price acceptance:** the sender must approve the complete quote before the shipment is committed at that price.
 - **Capacity before collection:** for inter-state shipments, confirm a suitable transport option and an acceptable commercial quote before dispatching a local collection agent, unless the sender explicitly agrees to a different arrangement.
 - **Payments remain disabled:** no live payment collection, payout activation or production payment configuration without explicit repository-owner approval.
+- **Refunds are independently gated:** customer refund requests are recorded for ADMIN review; provider submission and refund webhooks remain disabled unless `REFUNDS_ENABLED=true` is explicitly approved and a Paystack secret key is configured. `PAYMENTS_ENABLED` remains disabled.
 - **Controlled repository workflow:** do not merge changes into `main` without explicit approval.
+
+### Refund and paid-cancellation controls
+
+- Unpaid bookings may be cancelled immediately under the existing booking lifecycle rules.
+- A paid cancellation moves the booking to `CANCELLATION_PENDING`, opens a high-priority support ticket and creates a `PENDING_REVIEW` refund request for the remaining captured balance. It does not call Paystack.
+- ADMIN reviews refund requests. Rejection is audited and restores a cancellation-pending booking to its prior recorded status. Approval submits a provider refund only when `REFUNDS_ENABLED=true`.
+- A cancellation is finalized only after Paystack confirms a full refund through a verified webhook or reconciliation. Partial refunds do not automatically cancel the booking.
+- An uncertain provider submission is locked against resubmission. ADMIN reconciliation looks up the unique merchant-note token and fetches the provider refund record; it never creates a second refund.
+- Refund amounts are integer minor units, idempotency keys are mandatory, refundable balances include pending/processing/processed refunds, and all review/provider transitions are audited.
 
 ### 1. End-to-end shipment flow
 

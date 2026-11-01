@@ -8,10 +8,14 @@ export function createFinanceController(service) {
         input: req.body,
         idempotencyKey: req.get("Idempotency-Key"),
       });
-      res.status(201).json({ success: true, data });
+      res.status(data.replay ? 200 : 201).json({ success: true, data });
     }),
     reviewRefund: asyncWrapper(async (req, res) => {
       const data = await service.reviewRefund({ id: req.params.refundId, user: req.user, ...req.body });
+      res.status(200).json({ success: true, data });
+    }),
+    reconcileRefund: asyncWrapper(async (req, res) => {
+      const data = await service.reconcileRefund({ id: req.params.refundId, user: req.user });
       res.status(200).json({ success: true, data });
     }),
     refunds: asyncWrapper(async (req, res) => {

@@ -45,6 +45,7 @@ export function createSupportRepository(prismaClient = prisma) {
         orderBy: [{ priority: "desc" }, { createdAt: "asc" }, { id: "asc" }],
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        include: { operationalCase: { select: { id: true, publicReference: true, status: true, priority: true } } },
       });
     },
     findById(id, client = prismaClient) {

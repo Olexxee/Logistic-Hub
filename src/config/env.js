@@ -15,6 +15,7 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().url().optional().default("http://localhost:3000"),
   JWT_ACCESS_SECRET: z.string().optional().default(""),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  REFUNDS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   PAYSTACK_SECRET_KEY: z.string().optional().default(""),
   FIREBASE_SERVICE_ACCOUNT_BASE64: z.string().optional().default(""),
   FIREBASE_STORAGE_BUCKET: z.string().optional().default(""),
@@ -71,6 +72,10 @@ if (parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) {
   } catch {
     throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 must contain a valid base64-encoded Firebase service-account JSON document.");
   }
+}
+
+if (parsed.data.REFUNDS_ENABLED && !parsed.data.PAYSTACK_SECRET_KEY.trim()) {
+  throw new Error("PAYSTACK_SECRET_KEY is required when REFUNDS_ENABLED=true.");
 }
 
 if (parsed.data.PAYMENTS_ENABLED) {
