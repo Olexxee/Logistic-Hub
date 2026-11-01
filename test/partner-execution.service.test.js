@@ -206,8 +206,6 @@ test("a suspended partner can deactivate its final owner before closure", async 
       count: async () => 0,
     },
     transportPartner: { findUnique: async () => ({ id: "partner-1", status: "SUSPENDED" }) },
-    hubPointOperator: { count: async () => 0 },
-    user: { updateMany: async () => ({ count: 1 }) },
     operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
   };
   const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
@@ -216,4 +214,50 @@ test("a suspended partner can deactivate its final owner before closure", async 
   });
   assert.equal(result.member.isActive, false);
   assert.deepEqual(updatedMembership, { isActive: false });
+});
+
+
+test("adding a partner membership preserves the user's global account role", async () => {
+  const audit = [];
+  const tx = {
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "PENDING" }) },
+    user: {
+      findUnique: async () => ({ id: "customer-1", status: "ACTIVE", emailVerifiedAt: now, role: "CUSTOMER" }),
+      update: async () => { throw new Error("Membership must not mutate the global user role."); },
+    },
+    transportPartnerMember: {
+      findUnique: async () => null,
+      upsert: async ({ create }) => ({ id: "member-1", ...create }),
+    },
+    operationalAuditEvent: { create: async ({ data }) => { audit.push(data); return data; } },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.addMember({
+    partnerId: "partner-1", userId: "customer-1", role: "OPERATIONS", actorUserId: "admin-1",
+  });
+  assert.equal(result.member.userId, "customer-1");
+  assert.equal(result.member.role, "OPERATIONS");
+  assert.equal(audit[0].before, null);
+  assert.deepEqual(audit[0].after, {
+    partnerId: "partner-1", userId: "customer-1", role: "OPERATIONS", isActive: true,
+  });
+});
+
+test("deactivating a partner membership does not demote the global user role", async () => {
+  let userRoleMutationAttempts = 0;
+  const tx = {
+    transportPartnerMember: {
+      findFirst: async () => ({ id: "member-1", partnerId: "partner-1", userId: "operator-1", role: "OPERATIONS", isActive: true }),
+      update: async ({ data }) => ({ id: "member-1", userId: "operator-1", role: "OPERATIONS", ...data }),
+    },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "SUSPENDED" }) },
+    user: { updateMany: async () => { userRoleMutationAttempts += 1; } },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.setMemberStatus({
+    partnerId: "partner-1", memberId: "member-1", isActive: false, actorUserId: "admin-1",
+  });
+  assert.equal(result.member.isActive, false);
+  assert.equal(userRoleMutationAttempts, 0);
 });
