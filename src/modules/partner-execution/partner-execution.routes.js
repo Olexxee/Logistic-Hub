@@ -10,8 +10,16 @@ const id = z.string().trim().min(1).max(128);
 const memberSchema = z.object({
   userId: id,
   role: z.enum(["OWNER", "OPERATIONS", "DISPATCHER"]).default("OPERATIONS"),
+  reason: z.string().trim().min(5).max(1000),
 }).strict();
-const memberStatusSchema = z.object({ isActive: z.boolean() }).strict();
+const memberStatusSchema = z.object({ isActive: z.boolean(), reason: z.string().trim().min(5).max(1000) }).strict();
+const memberListSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().min(1).max(160).optional(),
+  role: z.enum(["OWNER", "OPERATIONS", "DISPATCHER"]).optional(),
+  isActive: z.enum(["true", "false"]).transform(value => value === "true").optional(),
+}).strict();
 const assignmentSchema = z.object({ partnerId: id }).strict();
 const listSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -51,6 +59,7 @@ export function createPartnerExecutionRouter({ prismaClient = prisma, authMiddle
   const controller = createPartnerExecutionController(service);
   const admin = roleMiddleware("ADMIN");
 
+  router.get("/admin/transport-partners/:partnerId/members", authMiddleware, admin, validateId, validate(memberListSchema, "query"), asyncWrapper(controller.listMembers));
   router.post("/admin/transport-partners/:partnerId/members", authMiddleware, admin, validateId, validate(memberSchema), asyncWrapper(controller.addMember));
   router.patch("/admin/transport-partners/:partnerId/members/:memberId", authMiddleware, admin, validateId, validate(memberStatusSchema), asyncWrapper(controller.setMemberStatus));
   router.post("/admin/delivery-legs/:legId/partner-assignment", authMiddleware, admin, validateId, validate(assignmentSchema), requireIdempotencyKey, asyncWrapper(controller.assignLeg));
