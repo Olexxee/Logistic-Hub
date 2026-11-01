@@ -18,7 +18,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - **AH-4:** explicit ADMIN-granted hub dispatch delegation implemented through the canDispatch capability; dispatch matching remains scoped to the exact active hub membership.
 - **AH-5:** AH-5.0 contract audit merged. AH-5.1 partner management is merged. **AH-5.2 is in progress**: partner member roster with search/pagination/role/status filters, reasoned membership add/reactivation/role changes and deactivation, complete audit snapshots, last active OWNER protection and active/verified account checks. Commercial-history read APIs remain AH-5.3; partner/hub lifecycle synchronization remains AH-5.6.
 
-**AH-5 implementation gate:** do not build partner membership, agreement or rate-card detail screens against assumed list endpoints. AH-5.1 provides partner directory/detail/profile/status operations only. The current backend still does not expose ADMIN list/detail routes for partner members, agreements or rate cards. Partner suspension also does not currently suspend its partner-owned hubs; resolve the intended lifecycle policy before treating partner and hub status as synchronized.
+**AH-5 implementation gate:** do not build partner membership, agreement or rate-card detail screens against assumed list endpoints. AH-5.1 provides partner directory/detail/profile/status operations only. AH-5.2 now exposes the ADMIN partner-member roster; agreement/rate-card history read contracts remain AH-5.3. Partner suspension also does not currently suspend its partner-owned hubs; resolve the intended lifecycle policy before treating partner and hub status as synchronized.
 
 ## Product blueprint
 
