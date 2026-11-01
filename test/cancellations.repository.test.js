@@ -119,6 +119,7 @@ test("paid cancellation enters review and creates a support ticket without issui
   assert.ok(result.refundRequestReference);
   assert.equal(calls.refundRequests.length, 1);
   assert.equal(calls.refundRequests[0].status, "PENDING_REVIEW");
+  assert.equal(calls.refundRequests[0].providerResponse.source, "CANCELLATION");
   assert.equal(calls.refundRequests[0].amountMinor, 5000n);
   assert.equal(calls.refundAudits[0].action, "CANCELLATION_REFUND_REQUESTED");
   assert.equal(calls.bookingUpdates[0].status, "CANCELLATION_PENDING");
