@@ -24,6 +24,7 @@ export function createHubApplicationsRouter({ prismaClient = prisma, authMiddlew
 
   router.post("/partner/hub-applications", authMiddleware, validate(createHubApplicationSchema), asyncWrapper(controller.submit));
   router.get("/partner/hub-applications", authMiddleware, asyncWrapper(controller.listMine));
+  router.post("/partner/hub-applications/:applicationId/withdraw", authMiddleware, validate(hubApplicationParamsSchema, "params"), asyncWrapper(controller.withdraw));
   router.get("/admin/hub-applications", authMiddleware, admin, asyncWrapper(controller.listAdmin));
   router.post("/admin/hub-applications/:applicationId/approve", authMiddleware, admin, validate(hubApplicationParamsSchema, "params"), asyncWrapper(controller.approve));
   router.post("/admin/hub-applications/:applicationId/reject", authMiddleware, admin, validate(hubApplicationParamsSchema, "params"), validate(rejectHubApplicationSchema), asyncWrapper(controller.reject));
