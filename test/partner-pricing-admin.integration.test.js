@@ -161,8 +161,19 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     });
     assert.equal(updatedProfile.status, 200);
     assert.equal(updatedProfile.json.data.partner.contactName, "Updated Contact");
+    const profileAudit = await prisma.operationalAuditEvent.findFirst({
+      where: { entityType: "TRANSPORT_PARTNER", entityId: partner.id, action: "PARTNER_PROFILE_UPDATED" },
+    });
+    assert.equal(profileAudit.reason, "Corrected partner contact record.");
+    assert.equal(profileAudit.before.contactName, null);
+    assert.equal(profileAudit.after.contactName, "Updated Contact");
 
-    const listed = await call("/admin/transport-partners?status=ACTIVE&verificationStatus=VERIFIED&page=1&limit=10");
+    const statusAudit = await prisma.operationalAuditEvent.findFirst({
+      where: { entityType: "TRANSPORT_PARTNER", entityId: partner.id, action: "PARTNER_STATUS_UPDATED" },
+    });
+    assert.equal(statusAudit.reason, "Verification and owner checks passed.");
+
+    const listed = await call("/admin/transport-partners?status=ACTIVE&verificationStatus=VERIFIED&search=Integration%20Partner&page=1&limit=10");
     assert.equal(listed.status, 200);
     assert.ok(listed.json.data.items.some((item) => item.id === partner.id && item._count.agreements === 1));
     assert.ok(listed.json.data.pagination.total >= 1);
