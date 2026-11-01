@@ -58,7 +58,7 @@ export function createHubApplicationsService({ prismaClient, clock = () => new D
     listMine(userId) { return repo.listForApplicant(userId); },
     listAdmin() { return repo.listAdmin(); },
 
-    async approve(applicationId, reviewerUserId) {
+    async approve(applicationId, reason, reviewerUserId) {
       return repo.transaction(async tx => {
         const application = await repo.findApplication(applicationId, tx);
         if (!application) return { notFound: true };
@@ -104,6 +104,7 @@ export function createHubApplicationsService({ prismaClient, clock = () => new D
           entityType: "HUB_APPLICATION",
           entityId: applicationId,
           action: "HUB_APPLICATION_APPROVED",
+          reason,
           before: { status: application.status },
           after: { status: updated.status, hubPointId: hubPoint.id, partnerId: application.partnerId },
         }, tx);
@@ -112,6 +113,7 @@ export function createHubApplicationsService({ prismaClient, clock = () => new D
           entityType: "HUB_POINT",
           entityId: hubPoint.id,
           action: "HUB_POINT_CREATED_FROM_APPLICATION",
+          reason,
           after: { partnerId: application.partnerId, serviceZoneId: application.serviceZoneId, status: hubPoint.status },
         }, tx);
         return { application: updated, hubPoint, replay: false };
