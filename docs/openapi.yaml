@@ -3175,7 +3175,7 @@ paths:
         '401': { description: Authentication required. }
         '403': { description: Administrator access required. }
         '404': { description: Membership not found. }
-        '409': { description: User is inactive or unverified, partner is closed, or the last active OWNER safeguard prevents the change. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/delivery-legs/{legId}/partner-assignment:
     post:
       tags: [Partner execution, Admin]
