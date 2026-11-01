@@ -192,7 +192,7 @@ test("a hub manager can add an active verified user as OPERATOR with an audit re
   assert.equal(result.operator.role, "OPERATOR");
   assert.equal(result.operator.isActive, true);
   assert.deepEqual(state.upserts, [{
-    hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true,
+    hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true, canDispatch: false,
   }]);
   assert.equal(state.audits[0].actorUserId, "manager-1");
   assert.equal(state.audits[0].reason, "Staff member approved by hub manager");
