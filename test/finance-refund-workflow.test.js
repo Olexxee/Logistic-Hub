@@ -17,7 +17,7 @@ function fixture({ cancellation = false } = {}) {
     reviewedByUserId: null,
     providerReference: null,
     idempotencyKey: cancellation ? "cancel-refund-1234567890ABCDEF" : "customer-refund-12345678",
-    providerResponse: null,
+    providerResponse: cancellation ? { source: "CANCELLATION" } : null,
     paymentAttempt: { id: "payment-1", status: "SUCCEEDED", providerReference: "PAY-REF-1", amountMinor: 4300n },
   };
   const booking = { id: "parcel-1", status: "CANCELLATION_PENDING", cancellationReason: "Customer requested cancellation" };
