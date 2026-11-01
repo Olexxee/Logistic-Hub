@@ -55,7 +55,7 @@ export function createPaymentsService({ prismaClient, repository = createPayment
       if (!this.verifySignature(rawBody, signature)) throw Object.assign(new Error("Invalid Paystack signature."), { statusCode: 401, code: "INVALID_WEBHOOK_SIGNATURE" });
       if (payload.event === "refund.processed" || payload.event === "refund.failed") {
         const status = payload.event === "refund.processed" ? "PROCESSED" : "FAILED";
-        const providerReference = String(payload.data?.id ?? payload.data?.reference ?? "");
+        const providerReference = String(payload.data?.id ?? payload.data?.refund_reference ?? payload.data?.reference ?? "");
         if (!providerReference) return { accepted: true, ignored: true };
         const updated = await repository.updateRefundFromWebhook({ providerReference, status, providerResponse: { event: payload.event, id: providerReference } });
         return { accepted: true, updatedCount: updated.count };
