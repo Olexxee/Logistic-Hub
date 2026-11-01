@@ -7,13 +7,13 @@ export function createFinanceRepository(prismaClient=prisma){return{
    if(!attempt)return{notFound:true};
    const owner=attempt.parcelBooking?.senderId??attempt.rideBooking?.passengerId;
    if(owner!==userId)return{forbidden:true};
-   if(attempt.status!=="SUCCEEDED")return{conflict:true};
    const amount=BigInt(amountMinor);
    const prior=await tx.refundRequest.findUnique({where:{idempotencyKey}});
    if(prior){
     if(prior.paymentAttemptId!==paymentAttemptId||prior.amountMinor!==amount||prior.requestedByUserId!==userId||prior.reason!==reason)return{conflict:true};
     return {refund:prior,replay:true};
    }
+   if(attempt.status!=="SUCCEEDED")return{conflict:true};
    if(amount<=0n||amount>attempt.amountMinor)return{conflict:true};
    const already=await tx.refundRequest.aggregate({where:{paymentAttemptId,status:{in:["PENDING_REVIEW","PROCESSING","PROCESSED"]}},_sum:{amountMinor:true}});
    if((already._sum.amountMinor??0n)+amount>attempt.amountMinor)return{conflict:true};
