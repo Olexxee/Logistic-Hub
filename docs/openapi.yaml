@@ -2048,8 +2048,31 @@ paths:
       x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
-        '200': { description: Paginated user tickets. }
+        '200':
+          description: Customer-owned support tickets and cursor metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items, nextCursor]
+                    properties:
+                      items:
+                        type: array
+                        items: { type: object, description: Support ticket resource. }
+                      nextCursor: { type: [string, 'null'] }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /support/admin/tickets:
     get:
@@ -2059,8 +2082,49 @@ paths:
       x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [OPEN, IN_PROGRESS, WAITING_FOR_CUSTOMER, RESOLVED, CLOSED] }
+        - in: query
+          name: category
+          schema: { type: string, enum: [PAYMENT, DELIVERY, DRIVER, ACCOUNT, REFUND, OTHER] }
+        - in: query
+          name: priority
+          schema: { type: string, enum: [LOW, NORMAL, HIGH, URGENT] }
+        - in: query
+          name: assignedToUserId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: unassignedOnly
+          schema: { type: boolean, default: false }
+        - in: query
+          name: q
+          schema: { type: string, minLength: 2, maxLength: 120 }
+        - in: query
+          name: cursor
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
-        '200': { description: Paginated support queue. }
+        '200':
+          description: Filtered support queue and cursor metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items, nextCursor]
+                    properties:
+                      items:
+                        type: array
+                        items: { type: object, description: Support ticket resource. }
+                      nextCursor: { type: [string, 'null'] }
         '403': { $ref: '#/components/responses/Forbidden' }
   /support/admin/tickets/{ticketId}:
     patch:
