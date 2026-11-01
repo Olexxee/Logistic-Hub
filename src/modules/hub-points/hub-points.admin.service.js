@@ -38,7 +38,15 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           }
         }
         const { latitude, longitude, ...data } = input;
-        const created = await tx.hubPoint.create({ data: { ...data, latitude, longitude, status: "PENDING" } });
+        const created = await tx.hubPoint.create({
+          data: {
+            ...data,
+            partnerId: input.partnerId ?? null,
+            latitude,
+            longitude,
+            status: "PENDING",
+          },
+        });
         await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: created.id, action: "HUB_POINT_CREATED", after: { partnerId: created.partnerId, serviceZoneId: created.serviceZoneId, name: created.name, status: created.status } });
         return created;
       });
