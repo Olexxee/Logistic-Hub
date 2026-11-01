@@ -448,3 +448,26 @@ test("admin cannot grant dispatch permission to a suspended or unverified user",
     assert.deepEqual(state.audits, []);
   }
 });
+
+
+test("reactivating a membership requires dispatch delegation to be granted again", async () => {
+  const membership = { id: "member-1", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: false, canDispatch: true };
+  let updateData;
+  const tx = {
+    hubPointOperator: {
+      findFirst: async () => membership,
+      update: async ({ data }) => { updateData = data; return { ...membership, ...data }; },
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", name: "Ikeja Hub" }) },
+    user: { findUnique: async () => ({ id: "staff-1", status: "ACTIVE", emailVerifiedAt: new Date() }) },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "member-1", isActive: true,
+    reason: "Re-enable hub staff membership", actorUserId: "admin-1",
+  });
+  assert.deepEqual(updateData, { isActive: true, canDispatch: false });
+  assert.equal(result.operator.canDispatch, false);
+});
