@@ -145,6 +145,9 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const existingOperator = await tx.hubPointOperator.findUnique({
           where: { hubPointId_userId: { hubPointId, userId } },
         });
+        if (existingOperator?.isActive && existingOperator.role === role) {
+          return { operator: existingOperator, replay: true };
+        }
         if (hub.status === "ACTIVE" && role !== "MANAGER") {
           const otherManagers = await tx.hubPointOperator.count({
             where: {
@@ -173,6 +176,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!current) return { notFound: true };
         const hub = await repo.findHub(hubPointId, tx);
         if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
+        if (current.isActive === isActive) return { operator: current, replay: true };
         if (current.isActive && current.role === "MANAGER" && !isActive && hub?.status === "ACTIVE") {
           const otherManagers = await tx.hubPointOperator.count({
             where: { hubPointId, isActive: true, role: "MANAGER", id: { not: current.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
