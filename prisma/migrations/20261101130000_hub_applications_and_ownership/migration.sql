@@ -65,6 +65,3 @@ ALTER TABLE "hub_applications"
   FOREIGN KEY ("hubPointId") REFERENCES "hub_points"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
 
-ALTER TABLE "hub_points"
-  ADD CONSTRAINT "hub_points_owner_shape_check"
-  CHECK ("partnerId" IS NULL OR length("partnerId") > 0);
