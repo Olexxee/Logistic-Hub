@@ -6,6 +6,22 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 ## Administration implementation
 
+- [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, API contracts, role taxonomy, authorization boundaries and implementation blockers.
+- [AH-5 Partner & Geography contract audit](docs/ah-5-contract-audit.md) — AH-5.0 source-verified partner, membership, agreement, rate-card, geography, service-zone and hub integration readiness.
+
+### Admin & Hub Management progress
+
+- **AH-0:** backend contract and authorization audit completed; subsequent implementation deltas are recorded in the audit document.
+- **AH-1:** admin user and account controls implemented in the merged backend work.
+- **AH-2:** hub applications and approval flow are implemented. Partner OWNERs can submit applications; ADMIN review creates a PENDING hub and manager membership. Hub activation remains a separate operation.
+- **AH-3:** hub manager/staff membership management implemented; hub-scoped managers can add operators, while manager assignment and privileged membership controls remain ADMIN-governed.
+- **AH-4:** explicit ADMIN-granted hub dispatch delegation implemented through the canDispatch capability; dispatch matching remains scoped to the exact active hub membership.
+- **AH-5:** AH-5.0 contract audit is the current slice. Existing partner, agreement, rate-card, geography and service-zone capabilities are mapped; missing read contracts and cross-resource lifecycle gaps are documented. No AH-5 runtime changes or migrations are included in this audit PR.
+
+**AH-5 implementation gate:** do not build partner membership, agreement or rate-card detail screens against assumed list endpoints. The current backend does not expose ADMIN list/detail routes for those records. Partner suspension also does not currently suspend its partner-owned hubs; resolve the intended lifecycle policy before treating partner and hub status as synchronized.
+
+## Product blueprint
+
 - [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, current API contracts, role taxonomy, authorization boundaries and implementation blockers.
 
 ## Product blueprint
