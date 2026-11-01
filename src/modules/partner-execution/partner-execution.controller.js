@@ -8,14 +8,21 @@ function assignmentView(assignment) {
 
 export function createPartnerExecutionController(service) {
   return {
+    listMembers: async (req, res, next) => {
+      try {
+        const result = await service.listMembers({ partnerId: req.params.partnerId, ...req.validatedQuery });
+        if (result.notFound) return res.status(404).json({ success: false, error: { code: "PARTNER_NOT_FOUND", message: "Transport partner not found." } });
+        return res.status(200).json({ success: true, data: result });
+      } catch (error) { return next(error); }
+    },
     addMember: async (req, res, next) => {
       try {
         const result = await service.addMember({ ...req.body, partnerId: req.params.partnerId, actorUserId: req.user.id });
         if (result.notFound) return res.status(404).json({ success: false, error: { code: "PARTNER_NOT_FOUND", message: "Transport partner not found." } });
-        if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be added to a partner." } });
+        if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be added or reactivated in a partner." } });
         if (result.blocker === "PARTNER_CLOSED") return res.status(409).json({ success: false, error: { code: "PARTNER_CLOSED", message: "Closed transport partners cannot receive new members." } });
         if (result.blocker === "LAST_ACTIVE_OWNER") return res.status(409).json({ success: false, error: { code: "LAST_ACTIVE_OWNER", message: "A partner must retain at least one active owner." } });
-        return res.status(201).json({ success: true, data: { member: result.member } });
+        return res.status(result.unchanged ? 200 : 201).json({ success: true, data: { member: result.member, unchanged: Boolean(result.unchanged) } });
       } catch (error) { return next(error); }
     },
     setMemberStatus: async (req, res, next) => {
@@ -23,8 +30,9 @@ export function createPartnerExecutionController(service) {
         const result = await service.setMemberStatus({ partnerId: req.params.partnerId, memberId: req.params.memberId, isActive: req.body.isActive, actorUserId: req.user.id });
         if (result.notFound) return res.status(404).json({ success: false, error: { code: "PARTNER_MEMBER_NOT_FOUND", message: "Partner member not found." } });
         if (result.blocker === "PARTNER_CLOSED") return res.status(409).json({ success: false, error: { code: "PARTNER_CLOSED", message: "Closed partner memberships cannot be modified." } });
+        if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be reactivated." } });
         if (result.blocker === "LAST_ACTIVE_OWNER") return res.status(409).json({ success: false, error: { code: "LAST_ACTIVE_OWNER", message: "A partner must retain at least one active owner." } });
-        return res.status(200).json({ success: true, data: { member: result.member } });
+        return res.status(200).json({ success: true, data: { member: result.member, unchanged: Boolean(result.unchanged) } });
       } catch (error) { return next(error); }
     },
     assignLeg: async (req, res, next) => {
