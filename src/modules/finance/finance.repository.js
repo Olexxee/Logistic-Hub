@@ -12,28 +12,29 @@ export function createFinanceRepository(prismaClient=prisma){return{
    const prior=await tx.refundRequest.findUnique({where:{idempotencyKey}});
    if(prior){
     if(prior.paymentAttemptId!==paymentAttemptId||prior.amountMinor!==amount||prior.requestedByUserId!==userId||prior.reason!==reason)return{conflict:true};
-    return prior;
+    return {refund:prior,replay:true};
    }
    if(amount<=0n||amount>attempt.amountMinor)return{conflict:true};
    const already=await tx.refundRequest.aggregate({where:{paymentAttemptId,status:{in:["PENDING_REVIEW","PROCESSING","PROCESSED"]}},_sum:{amountMinor:true}});
    if((already._sum.amountMinor??0n)+amount>attempt.amountMinor)return{conflict:true};
    const refund=await tx.refundRequest.create({data:{publicReference,paymentAttemptId,amountMinor:amount,currency:attempt.currency,reason,requestedByUserId:userId,idempotencyKey}});
    await writeOperationalAuditEvent(tx,{actorUserId:userId,entityType:"REFUND_REQUEST",entityId:refund.id,action:"REFUND_REQUESTED",after:{publicReference, paymentAttemptId, amountMinor:amount.toString(), currency:attempt.currency}});
-   return refund;
+   return {refund,replay:false};
   },{isolationLevel:"Serializable"});
  },
- listRefunds({status}){return prismaClient.refundRequest.findMany({where:status?{status}:{},orderBy:{createdAt:"asc"},take:100});},
+ listRefunds({status}){return prismaClient.refundRequest.findMany({where:status?{status}:{},orderBy:{createdAt:"desc"},take:100});},
  findRefund(id){return prismaClient.refundRequest.findUnique({where:{id},include:{paymentAttempt:true}});},
  reviewRefund({id,reviewerId,decision,note}) {
   return prismaClient.$transaction(async tx => {
    const current=await tx.refundRequest.findUnique({where:{id}});
    if(!current)return null;
-   if(current.status==="REJECTED"&&decision==="REJECT")return current;
    if(!["PENDING_REVIEW","FAILED"].includes(current.status))return null;
-   const updated=await tx.refundRequest.update({where:{id},data:{
+   const changed=await tx.refundRequest.updateMany({where:{id,status:current.status},data:{
     status:decision==="REJECT"?"REJECTED":"PROCESSING",
     reviewedByUserId:reviewerId,reviewedAt:new Date(),providerResponse:{reviewNote:note??null},
    }});
+   if(changed.count!==1)return null;
+   const updated=await tx.refundRequest.findUnique({where:{id}});
    await writeOperationalAuditEvent(tx,{actorUserId:reviewerId,entityType:"REFUND_REQUEST",entityId:id,action:decision==="REJECT"?"REFUND_REQUEST_REJECTED":"REFUND_REQUEST_APPROVED_FOR_PROCESSING",reason:note,before:{status:current.status},after:{status:updated.status,reviewedByUserId:reviewerId}});
    if(decision==="REJECT"&&current.idempotencyKey?.startsWith("cancel-refund-")){
     const bookingType=current.parcelBookingId?"PARCEL":(current.rideBookingId?"RIDE":null);
@@ -51,7 +52,7 @@ export function createFinanceRepository(prismaClient=prisma){return{
     }
    }
    return updated;
-  });
+  },{isolationLevel:"Serializable"});
  },
  recordRefundProviderResult({id,providerReference,providerResponse,actorUserId}){return prismaClient.$transaction(async tx=>{const current=await tx.refundRequest.findUnique({where:{id}});const updated=await tx.refundRequest.update({where:{id},data:{status:"PROCESSING",providerReference,providerResponse}});await writeOperationalAuditEvent(tx,{actorUserId,entityType:"REFUND_REQUEST",entityId:id,action:"REFUND_PROVIDER_REQUEST_RECORDED",before:{status:current?.status,providerReference:current?.providerReference},after:{status:updated.status,providerReference:updated.providerReference}});return updated;});},
  markRefundSubmissionUnknown({id,actorUserId}) {
