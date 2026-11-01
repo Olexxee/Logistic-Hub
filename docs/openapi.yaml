@@ -1942,98 +1942,6 @@ paths:
         '200': { description: Verified event processed or safely ignored. }
         '401': { description: Invalid webhook signature. }
         '503': { description: Payment webhooks are disabled. }
-  /finance/refund-requests:
-    post:
-      tags: [Payments]
-      operationId: requestBookingRefund
-      summary: Request a refund against a successfully captured payment
-      description: CUSTOMER only. The request must identify a captured payment attempt owned by the customer. The requested amount cannot exceed the remaining refundable balance. An Idempotency-Key is required.
-      x-implementation-status: implemented
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [paymentAttemptId, amountMinor, reason]
-              properties:
-                paymentAttemptId: { type: string, minLength: 1, maxLength: 128 }
-                amountMinor: { type: string, pattern: '^[1-9][0-9]{0,14}$' }
-                reason: { type: string, minLength: 10, maxLength: 1000 }
-      responses:
-        '200': { description: Existing refund request returned for an idempotent replay. }
-        '201': { description: Refund request recorded for administrator review. }
-        '400': { description: Invalid request or missing idempotency key. }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { description: Payment attempt not found. }
-        '409': { description: Payment is not captured or the requested amount exceeds the remaining refundable balance. }
-  /finance/admin/refunds:
-    get:
-      tags: [Payments]
-      operationId: listRefundRequests
-      summary: List refund requests for support and finance operators
-      x-implementation-status: implemented
-      security:
-        - bearerAuth: []
-      responses:
-        '200': { description: Paginated refund requests. }
-        '403': { $ref: '#/components/responses/Forbidden' }
-  /finance/admin/refunds/{refundId}:
-    patch:
-      tags: [Payments]
-      operationId: reviewRefundRequest
-      summary: Approve or reject a refund request
-      description: ADMIN only. Rejection is audited; approval submits the refund only when REFUNDS_ENABLED is enabled. A network-ambiguous provider submission remains locked for reconciliation.
-      x-implementation-status: implemented
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: refundId
-          required: true
-          schema: { type: string, minLength: 1, maxLength: 128 }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [decision, reviewNote]
-              properties:
-                decision: { type: string, enum: [APPROVE, REJECT] }
-                reviewNote: { type: string, minLength: 5, maxLength: 1000 }
-      responses:
-        '200': { description: Refund request reviewed. }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Refund request is not awaiting review. }
-        '503': { description: Provider refund processing is disabled or provider outcome requires reconciliation. }
-  /finance/admin/refunds/{refundId}/reconcile:
-    post:
-      tags: [Payments]
-      operationId: reconcileRefundRequest
-      summary: Reconcile a refund with Paystack without resubmitting it
-      description: ADMIN only. Looks up an ambiguous submission by the unique merchant note and transaction reference, fetches provider status, and synchronizes a confirmed terminal status. It never creates a second refund.
-      x-implementation-status: implemented
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: refundId
-          required: true
-          schema: { type: string, minLength: 1, maxLength: 128 }
-      responses:
-        '200': { description: Provider status reconciled or no provider match found; no resubmission is performed. }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Refund is not in PROCESSING state or provider matches are ambiguous. }
-        '503': { description: Paystack reconciliation is temporarily unavailable. }
   /payments/payouts/request:
     post:
       tags: [Payments]
@@ -3837,6 +3745,7 @@ paths:
       tags: [Finance]
       operationId: requestFinanceRefund
       summary: Request a refund for an eligible payment attempt
+      description: CUSTOMER only. The payment attempt must belong to the customer and be successfully captured. The requested amount cannot exceed the remaining refundable balance. An Idempotency-Key is required.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -3849,9 +3758,12 @@ paths:
             schema:
               $ref: '#/components/schemas/RefundRequest'
       responses:
-        '201': { description: Refund request recorded for review. }
+        '200': { description: Existing refund request returned for an idempotent replay. }
+        '201': { description: Refund request recorded for administrator review. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /finance/admin/refunds:
     get:
@@ -3862,7 +3774,7 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200': { description: Refund requests. }
+        '200': { description: Refund requests with minor-unit amounts serialized as strings. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /finance/admin/refunds/{refundId}:
@@ -3870,6 +3782,7 @@ paths:
       tags: [Finance]
       operationId: reviewFinanceRefund
       summary: Approve or reject a refund request
+      description: ADMIN only. Rejection is audited. Approval submits a provider refund only when REFUNDS_ENABLED is explicitly enabled.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -3890,6 +3803,29 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { description: Provider refund processing is disabled or provider outcome is uncertain. }
+  /finance/admin/refunds/{refundId}/reconcile:
+    post:
+      tags: [Finance]
+      operationId: reconcileFinanceRefund
+      summary: Reconcile a refund with Paystack without resubmitting it
+      description: ADMIN only. Uses the unique merchant-note submission token to find an ambiguous provider request, then fetches the provider refund details. No new refund is created.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: refundId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Provider status reconciled or no provider match found; no resubmission is performed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { description: Paystack reconciliation is temporarily unavailable. }
   /finance/admin/payouts:
     get:
       tags: [Finance]
