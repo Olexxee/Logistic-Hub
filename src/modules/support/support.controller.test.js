@@ -20,7 +20,7 @@ test("customer support ticket listing returns pagination metadata inside the dat
     },
   });
   const res = responseRecorder();
-  await controller.mine({ user: { id: "customer-1" }, query: { limit: 20 } }, res, error => { throw error; });
+  await controller.mine({ user: { id: "customer-1" }, validated: { query: { limit: 20 } } }, res, error => { throw error; });
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
@@ -38,7 +38,7 @@ test("operator support queue returns pagination metadata inside the data envelop
     },
   });
   const res = responseRecorder();
-  await controller.adminList({ query: { status: "OPEN" } }, res, error => { throw error; });
+  await controller.adminList({ validated: { query: { status: "OPEN", limit: 50 } } }, res, error => { throw error; });
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
