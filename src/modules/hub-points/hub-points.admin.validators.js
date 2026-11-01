@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const optionalText = (max) => z.string().trim().max(max).nullable().optional();
-const jsonObject = z.record(z.string(), z.unknown()).nullable().optional();
+const reasonSchema = z.string().trim().min(5).max(1000);
 const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 const slot = z.object({ opensAt: time, closesAt: time }).strict()
   .refine(value => value.closesAt > value.opensAt, { message: "Closing time must be later than opening time.", path: ["closesAt"] });
@@ -27,18 +27,22 @@ export const createHubPointAdminSchema = z.object({
   openingHours: openingHoursAdminSchema.nullable().optional(),
   acceptedParcelTypes: z.array(z.string().trim().min(1).max(60)).min(1).max(30).optional(),
   capacityConfig: capacityConfigAdminSchema.nullable().optional(),
+  reason: reasonSchema,
 }).strict();
 
 export const updateHubPointAdminSchema = createHubPointAdminSchema
-  .omit({ serviceZoneId: true, partnerId: true })
+  .omit({ serviceZoneId: true, partnerId: true, reason: true })
   .partial()
-  .refine((value) => Object.keys(value).length > 0, "At least one field must be supplied");
+  .extend({ reason: reasonSchema })
+  .refine((value) => Object.keys(value).some(key => key !== "reason"), "At least one operational field must be supplied");
 
 export const hubPointStatusAdminSchema = z.object({
   status: z.enum(["ACTIVE", "SUSPENDED", "CLOSED"]),
+  reason: reasonSchema,
 }).strict();
 
 export const hubOperatorVerificationSchema = z.object({
   verificationStatus: z.enum(["PENDING", "VERIFIED", "REJECTED", "EXPIRED"]),
   notes: z.string().trim().max(500).optional(),
+  reason: reasonSchema,
 }).strict();
