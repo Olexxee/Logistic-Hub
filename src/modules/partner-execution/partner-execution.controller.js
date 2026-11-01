@@ -27,7 +27,7 @@ export function createPartnerExecutionController(service) {
     },
     setMemberStatus: async (req, res, next) => {
       try {
-        const result = await service.setMemberStatus({ partnerId: req.params.partnerId, memberId: req.params.memberId, isActive: req.body.isActive, reason: req.body.reason, actorUserId: req.user.id });
+        const result = await service.setMemberStatus({ partnerId: req.params.partnerId, memberId: req.params.memberId, isActive: req.body.isActive, role: req.body.role, reason: req.body.reason, actorUserId: req.user.id });
         if (result.notFound) return res.status(404).json({ success: false, error: { code: "PARTNER_MEMBER_NOT_FOUND", message: "Partner member not found." } });
         if (result.blocker === "PARTNER_CLOSED") return res.status(409).json({ success: false, error: { code: "PARTNER_CLOSED", message: "Closed partner memberships cannot be modified." } });
         if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be reactivated." } });
