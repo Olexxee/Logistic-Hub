@@ -128,6 +128,39 @@ paths:
         '404': { description: Ticket or attachment not found or not accessible. }
         '503': { description: Firebase Storage is unavailable. }
 
+  /support/admin/tickets/{ticketId}/escalate:
+    post:
+      operationId: escalateSupportTicketToOperationalCase
+      summary: Escalate a parcel support ticket into an operational case
+      description: ADMIN and SUPPORT may create one linked operational case for a ticket associated with a parcel booking. Repeated requests return the existing case. Ride tickets cannot be escalated through this parcel operational-case workflow.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: ticketId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [caseType]
+              properties:
+                caseType: { type: string, enum: [FAILED_HANDOVER, DAMAGED_PARCEL, MISSING_PARCEL, FAILED_DELIVERY, PARTNER_DELAY, ROUTE_DISRUPTION, PRICING_EXCEPTION, CUSTOMER_DISPUTE, OTHER] }
+                priority: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL], default: NORMAL }
+      responses:
+        '201': { description: Operational case created and linked to the support ticket; both actions audited. }
+        '200': { description: Existing linked operational case returned for an idempotent replay. }
+        '400': { description: Invalid escalation payload. }
+        '401': { description: Authentication required. }
+        '403': { description: ADMIN or SUPPORT role required. }
+        '404': { description: Support ticket not found. }
+        '409': { description: Ticket is not linked to a valid parcel booking or already has a conflicting escalation. }
+
 components:
   securitySchemes:
     bearerAuth:
