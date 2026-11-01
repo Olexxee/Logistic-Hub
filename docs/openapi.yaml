@@ -793,6 +793,131 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /partner/hub-applications:
+    get:
+      tags: [Partner]
+      operationId: listMyHubApplications
+      summary: List hub applications submitted by the authenticated partner representative
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Applications submitted by the authenticated user, including review status and created hub reference. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Partner]
+      operationId: submitHubApplication
+      summary: Submit a hub application for an existing transport partner
+      description: Only an active, email-verified OWNER member of an ACTIVE and VERIFIED transport partner may apply. Approval creates a PENDING hub point owned by that partner and assigns the applicant as its initial MANAGER. Hub activation remains a separate administrative lifecycle action.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [partnerId, serviceZoneId, name, address, latitude, longitude, operatorName, operatorPhone, openingHours, acceptedParcelTypes, capacityConfig]
+              properties:
+                partnerId: { type: string, minLength: 1, maxLength: 128 }
+                serviceZoneId: { type: string, minLength: 1, maxLength: 128 }
+                name: { type: string, minLength: 2, maxLength: 120 }
+                address: { type: string, minLength: 5, maxLength: 500 }
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+                operatorName: { type: string, minLength: 2, maxLength: 120 }
+                operatorPhone: { type: string, minLength: 7, maxLength: 32 }
+                openingHours: { $ref: '#/components/schemas/HubOpeningHours' }
+                acceptedParcelTypes: { type: array, minItems: 1, maxItems: 30, items: { type: string, minLength: 1, maxLength: 60 } }
+                capacityConfig: { $ref: '#/components/schemas/HubCapacityConfig' }
+      responses:
+        '201': { description: Application submitted in PENDING status. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Partner or service zone is not eligible, or a pending duplicate application exists. }
+  /partner/hub-applications/{applicationId}/withdraw:
+    post:
+      tags: [Partner]
+      operationId: withdrawMyHubApplication
+      summary: Withdraw a pending hub application submitted by the authenticated user
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: applicationId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Application withdrawn. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Only pending applications can be withdrawn. }
+  /admin/hub-applications:
+    get:
+      tags: [Admin]
+      operationId: listAdminHubApplications
+      summary: List hub applications for administrative review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Applications with partner, applicant, service-zone, reviewer and resulting hub details. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/hub-applications/{applicationId}/approve:
+    post:
+      tags: [Admin]
+      operationId: approveHubApplication
+      summary: Approve a pending hub application and create its pending hub point
+      description: Revalidates the applicant's active OWNER membership, partner status and service-zone geography. Creates a PENDING partner-owned hub and an active MANAGER membership for the applicant. Operator verification and hub activation remain separate.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: applicationId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Application approved and hub point created. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Application is no longer pending or partner/applicant/geography is ineligible. }
+  /admin/hub-applications/{applicationId}/reject:
+    post:
+      tags: [Admin]
+      operationId: rejectHubApplication
+      summary: Reject a pending hub application with a recorded reason
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: applicationId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Application rejected and reason recorded. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Only pending applications can be rejected. }
   /hub-points:
     get:
       tags: [Hub points]
@@ -896,6 +1021,7 @@ paths:
               additionalProperties: false
               required: [serviceZoneId, name, address, latitude, longitude]
               properties:
+                partnerId: { type: string, minLength: 1, maxLength: 128, description: Optional existing active, verified transport partner; omit for a platform-operated hub. }
                 serviceZoneId: { type: string }
                 name: { type: string, minLength: 2, maxLength: 120 }
                 address: { type: string, minLength: 5, maxLength: 500 }
