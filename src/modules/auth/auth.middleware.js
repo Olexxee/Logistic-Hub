@@ -39,7 +39,7 @@ export function createAuthMiddleware({ prismaClient = prisma, secret = env.JWT_A
           error: { code: "UNAUTHORIZED", message: "The account is not active." },
         });
       }
-      if (claims.sid) {
+      {
         const session = await prismaClient.authSession.findFirst({
           where: { id: claims.sid, userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } },
           select: { id: true },
@@ -52,7 +52,7 @@ export function createAuthMiddleware({ prismaClient = prisma, secret = env.JWT_A
         }
       }
       req.user = user;
-      req.auth = { userId: user.id, role: user.role, sessionId: claims.sid ?? null };
+      req.auth = { userId: user.id, role: user.role, sessionId: claims.sid };
       return next();
     } catch (error) {
       return next(error);
