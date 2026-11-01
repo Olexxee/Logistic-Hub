@@ -8,7 +8,7 @@ test("refund review mutation and audit event share one transaction", async () =>
   const prismaClient = {
     $transaction: callback => callback({
       refundRequest: {
-        findUnique: async () => current,
+        findUnique: async () => ({ ...current }),
         updateMany: async ({ data }) => { Object.assign(current, data); return { count: 1 }; },
       },
       operationalAuditEvent: { create: async ({ data }) => { audit = data; return { id: "audit-1" }; } },
