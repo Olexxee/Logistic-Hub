@@ -1,8 +1,9 @@
 export function createFinancialController({ service }) {
   return {
-    requestRefund: async (req, res) => res.status(201).json({ success: true, data: await service.createRefundRequest({
-      ...req.validated.body, user: req.user, idempotencyKey: req.validated.idempotencyKey,
-    }) }),
+    requestRefund: async (req, res) => {
+      const data = await service.createRefundRequest({ ...req.validated.body, user: req.user, idempotencyKey: req.validated.idempotencyKey });
+      return res.status(data.replay ? 200 : 201).json({ success: true, data });
+    },
     processRefund: async (req, res) => res.status(202).json({ success: true, data: await service.processRefund({ refundId: req.validated.params.refundId, actor: req.user }) }),
     listRefunds: async (req, res) => res.status(200).json({ success: true, ...await service.listRefunds(req.validated.query) }),
     requestPayout: async (req, res) => res.status(202).json({ success: true, data: await service.requestPayout({
