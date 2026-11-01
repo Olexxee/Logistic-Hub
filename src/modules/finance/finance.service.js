@@ -9,7 +9,7 @@ export function createFinanceService({prismaClient,secretKey=env.PAYSTACK_SECRET
   if(result.notFound)throw new NotFoundError("Payment attempt not found.");
   if(result.forbidden)throw new ForbiddenError("You do not own the booking for this payment.");
   if(result.conflict)throw new ConflictError("Refund amount exceeds the refundable balance, the idempotency key conflicts, or the payment is not settled.","REFUND_NOT_ELIGIBLE");
-  return {...result,amountMinor:result.amountMinor.toString()};
+  return {...result.refund,amountMinor:result.refund.amountMinor.toString(),replay:result.replay};
  },
  async reviewRefund({id,user,decision,reviewNote}) {
   if(user?.role!=="ADMIN")throw new ForbiddenError("Only an administrator can approve or reject refund requests.");
