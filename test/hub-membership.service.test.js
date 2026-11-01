@@ -112,3 +112,141 @@ test("inactive or unverified users cannot be promoted to hub manager", async () 
   assert.deepEqual(state.updates, []);
   assert.deepEqual(state.audits, []);
 });
+
+
+function createManagerStaffPrisma({
+  hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" },
+  managerMembership = { id: "manager-membership", hubPointId: "hub-1", userId: "manager-1", role: "MANAGER", isActive: true },
+  targetUser = { id: "staff-1", status: "ACTIVE", emailVerifiedAt: new Date(), role: "CUSTOMER" },
+  existingMembership = null,
+} = {}) {
+  const state = { audits: [], upserts: [], members: [] };
+  const tx = {
+    user: {
+      findUnique: async ({ where }) => where.id === targetUser.id
+        ? targetUser
+        : { id: "manager-1", status: "ACTIVE", emailVerifiedAt: new Date(), role: "CUSTOMER" },
+      update: async () => { throw new Error("Hub membership must not mutate global account roles."); },
+    },
+    hubPoint: { findUnique: async () => hub },
+    hubPointOperator: {
+      findUnique: async ({ where }) => where.hubPointId_userId.userId === "manager-1"
+        ? managerMembership
+        : existingMembership,
+      findMany: async () => state.members,
+      count: async () => state.members.length,
+      upsert: async ({ create }) => {
+        const member = { id: "staff-membership", ...create };
+        state.upserts.push(create);
+        state.members.push(member);
+        return member;
+      },
+    },
+    operationalAuditEvent: {
+      create: async ({ data }) => { state.audits.push(data); return data; },
+    },
+  };
+  return {
+    state,
+    prismaClient: {
+      hubPoint: tx.hubPoint,
+      hubPointOperator: tx.hubPointOperator,
+      $transaction: async callback => callback(tx),
+    },
+  };
+}
+
+test("a hub manager can list memberships only within their assigned hub", async () => {
+  const { prismaClient, state } = createManagerStaffPrisma();
+  state.members.push({ id: "staff-membership", role: "OPERATOR", isActive: true });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.listHubOperatorsForManager({
+    hubPointId: "hub-1", userId: "manager-1", page: 1, limit: 10,
+  });
+  assert.equal(result.hub.id, "hub-1");
+  assert.equal(result.items.length, 1);
+});
+
+test("a user without an active MANAGER membership cannot list hub staff", async () => {
+  const { prismaClient } = createManagerStaffPrisma({
+    managerMembership: { role: "OPERATOR", isActive: true },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.listHubOperatorsForManager({
+    hubPointId: "hub-1", userId: "manager-1",
+  });
+  assert.equal(result.forbidden, true);
+});
+
+test("a hub manager can add an active verified user as OPERATOR with an audit reason", async () => {
+  const { prismaClient, state } = createManagerStaffPrisma();
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubStaff({
+    hubPointId: "hub-1", userId: "staff-1",
+    reason: "Staff member approved by hub manager", actorUserId: "manager-1",
+  });
+  assert.equal(result.operator.role, "OPERATOR");
+  assert.equal(result.operator.isActive, true);
+  assert.deepEqual(state.upserts, [{
+    hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true,
+  }]);
+  assert.equal(state.audits[0].actorUserId, "manager-1");
+  assert.equal(state.audits[0].reason, "Staff member approved by hub manager");
+  assert.deepEqual(state.audits[0].before, null);
+  assert.deepEqual(state.audits[0].after, {
+    hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true,
+  });
+});
+
+test("a hub manager cannot add themselves as staff", async () => {
+  const { prismaClient, state } = createManagerStaffPrisma({
+    targetUser: { id: "manager-1", status: "ACTIVE", emailVerifiedAt: new Date(), role: "CUSTOMER" },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubStaff({
+    hubPointId: "hub-1", userId: "manager-1",
+    reason: "Attempted self assignment", actorUserId: "manager-1",
+  });
+  assert.equal(result.blocker, "SELF_MEMBERSHIP_CHANGE");
+  assert.deepEqual(state.upserts, []);
+});
+
+test("a hub manager cannot reactivate a membership previously deactivated by an administrator", async () => {
+  const { prismaClient, state } = createManagerStaffPrisma({
+    existingMembership: { id: "staff-membership", role: "OPERATOR", isActive: false },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubStaff({
+    hubPointId: "hub-1", userId: "staff-1",
+    reason: "Attempted membership restoration", actorUserId: "manager-1",
+  });
+  assert.equal(result.blocker, "ADMIN_REVIEW_REQUIRED");
+  assert.deepEqual(state.upserts, []);
+  assert.deepEqual(state.audits, []);
+});
+
+test("a hub manager cannot alter another manager membership", async () => {
+  const { prismaClient, state } = createManagerStaffPrisma({
+    existingMembership: { id: "other-manager", role: "MANAGER", isActive: true },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubStaff({
+    hubPointId: "hub-1", userId: "staff-1",
+    reason: "Attempted manager membership change", actorUserId: "manager-1",
+  });
+  assert.equal(result.blocker, "MANAGER_MEMBERSHIP_PROTECTED");
+  assert.deepEqual(state.upserts, []);
+});
+
+test("a hub manager cannot add staff while the hub is suspended or closed", async () => {
+  const { prismaClient, state } = createManagerStaffPrisma({
+    hub: { id: "hub-1", name: "Ikeja Hub", status: "SUSPENDED" },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubStaff({
+    hubPointId: "hub-1", userId: "staff-1",
+    reason: "Attempted staff assignment", actorUserId: "manager-1",
+  });
+  assert.equal(result.blocker, "HUB_NOT_OPEN_FOR_STAFF");
+  assert.deepEqual(state.upserts, []);
+});
