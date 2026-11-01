@@ -3259,7 +3259,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Hub not found. }
-        '409': { description: User is inactive, hub is closed, or the last active manager safeguard would be violated. }
+        '409': { description: "User is inactive, hub is closed, or the last active manager safeguard would be violated." }
   /admin/hub-points/{hubPointId}/operators/{operatorId}:
     patch:
       tags: [Hub points, Admin]
@@ -3288,7 +3288,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Hub operator not found. }
-        '409': { description: Inactive user, closed hub or last active manager safeguard. }
+        '409': { description: "Inactive user, closed hub or last active manager safeguard." }
   /admin/hub-points/{hubPointId}/operators/{operatorId}/role:
     patch:
       tags: [Hub points, Admin]
