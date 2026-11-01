@@ -1942,12 +1942,12 @@ paths:
         '200': { description: Verified event processed or safely ignored. }
         '401': { description: Invalid webhook signature. }
         '503': { description: Payment webhooks are disabled. }
-  /payments/refunds/request:
+  /finance/refund-requests:
     post:
       tags: [Payments]
       operationId: requestBookingRefund
-      summary: Request a refund for a booking awaiting cancellation review
-      x-implementation-status: planned-disabled
+      summary: Request a refund against a successfully captured payment
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -1969,35 +1969,48 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Booking is not eligible for a refund request. }
-  /payments/refunds/admin:
+  /finance/admin/refunds:
     get:
       tags: [Payments]
       operationId: listRefundRequests
       summary: List refund requests for support and finance operators
-      x-implementation-status: planned-disabled
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       responses:
         '200': { description: Paginated refund requests. }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /payments/refunds/admin/{refundId}/process:
-    post:
+  /finance/admin/refunds/{refundId}:
+    patch:
       tags: [Payments]
-      operationId: processRefundRequest
-      summary: Initiate a Paystack refund for an approved request
-      x-implementation-status: planned-disabled
+      operationId: reviewRefundRequest
+      summary: Approve or reject a refund request
+      description: ADMIN only. Rejection is audited; approval submits the refund only when REFUNDS_ENABLED is enabled. A network-ambiguous provider submission remains locked for reconciliation.
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
         - in: path
           name: refundId
           required: true
-          schema: { type: string, minLength: 1 }
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision, reviewNote]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                reviewNote: { type: string, minLength: 5, maxLength: 1000 }
       responses:
-        '202': { description: Refund submitted to Paystack. }
+        '200': { description: Refund request reviewed. }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Refund is not in a processable state. }
-        '503': { description: Refund processing is disabled. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Refund request is not awaiting review. }
+        '503': { description: Provider refund processing is disabled or provider outcome requires reconciliation. }
   /payments/payouts/request:
     post:
       tags: [Payments]
