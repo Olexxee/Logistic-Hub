@@ -83,13 +83,15 @@ test("authenticated middleware trusts the current database role rather than the 
   };
   const middleware = createAuthMiddleware({ prismaClient, secret });
   const res = response();
+  const req = requestFor(token);
   let continued = false;
-  await middleware.requireAuth(requestFor(token), res, () => { continued = true; });
+  await middleware.requireAuth(req, res, () => { continued = true; });
   assert.equal(continued, true);
   assert.equal(res.statusCode, 200);
-  assert.equal(continued && activeUser.role, "CUSTOMER");
+  assert.equal(req.user.role, "CUSTOMER");
+  assert.equal(req.auth.role, "CUSTOMER");
   let adminContinued = false;
-  middleware.requireRole("ADMIN")({ user: activeUser }, res, () => { adminContinued = true; });
+  middleware.requireRole("ADMIN")(req, res, () => { adminContinued = true; });
   assert.equal(adminContinued, false);
   assert.equal(res.statusCode, 403);
 });
