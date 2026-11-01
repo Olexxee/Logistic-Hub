@@ -300,7 +300,7 @@ The following are present on the baseline branch. Their presence does **not** me
 | 3E — Support workflow and cancellation coordination | Merged; implemented | PRs #55–#60. Ticket lifecycle, conversations, private evidence, cancellation history, case escalation and audited refund review. |
 | 3F-A — API contract and pagination alignment | Merged; implemented | PR #61. Standardized support/hub pagination envelopes and fixed shared query validation. |
 | 3F-B — Authentication and authorization hardening | Merged; implemented | PR #62. Session-bound access tokens, persisted-session checks on every authenticated request and database-authoritative roles. |
-| 3F-C — Documentation and contract reconciliation | In progress | Align authentication transport, endpoint inventory, operational workflow guidance and frontend readiness with the mounted routes and current runtime behavior.
+| 3F-C — Documentation and contract reconciliation | Merged; implemented | Backend PR #63 and frontend PR #29. Reconciled the HttpOnly refresh-cookie contract, mounted authentication routes, operational workflow guidance and frontend readiness documentation. |
 
 3A.1 is deliberately documentation and regression protection only. It does not introduce granular permissions or change current role access.
 
