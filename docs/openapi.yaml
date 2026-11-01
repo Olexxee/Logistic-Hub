@@ -839,7 +839,31 @@ paths:
                     properties:
                       items:
                         type: array
-                        items: { $ref: '#/components/schemas/HubPointResource' }
+                        items:
+                          type: object
+                          required: [id, name, address, latitude, longitude, serviceZone]
+                          properties:
+                            id: { type: string }
+                            name: { type: string }
+                            address: { type: string }
+                            latitude: { type: string }
+                            longitude: { type: string }
+                            serviceZone:
+                              type: object
+                              required: [id, code, name, lga, state]
+                              properties:
+                                id: { type: string }
+                                code: { type: string }
+                                name: { type: string }
+                                lga: { type: [string, 'null'] }
+                                state:
+                                  type: object
+                                  required: [code, name, countryCode, countryName]
+                                  properties:
+                                    code: { type: string }
+                                    name: { type: string }
+                                    countryCode: { type: string }
+                                    countryName: { type: string }
                       nextCursor: { type: [string, 'null'] }
         '400':
           $ref: '#/components/responses/ValidationError'
