@@ -2393,7 +2393,7 @@ paths:
           in: query
           schema: { type: string, enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED] }
       responses:
-        '200': { description: Filtered partner records with agreement, member and hub counts plus pagination metadata. }
+        '200': { description: 'Filtered partner records with agreement, member and hub counts plus pagination metadata.' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
