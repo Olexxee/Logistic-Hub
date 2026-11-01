@@ -19,6 +19,8 @@ function fixture({ status = "MATCHING", paymentStatus = "INITIALIZED", ownerId =
     driverUpdates: [],
     supportTickets: [],
     bookingEvents: [],
+    refundRequests: [],
+    refundAudits: [],
   };
   const tx = {
     parcelBooking: {
@@ -41,6 +43,16 @@ function fixture({ status = "MATCHING", paymentStatus = "INITIALIZED", ownerId =
     },
     supportTicket: {
       create: async ({ data }) => { calls.supportTickets.push(data); return data; },
+    },
+    paymentAttempt: {
+      findFirst: async () => paymentStatus === "SUCCEEDED" ? { id: "payment-1", providerReference: "PAY-REF-1", amountMinor: 5000n, currency: "NGN" } : null,
+    },
+    refundRequest: {
+      aggregate: async () => ({ _sum: { amountMinor: 0n } }),
+      create: async ({ data }) => { calls.refundRequests.push(data); return { id: "refund-1", ...data }; },
+    },
+    operationalAuditEvent: {
+      create: async ({ data }) => { calls.refundAudits.push(data); return data; },
     },
     bookingEvent: {
       create: async ({ data }) => { calls.bookingEvents.push(data); return data; },
@@ -104,6 +116,11 @@ test("paid cancellation enters review and creates a support ticket without issui
   assert.equal(result.status, "CANCELLATION_PENDING");
   assert.equal(result.refundReviewRequired, true);
   assert.equal(result.supportTicketReference, "SUP-CANCEL-LH-PCL-TEST01");
+  assert.ok(result.refundRequestReference);
+  assert.equal(calls.refundRequests.length, 1);
+  assert.equal(calls.refundRequests[0].status, "PENDING_REVIEW");
+  assert.equal(calls.refundRequests[0].amountMinor, 5000n);
+  assert.equal(calls.refundAudits[0].action, "CANCELLATION_REFUND_REQUESTED");
   assert.equal(calls.bookingUpdates[0].status, "CANCELLATION_PENDING");
   assert.equal(calls.bookingUpdates[0].cancelledAt, undefined);
   assert.equal(calls.offerUpdates.length, 0);
@@ -111,7 +128,7 @@ test("paid cancellation enters review and creates a support ticket without issui
   assert.equal(calls.supportTickets.length, 1);
   assert.equal(calls.supportTickets[0].category, "REFUND");
   assert.equal(calls.supportTickets[0].priority, "HIGH");
-  assert.match(calls.supportTickets[0].description, /no automatic refund was issued/i);
+  assert.match(calls.supportTickets[0].description, /No provider refund has been issued/i);
   assert.equal(calls.bookingEvents[0].eventType, "CANCELLATION_REVIEW_REQUESTED");
   assert.equal(calls.bookingEvents[0].toStatus, "CANCELLATION_PENDING");
 });
