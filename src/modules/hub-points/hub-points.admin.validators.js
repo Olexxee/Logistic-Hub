@@ -30,7 +30,7 @@ export const createHubPointAdminSchema = z.object({
 }).strict();
 
 export const updateHubPointAdminSchema = createHubPointAdminSchema
-  .omit({ serviceZoneId: true })
+  .omit({ serviceZoneId: true, partnerId: true })
   .partial()
   .refine((value) => Object.keys(value).length > 0, "At least one field must be supplied");
 
