@@ -299,3 +299,23 @@ The following backend controls are now implemented in the AH-1 workstream:
 - Global platform-role mutation is deliberately not implemented. The backend has no platform OWNER authority, and allowing an ADMIN to grant or revoke ADMIN would violate the approved governance rule.
 
 These endpoints do not close accounts, modify platform roles, or initiate payment/refund/payout operations. Operational consequences of suspending a driver or organization member still require dispatch/operations review; account suspension is an access-control action, not automatic reassignment of work.
+
+
+## AH-2 implementation delta — hub ownership and applications
+
+**Implementation branch:** `feat/hub-application-registration`
+
+The hub ownership model reuses the existing `TransportPartner` record:
+
+- `HubPoint.partnerId` is nullable. A null value identifies a platform-operated hub; a populated value identifies the owning transport partner.
+- The hub admin directory includes the owning partner summary. Admin hub creation may optionally specify an existing active, verified partner. Generic hub edits cannot change ownership.
+- A new `HubApplication` record stores the partner, applicant, proposed service zone/location, operator contact, opening hours, accepted parcel types, capacity, review state/reason, reviewer and resulting hub reference.
+- Only an active, email-verified `OWNER` member of an active, verified `TransportPartner` may submit an application. The role is scoped to that partner; it is not a global platform role.
+- Submission requires an active service zone and active parent geography. A duplicate pending application for the same partner, zone and hub name returns the existing application.
+- Applicants can list their own submissions and withdraw a pending application.
+- ADMIN can list applications, approve with a mandatory reason, or reject with a mandatory reason. Decisions are transactional and audited.
+- Approval rechecks the applicant's active OWNER membership, account status, partner status/verification and service-zone geography. It creates a PENDING partner-owned `HubPoint`, assigns the applicant an active `HubOperatorRole.MANAGER` membership, and stores the resulting hub ID on the application.
+- Approval does not activate the hub or verify operator identity. Those existing controls remain separate and must still be completed before the hub can operate.
+- Platform-operated hubs continue to be created directly by ADMIN with `partnerId` omitted.
+
+This implementation deliberately does not create a second Organization model, does not allow arbitrary partner membership to submit an application, and does not transfer hub ownership through ordinary hub edits. Partner ownership is represented by the existing `TransportPartner` relation.
