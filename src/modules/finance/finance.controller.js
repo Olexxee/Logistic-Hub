@@ -14,6 +14,10 @@ export function createFinanceController(service) {
       const data = await service.reviewRefund({ id: req.params.refundId, user: req.user, ...req.body });
       res.status(200).json({ success: true, data });
     }),
+    reconcileRefund: asyncWrapper(async (req, res) => {
+      const data = await service.reconcileRefund({ id: req.params.refundId, user: req.user });
+      res.status(200).json({ success: true, data });
+    }),
     refunds: asyncWrapper(async (req, res) => {
       const data = await service.listRefunds({ status: req.query.status });
       res.status(200).json({ success: true, data });
