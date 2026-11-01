@@ -260,7 +260,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!current) return { notFound: true };
         const hub = await repo.findHub(hubPointId, tx);
         if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
-        if (current.role === role && !current.canDispatch) return { operator: current, replay: true };
+        if (current.role === role) return { operator: current, replay: true };
         if (role === "MANAGER" && current.role !== "MANAGER") {
           const user = await repo.findUser(current.userId, tx);
           if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
