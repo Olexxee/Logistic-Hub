@@ -87,7 +87,7 @@ test("submitting a hub application records partner, applicant and location data 
 test("approval creates a pending partner-owned hub and assigns the applicant as manager", async () => {
   const { prismaClient, state } = makePrisma();
   const service = createHubApplicationsService({ prismaClient, clock: () => now });
-  const result = await service.approve("application-1", "admin-1");
+  const result = await service.approve("application-1", "Location and ownership documents verified", "admin-1");
   assert.equal(result.hubPoint.partnerId, "partner-1");
   assert.equal(result.hubPoint.status, "PENDING");
   assert.equal(result.hubPoint.operatorVerificationStatus, "PENDING");
@@ -95,6 +95,7 @@ test("approval creates a pending partner-owned hub and assigns the applicant as 
   assert.equal(state.managers[0].role, "MANAGER");
   assert.equal(result.application.status, "APPROVED");
   assert.equal(state.audits[0].action, "HUB_APPLICATION_APPROVED");
+  assert.equal(state.audits[0].reason, "Location and ownership documents verified");
   assert.equal(state.audits[1].action, "HUB_POINT_CREATED_FROM_APPLICATION");
 });
 
@@ -110,7 +111,7 @@ test("approval is blocked if the applicant no longer owns the partner", async ()
   };
   prismaClient.$transaction = async callback => callback(tx);
   const service = createHubApplicationsService({ prismaClient, clock: () => now });
-  const result = await service.approve("application-1", "admin-1");
+  const result = await service.approve("application-1", "Location and ownership documents verified", "admin-1");
   assert.equal(result.blocker, "PARTNER_OWNER_REQUIRED");
   assert.equal(state.hubs.length, 0);
 });
