@@ -2014,6 +2014,26 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Refund request is not awaiting review. }
         '503': { description: Provider refund processing is disabled or provider outcome requires reconciliation. }
+  /finance/admin/refunds/{refundId}/reconcile:
+    post:
+      tags: [Payments]
+      operationId: reconcileRefundRequest
+      summary: Reconcile a refund with Paystack without resubmitting it
+      description: ADMIN only. Looks up an ambiguous submission by the unique merchant note and transaction reference, fetches provider status, and synchronizes a confirmed terminal status. It never creates a second refund.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: refundId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Provider status reconciled or no provider match found; no resubmission is performed. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Refund is not in PROCESSING state or provider matches are ambiguous. }
+        '503': { description: Paystack reconciliation is temporarily unavailable. }
   /payments/payouts/request:
     post:
       tags: [Payments]
