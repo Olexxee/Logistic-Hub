@@ -74,7 +74,8 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
       return serializableTransaction(prismaClient, async tx => {
         const current = await tx.transportPartner.findUnique({ where: { id: partnerId } });
         if (!current) return { notFound: true };
-        const { reason, ...statusInput } = input;\n        const nextVerification = statusInput.verificationStatus ?? current.verificationStatus;
+        const { reason, ...statusInput } = input;
+        const nextVerification = statusInput.verificationStatus ?? current.verificationStatus;
         if (current.status === "CLOSED") {
           return statusInput.status === "CLOSED" && nextVerification === current.verificationStatus
             ? { partner: current, replay: true }
@@ -91,7 +92,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         if (current.status === "ACTIVE" && nextVerification !== "VERIFIED" && !["SUSPENDED", "CLOSED"].includes(statusInput.status)) {
           return { blocker: "PARTNER_MUST_BE_SUSPENDED" };
         }
-        if (input.status === "ACTIVE") {
+        if (statusInput.status === "ACTIVE") {
           const activeOwners = await tx.transportPartnerMember.count({
             where: { partnerId, isActive: true, role: "OWNER", user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
           });
