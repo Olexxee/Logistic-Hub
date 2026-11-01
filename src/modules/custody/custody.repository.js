@@ -29,9 +29,6 @@ export function createCustodyRepository({ prismaClient }) {
     countActiveHubMemberships(userId, tx = prismaClient) {
       return tx.hubPointOperator.count({ where: { userId, isActive: true } });
     },
-    setUserRole(userId, role, tx = prismaClient) {
-      return tx.user.update({ where: { id: userId }, data: { role } });
-    },
     setUserPhoneVerification(userId, phoneVerifiedAt, tx = prismaClient) {
       return tx.user.update({ where: { id: userId }, data: { phoneVerifiedAt } });
     },
