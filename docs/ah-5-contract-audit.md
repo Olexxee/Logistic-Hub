@@ -244,15 +244,15 @@ Directory defaults are page 1 and limit 20; maximum limit is 100. Search matches
 
 Closed partners cannot have their profile changed. Existing partner status-transition guards remain in place, including active verified OWNER requirement, active assignment protection, agreement suspension on partner suspension, and close-out checks for members, agreements and unsettled payables.
 
-This slice does not expose partner membership rosters or agreement/rate-card history. Those read contracts remain AH-5.2 and AH-5.3 respectively. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
+AH-5.2 adds the partner membership roster and reasoned membership lifecycle administration. Agreement/rate-card history read contracts remain AH-5.3. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
 
 ## 9. AH-5 slice readiness
 
 | Slice | Current readiness | Required work before/during implementation |
 |---|---|---|
 | AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
-| AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
-| AH-5.2 Partner memberships | Blocked for full roster UI | Add ADMIN list endpoint with pagination and role/status fields; add mutation reason and complete before/after audit. Preserve last active OWNER safeguard. |
+| AH-5.1 Partner management | Merged | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions. |
+| AH-5.2 Partner memberships | Implemented in this branch | ADMIN roster with pagination/search/role/status filters; reasoned add/reactivate/role-change/deactivation; full before/after audit; last active OWNER and account eligibility safeguards. CI and merge pending. |
 | AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
 | AH-5.4 Geography | Ready for basic CRUD UI | Verify current seed coverage before national launch; avoid unverified bulk import. |
 | AH-5.5 Service zones | Ready for basic CRUD/availability UI | Add hub roster/count read support if UI needs it; do not claim polygon geofencing. |
@@ -267,7 +267,7 @@ The AH-5.0 source audit was performed against router mounts, route validators/co
 ## 11. Recommended implementation order
 
 1. **AH-5.1:** partner directory, detail, profile and lifecycle administration API completed; frontend workspace can now be implemented against the published contracts.
-2. **AH-5.2:** partner member roster read endpoint and reasoned mutations before the membership UI.
+2. **AH-5.2:** partner member roster and reasoned membership lifecycle API; frontend membership UI can follow after this slice merges.
 3. **AH-5.3:** agreement/rate-card read endpoints, then versioned commercial administration.
 4. **AH-5.4:** country/state/LGA admin UI, after verifying the actual seeded dataset.
 5. **AH-5.5:** service-zone and availability UI; add hub roster/count support if operationally needed.
