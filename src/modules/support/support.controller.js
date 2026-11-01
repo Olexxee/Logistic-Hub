@@ -9,8 +9,8 @@ export function createSupportController(service) {
     mine: asyncWrapper(async (req, res) => {
       const page = await service.listMine({
         userId: req.user.id,
-        cursor: req.query.cursor,
-        limit: Number(req.query.limit) || 20,
+        cursor: req.validatedQuery.cursor,
+        limit: req.validatedQuery.limit,
       });
       return res.status(200).json({
         success: true,
