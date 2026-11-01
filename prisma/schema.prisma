@@ -1159,6 +1159,8 @@ model SupportTicket {
   bookingId        String?
   parcelBookingId  String?   // NEW — relation back to ParcelBooking
   rideBookingId    String?   // NEW — relation back to RideBooking
+  operationalCaseId String?  @unique
+  operationalCase   OperationalCase? @relation(fields: [operationalCaseId], references: [id], onDelete: SetNull)
   category         String
   subject          String
   description      String
@@ -1572,6 +1574,7 @@ model OperationalCase {
   hubPointId        String?
   reportedByUserId  String
   assignedToUserId  String?
+  supportTicket     SupportTicket?
   title             String
   description       String
   evidence          Json?
