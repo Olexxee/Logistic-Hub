@@ -192,7 +192,7 @@ test("the last active owner cannot be demoted", async () => {
     },
   };
   const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
-  const result = await service.addMember({ partnerId: "partner-1", userId: "user-1", role: "OPERATIONS", actorUserId: "admin-1" });
+  const result = await service.addMember({ partnerId: "partner-1", userId: "user-1", role: "OPERATIONS", reason: "Assigning operational access.", actorUserId: "admin-1" });
   assert.equal(result.blocker, "LAST_ACTIVE_OWNER");
 });
 
@@ -210,7 +210,7 @@ test("a suspended partner can deactivate its final owner before closure", async 
   };
   const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
   const result = await service.setMemberStatus({
-    partnerId: "partner-1", memberId: "member-1", isActive: false, actorUserId: "admin-1",
+    partnerId: "partner-1", memberId: "member-1", isActive: false, reason: "Removing this operator access.", actorUserId: "admin-1",
   });
   assert.equal(result.member.isActive, false);
   assert.deepEqual(updatedMembership, { isActive: false });
@@ -233,7 +233,7 @@ test("adding a partner membership preserves the user's global account role", asy
   };
   const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
   const result = await service.addMember({
-    partnerId: "partner-1", userId: "customer-1", role: "OPERATIONS", actorUserId: "admin-1",
+    partnerId: "partner-1", userId: "customer-1", role: "OPERATIONS", reason: "Assigning partner operations access.", actorUserId: "admin-1",
   });
   assert.equal(result.member.userId, "customer-1");
   assert.equal(result.member.role, "OPERATIONS");
@@ -260,4 +260,75 @@ test("deactivating a partner membership does not demote the global user role", a
   });
   assert.equal(result.member.isActive, false);
   assert.equal(userRoleMutationAttempts, 0);
+});
+
+
+test("partner member directory is scoped, searchable, filterable and paginated", async () => {
+  let findArgs;
+  let countArgs;
+  const rows = [{ id: "member-1", role: "OPERATIONS", isActive: true }];
+  const tx = {
+    transportPartner: { findUnique: async () => ({ id: "partner-1" }) },
+    transportPartnerMember: {
+      findMany: async args => { findArgs = args; return rows; },
+      count: async args => { countArgs = args; return 21; },
+    },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.listMembers({
+    partnerId: "partner-1", page: 2, limit: 10, search: "operator", role: "OPERATIONS", isActive: true,
+  });
+  assert.equal(findArgs.where.partnerId, "partner-1");
+  assert.equal(findArgs.where.role, "OPERATIONS");
+  assert.equal(findArgs.where.isActive, true);
+  assert.deepEqual(findArgs.where.user.OR.map(item => Object.keys(item)[0]), ["fullName", "email", "phone"]);
+  assert.equal(findArgs.skip, 10);
+  assert.equal(findArgs.take, 10);
+  assert.deepEqual(countArgs.where, findArgs.where);
+  assert.deepEqual(result, { items: rows, pagination: { page: 2, limit: 10, total: 21, totalPages: 3 } });
+});
+
+test("partner member directory returns not found for an unknown partner", async () => {
+  const tx = { transportPartner: { findUnique: async () => null } };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  assert.deepEqual(await service.listMembers({ partnerId: "missing" }), { notFound: true });
+});
+
+test("membership audit captures reason and full role/status before and after", async () => {
+  const audit = [];
+  const tx = {
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "PENDING" }) },
+    user: { findUnique: async () => ({ id: "user-1", status: "ACTIVE", emailVerifiedAt: now }) },
+    transportPartnerMember: {
+      findUnique: async () => ({ id: "member-1", partnerId: "partner-1", userId: "user-1", role: "OPERATIONS", isActive: false }),
+      upsert: async ({ update }) => ({ id: "member-1", partnerId: "partner-1", userId: "user-1", ...update }),
+    },
+    operationalAuditEvent: { create: async ({ data }) => { audit.push(data); } },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.addMember({
+    partnerId: "partner-1", userId: "user-1", role: "DISPATCHER",
+    reason: "Restore dispatcher access after review.", actorUserId: "admin-1",
+  });
+  assert.equal(result.member.isActive, true);
+  assert.equal(audit[0].reason, "Restore dispatcher access after review.");
+  assert.equal(audit[0].action, "PARTNER_MEMBER_REACTIVATED");
+  assert.deepEqual(audit[0].before, { partnerId: "partner-1", userId: "user-1", role: "OPERATIONS", isActive: false });
+  assert.deepEqual(audit[0].after, { partnerId: "partner-1", userId: "user-1", role: "DISPATCHER", isActive: true });
+});
+
+test("an inactive or unverified account cannot have partner membership reactivated", async () => {
+  const tx = {
+    transportPartnerMember: {
+      findFirst: async () => ({ id: "member-1", partnerId: "partner-1", userId: "user-1", role: "OPERATIONS", isActive: false }),
+    },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "SUSPENDED" }) },
+    user: { findUnique: async () => ({ status: "PENDING", emailVerifiedAt: null }) },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.setMemberStatus({
+    partnerId: "partner-1", memberId: "member-1", isActive: true,
+    reason: "Reactivation requested.", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "USER_NOT_ACTIVE");
 });
