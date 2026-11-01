@@ -190,7 +190,7 @@ The implementation is not ready for launch until tests demonstrate that:
 
 ### Priority 5 implementation progress
 
-Work is underway on the feature branch feature/priority-5-delivery-legs-custody, stacked on the Priority 4 booking/quotation branch. The first slice adds the parcel delivery-leg model, creates a direct leg atomically when the sender accepts a driver fare, activates it only after server-verified payment, synchronizes leg progress with assignment and one-time verification transitions, and exposes an owner-scoped delivery-leg timeline API. It does not yet implement multi-leg routing, partner assignment, hub custody handovers or operational exceptions. Review the branch CI and pull request before treating this slice as complete.
+Priority 5 delivery-leg implementation is complete and has been extended by the subsequent merged work. The backend supports direct local legs, quote-driven multi-leg inter-state plans, delivery-leg dispatch, assignment execution and owner-scoped shipment timelines. Partner assignment and hub custody handovers are implemented in the Priority 6 work below; operational exception handling is extended by Phase 3D/3E. See the merged delivery-leg, quote, partner and hub work (including PRs #24–#29, #33 and #35–#37).
 
 ## Existing technical foundation
 
@@ -226,11 +226,9 @@ Priority 6 backend implementation now covers partner assignment/execution, hub c
 
 ## Current implementation status
 
-This README describes the **target product and technical blueprint**, not a claim that every workflow is already implemented. Authentication, partner agreements, quote versioning, multi-leg dispatch, hub custody, exceptions and complete settlement must be verified against the repository before they are treated as production-ready.
+This README combines the **target product blueprint** with the current implementation record. Core booking/authentication, quote versioning, variable delivery legs, partner execution, hub custody, operational exceptions, support/cancellation workflows and internal settlement/reconciliation have implementation coverage in the merged work recorded above. That does not by itself establish production readiness: route contracts, automated tests, deployment configuration and staging acceptance remain separate release gates.
 
-Existing parcel-booking list work is tracked in [PR #8](https://github.com/Olexxee/Logistic-Hub/pull/8). The broader technical foundation has also been tracked in [draft PR #3](https://github.com/Olexxee/Logistic-Hub/pull/3). Check the current PR and branch status before relying on any implementation-status statement.
-
-The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payments are hard-disabled and must not be enabled through configuration alone.
+The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payment initialization is hard-disabled; refund processing has a separate disabled-by-default gate. Internal partner settlement records do not initiate external transfers.
 
 **Release guardrails:** do not merge into `main`, apply production migrations, or accept live bookings/payments until implementation, tests, security review and applicable regulatory checks are complete and the repository owner explicitly approves the next step.
 
@@ -264,8 +262,8 @@ Both services must use the same PostgreSQL `DATABASE_URL`, Resend configuration 
 
 ## Phase Three — Operations, Administration and Support
 
-**Status: Blueprint approved for implementation planning; not an implementation-completion claim.**  
-**Baseline:** `main` at `21fea0517f68e1fa58c005fb8e4def99d0c637c9` (31 October 2026).  
+**Status: Phase Three implementation is in final contract/release hardening (3F-C); see the progress table below.**  
+**Baseline:** `main` after merged Phase Three PRs #45–#62 (1 November 2026).  
 **Implementation rule:** audit and extend the existing modules. Do not recreate APIs or schema that already satisfy the requirements. Keep all work on reviewable feature branches; do not merge to `main` without repository-owner approval.
 
 ### Phase Three objective
@@ -281,21 +279,28 @@ The following are present on the baseline branch. Their presence does **not** me
 | Capability | Existing implementation | Initial assessment |
 |---|---|---|
 | Admin user directory | `GET /api/v1/admin/users`; search, role/status filters and pagination in the discovery module | Read-only directory. No verified user-role/permission administration workflow established by this endpoint. |
-| Audit events | `GET /api/v1/admin/audit-events`; ADMIN-only router | Read-only audit listing exists. Audit coverage and query/filter controls require a systematic audit. |
-| Geography | Admin country/state/LGA routes under `/api/v1/geography/admin` | CRUD/status operations exist; verify deletion constraints, pagination, audit coverage and safe deactivation behavior. |
-| Service zones | Admin service-zone CRUD and per-service availability operations | Core controls exist; verify overlap/route semantics, history, audit coverage and effects on active bookings/assignments. |
-| Hubs | Hub administration service supports create/update, operator verification review and status changes | Existing operational validation and audit events exist for selected mutations. Verify operator membership lifecycle, delegated permissions, capacity and closure behavior end to end. |
-| Operational cases | Admin list/update endpoints with status transitions, priority, assignee and resolution | Core triage lifecycle exists. Verify concurrency, authorization, complete audit history, filters and case creation/linkage from every exception source. |
-| Support tickets | Customer create/list and ADMIN/SUPPORT queue/update endpoints | Basic ticket workflow exists. Verify assignment eligibility, transition rules, internal notes, customer-visible replies, escalation and audit trail. |
-| Cancellations | Customer-owned cancellation request endpoint | Cancellation policy is service/repository-driven. Verify all booking/fulfilment/payment states and support escalation paths; no automatic refund assumption. |
-| Partner administration | Partner pricing and execution modules, agreements, rate cards, quotes and memberships | Significant groundwork exists. Audit partner onboarding/status, membership assignment/revocation, agreement lifecycle and operator access before adding endpoints. |
+| Audit events | `GET /api/v1/admin/audit-events`; ADMIN-only router | Read-only audit listing and the Phase 3A mutation-audit foundation are implemented; see the audit coverage matrix. |
+| Geography | Admin country/state/LGA routes under `/api/v1/geography/admin` | Phase 3B lifecycle guards and serializable parent-geography mutations are implemented; see PRs #50–#51. |
+| Service zones | Admin service-zone CRUD and per-service availability operations | Phase 3B prevents unsafe deactivation or availability changes while active hubs depend on coverage; writes are transactionally guarded. |
+| Hubs | Hub administration service supports create/update, operator verification review and status changes | Phase 3B/3C lifecycle and membership invariants are implemented, including safe closure/suspension constraints; see PRs #50–#52. |
+| Operational cases | Admin list/update endpoints with status transitions, priority, assignee and resolution | Phase 3D adds the operations overview, filtered cursor queue, serialized updates and exception deduplication; support escalation is linked in 3E. |
+| Support tickets | Customer create/list and ADMIN/SUPPORT queue/update endpoints | Phase 3E implements validated assignment/lifecycle rules, public replies/internal notes, private evidence, operational-case escalation and audit coverage. |
+| Cancellations | Customer-owned cancellation request endpoint and customer cancellation history | Phase 3E implements unpaid cancellation, paid cancellation review, refund request/review/reconciliation and owner-scoped cancellation history; provider refunds remain disabled by default. |
+| Partner administration | Partner pricing and execution modules, agreements, rate cards, quotes and memberships | Phase 3C lifecycle/membership invariants and transactional commercial mutation safeguards are implemented; see PR #52. |
 
 ### Phase Three implementation progress
 
 | Slice | Status | Evidence |
 |---|---|---|
-| 3A.1 — Route and permission inventory | Implemented on the current work branch; CI validation pending | [Administrative route and permission inventory](docs/admin-route-permission-inventory.md); `test/admin-route-permission-inventory.test.js` |
-| 3A.2 — Audit coverage and safe admin mutation primitives | Implementation in progress; CI validation pending | Shared transaction-bound audit writer and mutation coverage across drivers, geography, service zones, hubs, support and finance; see [audit coverage matrix](docs/admin-audit-coverage.md). Partner execution/pricing/settlement, custody and operational cases already have transaction-bound audit paths. System-originated webhook actor design and final route-by-route verification remain open |
+| 3A.1 — Route and permission inventory | Merged; implemented | [Administrative route and permission inventory](docs/admin-route-permission-inventory.md); `test/admin-route-permission-inventory.test.js` |
+| 3A.2–3A.5 — Audit coverage, authorization regression, system actors and governance | Merged; implemented | PRs #46–#49; [audit coverage matrix](docs/admin-audit-coverage.md). Human and system audit actors, request correlation, mutation coverage and route-authorization regression tests are in place. |
+| 3B — Geography and service-coverage lifecycle integrity | Merged; implemented | PRs #50–#51. Transactional lifecycle guards for service zones, availability and hubs; parent geography mutations use bounded serializable retries. |
+| 3C — Partner/hub lifecycle and membership administration | Merged; implemented | PR #52. Partner activation/suspension/closure, agreement/rate-card concurrency and membership invariants hardened. |
+| 3D — Operational case completeness and controlled interventions | Merged; implemented | PRs #53–#54. Admin operations overview, filtered/paginated case queue and concurrency-safe case updates. |
+| 3E — Support workflow and cancellation coordination | Merged; implemented | PRs #55–#60. Ticket lifecycle, conversations, private evidence, cancellation history, case escalation and audited refund review. |
+| 3F-A — API contract and pagination alignment | Merged; implemented | PR #61. Standardized support/hub pagination envelopes and fixed shared query validation. |
+| 3F-B — Authentication and authorization hardening | Merged; implemented | PR #62. Session-bound access tokens, persisted-session checks on every authenticated request and database-authoritative roles. |
+| 3F-C — Documentation and contract reconciliation | In progress | Align authentication transport, endpoint inventory, operational workflow guidance and frontend readiness with the mounted routes and current runtime behavior.
 
 3A.1 is deliberately documentation and regression protection only. It does not introduce granular permissions or change current role access.
 
@@ -412,7 +417,7 @@ Work:
 Work:
 - Reconcile README, API contracts, frontend readiness, OpenAPI implementation metadata and actual mounted Express routes.
 - Correct stale documentation that refers to old feature branches or retired authentication/payment behavior.
-- Resolve the refresh-token contract conflict: `docs/api-contracts.md` currently describes HttpOnly cookie behavior, while `docs/frontend-contract-readiness.md` currently says tokens are returned in JSON. Source code and tests must decide the canonical behavior; then update all documentation and OpenAPI consistently.
+- Keep the canonical refresh-token contract consistent across source, tests, API docs, frontend readiness and OpenAPI: the refresh token is an HttpOnly cookie, the short-lived access token is returned in JSON, and the retired JSON compatibility route returns HTTP 410.
 - Verify all Phase Three routes have strict request schemas, consistent response/error envelopes, pagination limits and stable operation IDs.
 - Add integration coverage for permissions, ownership, state transitions, idempotency, audit emission, concurrent updates and privacy boundaries.
 - Run `npm test`, `npm run api:validate` and `npm run db:validate` (plus the repository's full CI suite) on each implementation slice.
@@ -443,11 +448,9 @@ Each slice must be independently reviewable, include tests and update the API co
 
 Phase Three is complete only when all 3A–3F acceptance criteria are met, the permission matrix matches the mounted routes, all privileged mutations are auditable, operational cases and support workflows are lifecycle-safe, OpenAPI matches runtime behavior, and full CI passes. Existing endpoint presence or a passing frontend-readiness document alone is not sufficient evidence of completion.
 
-### Known documentation reconciliation items
+### Documentation reconciliation
 
-- `docs/api-contracts.md` and `docs/frontend-contract-readiness.md` disagree about refresh-token storage/transport. Verify implementation and tests, then choose one canonical contract.
-- `docs/operational-workflows.md` still describes endpoints as belonging to `feat/secure-lifecycle-payments` and says they are not deployed by that branch. Update its status and route descriptions to match the current default branch.
-- The README's older Priority 5 progress paragraph describes multi-leg routing and hub/partner custody as incomplete, while later Priority 6 progress and current source modules describe these capabilities as implemented. Reconcile the progress narrative against current code and tests before using it as a release checklist.
+The canonical authentication contract is an HttpOnly refresh cookie plus a short-lived access token returned in JSON. The cookie is never returned in the response body; browser requests must include credentials and the trusted-origin CSRF header. The frontend-readiness and operational-workflow documents are reconciled to the mounted routes and current runtime behavior in this 3F-C slice.
 
 
 ## Private support evidence storage
