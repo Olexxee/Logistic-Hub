@@ -25,7 +25,8 @@ export function createFinanceService({prismaClient,secretKey=env.PAYSTACK_SECRET
   if(!refundsEnabled)throw new ServiceUnavailableError("Provider refund processing is disabled. Requests can be reviewed, but no money will move until REFUNDS_ENABLED is explicitly approved.","REFUNDS_DISABLED");
   if(!secretKey)throw new ServiceUnavailableError("Paystack is not configured.","PAYSTACK_NOT_CONFIGURED");
   if(refund.paymentAttempt.status!=="SUCCEEDED"||!refund.paymentAttempt.providerReference)throw new ConflictError("The captured payment cannot currently be refunded.","REFUND_PAYMENT_NOT_REFUNDABLE");
-  const reviewed=await repo.reviewRefund({id,reviewerId:user.id,decision, note:reviewNote});
+  const submissionToken=randomBytes(6).toString("hex").toUpperCase();
+  const reviewed=await repo.reviewRefund({id,reviewerId:user.id,decision, note:reviewNote,submissionToken});
   if(!reviewed)throw new ConflictError("Refund request changed before it could be approved.","REFUND_STATE_CONFLICT");
   let response;
   try {
@@ -44,7 +45,7 @@ export function createFinanceService({prismaClient,secretKey=env.PAYSTACK_SECRET
   }
   const providerReference=body.data.id!=null?String(body.data.id):(body.data.reference!=null?String(body.data.reference):null);
   if(!providerReference){
-   await repo.markRefundSubmissionUnknown({id,actorUserId:user.id});
+   await repo.markRefundSubmissionUnknown({id,actorUserId:user.id,submissionToken});
    throw new ServiceUnavailableError("Paystack accepted the request without a refund identifier. Reconciliation is required; do not resubmit.","REFUND_SUBMISSION_OUTCOME_UNKNOWN");
   }
   const saved=await repo.recordRefundProviderResult({id,actorUserId:user.id,providerReference,providerResponse:{status:body.data.status??"pending",id:body.data.id??null,amount:body.data.amount??null,currency:body.data.currency??refund.currency}});
