@@ -177,6 +177,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const hub = await repo.findHub(hubPointId, tx);
         if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
         if (current.isActive === isActive) return { operator: current, replay: true };
+        if (isActive) {
+          const user = await repo.findUser(current.userId, tx);
+          if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
+        }
         if (current.isActive && current.role === "MANAGER" && !isActive && hub?.status === "ACTIVE") {
           const otherManagers = await tx.hubPointOperator.count({
             where: { hubPointId, isActive: true, role: "MANAGER", id: { not: current.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
@@ -201,6 +205,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const hub = await repo.findHub(hubPointId, tx);
         if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
         if (current.role === role) return { operator: current, replay: true };
+        if (role === "MANAGER" && current.role !== "MANAGER") {
+          const user = await repo.findUser(current.userId, tx);
+          if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
+        }
         if (hub?.status === "ACTIVE" && current.isActive && current.role === "MANAGER" && role !== "MANAGER") {
           const otherManagers = await tx.hubPointOperator.count({
             where: {
