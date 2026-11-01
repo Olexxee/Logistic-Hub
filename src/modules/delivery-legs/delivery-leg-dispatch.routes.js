@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../../db/prisma.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
-import { authMiddleware, requireRole } from "../auth/auth.middleware.js";
+import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { createDeliveryLegDispatchService } from "./delivery-leg-dispatch.service.js";
 import { createDeliveryLegDispatchController } from "./delivery-leg-dispatch.controller.js";
 import {
@@ -11,7 +11,7 @@ import {
 
 export function createDeliveryLegDispatchRouter({
   prismaClient = prisma,
-  authMiddleware = authMiddleware,
+  authMiddleware = requireAuth,
   roleMiddleware = requireRole,
 } = {}) {
   const router = Router();
