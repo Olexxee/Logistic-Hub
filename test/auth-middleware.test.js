@@ -69,3 +69,49 @@ test("role middleware rejects users outside the permitted role set", () => {
   assert.equal(res.statusCode, 403);
   assert.equal(res.body.error.code, "FORBIDDEN");
 });
+
+test("authenticated middleware trusts the current database role rather than the token role claim", async () => {
+  const token = signAccessToken({
+    userId: activeUser.id,
+    role: "ADMIN",
+    sessionId: "session-1",
+    secret,
+  }).token;
+  const prismaClient = {
+    user: { async findUnique() { return activeUser; } },
+    authSession: { async findFirst() { return { id: "session-1" }; } },
+  };
+  const middleware = createAuthMiddleware({ prismaClient, secret });
+  const res = response();
+  let continued = false;
+  await middleware.requireAuth(requestFor(token), res, () => { continued = true; });
+  assert.equal(continued, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(continued && activeUser.role, "CUSTOMER");
+  let adminContinued = false;
+  middleware.requireRole("ADMIN")({ user: activeUser }, res, () => { adminContinued = true; });
+  assert.equal(adminContinued, false);
+  assert.equal(res.statusCode, 403);
+});
+
+test("authenticated middleware rejects inactive and unverified accounts", async () => {
+  for (const user of [
+    { ...activeUser, status: "SUSPENDED" },
+    { ...activeUser, emailVerifiedAt: null },
+  ]) {
+    const token = signAccessToken({ userId: user.id, role: user.role, sessionId: "session-1", secret }).token;
+    const middleware = createAuthMiddleware({
+      prismaClient: {
+        user: { async findUnique() { return user; } },
+        authSession: { async findFirst() { return { id: "session-1" }; } },
+      },
+      secret,
+    });
+    const res = response();
+    let continued = false;
+    await middleware.requireAuth(requestFor(token), res, () => { continued = true; });
+    assert.equal(continued, false);
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.body.error.code, "UNAUTHORIZED");
+  }
+});
