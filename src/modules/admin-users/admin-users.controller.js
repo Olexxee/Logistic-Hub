@@ -6,8 +6,8 @@ export function createAdminUsersController({ prismaClient, clock }) {
   return {
     updateStatus: async (req, res) => {
       const result = await service.updateStatus({
-        userId: req.validatedParams.userId,
-        ...req.validatedBody,
+        userId: req.params.userId,
+        ...req.body,
         actorUserId: req.user.id,
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "USER_NOT_FOUND", message: "User not found." } });
@@ -27,8 +27,8 @@ export function createAdminUsersController({ prismaClient, clock }) {
 
     revokeAllSessions: async (req, res) => {
       const result = await service.revokeAllSessions({
-        userId: req.validatedParams.userId,
-        ...req.validatedBody,
+        userId: req.params.userId,
+        ...req.body,
         actorUserId: req.user.id,
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "USER_NOT_FOUND", message: "User not found." } });
