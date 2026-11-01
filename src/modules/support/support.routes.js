@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { validate } from "../../shared/http/validate.js";
 import { createSupportService } from "./support.service.js";
 import { createSupportController } from "./support.controller.js";
-import { createTicketSchema, createTicketMessageSchema, listTicketsQuerySchema, updateTicketSchema } from "./support.schemas.js";
+import { createTicketSchema, createTicketMessageSchema, listTicketsQuerySchema, updateTicketSchema, escalateTicketSchema } from "./support.schemas.js";
 
 export function createSupportRouter({ prismaClient = prisma, authMiddleware = requireAuth, roleMiddleware = requireRole } = {}) {
   const router = Router();
@@ -18,6 +18,7 @@ export function createSupportRouter({ prismaClient = prisma, authMiddleware = re
   const supportAccess = roleMiddleware("ADMIN", "SUPPORT");
   router.get("/admin/tickets", authMiddleware, supportAccess, validate(listTicketsQuerySchema, "query"), controller.adminList);
   router.patch("/admin/tickets/:ticketId", authMiddleware, supportAccess, validate(ticketId, "params"), validate(updateTicketSchema), controller.update);
+  router.post("/admin/tickets/:ticketId/escalate", authMiddleware, supportAccess, validate(ticketId, "params"), validate(escalateTicketSchema), controller.escalate);
   return router;
 }
 export const supportRouter = createSupportRouter();
