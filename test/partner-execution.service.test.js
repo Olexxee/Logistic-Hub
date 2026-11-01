@@ -256,7 +256,7 @@ test("deactivating a partner membership does not demote the global user role", a
   };
   const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
   const result = await service.setMemberStatus({
-    partnerId: "partner-1", memberId: "member-1", isActive: false, actorUserId: "admin-1",
+    partnerId: "partner-1", memberId: "member-1", isActive: false, reason: "Removing this operator access.", actorUserId: "admin-1",
   });
   assert.equal(result.member.isActive, false);
   assert.equal(userRoleMutationAttempts, 0);
