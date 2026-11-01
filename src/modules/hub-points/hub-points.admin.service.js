@@ -105,7 +105,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_OPERATOR_VERIFICATION_REVIEWED",
           reason,
           before: { operatorVerificationStatus: current.operatorVerificationStatus, operatorVerifiedAt: current.operatorVerifiedAt, operatorVerificationNotes: current.operatorVerificationNotes },
-          after: { operatorVerificationStatus: updated.operatorVerificationStatus, operatorVerifiedAt: updated.operatorVerifiedAt, operatorVerificationNotes: updated.operatorVerificationNotes, notes },
+          after: { operatorVerificationStatus: updated.operatorVerificationStatus, operatorVerifiedAt: updated.operatorVerifiedAt, operatorVerificationNotes: updated.operatorVerificationNotes, notes: notes ?? null },
         });
         return updated;
       });
