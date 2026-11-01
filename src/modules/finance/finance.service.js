@@ -97,7 +97,7 @@ export function createFinanceService({prismaClient,secretKey=env.PAYSTACK_SECRET
  },
  async listRefunds({status}) {
   const rows=await repo.listRefunds({status});
-  return rows.map(refund=>({...refund,amountMinor:refund.amountMinor.toString()}));
+  return rows.map(refund=>({ ...refund, amountMinor: refund.amountMinor.toString(), providerStatus: refund.providerResponse?.status ?? null, reconciliationRequired: refund.providerResponse?.reconciliationRequired === true, providerResponse: undefined }));
  },
  async confirmPayout({id,providerReference,user}){if(!["ADMIN","SUPPORT"].includes(user.role))throw new ForbiddenError();const payout=await repo.confirmPayout({id,providerReference,actorUserId:user.id});if(!payout)throw new NotFoundError("Driver settlement record not found.");return payout;},
  listPayouts({status}){return repo.listPayouts({status});},
