@@ -251,7 +251,8 @@ This slice does not expose partner membership rosters or agreement/rate-card his
 
 | Slice | Current readiness | Required work before/during implementation |
 |---|---|---|
-| AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |\n| AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
+| AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
+| AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
 | AH-5.1 Partner management | Partial | Add partner detail/update and useful directory filtering/pagination only if required by UI; add reason to sensitive status/verification decisions. |
 | AH-5.2 Partner memberships | Blocked for full roster UI | Add ADMIN list endpoint with pagination and role/status fields; add mutation reason and complete before/after audit. Preserve last active OWNER safeguard. |
 | AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
