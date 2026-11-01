@@ -242,18 +242,20 @@ test("a hub manager cannot alter another manager membership", async () => {
   assert.deepEqual(state.upserts, []);
 });
 
-test("a hub manager cannot add staff while the hub is suspended or closed", async () => {
-  const { prismaClient, state } = createManagerStaffPrisma({
-    hub: { id: "hub-1", name: "Ikeja Hub", status: "SUSPENDED" },
+for (const status of ["SUSPENDED", "CLOSED"]) {
+  test(`a hub manager cannot add staff while the hub is ${status.toLowerCase()}`, async () => {
+    const { prismaClient, state } = createManagerStaffPrisma({
+      hub: { id: "hub-1", name: "Ikeja Hub", status },
+    });
+    const service = createCustodyService({ prismaClient });
+    const result = await service.addHubStaff({
+      hubPointId: "hub-1", userId: "staff-1",
+      reason: "Attempted staff assignment", actorUserId: "manager-1",
+    });
+    assert.equal(result.blocker, "HUB_NOT_OPEN_FOR_STAFF");
+    assert.deepEqual(state.upserts, []);
   });
-  const service = createCustodyService({ prismaClient });
-  const result = await service.addHubStaff({
-    hubPointId: "hub-1", userId: "staff-1",
-    reason: "Attempted staff assignment", actorUserId: "manager-1",
-  });
-  assert.equal(result.blocker, "HUB_NOT_OPEN_FOR_STAFF");
-  assert.deepEqual(state.upserts, []);
-});
+}
 
 
 test("a manager membership for another hub does not grant access to this hub", async () => {
@@ -277,6 +279,21 @@ test("a manager cannot add staff to a different hub they do not manage", async (
     reason: "Attempted cross-hub staff assignment", actorUserId: "manager-1",
   });
   assert.equal(result.forbidden, true);
+  assert.deepEqual(state.upserts, []);
+  assert.deepEqual(state.audits, []);
+});
+
+
+test("adding an already-active OPERATOR membership is an idempotent replay", async () => {
+  const existing = { id: "staff-membership", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true };
+  const { prismaClient, state } = createManagerStaffPrisma({ existingMembership: existing });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubStaff({
+    hubPointId: "hub-1", userId: "staff-1",
+    reason: "Repeated staff assignment request", actorUserId: "manager-1",
+  });
+  assert.equal(result.replay, true);
+  assert.equal(result.operator.id, "staff-membership");
   assert.deepEqual(state.upserts, []);
   assert.deepEqual(state.audits, []);
 });
