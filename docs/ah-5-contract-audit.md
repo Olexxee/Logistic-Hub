@@ -230,11 +230,28 @@ The conservative default is to enforce both, while preserving existing delivery/
 - No ADMIN member/agreement/rate-card read endpoints exist for full detail screens.
 - Hub/partner membership and commercial mutation audit reasons are inconsistent or absent. The shared audit history is not a substitute for missing decision context.
 
+## AH-5.1 implementation update
+
+AH-5.1 adds the following ADMIN partner-management contracts:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /api/v1/admin/transport-partners | Paginated directory; supports page, limit, search, status and verificationStatus filters. |
+| GET | /api/v1/admin/transport-partners/:partnerId | Partner profile with aggregate agreement, member, hub and delivery-assignment counts. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId | Updates display/legal/contact profile fields; requires a reason and records before/after values. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId/status | Status/verification decision now requires a reason recorded on the partner audit event and any dependent agreement-suspension audit events. |
+
+Directory defaults are page 1 and limit 20; maximum limit is 100. Search matches display name, legal name, contact name and contact email case-insensitively. The response includes total and totalPages metadata.
+
+Closed partners cannot have their profile changed. Existing partner status-transition guards remain in place, including active verified OWNER requirement, active assignment protection, agreement suspension on partner suspension, and close-out checks for members, agreements and unsettled payables.
+
+This slice does not expose partner membership rosters or agreement/rate-card history. Those read contracts remain AH-5.2 and AH-5.3 respectively. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
+
 ## 9. AH-5 slice readiness
 
 | Slice | Current readiness | Required work before/during implementation |
 |---|---|---|
-| AH-5.0 Contract audit | Complete in this document | Review source-verified gaps and confirm partner/hub suspension policy. |
+| AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |\n| AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
 | AH-5.1 Partner management | Partial | Add partner detail/update and useful directory filtering/pagination only if required by UI; add reason to sensitive status/verification decisions. |
 | AH-5.2 Partner memberships | Blocked for full roster UI | Add ADMIN list endpoint with pagination and role/status fields; add mutation reason and complete before/after audit. Preserve last active OWNER safeguard. |
 | AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
