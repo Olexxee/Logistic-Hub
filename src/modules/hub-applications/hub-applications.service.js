@@ -97,7 +97,7 @@ export function createHubApplicationsService({ prismaClient, clock = () => new D
         }, tx);
         await repo.createHubManager({ hubPointId: hubPoint.id, userId: application.applicantUserId }, tx);
         const updated = await repo.updateApplication(applicationId, {
-          status: "APPROVED", reviewedAt: now, reviewedByUserId: reviewerUserId, hubPointId: hubPoint.id,
+          status: "APPROVED", reviewReason: reason, reviewedAt: now, reviewedByUserId: reviewerUserId, hubPointId: hubPoint.id,
         }, tx);
         await repo.createAudit({
           actorUserId: reviewerUserId,
