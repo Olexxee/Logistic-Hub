@@ -178,3 +178,58 @@ test("admin reconciliation does not retry when Paystack has no matching refund",
   assert.equal(refund.providerReference, null);
   assert.equal(calls, 1);
 });
+
+test("customer refund request is ownership checked, balance capped and idempotently replayed", async () => {
+  let existing = null;
+  let paymentStatus = "SUCCEEDED";
+  const attempt = {
+    id: "payment-1", status: paymentStatus, amountMinor: 5000n, currency: "NGN",
+    parcelBooking: { senderId: "customer-1" }, rideBooking: null,
+  };
+  const tx = {
+    paymentAttempt: { findUnique: async () => ({ ...attempt, status: paymentStatus }) },
+    refundRequest: {
+      findUnique: async () => existing,
+      aggregate: async () => ({ _sum: { amountMinor: 0n } }),
+      create: async ({ data }) => { existing = { id: "refund-created", ...data }; return existing; },
+    },
+    operationalAuditEvent: { create: async ({ data }) => data },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createFinanceService({ prismaClient, refundsEnabled: false });
+  const input = {
+    paymentAttemptId: "payment-1", amountMinor: "3000",
+    reason: "Partial refund for damaged parcel",
+  };
+  const first = await service.requestRefund({ userId: "customer-1", input, idempotencyKey: "customer-refund-key-1" });
+  assert.equal(first.amountMinor, "3000");
+  assert.equal(first.replay, false);
+  assert.equal(existing.status, "PENDING_REVIEW");
+  paymentStatus = "REVERSED";
+  const replay = await service.requestRefund({ userId: "customer-1", input, idempotencyKey: "customer-refund-key-1" });
+  assert.equal(replay.id, "refund-created");
+  assert.equal(replay.replay, true);
+});
+
+test("refund request cannot exceed the remaining captured balance", async () => {
+  const attempt = {
+    id: "payment-1", status: "SUCCEEDED", amountMinor: 5000n, currency: "NGN",
+    parcelBooking: { senderId: "customer-1" }, rideBooking: null,
+  };
+  const tx = {
+    paymentAttempt: { findUnique: async () => attempt },
+    refundRequest: {
+      findUnique: async () => null,
+      aggregate: async () => ({ _sum: { amountMinor: 4000n } }),
+    },
+  };
+  const service = createFinanceService({ prismaClient: { $transaction: async callback => callback(tx) } });
+  await assert.rejects(
+    () => service.requestRefund({
+      userId: "customer-1",
+      input: { paymentAttemptId: "payment-1", amountMinor: "2000", reason: "Additional refund request" },
+      idempotencyKey: "customer-refund-key-2",
+    }),
+    error => error.code === "REFUND_NOT_ELIGIBLE",
+  );
+});
