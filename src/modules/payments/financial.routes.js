@@ -12,7 +12,7 @@ export function createFinancialRouter({ prismaClient = prisma } = {}) {
   const controller = createFinancialController({ service });
   const requireAdmin = requireRole("ADMIN");
   const requireFinance = requireRole("ADMIN", "SUPPORT");
-  router.post("/refunds/request", requireAuth, validateRefundRequest, asyncWrapper(controller.requestRefund));
+  router.post("/refunds/request", requireAuth, requireRole("CUSTOMER"), validateRefundRequest, asyncWrapper(controller.requestRefund));
   router.get("/refunds/admin", requireAuth, requireFinance, validateFinancialList, asyncWrapper(controller.listRefunds));
   router.post("/refunds/admin/:refundId/process", requireAuth, requireAdmin, validateRefundId, asyncWrapper(controller.processRefund));
   router.post("/payouts/request", requireAuth, requireRole("DRIVER"), validatePayoutRequest, asyncWrapper(controller.requestPayout));
