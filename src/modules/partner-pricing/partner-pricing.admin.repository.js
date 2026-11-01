@@ -1,9 +1,17 @@
 export function createPartnerPricingAdminRepository({ prismaClient }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
   return {
-    listPartners: () => prismaClient.transportPartner.findMany({
-      orderBy: [{ createdAt: "desc" }],
-      include: { _count: { select: { agreements: true } } },
+    listPartners: ({ where, skip, take }) => prismaClient.transportPartner.findMany({
+      where,
+      skip,
+      take,
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      include: { _count: { select: { agreements: true, members: true, hubPoints: true } } },
+    }),
+    countPartners: where => prismaClient.transportPartner.count({ where }),
+    findPartnerAdmin: id => prismaClient.transportPartner.findUnique({
+      where: { id },
+      include: { _count: { select: { agreements: true, members: true, hubPoints: true, deliveryAssignments: true } } },
     }),
     createPartner: data => prismaClient.transportPartner.create({ data }),
     findPartner: id => prismaClient.transportPartner.findUnique({ where: { id } }),

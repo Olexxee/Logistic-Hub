@@ -72,7 +72,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
 
     const blockedActivation = await call(`/admin/transport-partners/${partner.id}/status`, {
       method: "PATCH",
-      body: { status: "ACTIVE" },
+      body: { status: "ACTIVE", reason: "Initial activation review." },
     });
     assert.equal(blockedActivation.status, 409);
     assert.equal(blockedActivation.json.error.code, "PARTNER_NOT_VERIFIED");
@@ -86,7 +86,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
 
     const verifiedPartner = await call(`/admin/transport-partners/${partner.id}/status`, {
       method: "PATCH",
-      body: { status: "ACTIVE", verificationStatus: "VERIFIED" },
+      body: { status: "ACTIVE", verificationStatus: "VERIFIED", reason: "Verification and owner checks passed." },
     });
     assert.equal(verifiedPartner.status, 200);
     assert.equal(verifiedPartner.json.data.partner.status, "ACTIVE");
@@ -150,9 +150,33 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     assert.equal(persisted.agreement.status, "ACTIVE");
     assert.equal(persisted.agreement.partner.verificationStatus, "VERIFIED");
 
-    const listed = await call("/admin/transport-partners");
+    const detail = await call(`/admin/transport-partners/${partner.id}`);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.json.data.partner.id, partner.id);
+    assert.equal(detail.json.data.partner._count.agreements, 1);
+
+    const updatedProfile = await call(`/admin/transport-partners/${partner.id}`, {
+      method: "PATCH",
+      body: { contactName: "Updated Contact", reason: "Corrected partner contact record." },
+    });
+    assert.equal(updatedProfile.status, 200);
+    assert.equal(updatedProfile.json.data.partner.contactName, "Updated Contact");
+    const profileAudit = await prisma.operationalAuditEvent.findFirst({
+      where: { entityType: "TRANSPORT_PARTNER", entityId: partner.id, action: "PARTNER_PROFILE_UPDATED" },
+    });
+    assert.equal(profileAudit.reason, "Corrected partner contact record.");
+    assert.equal(profileAudit.before.contactName, null);
+    assert.equal(profileAudit.after.contactName, "Updated Contact");
+
+    const statusAudit = await prisma.operationalAuditEvent.findFirst({
+      where: { entityType: "TRANSPORT_PARTNER", entityId: partner.id, action: "PARTNER_STATUS_UPDATED" },
+    });
+    assert.equal(statusAudit.reason, "Verification and owner checks passed.");
+
+    const listed = await call("/admin/transport-partners?status=ACTIVE&verificationStatus=VERIFIED&search=Integration%20Partner&page=1&limit=10");
     assert.equal(listed.status, 200);
     assert.ok(listed.json.data.items.some((item) => item.id === partner.id && item._count.agreements === 1));
+    assert.ok(listed.json.data.pagination.total >= 1);
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
     if (rateCard) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: rateCard.id } });

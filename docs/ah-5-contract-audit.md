@@ -33,11 +33,13 @@ The endpoints below are absolute paths after applying those mounts.
 
 | Method | Endpoint | Contract |
 |---|---|---|
-| GET | /api/v1/admin/transport-partners | Lists partners, newest first, with agreement count. No pagination/search/filter parameters. |
+| GET | /api/v1/admin/transport-partners | Paginated directory; filters by search, status and verification status; includes agreement/member/hub counts. |
 | POST | /api/v1/admin/transport-partners | Creates a partner from display name and optional legal/contact fields. |
-| PATCH | /api/v1/admin/transport-partners/:partnerId/status | Changes partner status and optionally verification status. |
+| GET | /api/v1/admin/transport-partners/:partnerId | Returns partner profile and aggregate counts. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId | Updates display/legal/contact fields with mandatory reason and before/after audit. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId/status | Changes partner status and optionally verification status; mandatory reason is audited. |
 
-All three routes are protected by authentication and ADMIN role middleware.
+All partner administration routes are protected by authentication and ADMIN role middleware.
 
 ### Existing lifecycle rules
 
@@ -47,17 +49,14 @@ All three routes are protected by authentication and ADMIN role middleware.
 - Suspending a partner is blocked while it has active partner assignments. On successful suspension, its active agreements are suspended in the same transaction and audited.
 - Closing a partner is blocked while it has active members, open agreements or unsettled payables.
 - A CLOSED partner cannot be reopened.
-- Partner status and verification changes are audited, but the current status endpoint does not accept a decision reason.
+- Partner status and verification changes require a decision reason, which is persisted on the audit event.
 
 ### Gaps
 
-- No partner detail endpoint.
-- No partner profile update endpoint for legal/contact details.
-- Directory has no pagination, search or status/verification filters.
-- Directory includes only an agreement count, not membership, hub, agreement or operational summaries.
-- Sensitive status/verification decisions have no required reason field in the current validator.
+- The partner detail response intentionally exposes aggregate counts, not member rosters or commercial history; those remain separate AH-5.2/AH-5.3 read contracts.
+- Directory search currently matches display name, legal name, contact name and contact email. It does not search arbitrary metadata.
 
-**AH-5.1 implication:** a basic directory/create/status screen can use existing contracts. Partner detail/edit and robust searchable directory experiences require additional backend contracts or an explicitly limited first UI.
+**AH-5.1 implication:** the backend partner directory/detail/profile/status contract is now implemented. A frontend workspace can consume these endpoints without inventing partner read/update contracts.
 
 ## 3. Partner membership administration
 
@@ -230,12 +229,29 @@ The conservative default is to enforce both, while preserving existing delivery/
 - No ADMIN member/agreement/rate-card read endpoints exist for full detail screens.
 - Hub/partner membership and commercial mutation audit reasons are inconsistent or absent. The shared audit history is not a substitute for missing decision context.
 
+## AH-5.1 implementation update
+
+AH-5.1 adds the following ADMIN partner-management contracts:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /api/v1/admin/transport-partners | Paginated directory; supports page, limit, search, status and verificationStatus filters. |
+| GET | /api/v1/admin/transport-partners/:partnerId | Partner profile with aggregate agreement, member, hub and delivery-assignment counts. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId | Updates display/legal/contact profile fields; requires a reason and records before/after values. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId/status | Status/verification decision now requires a reason recorded on the partner audit event and any dependent agreement-suspension audit events. |
+
+Directory defaults are page 1 and limit 20; maximum limit is 100. Search matches display name, legal name, contact name and contact email case-insensitively. The response includes total and totalPages metadata.
+
+Closed partners cannot have their profile changed. Existing partner status-transition guards remain in place, including active verified OWNER requirement, active assignment protection, agreement suspension on partner suspension, and close-out checks for members, agreements and unsettled payables.
+
+This slice does not expose partner membership rosters or agreement/rate-card history. Those read contracts remain AH-5.2 and AH-5.3 respectively. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
+
 ## 9. AH-5 slice readiness
 
 | Slice | Current readiness | Required work before/during implementation |
 |---|---|---|
-| AH-5.0 Contract audit | Complete in this document | Review source-verified gaps and confirm partner/hub suspension policy. |
-| AH-5.1 Partner management | Partial | Add partner detail/update and useful directory filtering/pagination only if required by UI; add reason to sensitive status/verification decisions. |
+| AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
+| AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
 | AH-5.2 Partner memberships | Blocked for full roster UI | Add ADMIN list endpoint with pagination and role/status fields; add mutation reason and complete before/after audit. Preserve last active OWNER safeguard. |
 | AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
 | AH-5.4 Geography | Ready for basic CRUD UI | Verify current seed coverage before national launch; avoid unverified bulk import. |
@@ -244,19 +260,13 @@ The conservative default is to enforce both, while preserving existing delivery/
 
 ## 10. Validation and scope
 
-This AH-5.0 slice is documentation-only:
-- No Prisma schema changes.
-- No migrations.
-- No route or service changes.
-- No changes to quote calculation, customer prices, payments, refunds or partner settlement.
-- No production database changes.
-- No bulk geography data import.
+AH-5.0 was documentation-only and introduced no runtime or schema changes. AH-5.1 is a separate implementation slice that adds partner administration read/update routes and audit behavior. AH-5.1 introduces no Prisma schema changes or migrations and does not alter quote calculation, customer prices, payments, refunds, partner settlement, production data or geography imports.
 
-The audit was performed against current main source for router mounts, route validators/controllers/services/repositories and Prisma model relationships. The PR should pass the repository's documentation and API/OpenAPI validation CI; it does not claim that runtime behavior has been changed or deployed.
+The AH-5.0 source audit was performed against router mounts, route validators/controllers/services/repositories and Prisma model relationships. AH-5.1 adds route tests, PostgreSQL-gated integration coverage and OpenAPI parity validation; passing CI is still required before merge.
 
 ## 11. Recommended implementation order
 
-1. **AH-5.1:** partner directory and create/status UI using current endpoints; add only the missing read/update contracts the agreed screen requires.
+1. **AH-5.1:** partner directory, detail, profile and lifecycle administration API completed; frontend workspace can now be implemented against the published contracts.
 2. **AH-5.2:** partner member roster read endpoint and reasoned mutations before the membership UI.
 3. **AH-5.3:** agreement/rate-card read endpoints, then versioned commercial administration.
 4. **AH-5.4:** country/state/LGA admin UI, after verifying the actual seeded dataset.

@@ -1,7 +1,7 @@
 import { createPartnerPricingAdminService } from "./partner-pricing.admin.service.js";
 import {
-  partnerIdSchema, partnerInputSchema, partnerStatusInputSchema, agreementInputSchema,
-  agreementStatusInputSchema, rateCardInputSchema, partnerRateInputSchema,
+  partnerIdSchema, partnerInputSchema, partnerListQuerySchema, partnerProfileUpdateSchema,
+  partnerStatusInputSchema, agreementInputSchema, agreementStatusInputSchema, rateCardInputSchema, partnerRateInputSchema,
 } from "./partner-pricing.admin.validators.js";
 
 function invalid(res, issues) {
@@ -22,9 +22,30 @@ function parsedId(req, res, key) {
 export function createPartnerPricingAdminController({ prismaClient }) {
   const service = createPartnerPricingAdminService({ prismaClient });
   return {
-    listPartners: async (_req, res, next) => {
-      try { return res.status(200).json({ success: true, data: await service.listPartners() }); }
+    listPartners: async (req, res, next) => {
+      const parsed = partnerListQuerySchema.safeParse(req.query);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
+      try { return res.status(200).json({ success: true, data: await service.listPartners(parsed.data) }); }
       catch (error) { return next(error); }
+    },
+    getPartner: async (req, res, next) => {
+      const id = parsedId(req, res, "partnerId"); if (!id) return;
+      try {
+        const result = await service.getPartner({ partnerId: id });
+        if (result.notFound) return failure(res, "NOT_FOUND", "Transport partner not found.", 404);
+        return res.status(200).json({ success: true, data: result });
+      } catch (error) { return next(error); }
+    },
+    updatePartner: async (req, res, next) => {
+      const id = parsedId(req, res, "partnerId"); if (!id) return;
+      const parsed = partnerProfileUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
+      try {
+        const result = await service.updatePartner({ partnerId: id, input: parsed.data, actorUserId: req.user.id });
+        if (result.notFound) return failure(res, "NOT_FOUND", "Transport partner not found.", 404);
+        if (result.blocker === "PARTNER_CLOSED") return failure(res, "PARTNER_CLOSED", "Closed transport partners cannot be modified.");
+        return res.status(200).json({ success: true, data: result });
+      } catch (error) { return next(error); }
     },
     createPartner: async (req, res, next) => {
       const parsed = partnerInputSchema.safeParse(req.body);

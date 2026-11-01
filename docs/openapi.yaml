@@ -2376,8 +2376,24 @@ paths:
       x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, ACTIVE, SUSPENDED, CLOSED] }
+        - name: verificationStatus
+          in: query
+          schema: { type: string, enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED] }
       responses:
-        '200': { description: Partner records and agreement counts. }
+        '200': { description: 'Filtered partner records with agreement, member and hub counts plus pagination metadata.' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
@@ -2406,6 +2422,58 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/transport-partners/{partnerId}:
+    get:
+      tags: [Admin]
+      operationId: getTransportPartner
+      summary: Retrieve a transport partner profile and aggregate counts
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Partner profile and counts. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Admin]
+      operationId: updateTransportPartnerProfile
+      summary: Update partner contact and profile fields with an audit reason
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                displayName: { type: string, minLength: 2, maxLength: 160 }
+                legalName: { type: string, nullable: true, maxLength: 200 }
+                contactName: { type: string, nullable: true, maxLength: 160 }
+                contactEmail: { type: string, nullable: true, format: email, maxLength: 254 }
+                contactPhone: { type: string, nullable: true, minLength: 7, maxLength: 32 }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Partner profile updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Closed partners cannot be modified. }
   /admin/transport-partners/{partnerId}/status:
     patch:
       tags: [Admin]
@@ -2426,10 +2494,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [status]
+              required: [status, reason]
               properties:
                 status: { type: string, enum: [PENDING, ACTIVE, SUSPENDED, CLOSED] }
                 verificationStatus: { type: string, enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200': { description: Updated partner status. }
         '400': { $ref: '#/components/responses/ValidationError' }
