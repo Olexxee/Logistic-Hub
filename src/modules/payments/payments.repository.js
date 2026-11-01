@@ -162,27 +162,75 @@ export function createPaymentsRepository(prismaClient = prisma) {
     return updated;
    });
   },
-  updateRefundFromWebhook({providerReference,status,providerResponse}) { return prismaClient.$transaction(async tx=>{
-   const refund=await tx.refundRequest.findUnique({where:{providerReference},include:{paymentAttempt:true}});
-   if(!refund)return {count:0};
-   await tx.refundRequest.update({where:{id:refund.id},data:{status,providerResponse,processedAt:new Date()}});
-   if(status==="PROCESSED"){
-    const total=await tx.refundRequest.aggregate({where:{paymentAttemptId:refund.paymentAttemptId,status:"PROCESSED"},_sum:{amountMinor:true}});
-    if((total._sum.amountMinor??0n)>=refund.paymentAttempt.amountMinor)await tx.paymentAttempt.update({where:{id:refund.paymentAttemptId},data:{status:"REVERSED"}});
-    const journalReference="REFUND:"+providerReference;
-    const posted=await tx.ledgerEntry.findFirst({where:{journalReference},select:{id:true}});
-    const platformRefund=refund.amountMinor<(refund.paymentAttempt.platformAllocationMinor??0n)?refund.amountMinor:(refund.paymentAttempt.platformAllocationMinor??0n);
-    if(!posted&&platformRefund>0n){
-     const accounts=await Promise.all([
-      tx.ledgerAccount.upsert({where:{code:"PLATFORM_CONNECTION_REVENUE_NGN"},create:{code:"PLATFORM_CONNECTION_REVENUE_NGN",name:"Platform connection fee revenue",type:"REVENUE",currency:refund.currency},update:{}}),
-      tx.ledgerAccount.upsert({where:{code:"PAYSTACK_CLEARING_NGN"},create:{code:"PAYSTACK_CLEARING_NGN",name:"Paystack platform clearing",type:"ASSET",currency:refund.currency},update:{}})
-     ]);
-     const common={journalReference,currency:refund.currency,paymentAttemptId:refund.paymentAttemptId,parcelBookingId:refund.paymentAttempt.parcelBookingId,rideBookingId:refund.paymentAttempt.rideBookingId,description:"Provider-confirmed platform refund reversal"};
-     await tx.ledgerEntry.createMany({data:[{...common,accountId:accounts[0].id,side:"DEBIT",amountMinor:platformRefund},{...common,accountId:accounts[1].id,side:"CREDIT",amountMinor:platformRefund}]});
+  updateRefundFromWebhook({ providerReference, status, providerResponse }) {
+   return prismaClient.$transaction(async tx => {
+    const refund = await tx.refundRequest.findUnique({ where: { providerReference }, include: { paymentAttempt: true } });
+    if (!refund) return { count: 0 };
+    const changed = refund.status !== status;
+    if (changed) {
+     await tx.refundRequest.update({ where: { id: refund.id }, data: { status, providerResponse, processedAt: new Date() } });
+     await tx.operationalAuditEvent.create({ data: {
+      actorUserId: null, entityType: "REFUND_REQUEST", entityId: refund.id,
+      action: status === "PROCESSED" ? "REFUND_PROVIDER_CONFIRMED" : "REFUND_PROVIDER_FAILED",
+      before: { status: refund.status }, after: { status, providerReference },
+     } });
     }
-   }
-   return {count:1};
-  }); },
+    if (status === "PROCESSED") {
+     const total = await tx.refundRequest.aggregate({
+      where: { paymentAttemptId: refund.paymentAttemptId, status: "PROCESSED" },
+      _sum: { amountMinor: true },
+     });
+     const fullyRefunded = (total._sum.amountMinor ?? 0n) >= refund.paymentAttempt.amountMinor;
+     if (fullyRefunded) {
+      await tx.paymentAttempt.update({ where: { id: refund.paymentAttemptId }, data: { status: "REVERSED" } });
+      if (refund.parcelBookingId) {
+       const booking = await tx.parcelBooking.findUnique({ where: { id: refund.parcelBookingId } });
+       if (booking?.paymentStatus === "SUCCEEDED") {
+        await tx.parcelBooking.update({ where: { id: booking.id }, data: {
+         paymentStatus: "REVERSED",
+         ...(booking.status === "CANCELLATION_PENDING" ? { status: "CANCELLED", cancelledAt: new Date() } : {}),
+        } });
+        if (booking.status === "CANCELLATION_PENDING") await tx.bookingEvent.create({ data: {
+         parcelBookingId: booking.id, eventType: "CANCELLATION_APPROVED",
+         fromStatus: "CANCELLATION_PENDING", toStatus: "CANCELLED",
+         metadata: { refundRequestId: refund.id, refundReference: refund.publicReference, providerReference },
+        } });
+       }
+      }
+      if (refund.rideBookingId) {
+       const booking = await tx.rideBooking.findUnique({ where: { id: refund.rideBookingId } });
+       if (booking?.paymentStatus === "SUCCEEDED") {
+        await tx.rideBooking.update({ where: { id: booking.id }, data: {
+         paymentStatus: "REVERSED",
+         ...(booking.status === "CANCELLATION_PENDING" ? { status: "CANCELLED", cancelledAt: new Date() } : {}),
+        } });
+        if (booking.status === "CANCELLATION_PENDING") await tx.bookingEvent.create({ data: {
+         rideBookingId: booking.id, eventType: "CANCELLATION_APPROVED",
+         fromStatus: "CANCELLATION_PENDING", toStatus: "CANCELLED",
+         metadata: { refundRequestId: refund.id, refundReference: refund.publicReference, providerReference },
+        } });
+       }
+      }
+     }
+     const journalReference = "REFUND:" + providerReference;
+     const posted = await tx.ledgerEntry.findFirst({ where: { journalReference }, select: { id: true } });
+     const platformRefund = refund.amountMinor < (refund.paymentAttempt.platformAllocationMinor ?? 0n)
+      ? refund.amountMinor : (refund.paymentAttempt.platformAllocationMinor ?? 0n);
+     if (!posted && platformRefund > 0n) {
+      const accounts = await Promise.all([
+       tx.ledgerAccount.upsert({ where: { code: "PLATFORM_CONNECTION_REVENUE_NGN" }, create: { code: "PLATFORM_CONNECTION_REVENUE_NGN", name: "Platform connection fee revenue", type: "REVENUE", currency: refund.currency }, update: {} }),
+       tx.ledgerAccount.upsert({ where: { code: "PAYSTACK_CLEARING_NGN" }, create: { code: "PAYSTACK_CLEARING_NGN", name: "Paystack platform clearing", type: "ASSET", currency: refund.currency }, update: {} }),
+      ]);
+      const common = { journalReference, currency: refund.currency, paymentAttemptId: refund.paymentAttemptId, parcelBookingId: refund.paymentAttempt.parcelBookingId, rideBookingId: refund.paymentAttempt.rideBookingId, description: "Provider-confirmed platform refund reversal" };
+      await tx.ledgerEntry.createMany({ data: [
+       { ...common, accountId: accounts[0].id, side: "DEBIT", amountMinor: platformRefund },
+       { ...common, accountId: accounts[1].id, side: "CREDIT", amountMinor: platformRefund },
+      ] });
+     }
+    }
+    return { count: 1, changed };
+   });
+  },
   getNotificationContext(reference) { return prismaClient.paymentAttempt.findUnique({where:{providerReference:reference},include:{parcelBooking:{include:{sender:{select:{id:true}},}},rideBooking:{include:{passenger:{select:{id:true}}}}}}); },
   markFailed({reference,providerEventId,eventType,payloadHash,providerPayload}) { return prismaClient.$transaction(async tx=>{
    const eventKey={provider_providerEventId:{provider:"PAYSTACK",providerEventId}};
