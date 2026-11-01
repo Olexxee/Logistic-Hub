@@ -12,7 +12,13 @@ const memberSchema = z.object({
   role: z.enum(["OWNER", "OPERATIONS", "DISPATCHER"]).default("OPERATIONS"),
   reason: z.string().trim().min(5).max(1000),
 }).strict();
-const memberStatusSchema = z.object({ isActive: z.boolean(), reason: z.string().trim().min(5).max(1000) }).strict();
+const memberStatusSchema = z.object({
+  isActive: z.boolean().optional(),
+  role: z.enum(["OWNER", "OPERATIONS", "DISPATCHER"]).optional(),
+  reason: z.string().trim().min(5).max(1000),
+}).strict().refine(value => value.isActive !== undefined || value.role !== undefined, {
+  message: "Provide isActive or role when updating a membership.",
+});
 const memberListSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
