@@ -414,3 +414,37 @@ test("changing a hub member's role clears delegated dispatch permission", async 
   assert.deepEqual(updateData, { role: "MANAGER", canDispatch: false });
   assert.equal(result.operator.canDispatch, false);
 });
+
+
+for (const status of ["PENDING", "SUSPENDED", "CLOSED"]) {
+  test(`admin cannot grant dispatch permission while the hub is ${status.toLowerCase()}`, async () => {
+    const { prismaClient, state } = createDispatchPermissionPrisma({
+      hub: { id: "hub-1", status, name: "Ikeja Hub" },
+    });
+    const service = createCustodyService({ prismaClient });
+    const result = await service.setHubOperatorDispatchPermission({
+      hubPointId: "hub-1", operatorId: "member-1", canDispatch: true,
+      reason: "Attempted permission grant while hub is inactive", actorUserId: "admin-1",
+    });
+    assert.equal(result.blocker, "HUB_NOT_ACTIVE");
+    assert.equal(state.updated, null);
+    assert.deepEqual(state.audits, []);
+  });
+}
+
+test("admin cannot grant dispatch permission to a suspended or unverified user", async () => {
+  for (const user of [
+    { id: "staff-1", status: "SUSPENDED", emailVerifiedAt: new Date() },
+    { id: "staff-1", status: "ACTIVE", emailVerifiedAt: null },
+  ]) {
+    const { prismaClient, state } = createDispatchPermissionPrisma({ user });
+    const service = createCustodyService({ prismaClient });
+    const result = await service.setHubOperatorDispatchPermission({
+      hubPointId: "hub-1", operatorId: "member-1", canDispatch: true,
+      reason: "Attempted permission grant to ineligible user", actorUserId: "admin-1",
+    });
+    assert.equal(result.blocker, "OPERATOR_NOT_ACTIVE");
+    assert.equal(state.updated, null);
+    assert.deepEqual(state.audits, []);
+  }
+});
