@@ -26,6 +26,10 @@ export function createSupportController(service) {
         q: req.query.q, cursor: req.query.cursor, limit: Number(req.query.limit) || 50,
       }),
     })),
+    escalate: asyncWrapper(async (req, res) => {
+      const result = await service.escalate({ id: req.params.ticketId, user: req.user, input: req.body });
+      return res.status(result.replay ? 200 : 201).json({ success: true, data: result });
+    }),
     update: asyncWrapper(async (req, res) => res.status(200).json({
       success: true,
       data: await service.update({ id: req.params.ticketId, user: req.user, input: req.body }),

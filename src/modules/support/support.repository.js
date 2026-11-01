@@ -12,7 +12,11 @@ export function createSupportRepository(prismaClient = prisma) {
       return null;
     },
     createTicket(data) {
-      return prismaClient.supportTicket.create({ data });
+      return prismaClient.supportTicket.create({ data: {
+        ...data,
+        ...(data.bookingType === "PARCEL" && data.bookingId ? { parcelBookingId: data.bookingId } : {}),
+        ...(data.bookingType === "RIDE" && data.bookingId ? { rideBookingId: data.bookingId } : {}),
+      } });
     },
     listMine({ customerId, cursor, limit }) {
       return prismaClient.supportTicket.findMany({
