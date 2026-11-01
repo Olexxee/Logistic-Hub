@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHubPointsAdminService } from "../src/modules/hub-points/hub-points.admin.service.js";
 import { createCustodyService } from "../src/modules/custody/custody.service.js";
-import { openingHoursAdminSchema, capacityConfigAdminSchema } from "../src/modules/hub-points/hub-points.admin.validators.js";
+import { createHubPointAdminSchema, updateHubPointAdminSchema, openingHoursAdminSchema, capacityConfigAdminSchema } from "../src/modules/hub-points/hub-points.admin.validators.js";
 
 const openingHours = Object.fromEntries(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"].map(day => [day, [{ opensAt: "08:00", closesAt: "18:00" }]]));
 const readyHub = () => ({
@@ -175,4 +175,14 @@ test("an active hub cannot demote its last manager through operator upsert", asy
   });
   assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
   assert.equal(upsertCalled, false);
+});
+
+
+test("partner ownership can be set at hub creation but cannot be changed through generic edits", () => {
+  const create = createHubPointAdminSchema.safeParse({
+    partnerId: "partner-1", serviceZoneId: "zone-1", name: "Partner Hub",
+    address: "12 Allen Avenue, Ikeja", latitude: 6.6, longitude: 3.35,
+  });
+  assert.equal(create.success, true);
+  assert.equal(updateHubPointAdminSchema.safeParse({ partnerId: "partner-2" }).success, false);
 });

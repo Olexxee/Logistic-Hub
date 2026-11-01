@@ -34,6 +34,7 @@ import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { auditRouter } from "./modules/audit/audit.routes.js";
 import { discoveryRouter } from "./modules/discovery/discovery.routes.js";
 import { adminUsersRouter } from "./modules/admin-users/admin-users.routes.js";
+import { hubApplicationsRouter } from "./modules/hub-applications/hub-applications.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { runWithAuditContext } from "./shared/audit/audit-context.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
@@ -105,6 +106,7 @@ app.get("/", (_req, res) => {
 app.use("/api/v1/health", healthRouter);
 app.use("/api/v1", discoveryRouter);
 app.use("/api/v1/admin/users", adminUsersRouter);
+app.use("/api/v1", hubApplicationsRouter);
 app.use("/api/v1/admin/audit-events", auditRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/auth/sessions", authSessionsRouter);
