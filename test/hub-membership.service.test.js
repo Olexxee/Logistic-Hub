@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createCustodyService } from "../src/modules/custody/custody.service.js";
 
-function createPrisma({ hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" }, operator = { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "MANAGER", isActive: true }, otherManagers = 1 } = {}) {
+function createPrisma({ hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" }, operator = { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "MANAGER", isActive: true }, otherManagers = 1, user = { id: "user-1", status: "ACTIVE", emailVerifiedAt: new Date() } } = {}) {
   const state = { audits: [], updates: [] };
   const tx = {
+    user: { findUnique: async () => user },
     hubPoint: { findUnique: async () => hub },
     hubPointOperator: {
       findFirst: async () => operator,
@@ -79,4 +80,35 @@ test("deactivating a hub membership records the administrative reason", async ()
   assert.equal(state.audits[0].reason, "Operator left the organization");
   assert.deepEqual(state.audits[0].before, { isActive: true });
   assert.deepEqual(state.audits[0].after, { isActive: false });
+});
+
+
+test("inactive or unverified users cannot be reactivated as hub operators", async () => {
+  const { prismaClient, state } = createPrisma({
+    operator: { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "OPERATOR", isActive: false },
+    user: { id: "user-1", status: "SUSPENDED", emailVerifiedAt: null },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "operator-1", isActive: true,
+    reason: "Attempted reactivation", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "USER_NOT_ACTIVE");
+  assert.deepEqual(state.updates, []);
+  assert.deepEqual(state.audits, []);
+});
+
+test("inactive or unverified users cannot be promoted to hub manager", async () => {
+  const { prismaClient, state } = createPrisma({
+    operator: { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "OPERATOR", isActive: true },
+    user: { id: "user-1", status: "ACTIVE", emailVerifiedAt: null },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.updateHubOperatorRole({
+    hubPointId: "hub-1", operatorId: "operator-1", role: "MANAGER",
+    reason: "Manager responsibilities assigned", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "USER_NOT_ACTIVE");
+  assert.deepEqual(state.updates, []);
+  assert.deepEqual(state.audits, []);
 });
