@@ -24,14 +24,15 @@ export function createFinanceRepository(prismaClient=prisma){return{
  },
  listRefunds({status}){return prismaClient.refundRequest.findMany({where:status?{status}:{},orderBy:{createdAt:"desc"},take:100});},
  findRefund(id){return prismaClient.refundRequest.findUnique({where:{id},include:{paymentAttempt:true}});},
- reviewRefund({id,reviewerId,decision,note}) {
+ reviewRefund({id,reviewerId,decision,note,submissionToken}) {
   return prismaClient.$transaction(async tx => {
    const current=await tx.refundRequest.findUnique({where:{id}});
    if(!current)return null;
    if(!["PENDING_REVIEW","FAILED"].includes(current.status))return null;
    const changed=await tx.refundRequest.updateMany({where:{id,status:current.status},data:{
     status:decision==="REJECT"?"REJECTED":"PROCESSING",
-    reviewedByUserId:reviewerId,reviewedAt:new Date(),providerResponse:{reviewNote:note??null},
+    reviewedByUserId:reviewerId,reviewedAt:new Date(),providerResponse:{reviewNote:note??null,...(submissionToken?{submissionToken}:{})},
+    ...(decision==="APPROVE"&&current.status==="FAILED"?{providerReference:null}:{}),
    }});
    if(changed.count!==1)return null;
    const updated=await tx.refundRequest.findUnique({where:{id}});
@@ -55,11 +56,11 @@ export function createFinanceRepository(prismaClient=prisma){return{
   },{isolationLevel:"Serializable"});
  },
  recordRefundProviderResult({id,providerReference,providerResponse,actorUserId}){return prismaClient.$transaction(async tx=>{const current=await tx.refundRequest.findUnique({where:{id}});const updated=await tx.refundRequest.update({where:{id},data:{status:"PROCESSING",providerReference,providerResponse}});await writeOperationalAuditEvent(tx,{actorUserId,entityType:"REFUND_REQUEST",entityId:id,action:"REFUND_PROVIDER_REQUEST_RECORDED",before:{status:current?.status,providerReference:current?.providerReference},after:{status:updated.status,providerReference:updated.providerReference}});return updated;});},
- markRefundSubmissionUnknown({id,actorUserId}) {
+ markRefundSubmissionUnknown({id,actorUserId,submissionToken}) {
   return prismaClient.$transaction(async tx=>{
    const current=await tx.refundRequest.findUnique({where:{id}});
    if(!current)return null;
-   const providerResponse={submissionOutcome:"UNKNOWN",reconciliationRequired:true};
+   const providerResponse={submissionOutcome:"UNKNOWN",reconciliationRequired:true,...(submissionToken?{submissionToken}:{})};
    const updated=await tx.refundRequest.update({where:{id},data:{providerResponse}});
    await writeOperationalAuditEvent(tx,{actorUserId,entityType:"REFUND_REQUEST",entityId:id,action:"REFUND_PROVIDER_OUTCOME_UNKNOWN",before:{status:current.status},after:{status:updated.status,...providerResponse}});
    return updated;
