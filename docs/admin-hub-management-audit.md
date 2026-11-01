@@ -338,3 +338,31 @@ The existing `HubPointOperator` model is reused. No duplicate membership table o
 - Existing route paths remain in place; the new list and role-update operations extend the current admin custody router.
 
 The existing admin add and status endpoints now require an audit reason in their request body. Frontend clients must send `reason` for those mutations.
+
+
+## AH-2 ownership model decision — reuse existing TransportPartner
+
+**Decision:** Do not introduce a generic `Organization` model. Reuse the existing `TransportPartner` relation for partner-operated hubs and the nullable `HubPoint.partnerId` for platform-operated hubs.
+
+The current schema and routes already support both paths:
+
+- **Platform-operated hub:** an ADMIN creates the hub through `POST /api/v1/hub-points/admin` and omits `partnerId`. The persisted `HubPoint.partnerId` is explicitly `null`.
+- **Partner-operated hub:** an active, verified `TransportPartner` is selected. The admin direct-create path validates that partner; the partner application path requires an active `OWNER` membership.
+- **Partner application:** `HubApplication.partnerId` is required and records the existing partner, applicant, service zone, proposed hub details, review state, reviewer and resulting hub.
+- **Approval:** the service revalidates partner status, applicant status, active OWNER membership and geography; creates a `PENDING` hub with the same `partnerId`; creates the applicant's `MANAGER` hub membership; and records the decision and hub creation in the audit log.
+- **Ownership immutability:** generic hub updates cannot change `partnerId`. Ownership is assigned at creation and is not an editable profile field.
+
+No schema migration or new organization abstraction is required for this ownership decision. The existing application workflow is already mounted and documented in OpenAPI.
+
+### AH-2 implementation hardening
+
+Branch: `feat/admin-hub-ownership-contract`
+
+- Hub creation now explicitly persists `partnerId: null` when no partner is supplied, rather than relying only on the database nullable-column default.
+- Regression coverage verifies that platform-operated hub creation does not perform a partner lookup and audits a null partner owner.
+- Regression coverage verifies that a partner-operated hub cannot be created against an inactive or unverified partner.
+- Existing application service tests continue to cover OWNER-only submission, approval-time ownership revalidation, creation of a partner-owned PENDING hub, manager assignment, rejection reasons and applicant-only withdrawal.
+
+**Frontend contract:** derive the ownership label from the returned `partner` relation: `null` means Platform-operated; a populated partner relation means Partner-operated. Do not invent an `organizationId` or a separate organization selector. For partner applications, select from the authenticated user's active partner memberships and submit the selected `partnerId`.
+
+**Boundary:** a platform-operated hub is created by an administrator, not through the partner application endpoint. Partner applications cannot claim platform ownership or select an arbitrary partner without an active OWNER membership.

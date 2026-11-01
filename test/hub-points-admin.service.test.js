@@ -186,3 +186,49 @@ test("partner ownership can be set at hub creation but cannot be changed through
   assert.equal(create.success, true);
   assert.equal(updateHubPointAdminSchema.safeParse({ partnerId: "partner-2" }).success, false);
 });
+
+
+test("admin-created hubs without a partner are explicitly platform-operated", async () => {
+  const zone = { id: "zone-1", isActive: true, state: { isActive: true, country: { isActive: true } } };
+  let createdData;
+  let auditData;
+  const tx = {
+    serviceZone: { findUnique: async () => zone },
+    transportPartner: { findUnique: async () => { throw new Error("Platform-operated hubs must not require a partner lookup."); } },
+    hubPoint: {
+      create: async ({ data }) => { createdData = data; return { id: "hub-platform", ...data }; },
+    },
+    operationalAuditEvent: {
+      create: async ({ data }) => { auditData = data; return { id: "audit-1", ...data }; },
+    },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createHubPointsAdminService({ prismaClient, clock: () => new Date("2026-11-01T12:00:00.000Z") });
+  const result = await service.create({
+    serviceZoneId: "zone-1", name: "Platform Ikeja Hub",
+    address: "12 Allen Avenue, Ikeja", latitude: 6.6, longitude: 3.35,
+  }, "admin-1");
+
+  assert.equal(result.partnerId, null);
+  assert.equal(createdData.partnerId, null);
+  assert.equal(createdData.status, "PENDING");
+  assert.equal(auditData.after.partnerId, null);
+});
+
+test("admin-created partner hubs require an active, verified existing transport partner", async () => {
+  const zone = { id: "zone-1", isActive: true, state: { isActive: true, country: { isActive: true } } };
+  let hubCreateCalled = false;
+  const tx = {
+    serviceZone: { findUnique: async () => zone },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "PENDING" }) },
+    hubPoint: { create: async () => { hubCreateCalled = true; } },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.create({
+    partnerId: "partner-1", serviceZoneId: "zone-1", name: "Partner Ikeja Hub",
+    address: "12 Allen Avenue, Ikeja", latitude: 6.6, longitude: 3.35,
+  }, "admin-1"), { code: "PARTNER_NOT_OPERATIONAL", statusCode: 409 });
+  assert.equal(hubCreateCalled, false);
+});
