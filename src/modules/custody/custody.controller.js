@@ -71,7 +71,7 @@ export function createCustodyController(service) {
         actorUserId: req.user.id,
       });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_OPERATOR_NOT_FOUND", message: "Hub operator not found." } });
-      if (result.blocker === "HUB_CLOSED") return res.status(409).json({ success: false, error: { code: "HUB_CLOSED", message: "Dispatch permission cannot be granted on a closed hub." } });
+      if (result.blocker === "HUB_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "HUB_NOT_ACTIVE", message: "Dispatch permission can only be granted while the hub is active." } });
       if (result.blocker === "OPERATOR_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "OPERATOR_NOT_ACTIVE", message: "Dispatch permission can only be granted to an active membership belonging to an active, email-verified user." } });
       return res.status(200).json({ success: true, data: { operator: result.operator, replay: Boolean(result.replay) } });
     },
