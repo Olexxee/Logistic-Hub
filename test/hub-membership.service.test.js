@@ -130,9 +130,13 @@ function createManagerStaffPrisma({
     },
     hubPoint: { findUnique: async () => hub },
     hubPointOperator: {
-      findUnique: async ({ where }) => where.hubPointId_userId.userId === "manager-1"
-        ? managerMembership
-        : existingMembership,
+      findUnique: async ({ where }) => {
+        const key = where.hubPointId_userId;
+        if (key.userId === "manager-1") {
+          return managerMembership?.hubPointId === key.hubPointId ? managerMembership : null;
+        }
+        return existingMembership;
+      },
       findMany: async () => state.members,
       count: async () => state.members.length,
       upsert: async ({ create }) => {
@@ -249,4 +253,30 @@ test("a hub manager cannot add staff while the hub is suspended or closed", asyn
   });
   assert.equal(result.blocker, "HUB_NOT_OPEN_FOR_STAFF");
   assert.deepEqual(state.upserts, []);
+});
+
+
+test("a manager membership for another hub does not grant access to this hub", async () => {
+  const { prismaClient } = createManagerStaffPrisma({
+    managerMembership: { id: "manager-membership", hubPointId: "hub-other", userId: "manager-1", role: "MANAGER", isActive: true },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.listHubOperatorsForManager({
+    hubPointId: "hub-1", userId: "manager-1",
+  });
+  assert.equal(result.forbidden, true);
+});
+
+test("a manager cannot add staff to a different hub they do not manage", async () => {
+  const { prismaClient, state } = createManagerStaffPrisma({
+    managerMembership: { id: "manager-membership", hubPointId: "hub-other", userId: "manager-1", role: "MANAGER", isActive: true },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.addHubStaff({
+    hubPointId: "hub-1", userId: "staff-1",
+    reason: "Attempted cross-hub staff assignment", actorUserId: "manager-1",
+  });
+  assert.equal(result.forbidden, true);
+  assert.deepEqual(state.upserts, []);
+  assert.deepEqual(state.audits, []);
 });
