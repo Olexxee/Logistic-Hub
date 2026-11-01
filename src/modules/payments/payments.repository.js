@@ -73,6 +73,48 @@ export function createPaymentsRepository(prismaClient = prisma) {
     include: { paymentAttempt: { select: { providerReference: true, status: true } } },
    });
   },
+
+  async rejectRefundRequest({ refundId, actorUserId, reason, now = new Date() }) {
+   return prismaClient.$transaction(async tx => {
+    const refund = await tx.refundRequest.findUnique({ where: { id: refundId } });
+    if (!refund) return { notFound: true };
+    if (refund.status === "REJECTED") return { refund, replay: true };
+    if (refund.status !== "PENDING_REVIEW") return { conflict: refund.status };
+    const updated = await tx.refundRequest.update({ where: { id: refundId }, data: {
+     status: "REJECTED", reviewedByUserId: actorUserId, reviewedAt: now,
+     providerResponse: { decision: "REJECTED", reason },
+    } });
+    await tx.operationalAuditEvent.create({ data: {
+     actorUserId, entityType: "REFUND_REQUEST", entityId: refundId,
+     action: "REFUND_REQUEST_REJECTED", before: { status: refund.status },
+     after: { status: "REJECTED", reason },
+    } });
+    if (refund.idempotencyKey.startsWith("cancel-refund-")) {
+     const bookingType = refund.parcelBookingId ? "PARCEL" : (refund.rideBookingId ? "RIDE" : null);
+     if (bookingType) {
+      const where = bookingType === "PARCEL" ? { id: refund.parcelBookingId } : { id: refund.rideBookingId };
+      const bookingModel = bookingType === "PARCEL" ? tx.parcelBooking : tx.rideBooking;
+      const booking = await bookingModel.findUnique({ where });
+      if (booking?.status === "CANCELLATION_PENDING") {
+       const priorEvent = await tx.bookingEvent.findFirst({
+        where: { ...(bookingType === "PARCEL" ? { parcelBookingId: booking.id } : { rideBookingId: booking.id }), eventType: "CANCELLATION_REVIEW_REQUESTED" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+       });
+       if (priorEvent?.fromStatus) {
+        await bookingModel.update({ where, data: { status: priorEvent.fromStatus, cancellationReason: null } });
+        await tx.bookingEvent.create({ data: {
+         ...(bookingType === "PARCEL" ? { parcelBookingId: booking.id } : { rideBookingId: booking.id }),
+         actorUserId, eventType: "CANCELLATION_REJECTED",
+         fromStatus: "CANCELLATION_PENDING", toStatus: priorEvent.fromStatus,
+         metadata: { refundRequestId: refund.id, refundReference: refund.publicReference, reason },
+        } });
+       }
+      }
+     }
+    }
+    return { refund: updated, replay: false };
+   }, { isolationLevel: "Serializable" });
+  },
   async prepareRefundProcessing({ refundId, actorUserId, now = new Date() }) {
    return prismaClient.$transaction(async tx => {
     const refund = await tx.refundRequest.findUnique({ where: { id: refundId }, include: { paymentAttempt: true } });
