@@ -48,4 +48,4 @@
 - CI validates OpenAPI parity, Prisma schema/client generation, migration history/schema drift and API/PostgreSQL integrity tests on pull requests. Check the latest default-branch workflow run before release sign-off; historical CI success is not a substitute for the current result.
 - Deployment-specific `CORS_ORIGINS`, Google Maps credentials and email-provider configuration still require environment-level verification before end-to-end staging sign-off.
 - Unit tests cover discovery read models, repository scoping/privacy and admin booking filters.
-- CI must pass before this contract is considered ready for frontend implementation.
+- CI must pass before this contract is considered ready for staging/release integration.
