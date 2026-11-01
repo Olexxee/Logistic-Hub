@@ -13,10 +13,14 @@ function responseRecorder() {
 
 test("customer support ticket listing returns pagination metadata inside the data envelope", async () => {
   const controller = createSupportController({
-    listMine: async () => ({ data: [{ id: "ticket-1" }], nextCursor: "ticket-1" }),
+    listMine: async input => {
+      assert.equal(input.userId, "customer-1");
+      assert.equal(input.limit, 20);
+      return { data: [{ id: "ticket-1" }], nextCursor: "ticket-1" };
+    },
   });
   const res = responseRecorder();
-  await controller.mine({ user: { id: "customer-1" }, query: { limit: "20" } }, res, error => { throw error; });
+  await controller.mine({ user: { id: "customer-1" }, validatedQuery: { limit: 20 } }, res, error => { throw error; });
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
