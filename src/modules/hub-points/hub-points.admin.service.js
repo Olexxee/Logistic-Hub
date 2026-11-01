@@ -37,9 +37,12 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
             throw conflict("PARTNER_NOT_OPERATIONAL", "A partner-owned hub requires an active, verified transport partner.");
           }
         }
-        const { latitude, longitude, ...data } = input;
+        const { latitude, longitude, reason, ...data } = input;
         const created = await tx.hubPoint.create({ data: { ...data, latitude, longitude, status: "PENDING" } });
-        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: created.id, action: "HUB_POINT_CREATED", after: { partnerId: created.partnerId, serviceZoneId: created.serviceZoneId, name: created.name, status: created.status } });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId, entityType: "HUB_POINT", entityId: created.id, action: "HUB_POINT_CREATED", reason,
+          after: { partnerId: created.partnerId, serviceZoneId: created.serviceZoneId, name: created.name, status: created.status },
+        });
         return created;
       });
     },
@@ -62,16 +65,31 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
             throw conflict("SERVICE_ZONE_INACTIVE", "The selected service zone and its parent geography must be active.");
           }
         }
-        const next = { ...current, ...input };
+        const { reason, ...changes } = input;
+        const next = { ...current, ...changes };
         if (current.status === "ACTIVE" && !hasOperationalDetails(next)) {
           throw conflict("HUB_OPERATIONAL_DETAILS_REQUIRED", "An active hub must retain operator contact details, valid opening hours, accepted parcel types, and a valid capacity configuration.");
         }
-        const updated = await tx.hubPoint.update({ where: { id }, data: input });
-        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", before: { serviceZoneId: current.serviceZoneId, name: current.name, address: current.address, latitude: current.latitude, longitude: current.longitude, operatorName: current.operatorName, operatorPhone: current.operatorPhone, openingHours: current.openingHours, acceptedParcelTypes: current.acceptedParcelTypes, capacityConfig: current.capacityConfig }, after: { serviceZoneId: updated.serviceZoneId, name: updated.name, address: updated.address, latitude: updated.latitude, longitude: updated.longitude, operatorName: updated.operatorName, operatorPhone: updated.operatorPhone, openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes, capacityConfig: updated.capacityConfig } });
+        const updated = await tx.hubPoint.update({ where: { id }, data: changes });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_POINT_UPDATED", reason,
+          before: {
+            name: current.name, address: current.address, latitude: current.latitude, longitude: current.longitude,
+            operatorName: current.operatorName, operatorPhone: current.operatorPhone,
+            openingHours: current.openingHours, acceptedParcelTypes: current.acceptedParcelTypes,
+            capacityConfig: current.capacityConfig, operatorVerificationStatus: current.operatorVerificationStatus,
+          },
+          after: {
+            name: updated.name, address: updated.address, latitude: updated.latitude, longitude: updated.longitude,
+            operatorName: updated.operatorName, operatorPhone: updated.operatorPhone,
+            openingHours: updated.openingHours, acceptedParcelTypes: updated.acceptedParcelTypes,
+            capacityConfig: updated.capacityConfig, operatorVerificationStatus: updated.operatorVerificationStatus,
+          },
+        });
         return updated;
       });
     },
-    async reviewOperator({ id, verificationStatus, notes, actorUserId }) {
+    async reviewOperator({ id, verificationStatus, notes, reason, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         const current = await tx.hubPoint.findUnique({ where: { id } });
         if (!current) return null;
@@ -85,14 +103,14 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         });
         await writeOperationalAuditEvent(tx, {
           actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_OPERATOR_VERIFICATION_REVIEWED",
-          reason: notes,
-          before: { operatorVerificationStatus: current.operatorVerificationStatus, operatorVerifiedAt: current.operatorVerifiedAt },
-          after: { operatorVerificationStatus: updated.operatorVerificationStatus, operatorVerifiedAt: updated.operatorVerifiedAt },
+          reason,
+          before: { operatorVerificationStatus: current.operatorVerificationStatus, operatorVerifiedAt: current.operatorVerifiedAt, operatorVerificationNotes: current.operatorVerificationNotes },
+          after: { operatorVerificationStatus: updated.operatorVerificationStatus, operatorVerifiedAt: updated.operatorVerifiedAt, operatorVerificationNotes: updated.operatorVerificationNotes, notes },
         });
         return updated;
       });
     },
-    async setStatus(id, status, actorUserId) {
+    async setStatus(id, status, actorUserId, reason) {
       return serializableTransaction(prismaClient, async tx => {
         const current = await tx.hubPoint.findUnique({
           where: { id },
@@ -145,7 +163,7 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         }
         const updated = await tx.hubPoint.update({ where: { id }, data: { status } });
         await writeOperationalAuditEvent(tx, {
-          actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_STATUS_UPDATED",
+          actorUserId, entityType: "HUB_POINT", entityId: id, action: "HUB_STATUS_UPDATED", reason,
           before: { status: current.status }, after: { status: updated.status },
         });
         return updated;
