@@ -1,0 +1,266 @@
+# AH-5 — Partner & Geography Contract Audit
+
+**Workstream:** Admin & Hub Management (AH-5)  
+**Slice:** AH-5.0 — Contract audit and integration readiness  
+**Audited ref:** main  
+**Audit date:** 1 November 2026  
+**Status:** Source audit complete; no runtime changes or schema migrations in this slice.
+
+## Purpose and decision
+
+This document records the source-verified backend contract for transport partners, partner memberships, agreements, rate cards, geography, service zones and hub relationships. It is the implementation gate for AH-5.1–AH-5.6.
+
+**Decision:** the backend has meaningful write and lifecycle foundations, but AH-5 is not fully frontend-ready. In particular, partner membership and commercial-record read endpoints are missing, and partner/hub lifecycle synchronization is incomplete. Frontend work must not invent these contracts.
+
+## 1. Route mounting
+
+The relevant routers are mounted in src/app.js:
+
+| Router | Mount |
+|---|---|
+| Geography admin | /api/v1/geography/admin |
+| Service zones | /api/v1/service-zones |
+| Hub points | /api/v1/hub-points |
+| Hub applications | /api/v1 |
+| Partner pricing | /api/v1 |
+| Partner execution | /api/v1 |
+
+The endpoints below are absolute paths after applying those mounts.
+
+## 2. Transport partner management
+
+### Confirmed ADMIN endpoints
+
+| Method | Endpoint | Contract |
+|---|---|---|
+| GET | /api/v1/admin/transport-partners | Lists partners, newest first, with agreement count. No pagination/search/filter parameters. |
+| POST | /api/v1/admin/transport-partners | Creates a partner from display name and optional legal/contact fields. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId/status | Changes partner status and optionally verification status. |
+
+All three routes are protected by authentication and ADMIN role middleware.
+
+### Existing lifecycle rules
+
+- Partner status values: PENDING, ACTIVE, SUSPENDED, CLOSED.
+- Verification values: NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED.
+- Activation requires VERIFIED status and at least one active, verified OWNER membership.
+- Suspending a partner is blocked while it has active partner assignments. On successful suspension, its active agreements are suspended in the same transaction and audited.
+- Closing a partner is blocked while it has active members, open agreements or unsettled payables.
+- A CLOSED partner cannot be reopened.
+- Partner status and verification changes are audited, but the current status endpoint does not accept a decision reason.
+
+### Gaps
+
+- No partner detail endpoint.
+- No partner profile update endpoint for legal/contact details.
+- Directory has no pagination, search or status/verification filters.
+- Directory includes only an agreement count, not membership, hub, agreement or operational summaries.
+- Sensitive status/verification decisions have no required reason field in the current validator.
+
+**AH-5.1 implication:** a basic directory/create/status screen can use existing contracts. Partner detail/edit and robust searchable directory experiences require additional backend contracts or an explicitly limited first UI.
+
+## 3. Partner membership administration
+
+### Confirmed ADMIN endpoints
+
+| Method | Endpoint | Contract |
+|---|---|---|
+| POST | /api/v1/admin/transport-partners/:partnerId/members | Adds or reactivates a user with role OWNER, OPERATIONS or DISPATCHER. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId/members/:memberId | Sets isActive true or false. |
+
+The add-member operation requires an active, email-verified user. The last active eligible OWNER safeguard is enforced when the partner is ACTIVE. A CLOSED partner cannot receive or change members.
+
+Membership is scoped by TransportPartnerMember; the global User.role is not changed by membership assignment/deactivation in the current implementation.
+
+### Gaps
+
+- No ADMIN endpoint to list members for a partner.
+- No member detail/history endpoint.
+- No role-update endpoint distinct from add/reactivate; the add endpoint can upsert an existing member's role and active status.
+- Membership mutation validators do not accept a reason, and the audit events do not include a decision reason.
+- No membership pagination or filtering contract.
+
+A frontend member table cannot be built safely from the current ADMIN API without either a new read endpoint or an explicitly authorized reuse of another endpoint. The self-service GET /api/v1/partner/memberships/mine is not a substitute: it returns the authenticated user's memberships, not a partner's complete member roster.
+
+## 4. Partner agreements and rate cards
+
+### Confirmed ADMIN mutation endpoints
+
+| Method | Endpoint | Contract |
+|---|---|---|
+| POST | /api/v1/admin/transport-partners/:partnerId/agreements | Creates a DRAFT agreement with reference, currency, effective dates and optional commercial terms. |
+| POST | /api/v1/admin/partner-agreements/:agreementId/activate | Activates an eligible DRAFT agreement. |
+| PATCH | /api/v1/admin/partner-agreements/:agreementId/status | Suspends, expires or terminates an agreement; ACTIVE must use the activation route. |
+| POST | /api/v1/admin/partner-agreements/:agreementId/rate-cards | Creates the next version as a DRAFT rate card. |
+| POST | /api/v1/admin/partner-rate-cards/:rateCardId/rates | Adds a rate to a DRAFT rate card. |
+| POST | /api/v1/admin/partner-rate-cards/:rateCardId/publish | Publishes an eligible DRAFT rate card and retires the prior ACTIVE card for that agreement. |
+
+These routes are mounted under the partner-pricing router, which applies authentication and ADMIN authorization router-wide.
+
+### Existing business rules
+
+- One ACTIVE agreement per partner is enforced during activation.
+- Agreement activation requires an ACTIVE, VERIFIED partner and an effective date window that includes the current time.
+- An ACTIVE agreement cannot be suspended/terminated while it has active partner assignments.
+- Rate-card versions are incremented per agreement.
+- Rates reference origin and destination service-zone IDs, service type, parcel category, weight/dimension limits, integer minor-unit transport charge and optional transit estimate.
+- Both route service zones must exist and be active when a rate is added.
+- A rate card can be published only when its agreement and partner are eligible, its effective window is current and it has at least one active rate.
+- Publishing retires the previously ACTIVE rate card for that agreement.
+- Partner suspension suspends active agreements. The status transition and dependent agreement events are transactional and audited.
+
+### Gaps
+
+- No ADMIN list/detail endpoints for agreements.
+- No ADMIN list/detail endpoints for rate cards or their rates.
+- No edit/deactivate/delete endpoint for an individual rate. A published card is immutable through the current admin routes; a new version is the supported path.
+- Agreement/rate-card status mutations do not accept a mandatory reason.
+- No read API contract exposes the full commercial history needed for a partner detail workspace.
+
+**Pricing rule:** partner rate cards are negotiated commercial inputs, not customer prices. Do not seed invented transport prices or let the UI calculate a quote from distance alone. Quote selection must continue to consume eligible published rates and preserve the accepted quote snapshot.
+
+## 5. Hub application and partner ownership
+
+The current backend DOES contain a HubApplication model and a mounted hub-application router. The older AH-0 audit text that states no HubApplication model exists describes an earlier baseline and is superseded by this source-verified finding.
+
+### Confirmed endpoints
+
+| Method | Endpoint | Access |
+|---|---|---|
+| POST | /api/v1/partner/hub-applications | Authenticated partner OWNER |
+| GET | /api/v1/partner/hub-applications | Authenticated applicant; own applications only |
+| POST | /api/v1/partner/hub-applications/:applicationId/withdraw | Owning applicant; PENDING only |
+| GET | /api/v1/admin/hub-applications | ADMIN |
+| POST | /api/v1/admin/hub-applications/:applicationId/approve | ADMIN; mandatory reason |
+| POST | /api/v1/admin/hub-applications/:applicationId/reject | ADMIN; mandatory reason |
+
+Application submission requires an active, email-verified applicant; active OWNER membership in the specified transport partner; an ACTIVE, VERIFIED partner; an active service zone and active parent state/country; hub name/address/coordinates, operator contact, opening hours, accepted parcel types and capacity configuration.
+
+Application statuses include PENDING, APPROVED, REJECTED and WITHDRAWN. Duplicate pending applications for the same partner, zone and case-insensitive name are returned as a replay.
+
+Approval creates a partner-owned HubPoint in PENDING, creates/activates a MANAGER membership for the applicant and records reviewer/audit details. Approval does not activate the hub. Hub activation is a separate ADMIN operation with its own manager, geography, parcel-availability and operational-readiness checks.
+
+### Direct ADMIN hub creation
+
+POST /api/v1/hub-points/admin also supports optional partnerId. When supplied, the partner must already be ACTIVE and VERIFIED. The HubPoint.partnerId relationship is persisted. Updates intentionally do not allow changing partnerId.
+
+This means the data model can distinguish partner-linked hubs from hubs without a partner link, but it does not yet define a richer organization/ownership taxonomy for every possible hub operator type.
+
+## 6. Geography administration
+
+All geography admin routes are authenticated and ADMIN-only.
+
+| Method | Endpoint | Contract |
+|---|---|---|
+| GET/POST | /api/v1/geography/admin/countries | List/create countries. |
+| PATCH | /api/v1/geography/admin/countries/:id | Update country code/name. |
+| PATCH | /api/v1/geography/admin/countries/:id/status | Activate/deactivate country. |
+| GET/POST | /api/v1/geography/admin/states | List/create states; list can filter by countryId. |
+| PATCH | /api/v1/geography/admin/states/:id | Update state code/name. |
+| PATCH | /api/v1/geography/admin/states/:id/status | Activate/deactivate state. |
+| GET/POST | /api/v1/geography/admin/lgas | List/create LGAs; list can filter by stateId. |
+| PATCH | /api/v1/geography/admin/lgas/:id | Update LGA code/name. |
+| DELETE | /api/v1/geography/admin/lgas/:id | Delete only when no service zones reference the LGA. |
+
+Hierarchy safeguards:
+- A state can only be created under an existing active country.
+- An LGA can only be created under an existing active state and country.
+- A country cannot be deactivated while it has active states.
+- A state cannot be deactivated while it has active service zones.
+- A state cannot be activated under an inactive country.
+- An LGA referenced by a service zone cannot be deleted.
+
+### Gaps and data caveats
+
+- No bulk import or canonical Nigeria geography seed is established by these CRUD routes.
+- Country/state deletion endpoints are not exposed.
+- No dedicated geography change-history read endpoint exists beyond the shared ADMIN audit stream.
+- Do not assume the database currently contains all 36 states, FCT and 774 LGAs merely because the model supports the hierarchy. Verify seeded records before declaring national coverage.
+
+## 7. Service zones and availability
+
+### Confirmed ADMIN endpoints
+
+| Method | Endpoint | Contract |
+|---|---|---|
+| GET | /api/v1/service-zones/admin | Lists zones with state/country, LGA and service availability. |
+| POST | /api/v1/service-zones/admin | Creates a zone under an active state; optional LGA must belong to that state. |
+| PATCH | /api/v1/service-zones/admin/:serviceZoneId | Updates zone name/code/LGA/boundary GeoJSON. |
+| PATCH | /api/v1/service-zones/admin/:serviceZoneId/status | Activates/deactivates a zone. |
+| PUT | /api/v1/service-zones/admin/:serviceZoneId/availability | Upserts availability by service type, with enabled flag, effective dates and config. |
+
+Existing safeguards:
+- A zone can only be created under active geography.
+- An LGA selected for a zone must belong to the same state.
+- Changing a zone's LGA or deactivating a zone is blocked while active hubs use it.
+- Availability cannot be enabled under inactive geography.
+- Parcel-delivery availability cannot be disabled/scheduled out of its effective window while active hubs remain.
+- Mutations write operational audit events with before/after snapshots.
+
+### Gaps and caveats
+
+- The admin list does not include hub counts or a hub roster.
+- boundaryGeoJson is stored as a generic JSON object; this contract does not establish geometry validation, coordinate normalization or point-in-polygon enforcement.
+- Do not label this feature as geofencing or claim that booking coordinates are rejected outside a polygon unless a separate enforcement path is verified.
+- Availability is modeled per service type with an enabled flag, effective dates and opaque config. Do not invent a weekday/time-window schema beyond the actual config contract.
+
+## 8. Cross-resource integration findings
+
+### Implemented
+
+- Partner-linked hubs persist partnerId; partner application approval creates the hub with the application partner.
+- Partner status suspension suspends active partner agreements in the same transaction.
+- Agreement/rate-card eligibility checks require active/verified partner and valid agreement/card effective dates.
+- Hub activation requires active geography, active parcel availability, an active verified manager and complete operational details.
+- Hub/service-zone and geography parent-child mutations protect active dependent resources.
+
+### Gap requiring a policy decision and backend implementation
+
+**Partner suspension does not currently suspend partner-owned hubs.** The partner status service suspends active agreements, but it does not find or suspend active HubPoint records with that partnerId. Conversely, hub activation validates manager, zone and operational details but does not verify that a non-null owning partner is still ACTIVE and VERIFIED.
+
+This creates a split operational state: a suspended partner can retain an ACTIVE partner-owned hub, and the hub status transition may allow activation without revalidating its partner. Before AH-5.6, define whether partner suspension must:
+1. automatically suspend all partner-owned ACTIVE hubs, with audit events; and
+2. block activation of a partner-owned hub unless its partner is ACTIVE and VERIFIED.
+
+The conservative default is to enforce both, while preserving existing delivery/custody history and requiring explicit reactivation after partner re-verification.
+
+### Other integration gaps
+
+- There is no single admin read model joining partner, members, agreements, hubs and service coverage.
+- No ADMIN member/agreement/rate-card read endpoints exist for full detail screens.
+- Hub/partner membership and commercial mutation audit reasons are inconsistent or absent. The shared audit history is not a substitute for missing decision context.
+
+## 9. AH-5 slice readiness
+
+| Slice | Current readiness | Required work before/during implementation |
+|---|---|---|
+| AH-5.0 Contract audit | Complete in this document | Review source-verified gaps and confirm partner/hub suspension policy. |
+| AH-5.1 Partner management | Partial | Add partner detail/update and useful directory filtering/pagination only if required by UI; add reason to sensitive status/verification decisions. |
+| AH-5.2 Partner memberships | Blocked for full roster UI | Add ADMIN list endpoint with pagination and role/status fields; add mutation reason and complete before/after audit. Preserve last active OWNER safeguard. |
+| AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
+| AH-5.4 Geography | Ready for basic CRUD UI | Verify current seed coverage before national launch; avoid unverified bulk import. |
+| AH-5.5 Service zones | Ready for basic CRUD/availability UI | Add hub roster/count read support if UI needs it; do not claim polygon geofencing. |
+| AH-5.6 Cross-resource integration | Requires backend hardening | Implement and test partner/hub lifecycle policy, read-model needs and audit consistency. |
+
+## 10. Validation and scope
+
+This AH-5.0 slice is documentation-only:
+- No Prisma schema changes.
+- No migrations.
+- No route or service changes.
+- No changes to quote calculation, customer prices, payments, refunds or partner settlement.
+- No production database changes.
+- No bulk geography data import.
+
+The audit was performed against current main source for router mounts, route validators/controllers/services/repositories and Prisma model relationships. The PR should pass the repository's documentation and API/OpenAPI validation CI; it does not claim that runtime behavior has been changed or deployed.
+
+## 11. Recommended implementation order
+
+1. **AH-5.1:** partner directory and create/status UI using current endpoints; add only the missing read/update contracts the agreed screen requires.
+2. **AH-5.2:** partner member roster read endpoint and reasoned mutations before the membership UI.
+3. **AH-5.3:** agreement/rate-card read endpoints, then versioned commercial administration.
+4. **AH-5.4:** country/state/LGA admin UI, after verifying the actual seeded dataset.
+5. **AH-5.5:** service-zone and availability UI; add hub roster/count support if operationally needed.
+6. **AH-5.6:** partner/hub lifecycle synchronization and regression tests before treating integrated operations as complete.
+
+Do not implement all missing endpoints speculatively in AH-5.0. Each backend change should be a scoped implementation slice with route/service tests and OpenAPI parity.
