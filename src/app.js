@@ -26,12 +26,14 @@ import { partnerPricingRouter } from "./modules/partner-pricing/partner-pricing.
 import { partnerExecutionRouter } from "./modules/partner-execution/partner-execution.routes.js";
 import { custodyRouter } from "./modules/custody/custody.routes.js";
 import { operationalCasesRouter } from "./modules/operational-cases/operational-cases.routes.js";
+import { operationsControlRouter } from "./modules/operations-control/operations-control.routes.js";
 import { partnerSettlementRouter } from "./modules/partner-settlement/partner-settlement.routes.js";
 import { hubPointsRouter } from "./modules/hub-points/hub-points.routes.js";
 import { driversRouter } from "./modules/drivers/drivers.routes.js";
 import { auditRouter } from "./modules/audit/audit.routes.js";
 import { discoveryRouter } from "./modules/discovery/discovery.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
+import { runWithAuditContext } from "./shared/audit/audit-context.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
 
 export const app = express();
@@ -81,7 +83,7 @@ app.use(pinoHttp({
 
 app.use((req, res, next) => {
   res.setHeader("X-Request-ID", req.id);
-  next();
+  runWithAuditContext({ requestId: req.id }, next);
 });
 
 app.get("/", (_req, res) => {
@@ -124,6 +126,7 @@ app.use("/api/v1", partnerPricingRouter);
 app.use("/api/v1", partnerExecutionRouter);
 app.use("/api/v1", custodyRouter);
 app.use("/api/v1", operationalCasesRouter);
+app.use("/api/v1", operationsControlRouter);
 app.use("/api/v1", partnerSettlementRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

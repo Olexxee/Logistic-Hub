@@ -2,7 +2,7 @@ export function createOperationalCasesController(service) {
   return {
     list: async (req, res) => {
       const result = await service.list(req.validatedQuery);
-      return res.status(200).json({ success: true, data: result.items, page: { nextCursor: result.nextCursor } });
+      return res.status(200).json({ success: true, data: { items: result.items, nextCursor: result.nextCursor } });
     },
     update: async (req, res) => {
       const result = await service.update({ ...req.body, caseId: req.params.caseId, actorUserId: req.user.id });

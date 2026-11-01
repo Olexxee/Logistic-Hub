@@ -1,24 +1,29 @@
 import { createCancellationsRepository } from "./cancellations.repository.js";
 import { ConflictError, NotFoundError } from "../../shared/http/app-error.js";
 
-
-export function createCancellationsService({
-  prismaClient,
-  clock = () => new Date(),
-}) {
+export function createCancellationsService({ prismaClient, clock = () => new Date() }) {
   const repo = createCancellationsRepository(prismaClient);
   return {
+    async listMine({ userId, cursor, limit = 20 }) {
+      const rows = await repo.listMine({ userId, cursor, limit });
+      const hasMore = rows.length > limit;
+      const data = (hasMore ? rows.slice(0, limit) : rows).map(event => ({
+        ...event,
+        parcelBooking: event.parcelBooking ? {
+          ...event.parcelBooking,
+          refunds: event.parcelBooking.refunds.map(refund => ({ ...refund, amountMinor: refund.amountMinor.toString() })),
+        } : null,
+        rideBooking: event.rideBooking ? {
+          ...event.rideBooking,
+          refunds: event.rideBooking.refunds.map(refund => ({ ...refund, amountMinor: refund.amountMinor.toString() })),
+        } : null,
+      }));
+      return { data, nextCursor: hasMore ? data.at(-1)?.id ?? null : null };
+    },
     async cancel(input) {
       const result = await repo.cancel({ ...input, now: clock() });
-      if (!result)
-        throw new NotFoundError(
-          "Booking not found or not owned by this account.",
-        );
-      if (result.conflict)
-        throw new ConflictError(
-          "This booking can no longer be cancelled.",
-          "BOOKING_NOT_CANCELLABLE",
-        );
+      if (!result) throw new NotFoundError("Booking not found or not owned by this account.");
+      if (result.conflict) throw new ConflictError("This booking can no longer be cancelled.", "BOOKING_NOT_CANCELLABLE");
       return result;
     },
   };

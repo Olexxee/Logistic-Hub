@@ -93,6 +93,9 @@ test("partner member can accept and start only its own assignment", async () => 
     transportPartnerMember: {
       findUnique: async () => ({ partnerId: "partner-1", userId: "operator-1", isActive: true }),
     },
+    transportPartner: {
+      findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }),
+    },
     deliveryLeg: {
       updateMany: async ({ where, data }) => {
         if (legStatus !== where.status) return { count: 0 };
@@ -165,4 +168,52 @@ test("partner assignment queue rejects users without active partner memberships"
     service.listMyAssignments({ userId: "operator-2", page: 1, limit: 20 }),
     error => error.statusCode === 403 && error.code === "PARTNER_MEMBERSHIP_REQUIRED",
   );
+});
+
+
+test("a suspended partner cannot accept an assignment despite an active membership", async () => {
+  const tx = {
+    partnerDeliveryAssignment: { findUnique: async () => ({ id: "assignment-1", partnerId: "partner-1", status: "ASSIGNED" }) },
+    transportPartnerMember: { findUnique: async () => ({ isActive: true }) },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "SUSPENDED", verificationStatus: "VERIFIED" }) },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  await assert.rejects(service.acceptAssignment({ assignmentId: "assignment-1", userId: "operator-1" }),
+    error => error.statusCode === 409 && error.code === "PARTNER_NOT_OPERATIONAL");
+});
+
+test("the last active owner cannot be demoted", async () => {
+  const tx = {
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE" }) },
+    user: { findUnique: async () => ({ id: "user-1", status: "ACTIVE", emailVerifiedAt: now, role: "PARTNER_OPERATOR" }) },
+    transportPartnerMember: {
+      findUnique: async () => ({ id: "member-1", role: "OWNER", isActive: true }),
+      count: async () => 0,
+    },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.addMember({ partnerId: "partner-1", userId: "user-1", role: "OPERATIONS", actorUserId: "admin-1" });
+  assert.equal(result.blocker, "LAST_ACTIVE_OWNER");
+});
+
+
+test("a suspended partner can deactivate its final owner before closure", async () => {
+  let updatedMembership;
+  const tx = {
+    transportPartnerMember: {
+      findFirst: async () => ({ id: "member-1", partnerId: "partner-1", userId: "owner-1", role: "OWNER", isActive: true }),
+      update: async ({ data }) => { updatedMembership = data; return { id: "member-1", ...data }; },
+      count: async () => 0,
+    },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "SUSPENDED" }) },
+    hubPointOperator: { count: async () => 0 },
+    user: { updateMany: async () => ({ count: 1 }) },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.setMemberStatus({
+    partnerId: "partner-1", memberId: "member-1", isActive: false, actorUserId: "admin-1",
+  });
+  assert.equal(result.member.isActive, false);
+  assert.deepEqual(updatedMembership, { isActive: false });
 });

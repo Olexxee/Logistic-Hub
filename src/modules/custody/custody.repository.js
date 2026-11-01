@@ -140,6 +140,18 @@ export function createCustodyRepository({ prismaClient }) {
     createHubIntakeRecord(data, tx = prismaClient) {
       return tx.hubIntakeRecord.create({ data });
     },
+    findActiveHubOperationalCase({ deliveryLegId, hubPointId, type }, tx = prismaClient) {
+      return tx.operationalCase.findFirst({
+        where: {
+          deliveryLegId,
+          hubPointId,
+          type,
+          status: { in: ["OPEN", "TRIAGED", "IN_PROGRESS"] },
+        },
+        select: { id: true, publicReference: true, type: true, status: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+    },
     findBlockingHubOperationalCase(deliveryLegId, tx = prismaClient) {
       return tx.operationalCase.findFirst({
         where: {

@@ -126,6 +126,8 @@ test("admin can add an existing partner operator as a hub operator without downg
     user: { findUnique: async () => ({ id: "operator-1", status: "ACTIVE", role: "PARTNER_OPERATOR", emailVerifiedAt: now }) },
     hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE" }) },
     hubPointOperator: {
+      findUnique: async () => null,
+      count: async () => 1,
       upsert: async ({ create }) => ({ id: "hub-operator-1", ...create }),
     },
   });
@@ -249,4 +251,110 @@ test("admin cannot verify a user without a phone number", async () => {
     actorUserId: "admin-1",
   });
   assert.equal(result.blocker, "USER_PHONE_REQUIRED");
+});
+
+
+test("hub operational reads deny users without an active hub membership", async () => {
+  const { db } = tx();
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+
+  await assert.rejects(service.listHubIntakes({ userId: "unaffiliated-user" }), error => error.statusCode === 403);
+  await assert.rejects(service.listHubHandovers({ userId: "unaffiliated-user" }), error => error.statusCode === 403);
+  await assert.rejects(service.listHubDispatchable({ userId: "unaffiliated-user" }), error => error.statusCode === 403);
+});
+
+test("hub operational reads deny explicit hub IDs outside the caller's memberships", async () => {
+  const { db } = tx({
+    hubPointOperator: {
+      findMany: async () => [{ hubPointId: "hub-1", isActive: true }],
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+
+  await assert.rejects(
+    service.listHubIntakes({ userId: "hub-operator-1", hubPointId: "hub-2" }),
+    error => error.statusCode === 403,
+  );
+  await assert.rejects(
+    service.listHubHandovers({ userId: "hub-operator-1", hubPointId: "hub-2" }),
+    error => error.statusCode === 403,
+  );
+  await assert.rejects(
+    service.listHubDispatchable({ userId: "hub-operator-1", hubPointId: "hub-2" }),
+    error => error.statusCode === 403,
+  );
+});
+
+test("hub operational reads scope repository queries to only the caller's active memberships", async () => {
+  const queries = {};
+  const { db } = tx({
+    hubPointOperator: {
+      findMany: async () => [{ hubPointId: "hub-1", isActive: true }],
+    },
+    hubIntakeRecord: {
+      findMany: async args => { queries.intakes = args; return []; },
+    },
+    custodyHandover: {
+      findMany: async args => { queries.handovers = args; return []; },
+    },
+    deliveryLeg: {
+      findMany: async args => { queries.dispatchable = args; return []; },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+
+  await service.listHubIntakes({ userId: "hub-operator-1" });
+  await service.listHubHandovers({ userId: "hub-operator-1" });
+  await service.listHubDispatchable({ userId: "hub-operator-1" });
+
+  assert.deepEqual(queries.intakes.where.hubPointId, { in: ["hub-1"] });
+  assert.deepEqual(queries.handovers.where, {
+    toPartyType: "HUB",
+    toPartyId: { in: ["hub-1"] },
+  });
+  assert.deepEqual(queries.dispatchable.where.originHubPointId, { in: ["hub-1"] });
+});
+
+test("hub handover initiation denies a user who is not an active member of the releasing hub", async () => {
+  let deliveryLegReads = 0;
+  const { db } = tx({
+    hubPointOperator: { findUnique: async () => null },
+    deliveryLeg: {
+      findUnique: async () => { deliveryLegReads += 1; return leg; },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+
+  await assert.rejects(
+    service.createHubHandover({
+      hubPointId: "hub-1",
+      deliveryLegId: "leg-1",
+      toPartyType: "DRIVER",
+      toPartyId: "driver-1",
+      conditionAtRelease: "Parcel sealed",
+    }, "unaffiliated-user"),
+    error => error.statusCode === 403,
+  );
+  assert.equal(deliveryLegReads, 0);
+});
+
+test("hub exception reporting denies a user who is not an active member of the reporting hub", async () => {
+  let legLocks = 0;
+  const { db } = tx({
+    hubPointOperator: { findUnique: async () => null },
+    $queryRaw: async () => { legLocks += 1; return []; },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+
+  await assert.rejects(
+    service.reportHubException({
+      hubPointId: "hub-1",
+      deliveryLegId: "leg-1",
+      type: "DAMAGED_PARCEL",
+      title: "Damaged parcel",
+      description: "Parcel packaging is visibly damaged.",
+    }, "unaffiliated-user"),
+    error => error.statusCode === 403,
+  );
+  assert.equal(legLocks, 0);
 });
