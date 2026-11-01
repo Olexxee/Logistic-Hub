@@ -134,3 +134,45 @@ test("ambiguous provider network failure leaves refund locked for reconciliation
     error => error.code === "REFUND_STATE_CONFLICT",
   );
 });
+
+test("admin reconciliation finds an ambiguous Paystack submission without resubmitting it", async () => {
+  const { refund, prismaClient } = fixture();
+  refund.providerResponse = { submissionOutcome: "UNKNOWN", reconciliationRequired: true };
+  const calls = [];
+  const service = createFinanceService({
+    prismaClient, secretKey: "paystack-test-secret", refundsEnabled: false,
+    fetchImpl: async (url, options) => {
+      calls.push(url);
+      assert.equal(options.headers.Authorization, "Bearer paystack-test-secret");
+      if (url.includes("/refund?transaction=")) {
+        return { ok: true, json: async () => ({ status: true, data: [{ id: 87654, merchant_note: "Logistic Hub refund REF-TEST | reviewed" }] }) };
+      }
+      return { ok: true, json: async () => ({ status: true, data: { id: 87654, status: "processing", amount: 4300, currency: "NGN" } }) };
+    },
+  });
+  const result = await service.reconcileRefund({ id: refund.id, user: { id: "admin-1", role: "ADMIN" } });
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0].includes("/refund?transaction=PAY-REF-1"));
+  assert.ok(calls[1].endsWith("/refund/87654"));
+  assert.equal(refund.providerReference, "87654");
+  assert.equal(refund.status, "PROCESSING");
+  assert.equal(result.reconciliation, "MATCHED");
+});
+
+test("admin reconciliation does not retry when Paystack has no matching refund", async () => {
+  const { refund, prismaClient } = fixture();
+  refund.providerResponse = { submissionOutcome: "UNKNOWN", reconciliationRequired: true };
+  let calls = 0;
+  const service = createFinanceService({
+    prismaClient, secretKey: "paystack-test-secret", refundsEnabled: false,
+    fetchImpl: async () => {
+      calls += 1;
+      return { ok: true, json: async () => ({ status: true, data: [] }) };
+    },
+  });
+  const result = await service.reconcileRefund({ id: refund.id, user: { id: "admin-1", role: "ADMIN" } });
+  assert.equal(result.reconciliation, "NO_PROVIDER_MATCH");
+  assert.equal(refund.status, "PENDING_REVIEW");
+  assert.equal(refund.providerReference, null);
+  assert.equal(calls, 1);
+});
