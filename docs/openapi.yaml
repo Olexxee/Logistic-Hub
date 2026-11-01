@@ -833,11 +833,12 @@ paths:
                 acceptedParcelTypes: { type: array, minItems: 1, maxItems: 30, items: { type: string, minLength: 1, maxLength: 60 } }
                 capacityConfig: { $ref: '#/components/schemas/HubCapacityConfig' }
       responses:
+        '200': { description: An identical pending application already exists; the existing application is returned. }
         '201': { description: Application submitted in PENDING status. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Partner or service zone is not eligible, A duplicate pending application returns the existing application rather than creating another record. }
+        '409': { description: Partner or service zone is not eligible. }
   /partner/hub-applications/{applicationId}/withdraw:
     post:
       tags: [Partner]
