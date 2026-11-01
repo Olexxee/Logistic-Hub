@@ -22,8 +22,8 @@ export function createFinanceRepository(prismaClient=prisma){return{
    return {refund,replay:false};
   },{isolationLevel:"Serializable"});
  },
- listRefunds({status}){return prismaClient.refundRequest.findMany({where:status?{status}:{},orderBy:{createdAt:"desc"},take:100});},
- findRefund(id){return prismaClient.refundRequest.findUnique({where:{id},include:{paymentAttempt:true}});},
+ listRefunds({status}){return prismaClient.refundRequest.findMany({where:status?{status}:{},orderBy:{createdAt:"desc"},take:100,select:{id:true,publicReference:true,paymentAttemptId:true,parcelBookingId:true,rideBookingId:true,amountMinor:true,currency:true,reason:true,status:true,requestedByUserId:true,reviewedByUserId:true,providerReference:true,reviewedAt:true,processedAt:true,createdAt:true,updatedAt:true}});},
+ findRefund(id){return prismaClient.refundRequest.findUnique({where:{id},include:{paymentAttempt:{select:{status:true,providerReference:true,amountMinor:true,currency:true}}}});},
  reviewRefund({id,reviewerId,decision,note,submissionToken}) {
   return prismaClient.$transaction(async tx => {
    const current=await tx.refundRequest.findUnique({where:{id}});
