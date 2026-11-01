@@ -46,6 +46,7 @@ export function createFinanceRouter({
     controller.requestRefund,
   );
   router.get("/admin/refunds", authMiddleware, supportFinanceAccess, controller.refunds);
+  router.post("/admin/refunds/:refundId/reconcile", authMiddleware, adminAccess, validate(refundId, "params"), controller.reconcileRefund);
   router.patch(
     "/admin/refunds/:refundId",
     authMiddleware,
