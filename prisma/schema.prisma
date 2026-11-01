@@ -1497,9 +1497,10 @@ model HubPointOperator {
   id         String          @id @default(cuid())
   hubPointId String
   userId     String
-  role       HubOperatorRole @default(OPERATOR)
-  isActive   Boolean         @default(true)
-  createdAt  DateTime        @default(now())
+  role        HubOperatorRole @default(OPERATOR)
+  isActive    Boolean         @default(true)
+  canDispatch Boolean         @default(false)
+  createdAt   DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 
   hubPoint HubPoint @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
