@@ -41,7 +41,7 @@ export function validateRefundId(req, _res, next) {
 }
 export function validateFinancialList(req, _res, next) {
   const schema = z.object({
-    status: z.enum(["PENDING_REVIEW", "PROCESSING", "PROCESSED", "FAILED", "REJECTED", "PENDING", "ELIGIBLE", "PAID"]).optional(),
+    status: z.enum(["REQUESTED", "PROCESSING", "SUCCEEDED", "FAILED", "REJECTED", "PENDING", "ELIGIBLE", "PAID"]).optional(),
     cursor: z.string().trim().min(1).max(128).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   }).strict();
@@ -54,16 +54,5 @@ export function validatePaymentReference(req, _res, next) {
   const parsed = z.string().trim().min(1).max(128).safeParse(req.params.reference);
   if (!parsed.success) return next(new ValidationError("The payment reference is invalid."));
   req.validated = { ...(req.validated ?? {}), params: { reference: parsed.data } };
-  return next();
-}
-
-const refundRejectSchema = z.object({
-  reason: z.string().trim().min(5).max(500),
-}).strict();
-
-export function validateRefundReject(req, _res, next) {
-  const parsed = refundRejectSchema.safeParse(req.body);
-  if (!parsed.success) return next(new ValidationError("The refund rejection reason is invalid.", parsed.error.issues.map(({ path, message }) => ({ path: path.join("."), message }))));
-  req.validated = { ...(req.validated ?? {}), body: parsed.data };
   return next();
 }
