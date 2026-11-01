@@ -1030,9 +1030,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [serviceZoneId, name, address, latitude, longitude]
+              required: [serviceZoneId, name, address, latitude, longitude, reason]
               properties:
-                partnerId: { type: string, minLength: 1, maxLength: 128, description: Optional existing active, verified transport partner; omit for a platform-operated hub. }
+                partnerId: { type: string, minLength: 1, maxLength: 128, description: "Optional existing active, verified transport partner; omit for a platform-operated hub." }
                 serviceZoneId: { type: string }
                 name: { type: string, minLength: 2, maxLength: 120 }
                 address: { type: string, minLength: 5, maxLength: 500 }
@@ -1049,6 +1049,7 @@ paths:
                   items: { type: string, minLength: 1, maxLength: 60 }
                 capacityConfig:
                   $ref: '#/components/schemas/HubCapacityConfig'
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '201': { description: Hub registered in PENDING status. }
         '400': { $ref: '#/components/responses/ValidationError' }
@@ -1074,9 +1075,11 @@ paths:
           application/json:
             schema:
               type: object
-              minProperties: 1
+              minProperties: 2
               additionalProperties: false
+              required: [reason]
               properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
                 name: { type: string, minLength: 2, maxLength: 120 }
                 address: { type: string, minLength: 5, maxLength: 500 }
                 latitude: { type: number, minimum: -90, maximum: 90 }
@@ -1113,9 +1116,10 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [status]
+              required: [status, reason]
               properties:
                 status: { type: string, enum: [ACTIVE, SUSPENDED, CLOSED] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200': { description: Hub status updated. }
         '400': { $ref: '#/components/responses/ValidationError' }
@@ -1144,10 +1148,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [verificationStatus]
+              required: [verificationStatus, reason]
               properties:
                 verificationStatus: { type: string, enum: [PENDING, VERIFIED, REJECTED, EXPIRED] }
                 notes: { type: string, maxLength: 500 }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200': { description: Operator verification review saved. }
         '400': { $ref: '#/components/responses/ValidationError' }
