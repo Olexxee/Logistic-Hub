@@ -837,7 +837,7 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Partner or service zone is not eligible, or a pending duplicate application exists. }
+        '409': { description: Partner or service zone is not eligible, A duplicate pending application returns the existing application rather than creating another record. }
   /partner/hub-applications/{applicationId}/withdraw:
     post:
       tags: [Partner]
@@ -882,6 +882,16 @@ paths:
           name: applicationId
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200': { description: Application approved and hub point created. }
         '401': { $ref: '#/components/responses/Unauthorized' }
