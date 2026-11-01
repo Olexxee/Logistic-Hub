@@ -3111,7 +3111,7 @@ paths:
     post:
       tags: [Partner execution, Admin]
       operationId: addTransportPartnerMember
-      summary: Add an active user to a transport partner
+      summary: Add or reactivate a transport partner member, or change their partner role
       security:
         - bearerAuth: []
       x-implementation-status: implemented
@@ -3133,7 +3133,8 @@ paths:
                 role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER], default: OPERATIONS }
                 reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
-        '201': { description: Partner membership created or reactivated. }
+        '201': { description: Partner membership created or reactivated; an active unchanged membership returns 200. }
+        '200': { description: Existing membership already has the requested active role; no mutation is performed. }
         '400': { description: Invalid membership input. }
         '401': { description: Authentication required. }
         '403': { description: Administrator access required. }
@@ -3143,7 +3144,7 @@ paths:
     patch:
       tags: [Partner execution, Admin]
       operationId: setTransportPartnerMemberStatus
-      summary: Activate or suspend a transport partner member
+      summary: Update a transport partner member role and/or active status
       security:
         - bearerAuth: []
       x-implementation-status: implemented
@@ -3169,7 +3170,7 @@ paths:
                 role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER] }
                 reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
-        '200': { description: Membership status updated. }
+        '200': { description: Membership role and/or active status updated; unchanged requests return the current membership. }
         '400': { description: Invalid membership input. }
         '401': { description: Authentication required. }
         '403': { description: Administrator access required. }
