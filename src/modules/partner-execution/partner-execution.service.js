@@ -99,20 +99,24 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
       });
     },
 
-    async setMemberStatus({ partnerId, memberId, isActive, reason, actorUserId }) {
+    async setMemberStatus({ partnerId, memberId, isActive, role, reason, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         const member = await tx.transportPartnerMember.findFirst({ where: { id: memberId, partnerId } });
         if (!member) return { notFound: true };
         const partner = await repository.findPartner(partnerId, tx);
         if (partner?.status === "CLOSED") return { blocker: "PARTNER_CLOSED" };
-        if (member.isActive === isActive) return { member, unchanged: true };
-        if (isActive) {
+        const nextIsActive = isActive ?? member.isActive;
+        const nextRole = role ?? member.role;
+        if (member.isActive === nextIsActive && member.role === nextRole) return { member, unchanged: true };
+        if (!member.isActive && nextIsActive) {
           const user = await tx.user.findUnique({
             where: { id: member.userId }, select: { status: true, emailVerifiedAt: true },
           });
           if (user?.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         }
-        if (partner?.status === "ACTIVE" && member.isActive && member.role === "OWNER" && !isActive) {
+        const removesEligibleOwner = member.isActive && member.role === "OWNER" &&
+          (!nextIsActive || nextRole !== "OWNER");
+        if (partner?.status === "ACTIVE" && removesEligibleOwner) {
           const memberUser = await tx.user.findUnique({
             where: { id: member.userId }, select: { status: true, emailVerifiedAt: true },
           });
@@ -124,12 +128,14 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           }
         }
         const updated = await tx.transportPartnerMember.update({
-          where: { id: member.id }, data: { isActive },
+          where: { id: member.id }, data: { isActive: nextIsActive, role: nextRole },
         });
+        const action = member.role !== updated.role
+          ? "PARTNER_MEMBER_ROLE_UPDATED"
+          : updated.isActive ? "PARTNER_MEMBER_ACTIVATED" : "PARTNER_MEMBER_SUSPENDED";
         await tx.operationalAuditEvent.create({ data: {
           actorUserId, entityType: "TRANSPORT_PARTNER_MEMBER", entityId: member.id,
-          action: isActive ? "PARTNER_MEMBER_ACTIVATED" : "PARTNER_MEMBER_SUSPENDED",
-          reason,
+          action, reason,
           before: { partnerId, userId: member.userId, role: member.role, isActive: member.isActive },
           after: { partnerId, userId: updated.userId, role: updated.role, isActive: updated.isActive },
         } });
