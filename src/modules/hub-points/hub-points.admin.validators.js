@@ -16,6 +16,7 @@ export const capacityConfigAdminSchema = z.object({
 }).strict();
 
 export const createHubPointAdminSchema = z.object({
+  partnerId: z.string().trim().min(1).max(128).optional(),
   serviceZoneId: z.string().trim().min(1).max(128),
   name: z.string().trim().min(2).max(120),
   address: z.string().trim().min(5).max(500),
