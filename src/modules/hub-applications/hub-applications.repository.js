@@ -17,7 +17,6 @@ export function createHubApplicationsRepository({ prismaClient }) {
     findPendingDuplicate(partnerId, serviceZoneId, name, tx = prismaClient) {
       return tx.hubApplication.findFirst({
         where: { partnerId, serviceZoneId, name: { equals: name, mode: "insensitive" }, status: "PENDING" },
-        select: { id: true },
       });
     },
     createApplication(data, tx = prismaClient) { return tx.hubApplication.create({ data }); },
