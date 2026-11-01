@@ -72,6 +72,10 @@ export function createHubApplicationsService({ prismaClient, clock = () => new D
         if (application.applicant.status !== "ACTIVE" || !application.applicant.emailVerifiedAt) {
           return { blocker: "APPLICANT_NOT_ACTIVE" };
         }
+        const ownerMembership = await repo.findOwnerMembership(application.partnerId, application.applicantUserId, tx);
+        if (!ownerMembership?.isActive || ownerMembership.role !== "OWNER") {
+          return { blocker: "PARTNER_OWNER_REQUIRED" };
+        }
         if (!application.serviceZone.isActive || !application.serviceZone.state?.isActive || !application.serviceZone.state.country?.isActive) {
           return { blocker: "SERVICE_ZONE_INACTIVE" };
         }
@@ -111,6 +115,23 @@ export function createHubApplicationsService({ prismaClient, clock = () => new D
           after: { partnerId: application.partnerId, serviceZoneId: application.serviceZoneId, status: hubPoint.status },
         }, tx);
         return { application: updated, hubPoint, replay: false };
+      });
+    },
+
+    async withdraw(applicationId, applicantUserId) {
+      return repo.transaction(async tx => {
+        const application = await tx.hubApplication.findFirst({
+          where: { id: applicationId, applicantUserId },
+        });
+        if (!application) return { notFound: true };
+        if (application.status !== "PENDING") return { blocker: "APPLICATION_NOT_PENDING" };
+        const updated = await repo.updateApplication(applicationId, { status: "WITHDRAWN" }, tx);
+        await repo.createAudit({
+          actorUserId: applicantUserId, entityType: "HUB_APPLICATION", entityId: applicationId,
+          action: "HUB_APPLICATION_WITHDRAWN",
+          before: { status: application.status }, after: { status: updated.status },
+        }, tx);
+        return { application: updated };
       });
     },
 
