@@ -7,7 +7,6 @@ export const partnerListQuerySchema = z.object({
   search: z.string().trim().max(160).optional(),
   status: z.enum(["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"]).optional(),
   verificationStatus: z.enum(["NOT_SUBMITTED", "PENDING", "VERIFIED", "REJECTED", "EXPIRED"]).optional(),
-  reason: z.string().trim().min(5).max(1000),
 }).strict();
 export const partnerProfileUpdateSchema = z.object({
   displayName: z.string().trim().min(2).max(160).optional(),
@@ -29,6 +28,7 @@ export const partnerInputSchema = z.object({
 export const partnerStatusInputSchema = z.object({
   status: z.enum(["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"]),
   verificationStatus: z.enum(["NOT_SUBMITTED", "PENDING", "VERIFIED", "REJECTED", "EXPIRED"]).optional(),
+  reason: z.string().trim().min(5).max(1000),
 }).strict();
 export const agreementInputSchema = z.object({
   reference: z.string().trim().min(2).max(100),
