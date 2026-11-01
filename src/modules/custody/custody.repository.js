@@ -11,7 +11,10 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.hubPointOperator.findUnique({ where: { hubPointId_userId: { hubPointId, userId } } });
     },
     findHubOperatorsForUser(userId, tx = prismaClient) {
-      return tx.hubPointOperator.findMany({ where: { userId, isActive: true, hubPoint: { status: "ACTIVE" } }, select: { hubPointId: true } });
+      return tx.hubPointOperator.findMany({
+        where: { userId, isActive: true, hubPoint: { status: "ACTIVE" } },
+        select: { hubPointId: true, role: true, canDispatch: true },
+      });
     },
     findHubOperatorById(hubPointId, operatorId, tx = prismaClient) {
       return tx.hubPointOperator.findFirst({ where: { id: operatorId, hubPointId } });
@@ -31,11 +34,17 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.hubPointOperator.upsert({
         where: { hubPointId_userId: { hubPointId: data.hubPointId, userId: data.userId } },
         create: data,
-        update: { role: data.role, isActive: true },
+        update: { role: data.role, isActive: true, canDispatch: false },
       });
     },
     updateHubOperator(id, isActive, tx = prismaClient) {
-      return tx.hubPointOperator.update({ where: { id }, data: { isActive } });
+      return tx.hubPointOperator.update({
+        where: { id },
+        data: { isActive, ...(isActive ? {} : { canDispatch: false }) },
+      });
+    },
+    updateHubOperatorDispatchPermission(id, canDispatch, tx = prismaClient) {
+      return tx.hubPointOperator.update({ where: { id }, data: { canDispatch } });
     },
     countActiveHubMemberships(userId, tx = prismaClient) {
       return tx.hubPointOperator.count({ where: { userId, isActive: true } });
