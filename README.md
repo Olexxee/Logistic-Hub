@@ -16,9 +16,9 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - **AH-2:** hub applications and approval flow are implemented. Partner OWNERs can submit applications; ADMIN review creates a PENDING hub and manager membership. Hub activation remains a separate operation.
 - **AH-3:** hub manager/staff membership management implemented; hub-scoped managers can add operators, while manager assignment and privileged membership controls remain ADMIN-governed.
 - **AH-4:** explicit ADMIN-granted hub dispatch delegation implemented through the canDispatch capability; dispatch matching remains scoped to the exact active hub membership.
-- **AH-5:** AH-5.0 contract audit is the current slice. Existing partner, agreement, rate-card, geography and service-zone capabilities are mapped; missing read contracts and cross-resource lifecycle gaps are documented. No AH-5 runtime changes or migrations are included in this audit PR.
+- **AH-5:** AH-5.0 contract audit merged. **AH-5.1 is in progress**: partner directory filtering/pagination, partner detail, audited profile updates and reason-required status/verification decisions. Membership roster and commercial-history read APIs remain AH-5.2/AH-5.3; partner/hub lifecycle synchronization remains AH-5.6.
 
-**AH-5 implementation gate:** do not build partner membership, agreement or rate-card detail screens against assumed list endpoints. The current backend does not expose ADMIN list/detail routes for those records. Partner suspension also does not currently suspend its partner-owned hubs; resolve the intended lifecycle policy before treating partner and hub status as synchronized.
+**AH-5 implementation gate:** do not build partner membership, agreement or rate-card detail screens against assumed list endpoints. AH-5.1 provides partner directory/detail/profile/status operations only. The current backend still does not expose ADMIN list/detail routes for partner members, agreements or rate cards. Partner suspension also does not currently suspend its partner-owned hubs; resolve the intended lifecycle policy before treating partner and hub status as synchronized.
 
 ## Product blueprint
 
