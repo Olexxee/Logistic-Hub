@@ -31,10 +31,10 @@ export function createFinanceService({prismaClient,secretKey=env.PAYSTACK_SECRET
   try {
    response=await fetchImpl("https://api.paystack.co/refund",{
     method:"POST",headers:{Authorization:"Bearer "+secretKey,"Content-Type":"application/json"},
-    body:JSON.stringify({transaction:refund.paymentAttempt.providerReference,amount:Number(refund.amountMinor),customer_note:refund.reason,merchant_note:("Logistic Hub refund "+refund.publicReference+" | "+reviewNote).slice(0,500)}),
+    body:JSON.stringify({transaction:refund.paymentAttempt.providerReference,amount:Number(refund.amountMinor),customer_note:refund.reason,merchant_note:("Logistic Hub refund "+refund.publicReference+" attempt "+submissionToken+" | "+reviewNote).slice(0,500)}),
    });
   } catch {
-   await repo.markRefundSubmissionUnknown({id,actorUserId:user.id});
+   await repo.markRefundSubmissionUnknown({id,actorUserId:user.id,submissionToken});
    throw new ServiceUnavailableError("Paystack's response could not be confirmed. The refund remains locked for reconciliation; do not submit it again.","REFUND_SUBMISSION_OUTCOME_UNKNOWN");
   }
   const body=await response.json().catch(()=>null);
@@ -68,7 +68,7 @@ export function createFinanceService({prismaClient,secretKey=env.PAYSTACK_SECRET
    }
    const listBody=await listResponse.json().catch(()=>null);
    if(!listResponse.ok||!listBody?.status||!Array.isArray(listBody.data))throw new ServiceUnavailableError("Paystack did not return a usable refund list.","REFUND_RECONCILIATION_UNAVAILABLE");
-   const marker="Logistic Hub refund "+refund.publicReference;
+   const marker="Logistic Hub refund "+refund.publicReference+(refund.providerResponse?.submissionToken?" attempt "+refund.providerResponse.submissionToken:"");
    const matches=listBody.data.filter(item=>typeof item.merchant_note==="string"&&item.merchant_note.startsWith(marker));
    if(matches.length===0)return {id:refund.id,status:refund.status,reconciliation:"NO_PROVIDER_MATCH",message:"No matching Paystack refund was found. The request remains locked; do not resubmit it automatically."};
    if(matches.length!==1)throw new ConflictError("More than one Paystack refund matches this local request. Manual finance investigation is required.","REFUND_RECONCILIATION_AMBIGUOUS");
