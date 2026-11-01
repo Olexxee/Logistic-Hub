@@ -64,22 +64,22 @@ All partner administration routes are protected by authentication and ADMIN role
 
 | Method | Endpoint | Contract |
 |---|---|---|
-| POST | /api/v1/admin/transport-partners/:partnerId/members | Adds or reactivates a user with role OWNER, OPERATIONS or DISPATCHER. |
-| PATCH | /api/v1/admin/transport-partners/:partnerId/members/:memberId | Sets isActive true or false. |
+| GET | /api/v1/admin/transport-partners/:partnerId/members | Paginated partner roster; supports search, role and active-status filters. |
+| POST | /api/v1/admin/transport-partners/:partnerId/members | Adds or reactivates an eligible user with role OWNER, OPERATIONS or DISPATCHER; requires a reason. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId/members/:memberId | Updates role and/or active status; requires a reason. |
 
-The add-member operation requires an active, email-verified user. The last active eligible OWNER safeguard is enforced when the partner is ACTIVE. A CLOSED partner cannot receive or change members.
+The roster defaults to page 1 and limit 20, with a maximum limit of 100. Search matches member full name, email and phone. The response includes membership ID, partner/user IDs, partner-scoped role, active status, membership timestamps and a restricted user profile (name, email, phone, global account role/status and email-verification timestamp). It does not expose password hashes, auth sessions, tokens or credentials.
 
-Membership is scoped by TransportPartnerMember; the global User.role is not changed by membership assignment/deactivation in the current implementation.
+Membership writes run in serializable transactions and emit an operational audit event in the same transaction. Each successful mutation records the actor, reason, action and before/after partner ID, user ID, role and active status. An unchanged request returns the current membership without creating a duplicate mutation event.
 
-### Gaps
+Only ACTIVE, email-verified user accounts can be added or reactivated. A CLOSED partner cannot receive or change memberships. For ACTIVE partners, adding/reactivating a non-OWNER or demoting/deactivating the last active verified OWNER is rejected with LAST_ACTIVE_OWNER. Reactivation through either POST or PATCH re-checks account eligibility. The partner-scoped PartnerMemberRole remains separate from global User.role; membership operations do not elevate or demote platform privileges.
 
-- No ADMIN endpoint to list members for a partner.
-- No member detail/history endpoint.
-- No role-update endpoint distinct from add/reactivate; the add endpoint can upsert an existing member's role and active status.
-- Membership mutation validators do not accept a reason, and the audit events do not include a decision reason.
-- No membership pagination or filtering contract.
+### Remaining gaps
 
-A frontend member table cannot be built safely from the current ADMIN API without either a new read endpoint or an explicitly authorized reuse of another endpoint. The self-service GET /api/v1/partner/memberships/mine is not a substitute: it returns the authenticated user's memberships, not a partner's complete member roster.
+- No dedicated per-member event-history endpoint exists. Administrators can use the shared ADMIN audit-event stream, filtered by entity type TRANSPORT_PARTNER_MEMBER and the membership entity ID.
+- There is no hard-delete membership endpoint; deactivation preserves the membership row and its audit history by design.
+
+The ADMIN roster contract is sufficient to build a paginated partner-member workspace. Do not substitute GET /api/v1/partner/memberships/mine, which returns only the authenticated user's own memberships.
 
 ## 4. Partner agreements and rate cards
 
