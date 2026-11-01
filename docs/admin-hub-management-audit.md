@@ -338,3 +338,19 @@ The existing `HubPointOperator` model is reused. No duplicate membership table o
 - Existing route paths remain in place; the new list and role-update operations extend the current admin custody router.
 
 The existing admin add and status endpoints now require an audit reason in their request body. Frontend clients must send `reason` for those mutations.
+
+
+## AH-4 implementation delta — hub operational administration
+
+**Implementation branch:** `feat/hub-operational-admin`
+
+The existing hub administration and lifecycle model is retained. This slice standardizes the audit contract for operational administration:
+
+- ADMIN hub creation requires a reason; partner ownership remains optional and is validated against an active, verified `TransportPartner`.
+- ADMIN operational edits require a reason. The reason is removed from the Prisma update payload and written only to the audit event.
+- ADMIN operator-verification decisions require a reason. Optional reviewer notes remain separate from the audit reason.
+- ADMIN activation, suspension and closure require a reason. Existing lifecycle transition, manager, service-zone availability, operator verification, opening-hours, capacity and open-operations safeguards remain authoritative.
+- Audit events for creation, edits, operator verification and lifecycle transitions include actor, target, before/after state and reason.
+- The API contract and validation schemas require the reason; frontend admin forms must collect it.
+
+No new hub lifecycle states or duplicate operational models are introduced. Approval, operator verification and activation remain distinct steps.
