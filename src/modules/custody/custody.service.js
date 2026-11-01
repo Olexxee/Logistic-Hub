@@ -122,7 +122,20 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
-    async addHubOperator({ hubPointId, userId, role = "OPERATOR", actorUserId }) {
+    async listHubOperators({ hubPointId, page = 1, limit = 25, isActive }) {
+      const hub = await repo.findHub(hubPointId);
+      if (!hub) return { notFound: true };
+      const result = await repo.listHubOperators(hubPointId, {
+        skip: (page - 1) * limit, take: limit, isActive,
+      });
+      return {
+        hub: { id: hub.id, name: hub.name, status: hub.status },
+        items: result.items,
+        pagination: { page, limit, total: result.total, totalPages: Math.ceil(result.total / limit) },
+      };
+    },
+
+    async addHubOperator({ hubPointId, userId, role = "OPERATOR", reason, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         const hub = await repo.findHub(hubPointId, tx);
         if (!hub) return { notFound: true };
@@ -132,6 +145,9 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const existingOperator = await tx.hubPointOperator.findUnique({
           where: { hubPointId_userId: { hubPointId, userId } },
         });
+        if (existingOperator?.isActive && existingOperator.role === role) {
+          return { operator: existingOperator, replay: true };
+        }
         if (hub.status === "ACTIVE" && role !== "MANAGER") {
           const otherManagers = await tx.hubPointOperator.count({
             where: {
@@ -146,6 +162,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         await repo.createAudit({
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operator.id,
           action: "HUB_OPERATOR_ACTIVATED",
+          reason,
           before: existingOperator ? { role: existingOperator.role, isActive: existingOperator.isActive } : null,
           after: { hubPointId, userId, role: operator.role, isActive: operator.isActive },
         }, tx);
@@ -153,12 +170,17 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
-    async setHubOperatorStatus({ hubPointId, operatorId, isActive, actorUserId }) {
+    async setHubOperatorStatus({ hubPointId, operatorId, isActive, reason, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         const current = await repo.findHubOperatorById(hubPointId, operatorId, tx);
         if (!current) return { notFound: true };
         const hub = await repo.findHub(hubPointId, tx);
         if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
+        if (current.isActive === isActive) return { operator: current, replay: true };
+        if (isActive) {
+          const user = await repo.findUser(current.userId, tx);
+          if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
+        }
         if (current.isActive && current.role === "MANAGER" && !isActive && hub?.status === "ACTIVE") {
           const otherManagers = await tx.hubPointOperator.count({
             where: { hubPointId, isActive: true, role: "MANAGER", id: { not: current.id }, user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
@@ -169,9 +191,41 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         await repo.createAudit({
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operatorId,
           action: isActive ? "HUB_OPERATOR_ACTIVATED" : "HUB_OPERATOR_SUSPENDED",
+          reason,
           before: { isActive: current.isActive }, after: { isActive },
         }, tx);
         return { operator };
+      });
+    },
+
+    async updateHubOperatorRole({ hubPointId, operatorId, role, reason, actorUserId }) {
+      return serializableTransaction(prismaClient, async tx => {
+        const current = await repo.findHubOperatorById(hubPointId, operatorId, tx);
+        if (!current) return { notFound: true };
+        const hub = await repo.findHub(hubPointId, tx);
+        if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
+        if (current.role === role) return { operator: current, replay: true };
+        if (role === "MANAGER" && current.role !== "MANAGER") {
+          const user = await repo.findUser(current.userId, tx);
+          if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
+        }
+        if (hub?.status === "ACTIVE" && current.isActive && current.role === "MANAGER" && role !== "MANAGER") {
+          const otherManagers = await tx.hubPointOperator.count({
+            where: {
+              hubPointId, isActive: true, role: "MANAGER", id: { not: current.id },
+              user: { status: "ACTIVE", emailVerifiedAt: { not: null } },
+            },
+          });
+          if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
+        }
+        const operator = await tx.hubPointOperator.update({ where: { id: operatorId }, data: { role } });
+        await repo.createAudit({
+          actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operatorId,
+          action: "HUB_OPERATOR_ROLE_UPDATED", reason,
+          before: { role: current.role, isActive: current.isActive },
+          after: { role: operator.role, isActive: operator.isActive },
+        }, tx);
+        return { operator, replay: false };
       });
     },
 

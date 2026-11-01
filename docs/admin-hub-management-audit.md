@@ -319,3 +319,22 @@ The hub ownership model reuses the existing `TransportPartner` record:
 - Platform-operated hubs continue to be created directly by ADMIN with `partnerId` omitted.
 
 This implementation deliberately does not create a second Organization model, does not allow arbitrary partner membership to submit an application, and does not transfer hub ownership through ordinary hub edits. Partner ownership is represented by the existing `TransportPartner` relation.
+
+
+## AH-3 implementation delta — hub membership administration
+
+**Implementation branch:** `feat/hub-membership-management`
+
+The existing `HubPointOperator` model is reused. No duplicate membership table or global user role is introduced.
+
+- ADMIN can list a hub's memberships with pagination and an optional active/inactive filter. The response includes the scoped membership role/status and limited account contact/verification fields.
+- ADMIN can add/reactivate a member with a required reason.
+- ADMIN can activate/deactivate a membership with a required reason.
+- ADMIN can change a member's scoped `MANAGER` / `OPERATOR` role through a dedicated endpoint with a required reason. The endpoint never modifies `User.role`.
+- Repeated add/status/role requests are idempotent where the requested state already exists; no duplicate audit event is written for role/status replays.
+- A closed hub cannot receive membership mutations.
+- An active hub cannot lose or demote its last active, verified manager.
+- Mutations write actor, target, before/after membership state and reason to the operational audit log within the same transaction.
+- Existing route paths remain in place; the new list and role-update operations extend the current admin custody router.
+
+The existing admin add and status endpoints now require an audit reason in their request body. Frontend clients must send `reason` for those mutations.

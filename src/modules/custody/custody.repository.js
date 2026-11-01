@@ -16,6 +16,17 @@ export function createCustodyRepository({ prismaClient }) {
     findHubOperatorById(hubPointId, operatorId, tx = prismaClient) {
       return tx.hubPointOperator.findFirst({ where: { id: operatorId, hubPointId } });
     },
+    listHubOperators(hubPointId, { skip = 0, take = 25, isActive } = {}, tx = prismaClient) {
+      const where = { hubPointId, ...(isActive === undefined ? {} : { isActive }) };
+      return Promise.all([
+        tx.hubPointOperator.findMany({
+          where, skip, take,
+          include: { user: { select: { id: true, fullName: true, email: true, phone: true, status: true, emailVerifiedAt: true } } },
+          orderBy: [{ role: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+        }),
+        tx.hubPointOperator.count({ where }),
+      ]).then(([items, total]) => ({ items, total }));
+    },
     upsertHubOperator(data, tx = prismaClient) {
       return tx.hubPointOperator.upsert({
         where: { hubPointId_userId: { hubPointId: data.hubPointId, userId: data.userId } },
