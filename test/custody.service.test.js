@@ -358,3 +358,27 @@ test("hub exception reporting denies a user who is not an active member of the r
   );
   assert.equal(legLocks, 0);
 });
+
+
+test("adding a hub membership preserves the user's global account role", async () => {
+  const { db, calls } = tx({
+    user: {
+      findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now }),
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "PENDING" }) },
+    hubPointOperator: {
+      findUnique: async () => null,
+      upsert: async ({ create }) => ({ id: "hub-operator-customer", ...create }),
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.addHubOperator({
+    hubPointId: "hub-1", userId: "customer-1", role: "MANAGER", actorUserId: "admin-1",
+  });
+  assert.equal(result.operator.userId, "customer-1");
+  assert.equal(result.operator.role, "MANAGER");
+  assert.equal(calls.audits[0].before, null);
+  assert.deepEqual(calls.audits[0].after, {
+    hubPointId: "hub-1", userId: "customer-1", role: "MANAGER", isActive: true,
+  });
+});
