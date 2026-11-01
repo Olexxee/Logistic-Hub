@@ -39,7 +39,7 @@ The endpoints below are absolute paths after applying those mounts.
 | PATCH | /api/v1/admin/transport-partners/:partnerId | Updates display/legal/contact fields with mandatory reason and before/after audit. |
 | PATCH | /api/v1/admin/transport-partners/:partnerId/status | Changes partner status and optionally verification status; mandatory reason is audited. |
 
-All three routes are protected by authentication and ADMIN role middleware.
+All partner administration routes are protected by authentication and ADMIN role middleware.
 
 ### Existing lifecycle rules
 
@@ -49,7 +49,7 @@ All three routes are protected by authentication and ADMIN role middleware.
 - Suspending a partner is blocked while it has active partner assignments. On successful suspension, its active agreements are suspended in the same transaction and audited.
 - Closing a partner is blocked while it has active members, open agreements or unsettled payables.
 - A CLOSED partner cannot be reopened.
-- Partner status and verification changes are audited, but the current status endpoint does not accept a decision reason.
+- Partner status and verification changes require a decision reason, which is persisted on the audit event.
 
 ### Gaps
 
@@ -251,7 +251,6 @@ This slice does not expose partner membership rosters or agreement/rate-card his
 | Slice | Current readiness | Required work before/during implementation |
 |---|---|---|
 | AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
-| AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
 | AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
 | AH-5.2 Partner memberships | Blocked for full roster UI | Add ADMIN list endpoint with pagination and role/status fields; add mutation reason and complete before/after audit. Preserve last active OWNER safeguard. |
 | AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
