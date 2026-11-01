@@ -14,6 +14,39 @@ export function createCustodyController(service) {
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_NOT_FOUND", message: "Hub point not found." } });
       return res.status(200).json({ success: true, data: result });
     },
+    listHubOperatorsForManager: async (req, res) => {
+      const result = await service.listHubOperatorsForManager({
+        hubPointId: req.params.hubPointId,
+        userId: req.user.id,
+        ...req.validatedQuery,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_NOT_FOUND", message: "Hub point not found." } });
+      if (result.forbidden) return res.status(403).json({ success: false, error: { code: "HUB_MANAGER_REQUIRED", message: "An active manager membership for this hub is required." } });
+      return res.status(200).json({ success: true, data: result });
+    },
+    addHubStaff: async (req, res) => {
+      const result = await service.addHubStaff({
+        ...req.body,
+        hubPointId: req.params.hubPointId,
+        actorUserId: req.user.id,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_NOT_FOUND", message: "Hub point not found." } });
+      if (result.forbidden) return res.status(403).json({ success: false, error: { code: "HUB_MANAGER_REQUIRED", message: "An active manager membership for this hub is required." } });
+      if (result.blocker) {
+        const messages = {
+          HUB_NOT_OPEN_FOR_STAFF: "Staff can only be added while the hub is pending or active.",
+          SELF_MEMBERSHIP_CHANGE: "A hub manager cannot add themselves as staff.",
+          USER_NOT_ACTIVE: "Only active, email-verified users can be added as hub staff.",
+          MANAGER_MEMBERSHIP_PROTECTED: "Hub managers can add staff but cannot modify manager memberships.",
+          ADMIN_REVIEW_REQUIRED: "This membership was previously deactivated by an administrator; administrator review is required before reactivation.",
+        };
+        return res.status(409).json({ success: false, error: { code: result.blocker, message: messages[result.blocker] } });
+      }
+      return res.status(result.replay ? 200 : 201).json({
+        success: true,
+        data: { operator: result.operator, replay: Boolean(result.replay) },
+      });
+    },
     addHubOperator: async (req, res) => {
       const result = await service.addHubOperator({ ...req.body, hubPointId: req.params.hubPointId, actorUserId: req.user.id });
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_NOT_FOUND", message: "Hub point not found." } });

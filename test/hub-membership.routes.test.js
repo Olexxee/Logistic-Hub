@@ -16,7 +16,7 @@ function createApp(prismaClient) {
   app.use("/api/v1", createCustodyRouter({
     prismaClient,
     authMiddleware: (req, _res, next) => {
-      req.user = { id: "admin-1", role: req.get("x-user-role") ?? "CUSTOMER" };
+      req.user = { id: req.get("x-user-id") ?? "admin-1", role: req.get("x-user-role") ?? "CUSTOMER" };
       next();
     },
     roleMiddleware: requireRole,
@@ -63,5 +63,110 @@ test("admin hub membership list returns pagination and scoped membership data", 
     const body = await response.json();
     assert.equal(body.data.items[0].user.fullName, "Hub Manager");
     assert.equal(body.data.pagination.total, 1);
+  });
+});
+
+
+function managerMembershipPrisma({ manager = true } = {}) {
+  const state = { audits: [], upserts: [], members: [] };
+  const hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" };
+  const managerMembership = manager
+    ? { id: "manager-membership", hubPointId: "hub-1", userId: "manager-1", role: "MANAGER", isActive: true }
+    : { id: "operator-membership", hubPointId: "hub-1", userId: "manager-1", role: "OPERATOR", isActive: true };
+  const tx = {
+    user: {
+      findUnique: async () => ({ id: "staff-1", status: "ACTIVE", emailVerifiedAt: new Date(), role: "CUSTOMER" }),
+      update: async () => { throw new Error("Hub membership must not mutate global roles."); },
+    },
+    hubPoint: { findUnique: async () => hub },
+    hubPointOperator: {
+      findUnique: async ({ where }) => where.hubPointId_userId.userId === "manager-1" ? managerMembership : null,
+      findMany: async () => state.members,
+      count: async () => state.members.length,
+      upsert: async ({ create }) => {
+        const operator = { id: "staff-membership", ...create };
+        state.upserts.push(create);
+        state.members.push(operator);
+        return operator;
+      },
+    },
+    operationalAuditEvent: { create: async ({ data }) => { state.audits.push(data); return data; } },
+  };
+  return {
+    state,
+    prismaClient: {
+      hubPoint: tx.hubPoint,
+      hubPointOperator: tx.hubPointOperator,
+      $transaction: async callback => callback(tx),
+    },
+  };
+}
+
+test("a hub manager with only a CUSTOMER global role can list their own hub staff", async () => {
+  const { prismaClient, state } = managerMembershipPrisma();
+  state.members.push({ id: "staff-membership", role: "OPERATOR", isActive: true });
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/hub-operations/hubs/hub-1/operators`, {
+      headers: { "x-user-id": "manager-1", "x-user-role": "CUSTOMER" },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.hub.id, "hub-1");
+    assert.equal(body.data.items.length, 1);
+  });
+});
+
+test("a hub manager can add an operator without a global HUB_OPERATOR role", async () => {
+  const { prismaClient, state } = managerMembershipPrisma();
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/hub-operations/hubs/hub-1/operators`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-user-id": "manager-1",
+        "x-user-role": "CUSTOMER",
+      },
+      body: JSON.stringify({ userId: "staff-1", reason: "Staff assignment approved" }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.data.operator.role, "OPERATOR");
+    assert.equal(state.audits[0].actorUserId, "manager-1");
+    assert.equal(state.audits[0].reason, "Staff assignment approved");
+  });
+});
+
+test("a non-manager cannot add staff to a hub", async () => {
+  const { prismaClient, state } = managerMembershipPrisma({ manager: false });
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/hub-operations/hubs/hub-1/operators`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-user-id": "manager-1",
+        "x-user-role": "CUSTOMER",
+      },
+      body: JSON.stringify({ userId: "staff-1", reason: "Staff assignment approved" }),
+    });
+    assert.equal(response.status, 403);
+    assert.deepEqual(state.upserts, []);
+    assert.deepEqual(state.audits, []);
+  });
+});
+
+test("hub managers cannot grant MANAGER membership through the staff endpoint", async () => {
+  const { prismaClient, state } = managerMembershipPrisma();
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/hub-operations/hubs/hub-1/operators`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-user-id": "manager-1",
+        "x-user-role": "CUSTOMER",
+      },
+      body: JSON.stringify({ userId: "staff-1", role: "MANAGER", reason: "Attempted manager grant" }),
+    });
+    assert.equal(response.status, 400);
+    assert.deepEqual(state.upserts, []);
   });
 });

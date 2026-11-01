@@ -366,3 +366,25 @@ Branch: `feat/admin-hub-ownership-contract`
 **Frontend contract:** derive the ownership label from the returned `partner` relation: `null` means Platform-operated; a populated partner relation means Partner-operated. Do not invent an `organizationId` or a separate organization selector. For partner applications, select from the authenticated user's active partner memberships and submit the selected `partnerId`.
 
 **Boundary:** a platform-operated hub is created by an administrator, not through the partner application endpoint. Partner applications cannot claim platform ownership or select an arbitrary partner without an active OWNER membership.
+
+
+## AH-3 implementation delta — hub-scoped manager staff management
+
+**Implementation branch:** `feat/hub-manager-staff-management`
+
+The existing `HubPointOperator` membership model is reused. No global user role or additional membership table is introduced.
+
+New manager-scoped endpoints:
+
+- `GET /api/v1/hub-operations/hubs/:hubPointId/operators`: returns a paginated membership directory only when the authenticated user has an active `MANAGER` membership for that exact hub.
+- `POST /api/v1/hub-operations/hubs/:hubPointId/operators`: lets that manager add an active, email-verified user as `OPERATOR`. A reason is mandatory and the change is audited.
+
+Enforced boundaries:
+
+- Authorization is based on the active hub-scoped membership, not a global `HUB_OPERATOR` or `ADMIN` role check. A user whose global role is `CUSTOMER` can manage staff only if the database confirms their active MANAGER membership for the requested hub.
+- Managers cannot add themselves, assign or modify another MANAGER, or change platform-wide roles.
+- Managers cannot reactivate an inactive membership. In particular, an administrator-deactivated membership requires administrator review before reactivation.
+- Staff can be added only while the hub is `PENDING` or `ACTIVE`; suspended and closed hubs are blocked.
+- The existing ADMIN endpoints remain authoritative for assigning MANAGER roles, changing membership roles, and deactivating/revoking memberships.
+
+The new endpoints and their authorization boundaries are covered by service and route tests and are documented in OpenAPI and the administrative route inventory.
