@@ -40,7 +40,7 @@ export function createCustodyRepository({ prismaClient }) {
     updateHubOperator(id, isActive, tx = prismaClient) {
       return tx.hubPointOperator.update({
         where: { id },
-        data: { isActive, ...(isActive ? {} : { canDispatch: false }) },
+        data: { isActive, canDispatch: false },
       });
     },
     updateHubOperatorDispatchPermission(id, canDispatch, tx = prismaClient) {
