@@ -388,3 +388,36 @@ Enforced boundaries:
 - The existing ADMIN endpoints remain authoritative for assigning MANAGER roles, changing membership roles, and deactivating/revoking memberships.
 
 The new endpoints and their authorization boundaries are covered by service and route tests and are documented in OpenAPI and the administrative route inventory.
+
+
+## AH-4 implementation delta — delegated hub dispatch
+
+**Implementation branch:** `feat/hub-dispatch-delegation`
+
+The existing `HubPointOperator` membership is extended with `canDispatch Boolean @default(false)`. This is a hub-scoped operational capability, not a global user role and not a new membership model.
+
+### Administrator controls
+
+- `PATCH /api/v1/admin/hub-points/:hubPointId/operators/:operatorId/dispatch-permission` grants or revokes dispatch delegation.
+- Every change requires a reason and writes an operational audit event with actor, membership target, before/after values and action.
+- Grants require an ACTIVE hub, active membership and active, email-verified user.
+- Revocation is allowed even if the hub or membership has become inactive.
+- Deactivating a membership or changing its hub role clears `canDispatch`.
+- Creating/re-adding a staff membership defaults `canDispatch` to false.
+
+### Hub dispatch operation
+
+- `POST /api/v1/hub-operations/hubs/:hubPointId/delivery-legs/:legId/request-matching` is authenticated and resolves authorization from the caller's exact hub membership.
+- The delivery leg must originate at the requested hub; the hub must be ACTIVE; the membership must be active and have `canDispatch=true`.
+- Only the existing local-driver matching flow is invoked. Interstate transport remains partner execution.
+- The endpoint does not grant booking ownership, fare acceptance, fare proposal or cross-hub access. The customer remains the only actor authorized to accept a driver fare and create the booking's assignment.
+
+### Schema and validation
+
+- Migration: `20261101170000_add_hub_operator_dispatch_permission`.
+- No new role, membership table, payment flow or external payout behavior is introduced.
+- Service tests cover grant/revoke, audit details, inactive membership/user/hub denial, and automatic revocation on membership deactivation/role change.
+- Dispatch service and route tests cover explicit delegation, missing delegation, origin-hub scope and denial of fare acceptance.
+- OpenAPI and the administrative permission inventory describe both the ADMIN permission endpoint and manager/staff dispatch endpoint.
+
+The migration is committed to this feature branch only. It must pass CI migration validation before it is applied to any shared or production database.

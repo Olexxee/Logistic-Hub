@@ -175,7 +175,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (existing && !existing.isActive) return { blocker: "ADMIN_REVIEW_REQUIRED" };
 
         const operator = await repo.upsertHubOperator({
-          hubPointId, userId, role: "OPERATOR", isActive: true,
+          hubPointId, userId, role: "OPERATOR", isActive: true, canDispatch: false,
         }, tx);
         await repo.createAudit({
           actorUserId,
@@ -231,7 +231,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!current) return { notFound: true };
         const hub = await repo.findHub(hubPointId, tx);
         if (hub?.status === "CLOSED") return { blocker: "HUB_CLOSED" };
-        if (current.isActive === isActive) return { operator: current, replay: true };
+        if (current.isActive === isActive && (isActive || !current.canDispatch)) return { operator: current, replay: true };
         if (isActive) {
           const user = await repo.findUser(current.userId, tx);
           if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
@@ -247,7 +247,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operatorId,
           action: isActive ? "HUB_OPERATOR_ACTIVATED" : "HUB_OPERATOR_SUSPENDED",
           reason,
-          before: { isActive: current.isActive }, after: { isActive },
+          before: { isActive: current.isActive, canDispatch: current.canDispatch },
+          after: { isActive, canDispatch: operator.canDispatch },
         }, tx);
         return { operator };
       });
@@ -273,12 +274,44 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           });
           if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
         }
-        const operator = await tx.hubPointOperator.update({ where: { id: operatorId }, data: { role } });
+        const operator = await tx.hubPointOperator.update({
+          where: { id: operatorId }, data: { role, canDispatch: false },
+        });
         await repo.createAudit({
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operatorId,
           action: "HUB_OPERATOR_ROLE_UPDATED", reason,
-          before: { role: current.role, isActive: current.isActive },
-          after: { role: operator.role, isActive: operator.isActive },
+          before: { role: current.role, isActive: current.isActive, canDispatch: current.canDispatch },
+          after: { role: operator.role, isActive: operator.isActive, canDispatch: operator.canDispatch },
+        }, tx);
+        return { operator, replay: false };
+      });
+    },
+
+    async setHubOperatorDispatchPermission({ hubPointId, operatorId, canDispatch, reason, actorUserId }) {
+      return serializableTransaction(prismaClient, async tx => {
+        const current = await repo.findHubOperatorById(hubPointId, operatorId, tx);
+        if (!current) return { notFound: true };
+        if (current.canDispatch === canDispatch) return { operator: current, replay: true };
+
+        if (canDispatch) {
+          const hub = await repo.findHub(hubPointId, tx);
+          if (!hub || hub.status !== "ACTIVE") return { blocker: "HUB_NOT_ACTIVE" };
+          if (!current.isActive) return { blocker: "OPERATOR_NOT_ACTIVE" };
+          const user = await repo.findUser(current.userId, tx);
+          if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) {
+            return { blocker: "OPERATOR_NOT_ACTIVE" };
+          }
+        }
+
+        const operator = await repo.updateHubOperatorDispatchPermission(operatorId, canDispatch, tx);
+        await repo.createAudit({
+          actorUserId,
+          entityType: "HUB_POINT_OPERATOR",
+          entityId: operatorId,
+          action: canDispatch ? "HUB_OPERATOR_DISPATCH_PERMISSION_GRANTED" : "HUB_OPERATOR_DISPATCH_PERMISSION_REVOKED",
+          reason,
+          before: { role: current.role, isActive: current.isActive, canDispatch: current.canDispatch },
+          after: { role: operator.role, isActive: operator.isActive, canDispatch: operator.canDispatch },
         }, tx);
         return { operator, replay: false };
       });
@@ -659,10 +692,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
 
     async listHubDispatchable({ userId, hubPointId, cursor, limit = 25 }) {
       const memberships = await repo.findHubOperatorsForUser(userId);
-      const hubIds = memberships.map(item => item.hubPointId);
-      if (!hubIds.length) throw forbidden();
-      if (hubPointId && !hubIds.includes(hubPointId)) throw forbidden();
-      const scopedHubIds = hubPointId ? [hubPointId] : hubIds;
+      const dispatchHubIds = memberships.filter(item => item.canDispatch).map(item => item.hubPointId);
+      if (!dispatchHubIds.length) throw forbidden();
+      if (hubPointId && !dispatchHubIds.includes(hubPointId)) throw forbidden();
+      const scopedHubIds = hubPointId ? [hubPointId] : dispatchHubIds;
       const rows = await repo.findDispatchableLegs(scopedHubIds, { cursor, limit });
       const hasMore = rows.length > limit;
       const items = (hasMore ? rows.slice(0, limit) : rows).map(leg => ({

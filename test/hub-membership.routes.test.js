@@ -170,3 +170,69 @@ test("hub managers cannot grant MANAGER membership through the staff endpoint", 
     assert.deepEqual(state.upserts, []);
   });
 });
+
+
+function dispatchPermissionPrisma() {
+  const state = { updated: null, audits: [] };
+  const membership = { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "OPERATOR", isActive: true, canDispatch: false };
+  const tx = {
+    hubPoint: { findUnique: async () => ({ id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" }) },
+    hubPointOperator: {
+      findFirst: async () => membership,
+      update: async ({ data }) => {
+        state.updated = data;
+        return { ...membership, ...data };
+      },
+    },
+    user: { findUnique: async () => ({ id: "user-1", status: "ACTIVE", emailVerifiedAt: new Date() }) },
+    operationalAuditEvent: { create: async ({ data }) => { state.audits.push(data); return data; } },
+  };
+  return { state, prismaClient: { $transaction: async callback => callback(tx) } };
+}
+
+test("ADMIN can grant delegated dispatch permission with a mandatory reason", async () => {
+  const { prismaClient, state } = dispatchPermissionPrisma();
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/admin/hub-points/hub-1/operators/operator-1/dispatch-permission`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-role": "ADMIN" },
+      body: JSON.stringify({
+        canDispatch: true,
+        reason: "Trusted operator approved for delegated dispatch",
+      }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.operator.canDispatch, true);
+    assert.deepEqual(state.updated, { canDispatch: true });
+    assert.equal(state.audits[0].reason, "Trusted operator approved for delegated dispatch");
+  });
+});
+
+test("non-admin users cannot grant delegated dispatch permission", async () => {
+  const { prismaClient, state } = dispatchPermissionPrisma();
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/admin/hub-points/hub-1/operators/operator-1/dispatch-permission`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-role": "SUPPORT" },
+      body: JSON.stringify({ canDispatch: true, reason: "Attempted unauthorized delegation" }),
+    });
+    assert.equal(response.status, 403);
+    assert.equal(state.updated, null);
+    assert.deepEqual(state.audits, []);
+  });
+});
+
+test("dispatch permission changes reject missing audit reasons", async () => {
+  const { prismaClient, state } = dispatchPermissionPrisma();
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/admin/hub-points/hub-1/operators/operator-1/dispatch-permission`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-role": "ADMIN" },
+      body: JSON.stringify({ canDispatch: true }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(state.updated, null);
+    assert.deepEqual(state.audits, []);
+  });
+});

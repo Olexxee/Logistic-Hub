@@ -73,12 +73,25 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
   const db = repository ?? createDeliveryLegDispatchRepository(prismaClient);
 
   return {
-    async requestOffers({ legId, user }) {
+    async requestOffers({ legId, user, hubPointId }) {
       const now = clock();
       return db.transaction(async (tx) => {
         const leg = await db.findLeg(tx, legId);
         if (!leg) throw new NotFoundError("Delivery leg not found.");
-        if (leg.parcelBooking.senderId !== user.id) throw new ForbiddenError();
+        if (hubPointId) {
+          if (leg.originHubPointId !== hubPointId) throw new ForbiddenError();
+          const [hub, membership] = await Promise.all([
+            tx.hubPoint.findUnique({ where: { id: hubPointId }, select: { id: true, status: true } }),
+            tx.hubPointOperator.findUnique({
+              where: { hubPointId_userId: { hubPointId, userId: user.id } },
+            }),
+          ]);
+          if (hub?.status !== "ACTIVE" || !membership?.isActive || !membership.canDispatch) {
+            throw new ForbiddenError("An active hub dispatch permission is required.");
+          }
+        } else if (leg.parcelBooking.senderId !== user.id) {
+          throw new ForbiddenError();
+        }
         if (!DRIVER_LEG_TYPES.has(leg.type)) {
           throw conflict("LEG_REQUIRES_PARTNER_EXECUTION", "This delivery leg is not eligible for local driver assignment.");
         }

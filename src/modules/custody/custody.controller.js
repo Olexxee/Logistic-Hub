@@ -63,6 +63,18 @@ export function createCustodyController(service) {
       if (result.blocker === "LAST_ACTIVE_HUB_MANAGER") return res.status(409).json({ success: false, error: { code: "LAST_ACTIVE_HUB_MANAGER", message: "An active hub must retain at least one active manager." } });
       return res.status(200).json({ success: true, data: { operator: result.operator, replay: Boolean(result.replay) } });
     },
+    setHubOperatorDispatchPermission: async (req, res) => {
+      const result = await service.setHubOperatorDispatchPermission({
+        hubPointId: req.params.hubPointId,
+        operatorId: req.params.operatorId,
+        ...req.body,
+        actorUserId: req.user.id,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_OPERATOR_NOT_FOUND", message: "Hub operator not found." } });
+      if (result.blocker === "HUB_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "HUB_NOT_ACTIVE", message: "Dispatch permission can only be granted while the hub is active." } });
+      if (result.blocker === "OPERATOR_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "OPERATOR_NOT_ACTIVE", message: "Dispatch permission can only be granted to an active membership belonging to an active, email-verified user." } });
+      return res.status(200).json({ success: true, data: { operator: result.operator, replay: Boolean(result.replay) } });
+    },
     updateHubOperatorRole: async (req, res) => {
       const result = await service.updateHubOperatorRole({
         hubPointId: req.params.hubPointId, operatorId: req.params.operatorId,

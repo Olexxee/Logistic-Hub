@@ -174,3 +174,91 @@ test("customer acceptance reserves one driver and creates an awaiting-payment le
   assert.deepEqual(legUpdate.where, { id: leg.id, status: "READY_FOR_ASSIGNMENT" });
   assert.deepEqual(legUpdate.data, { status: "AWAITING_PAYMENT" });
 });
+
+
+test("a hub operator with explicit dispatch delegation can request offers for a leg originating at their hub", async () => {
+  let event;
+  let createdOffers;
+  const tx = {
+    hubPoint: { findUnique: async () => ({ id: "hub_1", status: "ACTIVE" }) },
+    hubPointOperator: {
+      findUnique: async () => ({ hubPointId: "hub_1", userId: "hub_dispatcher_1", isActive: true, canDispatch: true }),
+    },
+  };
+  const repository = {
+    transaction: callback => callback(tx),
+    findLeg: async () => ({ ...leg, originHubPointId: "hub_1", originHubPoint: { id: "hub_1", name: "Ikeja Hub" } }),
+    listActiveOffers: async () => [],
+    findEligibleDrivers: async () => [validDriver("hub_driver_1")],
+    createOffers: async (_tx, data) => { createdOffers = data; return { count: data.length }; },
+    recordEvent: async (_tx, data) => { event = data; },
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  const result = await service.requestOffers({
+    legId: leg.id, hubPointId: "hub_1",
+    user: { id: "hub_dispatcher_1", role: "CUSTOMER" },
+  });
+  assert.equal(result.offersCreated, 1);
+  assert.equal(createdOffers[0].driverProfileId, "hub_driver_1");
+  assert.equal(event.actorUserId, "hub_dispatcher_1");
+});
+
+test("a hub operator without explicit dispatch delegation cannot request driver offers", async () => {
+  const tx = {
+    hubPoint: { findUnique: async () => ({ id: "hub_1", status: "ACTIVE" }) },
+    hubPointOperator: {
+      findUnique: async () => ({ hubPointId: "hub_1", userId: "hub_operator_1", isActive: true, canDispatch: false }),
+    },
+  };
+  const repository = {
+    transaction: callback => callback(tx),
+    findLeg: async () => ({ ...leg, originHubPointId: "hub_1", originHubPoint: { id: "hub_1", name: "Ikeja Hub" } }),
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  await assert.rejects(
+    service.requestOffers({
+      legId: leg.id, hubPointId: "hub_1",
+      user: { id: "hub_operator_1", role: "CUSTOMER" },
+    }),
+    error => error.statusCode === 403,
+  );
+});
+
+test("a delegated dispatcher cannot request offers for a leg originating at another hub", async () => {
+  const tx = {
+    hubPoint: { findUnique: async () => ({ id: "hub_1", status: "ACTIVE" }) },
+    hubPointOperator: {
+      findUnique: async () => ({ hubPointId: "hub_1", userId: "hub_dispatcher_1", isActive: true, canDispatch: true }),
+    },
+  };
+  const repository = {
+    transaction: callback => callback(tx),
+    findLeg: async () => ({ ...leg, originHubPointId: "hub_other", originHubPoint: { id: "hub_other", name: "Other Hub" } }),
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  await assert.rejects(
+    service.requestOffers({
+      legId: leg.id, hubPointId: "hub_1",
+      user: { id: "hub_dispatcher_1", role: "CUSTOMER" },
+    }),
+    error => error.statusCode === 403,
+  );
+});
+
+test("hub dispatch delegation cannot accept fare proposals or create assignments for the customer", async () => {
+  const service = createDeliveryLegDispatchService({
+    prismaClient: {
+      parcelBooking: { findUnique: async () => ({ id: "booking_1", senderId: "sender_1" }) },
+    },
+    repository: { findOfferByAcceptanceKey: async () => null },
+    clock: () => now,
+  });
+  await assert.rejects(
+    service.acceptFare({
+      bookingId: "booking_1", legId: leg.id, offerId: "offer_1",
+      user: { id: "hub_dispatcher_1", role: "CUSTOMER" },
+      idempotencyKey: "hub-should-not-accept-fare-0001",
+    }),
+    error => error.statusCode === 403,
+  );
+});

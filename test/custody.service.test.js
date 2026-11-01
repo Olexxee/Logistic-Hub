@@ -266,7 +266,7 @@ test("hub operational reads deny users without an active hub membership", async 
 test("hub operational reads deny explicit hub IDs outside the caller's memberships", async () => {
   const { db } = tx({
     hubPointOperator: {
-      findMany: async () => [{ hubPointId: "hub-1", isActive: true }],
+      findMany: async () => [{ hubPointId: "hub-1", isActive: true, canDispatch: true }],
     },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
@@ -289,7 +289,7 @@ test("hub operational reads scope repository queries to only the caller's active
   const queries = {};
   const { db } = tx({
     hubPointOperator: {
-      findMany: async () => [{ hubPointId: "hub-1", isActive: true }],
+      findMany: async () => [{ hubPointId: "hub-1", isActive: true, canDispatch: true }],
     },
     hubIntakeRecord: {
       findMany: async args => { queries.intakes = args; return []; },

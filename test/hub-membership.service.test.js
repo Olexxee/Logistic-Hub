@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createCustodyService } from "../src/modules/custody/custody.service.js";
 
-function createPrisma({ hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" }, operator = { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "MANAGER", isActive: true }, otherManagers = 1, user = { id: "user-1", status: "ACTIVE", emailVerifiedAt: new Date() } } = {}) {
+function createPrisma({ hub = { id: "hub-1", name: "Ikeja Hub", status: "ACTIVE" }, operator = { id: "operator-1", hubPointId: "hub-1", userId: "user-1", role: "MANAGER", isActive: true, canDispatch: false }, otherManagers = 1, user = { id: "user-1", status: "ACTIVE", emailVerifiedAt: new Date() } } = {}) {
   const state = { audits: [], updates: [] };
   const tx = {
     user: { findUnique: async () => user },
@@ -65,8 +65,8 @@ test("a hub operator role change is audited with actor, reason and before/after 
   assert.equal(result.operator.role, "OPERATOR");
   assert.equal(state.audits[0].actorUserId, "admin-1");
   assert.equal(state.audits[0].reason, "Manager responsibilities reassigned");
-  assert.deepEqual(state.audits[0].before, { role: "MANAGER", isActive: true });
-  assert.deepEqual(state.audits[0].after, { role: "OPERATOR", isActive: true });
+  assert.deepEqual(state.audits[0].before, { role: "MANAGER", isActive: true, canDispatch: false });
+  assert.deepEqual(state.audits[0].after, { role: "OPERATOR", isActive: true, canDispatch: false });
 });
 
 test("deactivating a hub membership records the administrative reason", async () => {
@@ -78,8 +78,8 @@ test("deactivating a hub membership records the administrative reason", async ()
   });
   assert.equal(result.operator.isActive, false);
   assert.equal(state.audits[0].reason, "Operator left the organization");
-  assert.deepEqual(state.audits[0].before, { isActive: true });
-  assert.deepEqual(state.audits[0].after, { isActive: false });
+  assert.deepEqual(state.audits[0].before, { isActive: true, canDispatch: false });
+  assert.deepEqual(state.audits[0].after, { isActive: false, canDispatch: false });
 });
 
 
@@ -192,7 +192,7 @@ test("a hub manager can add an active verified user as OPERATOR with an audit re
   assert.equal(result.operator.role, "OPERATOR");
   assert.equal(result.operator.isActive, true);
   assert.deepEqual(state.upserts, [{
-    hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true,
+    hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true, canDispatch: false,
   }]);
   assert.equal(state.audits[0].actorUserId, "manager-1");
   assert.equal(state.audits[0].reason, "Staff member approved by hub manager");
@@ -296,4 +296,178 @@ test("adding an already-active OPERATOR membership is an idempotent replay", asy
   assert.equal(result.operator.id, "staff-membership");
   assert.deepEqual(state.upserts, []);
   assert.deepEqual(state.audits, []);
+});
+
+
+function createDispatchPermissionPrisma({
+  hub = { id: "hub-1", status: "ACTIVE", name: "Ikeja Hub" },
+  membership = { id: "member-1", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true, canDispatch: false },
+  user = { id: "staff-1", status: "ACTIVE", emailVerifiedAt: new Date() },
+} = {}) {
+  const state = { updated: null, audits: [] };
+  const tx = {
+    hubPoint: { findUnique: async () => hub },
+    hubPointOperator: {
+      findFirst: async () => membership,
+      update: async ({ data }) => {
+        state.updated = data;
+        membership = { ...membership, ...data };
+        return membership;
+      },
+    },
+    user: { findUnique: async () => user },
+    operationalAuditEvent: {
+      create: async ({ data }) => { state.audits.push(data); return data; },
+    },
+  };
+  return { state, prismaClient: { $transaction: async callback => callback(tx) } };
+}
+
+test("admin can grant dispatch permission to an active verified hub member with an audit reason", async () => {
+  const { prismaClient, state } = createDispatchPermissionPrisma();
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorDispatchPermission({
+    hubPointId: "hub-1", operatorId: "member-1", canDispatch: true,
+    reason: "Trusted operator approved for delegated dispatch", actorUserId: "admin-1",
+  });
+  assert.equal(result.operator.canDispatch, true);
+  assert.deepEqual(state.updated, { canDispatch: true });
+  assert.equal(state.audits[0].action, "HUB_OPERATOR_DISPATCH_PERMISSION_GRANTED");
+  assert.deepEqual(state.audits[0].before, { role: "OPERATOR", isActive: true, canDispatch: false });
+  assert.deepEqual(state.audits[0].after, { role: "OPERATOR", isActive: true, canDispatch: true });
+  assert.equal(state.audits[0].reason, "Trusted operator approved for delegated dispatch");
+});
+
+test("admin can revoke dispatch permission even when the hub is closed", async () => {
+  const { prismaClient, state } = createDispatchPermissionPrisma({
+    hub: { id: "hub-1", status: "CLOSED", name: "Ikeja Hub" },
+    membership: { id: "member-1", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: false, canDispatch: true },
+    user: { id: "staff-1", status: "SUSPENDED", emailVerifiedAt: null },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorDispatchPermission({
+    hubPointId: "hub-1", operatorId: "member-1", canDispatch: false,
+    reason: "Revoke dispatch access during closure", actorUserId: "admin-1",
+  });
+  assert.equal(result.operator.canDispatch, false);
+  assert.deepEqual(state.updated, { canDispatch: false });
+  assert.equal(state.audits[0].action, "HUB_OPERATOR_DISPATCH_PERMISSION_REVOKED");
+});
+
+test("admin cannot grant dispatch permission to an inactive membership", async () => {
+  const { prismaClient, state } = createDispatchPermissionPrisma({
+    membership: { id: "member-1", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: false, canDispatch: false },
+  });
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorDispatchPermission({
+    hubPointId: "hub-1", operatorId: "member-1", canDispatch: true,
+    reason: "Attempted permission grant", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "OPERATOR_NOT_ACTIVE");
+  assert.equal(state.updated, null);
+  assert.deepEqual(state.audits, []);
+});
+
+test("deactivating a hub membership also revokes delegated dispatch permission", async () => {
+  let updateData;
+  let audit;
+  const membership = { id: "member-1", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true, canDispatch: true };
+  const tx = {
+    hubPointOperator: {
+      findFirst: async () => membership,
+      count: async () => 1,
+      update: async ({ data }) => { updateData = data; return { ...membership, ...data }; },
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", name: "Ikeja Hub" }) },
+    operationalAuditEvent: { create: async ({ data }) => { audit = data; return data; } },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "member-1", isActive: false,
+    reason: "Remove staff access", actorUserId: "admin-1",
+  });
+  assert.deepEqual(updateData, { isActive: false, canDispatch: false });
+  assert.equal(result.operator.canDispatch, false);
+  assert.equal(audit.before.canDispatch, true);
+  assert.equal(audit.after.canDispatch, false);
+});
+
+test("changing a hub member's role clears delegated dispatch permission", async () => {
+  let updateData;
+  const membership = { id: "member-1", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: true, canDispatch: true };
+  const tx = {
+    hubPointOperator: {
+      findFirst: async () => membership,
+      update: async ({ data }) => { updateData = data; return { ...membership, ...data }; },
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", name: "Ikeja Hub" }) },
+    user: { findUnique: async () => ({ id: "staff-1", status: "ACTIVE", emailVerifiedAt: new Date() }) },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createCustodyService({ prismaClient });
+  const result = await service.updateHubOperatorRole({
+    hubPointId: "hub-1", operatorId: "member-1", role: "MANAGER",
+    reason: "Promote to hub manager", actorUserId: "admin-1",
+  });
+  assert.deepEqual(updateData, { role: "MANAGER", canDispatch: false });
+  assert.equal(result.operator.canDispatch, false);
+});
+
+
+for (const status of ["PENDING", "SUSPENDED", "CLOSED"]) {
+  test(`admin cannot grant dispatch permission while the hub is ${status.toLowerCase()}`, async () => {
+    const { prismaClient, state } = createDispatchPermissionPrisma({
+      hub: { id: "hub-1", status, name: "Ikeja Hub" },
+    });
+    const service = createCustodyService({ prismaClient });
+    const result = await service.setHubOperatorDispatchPermission({
+      hubPointId: "hub-1", operatorId: "member-1", canDispatch: true,
+      reason: "Attempted permission grant while hub is inactive", actorUserId: "admin-1",
+    });
+    assert.equal(result.blocker, "HUB_NOT_ACTIVE");
+    assert.equal(state.updated, null);
+    assert.deepEqual(state.audits, []);
+  });
+}
+
+test("admin cannot grant dispatch permission to a suspended or unverified user", async () => {
+  for (const user of [
+    { id: "staff-1", status: "SUSPENDED", emailVerifiedAt: new Date() },
+    { id: "staff-1", status: "ACTIVE", emailVerifiedAt: null },
+  ]) {
+    const { prismaClient, state } = createDispatchPermissionPrisma({ user });
+    const service = createCustodyService({ prismaClient });
+    const result = await service.setHubOperatorDispatchPermission({
+      hubPointId: "hub-1", operatorId: "member-1", canDispatch: true,
+      reason: "Attempted permission grant to ineligible user", actorUserId: "admin-1",
+    });
+    assert.equal(result.blocker, "OPERATOR_NOT_ACTIVE");
+    assert.equal(state.updated, null);
+    assert.deepEqual(state.audits, []);
+  }
+});
+
+
+test("reactivating a membership requires dispatch delegation to be granted again", async () => {
+  const membership = { id: "member-1", hubPointId: "hub-1", userId: "staff-1", role: "OPERATOR", isActive: false, canDispatch: true };
+  let updateData;
+  const tx = {
+    hubPointOperator: {
+      findFirst: async () => membership,
+      update: async ({ data }) => { updateData = data; return { ...membership, ...data }; },
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "ACTIVE", name: "Ikeja Hub" }) },
+    user: { findUnique: async () => ({ id: "staff-1", status: "ACTIVE", emailVerifiedAt: new Date() }) },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createCustodyService({ prismaClient });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "member-1", isActive: true,
+    reason: "Re-enable hub staff membership", actorUserId: "admin-1",
+  });
+  assert.deepEqual(updateData, { isActive: true, canDispatch: false });
+  assert.equal(result.operator.canDispatch, false);
 });
