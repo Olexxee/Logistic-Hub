@@ -191,7 +191,7 @@ test("customer refund request is ownership checked, balance capped and idempoten
     refundRequest: {
       findUnique: async () => existing,
       aggregate: async () => ({ _sum: { amountMinor: 0n } }),
-      create: async ({ data }) => { existing = { id: "refund-created", ...data }; return existing; },
+      create: async ({ data }) => { existing = { id: "refund-created", status: "PENDING_REVIEW", ...data }; return existing; },
     },
     operationalAuditEvent: { create: async ({ data }) => data },
   };
