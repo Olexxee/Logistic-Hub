@@ -282,3 +282,20 @@ The first corrective implementation removes the coupling identified in Section 3
 The audit's earlier statements describe the baseline at the time AH-0 was performed; this section records the subsequent AH-1 code change. This change does not remove the legacy `HUB_OPERATOR` or `PARTNER_OPERATOR` enum values. Their eventual deprecation requires a separate inventory of persisted user records, frontend assumptions and external integrations.
 
 New service tests cover hub and partner membership activation/deactivation without global-role mutation. CI is the required validation gate before merge.
+
+
+## AH-1 implementation delta — user account controls
+
+**Implementation branch:** `feat/admin-user-management`
+
+The following backend controls are now implemented in the AH-1 workstream:
+
+- `GET /api/v1/admin/users` remains the safe paginated directory. Its `q` parameter is now correctly mapped to the repository's search filter.
+- `PATCH /api/v1/admin/users/:userId/status` supports only `ACTIVE` → `SUSPENDED` and `SUSPENDED` → `ACTIVE`, with a mandatory reason.
+- Suspending a user revokes all unexpired sessions in the same database transaction as the status update and audit event. Repeated suspension also cleans up any lingering unrevoked sessions.
+- Reactivation requires an email-verified account. Reactivation does not recreate sessions; the user must authenticate again.
+- `POST /api/v1/admin/users/:userId/sessions/revoke-all` revokes a target user's active sessions without changing account status. A reason is mandatory.
+- Both mutation endpoints are ADMIN-only, reject self-targeting and protect ADMIN accounts from peer modification. Account status changes are audited with actor, target, before/after state and reason.
+- Global platform-role mutation is deliberately not implemented. The backend has no platform OWNER authority, and allowing an ADMIN to grant or revoke ADMIN would violate the approved governance rule.
+
+These endpoints do not close accounts, modify platform roles, or initiate payment/refund/payout operations. Operational consequences of suspending a driver or organization member still require dispatch/operations review; account suspension is an access-control action, not automatic reassignment of work.

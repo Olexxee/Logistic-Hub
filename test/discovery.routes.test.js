@@ -70,3 +70,27 @@ test("membership discovery requires authentication but does not require a pre-ex
     assert.deepEqual((await hub.json()).data.items, []);
   });
 });
+
+
+test("admin user directory applies the q search parameter to repository filters", async () => {
+  let capturedWhere;
+  const prismaClient = {
+    user: {
+      findMany: async ({ where }) => { capturedWhere = where; return []; },
+      count: async ({ where }) => { assert.deepEqual(where, capturedWhere); return 0; },
+    },
+  };
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/admin/users?q=ada`, {
+      headers: { "x-user-role": "ADMIN" },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(capturedWhere, {
+      OR: [
+        { fullName: { contains: "ada", mode: "insensitive" } },
+        { email: { contains: "ada", mode: "insensitive" } },
+        { phone: { contains: "ada" } },
+      ],
+    });
+  });
+});
