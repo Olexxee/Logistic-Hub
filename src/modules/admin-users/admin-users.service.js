@@ -1,5 +1,9 @@
 import { createAdminUsersRepository } from "./admin-users.repository.js";
 
+function userView(user) {
+  return { id: user.id, fullName: user.fullName, email: user.email, role: user.role, status: user.status };
+}
+
 function forbidden(code, message) {
   const error = new Error(message);
   error.statusCode = 403;
@@ -18,7 +22,7 @@ export function createAdminUsersService({ prismaClient, clock = () => new Date()
         if (actorUserId === userId) return { blocker: "SELF_ACCOUNT_MODIFICATION" };
         if (user.role === "ADMIN") return { blocker: "ADMIN_ACCOUNT_PROTECTED" };
         if (user.status === "CLOSED") return { blocker: "ACCOUNT_CLOSED" };
-        if (user.status === status) return { user, replay: true, revokedCount: 0 };
+        if (user.status === status) return { user: userView(user), replay: true, revokedCount: 0 };
         if (status === "SUSPENDED" && user.status !== "ACTIVE") return { blocker: "ACCOUNT_NOT_SUSPENDABLE" };
         if (status === "ACTIVE" && user.status !== "SUSPENDED") return { blocker: "ACCOUNT_NOT_REACTIVATABLE" };
         if (status === "ACTIVE" && !user.emailVerifiedAt) return { blocker: "EMAIL_VERIFICATION_REQUIRED" };
@@ -55,6 +59,7 @@ export function createAdminUsersService({ prismaClient, clock = () => new Date()
         if (user.role === "ADMIN") return { blocker: "ADMIN_ACCOUNT_PROTECTED" };
 
         const now = clock();
+        const activeSessionCount = await repository.countActiveSessions(userId, now, tx);
         const result = await repository.revokeActiveSessions(userId, now, tx);
         await repository.createAudit({
           actorUserId,
@@ -62,7 +67,7 @@ export function createAdminUsersService({ prismaClient, clock = () => new Date()
           entityId: userId,
           action: "ADMIN_USER_SESSIONS_REVOKED",
           reason,
-          before: { activeSessionCount: null },
+          before: { activeSessionCount },
           after: { revokedSessionCount: result.count },
         }, tx);
         return { revokedCount: result.count };
