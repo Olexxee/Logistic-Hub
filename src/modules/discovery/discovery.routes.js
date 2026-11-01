@@ -64,7 +64,7 @@ export function createDiscoveryRouter({ prismaClient = prisma, authMiddleware = 
     req.validatedQuery = parsed.data;
     return next();
   }, asyncWrapper(async (req, res) => {
-    const data = await service.searchUsers(req.validatedQuery);
+    const data = await service.searchUsers({ ...req.validatedQuery, query: req.validatedQuery.q });
     return res.status(200).json({ success: true, data });
   }));
 
