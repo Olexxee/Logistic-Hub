@@ -9,7 +9,7 @@ test("refund review mutation and audit event share one transaction", async () =>
     $transaction: callback => callback({
       refundRequest: {
         findUnique: async () => current,
-        update: async ({ data }) => ({ ...current, ...data }),
+        updateMany: async ({ data }) => { Object.assign(current, data); return { count: 1 }; },
       },
       operationalAuditEvent: { create: async ({ data }) => { audit = data; return { id: "audit-1" }; } },
     }),
