@@ -48,7 +48,7 @@ export function createFinanceRouter({
   router.patch(
     "/admin/refunds/:refundId",
     authMiddleware,
-    supportFinanceAccess,
+    adminAccess,
     validate(refundId, "params"),
     validate(reviewRefundSchema),
     controller.reviewRefund,
