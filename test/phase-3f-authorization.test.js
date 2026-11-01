@@ -6,7 +6,12 @@ import { createAssignmentsService } from "../src/modules/assignments/assignments
 
 test("a customer cannot read another customer's parcel booking by changing the booking ID", async () => {
   const service = createParcelBookingsService({
-    repository: { findById: async () => ({ id: "parcel-1", senderId: "customer-owner" }) },
+    repository: { findById: async () => ({
+      id: "parcel-1", senderId: "customer-owner",
+      pickupLatitude: 6.5, pickupLongitude: 3.4,
+      destinationLatitude: 6.6, destinationLongitude: 3.5,
+      connectionFeeMinor: 0n, otherChargesMinor: 0n,
+    }) },
   });
   await assert.rejects(
     service.getVisibleBooking({
