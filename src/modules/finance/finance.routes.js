@@ -40,6 +40,7 @@ export function createFinanceRouter({
   router.post(
     "/refund-requests",
     authMiddleware,
+    roleMiddleware("CUSTOMER"),
     validate(refundRequestSchema),
     requireFinanceIdempotencyKey,
     controller.requestRefund,
