@@ -45,6 +45,11 @@ export function signAccessToken({ userId, role, secret, sessionId, now = Date.no
     error.code = "AUTH_NOT_CONFIGURED";
     throw error;
   }
+  if (typeof sessionId !== "string" || !sessionId.trim()) {
+    const error = new Error("A persisted authentication session is required to issue an access token.");
+    error.code = "AUTH_SESSION_REQUIRED";
+    throw error;
+  }
 
   const issuedAt = Math.floor(now / 1000);
   const header = encodeJson({ alg: "HS256", typ: "JWT" });
@@ -80,7 +85,9 @@ export function verifyAccessToken(token, secret, now = Date.now()) {
     const decodedPayload = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (decodedHeader.alg !== "HS256" || decodedHeader.typ !== "JWT") return null;
     if (typeof decodedPayload.sub !== "string" || typeof decodedPayload.role !== "string") return null;
-    if (decodedPayload.sid !== undefined && typeof decodedPayload.sid !== "string") return null;
+    // Every access token must be bound to a persisted session so logout,
+    // password reset and administrative revocation invalidate it immediately.
+    if (typeof decodedPayload.sid !== "string" || !decodedPayload.sid.trim()) return null;
     if (!Number.isInteger(decodedPayload.exp) || decodedPayload.exp <= Math.floor(now / 1000)) return null;
     return decodedPayload;
   } catch {

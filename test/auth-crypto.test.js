@@ -1,4 +1,5 @@
 import test from "node:test";
+import { createHmac } from "node:crypto";
 import assert from "node:assert/strict";
 import {
   createOpaqueToken,
@@ -28,11 +29,12 @@ test("password hashing verifies correct passwords and rejects incorrect password
 
 test("access tokens are signed, expire, and reject tampering", () => {
   const now = 1_800_000_000_000;
-  const { token, expiresIn } = signAccessToken({ userId: "user_123", role: "CUSTOMER", secret, now });
+  const { token, expiresIn } = signAccessToken({ userId: "user_123", role: "CUSTOMER", sessionId: "session_123", secret, now });
   assert.equal(expiresIn, 900);
   assert.deepEqual(verifyAccessToken(token, secret, now), {
     sub: "user_123",
     role: "CUSTOMER",
+    sid: "session_123",
     iat: Math.floor(now / 1000),
     exp: Math.floor(now / 1000) + 900,
   });
@@ -45,4 +47,30 @@ test("signing refuses weak secrets", () => {
   assert.throws(() => signAccessToken({ userId: "u1", role: "CUSTOMER", secret: "short" }), {
     code: "AUTH_NOT_CONFIGURED",
   });
+});
+
+test("access tokens cannot be issued without a persisted session identifier", () => {
+  assert.throws(
+    () => signAccessToken({ userId: "user_123", role: "CUSTOMER", secret }),
+    { code: "AUTH_SESSION_REQUIRED" },
+  );
+  assert.throws(
+    () => signAccessToken({ userId: "user_123", role: "CUSTOMER", sessionId: "  ", secret }),
+    { code: "AUTH_SESSION_REQUIRED" },
+  );
+});
+
+test("legacy access tokens without a session identifier are rejected", () => {
+  const now = 1_800_000_000_000;
+  const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const header = encode({ alg: "HS256", typ: "JWT" });
+  const payload = encode({
+    sub: "user_123",
+    role: "ADMIN",
+    iat: Math.floor(now / 1000),
+    exp: Math.floor(now / 1000) + 900,
+  });
+  const input = `${header}.${payload}`;
+  const signature = createHmac("sha256", secret).update(input).digest("base64url");
+  assert.equal(verifyAccessToken(`${input}.${signature}`, secret, now), null);
 });
