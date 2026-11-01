@@ -56,7 +56,7 @@ test("refund approval remains disabled until REFUNDS_ENABLED is explicitly enabl
     () => service.reviewRefund({ id: refund.id, user: { id: "admin-1", role: "ADMIN" }, decision: "APPROVE", reviewNote: "Reviewed and approved" }),
     error => error.code === "REFUNDS_DISABLED" && error.statusCode === 503,
   );
-  assert.equal(refund.status, "PROCESSING");
+  assert.equal(refund.status, "PENDING_REVIEW");
   assert.equal(calls.providerCalls, 0);
 });
 
@@ -174,7 +174,7 @@ test("admin reconciliation does not retry when Paystack has no matching refund",
   });
   const result = await service.reconcileRefund({ id: refund.id, user: { id: "admin-1", role: "ADMIN" } });
   assert.equal(result.reconciliation, "NO_PROVIDER_MATCH");
-  assert.equal(refund.status, "PENDING_REVIEW");
+  assert.equal(refund.status, "PROCESSING");
   assert.equal(refund.providerReference, null);
   assert.equal(calls, 1);
 });
