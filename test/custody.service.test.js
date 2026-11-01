@@ -358,3 +358,49 @@ test("hub exception reporting denies a user who is not an active member of the r
   );
   assert.equal(legLocks, 0);
 });
+
+
+test("adding a hub membership preserves the user's global account role", async () => {
+  const { db, calls } = tx({
+    user: {
+      findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now }),
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "PENDING" }) },
+    hubPointOperator: {
+      findUnique: async () => null,
+      upsert: async ({ create }) => ({ id: "hub-operator-customer", ...create }),
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.addHubOperator({
+    hubPointId: "hub-1", userId: "customer-1", role: "MANAGER", actorUserId: "admin-1",
+  });
+  assert.equal(result.operator.userId, "customer-1");
+  assert.equal(result.operator.role, "MANAGER");
+  assert.equal(calls.audits[0].before, null);
+  assert.deepEqual(calls.audits[0].after, {
+    hubPointId: "hub-1", userId: "customer-1", role: "MANAGER", isActive: true,
+  });
+});
+
+
+test("deactivating a hub membership does not demote the user's global account role", async () => {
+  const { db, calls } = tx({
+    user: {
+      findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now }),
+      updateMany: async () => { throw new Error("Membership must not mutate the global user role."); },
+    },
+    hubPoint: { findUnique: async () => ({ id: "hub-1", status: "SUSPENDED" }) },
+    hubPointOperator: {
+      findFirst: async () => ({ id: "operator-1", hubPointId: "hub-1", userId: "customer-1", role: "OPERATOR", isActive: true }),
+      update: async ({ where, data }) => ({ id: where.id, hubPointId: "hub-1", userId: "customer-1", role: "OPERATOR", ...data }),
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setHubOperatorStatus({
+    hubPointId: "hub-1", operatorId: "operator-1", isActive: false, actorUserId: "admin-1",
+  });
+  assert.equal(result.operator.isActive, false);
+  assert.equal(calls.audits[0].before.isActive, true);
+  assert.equal(calls.audits[0].after.isActive, false);
+});

@@ -129,7 +129,6 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (hub.status === "CLOSED") return { blocker: "HUB_CLOSED" };
         const user = await repo.findUser(userId, tx);
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
-        if (!["CUSTOMER", "HUB_OPERATOR", "PARTNER_OPERATOR"].includes(user.role)) return { blocker: "USER_ROLE_CONFLICT" };
         const existingOperator = await tx.hubPointOperator.findUnique({
           where: { hubPointId_userId: { hubPointId, userId } },
         });
@@ -144,12 +143,11 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
         }
         const operator = await repo.upsertHubOperator({ hubPointId, userId, role, isActive: true }, tx);
-        if (user.role === "CUSTOMER") await repo.setUserRole(userId, "HUB_OPERATOR", tx);
         await repo.createAudit({
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operator.id,
           action: "HUB_OPERATOR_ACTIVATED",
-          before: { userRole: user.role },
-          after: { hubPointId, userId, role, isActive: true, userRole: user.role === "CUSTOMER" ? "HUB_OPERATOR" : user.role },
+          before: existingOperator ? { role: existingOperator.role, isActive: existingOperator.isActive } : null,
+          after: { hubPointId, userId, role: operator.role, isActive: operator.isActive },
         }, tx);
         return { operator };
       });
@@ -168,9 +166,6 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           if (!otherManagers) return { blocker: "LAST_ACTIVE_HUB_MANAGER" };
         }
         const operator = await repo.updateHubOperator(operatorId, isActive, tx);
-        const activeCount = await repo.countActiveHubMemberships(current.userId, tx);
-        const partnerCount = await tx.transportPartnerMember.count({ where: { userId: current.userId, isActive: true } });
-        if (!activeCount && !partnerCount) await tx.user.updateMany({ where: { id: current.userId, role: { in: ["HUB_OPERATOR", "PARTNER_OPERATOR"] } }, data: { role: "CUSTOMER" } });
         await repo.createAudit({
           actorUserId, entityType: "HUB_POINT_OPERATOR", entityId: operatorId,
           action: isActive ? "HUB_OPERATOR_ACTIVATED" : "HUB_OPERATOR_SUSPENDED",

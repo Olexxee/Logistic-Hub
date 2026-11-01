@@ -43,9 +43,6 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) {
           return { blocker: "USER_NOT_ACTIVE" };
         }
-        if (!["CUSTOMER", "PARTNER_OPERATOR", "HUB_OPERATOR"].includes(user.role)) {
-          return { blocker: "USER_ROLE_CONFLICT" };
-        }
         const existingMember = await tx.transportPartnerMember.findUnique({
           where: { partnerId_userId: { partnerId, userId } },
         });
@@ -63,12 +60,11 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           create: { partnerId, userId, role, isActive: true },
           update: { role, isActive: true },
         });
-        if (user.role === "CUSTOMER") {
-          await tx.user.update({ where: { id: userId }, data: { role: "PARTNER_OPERATOR" } });
-        }
         await tx.operationalAuditEvent.create({ data: {
           actorUserId, entityType: "TRANSPORT_PARTNER_MEMBER", entityId: member.id,
-          action: "PARTNER_MEMBER_ACTIVATED", before: { userRole: user.role }, after: { partnerId, userId, role, isActive: true, userRole: user.role === "CUSTOMER" ? "PARTNER_OPERATOR" : user.role },
+          action: "PARTNER_MEMBER_ACTIVATED",
+          before: existingMember ? { role: existingMember.role, isActive: existingMember.isActive } : null,
+          after: { partnerId, userId, role: member.role, isActive: member.isActive },
         } });
         return { member };
       });
@@ -94,18 +90,6 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const updated = await tx.transportPartnerMember.update({
           where: { id: member.id }, data: { isActive },
         });
-        const activeMemberships = await tx.transportPartnerMember.count({
-          where: { userId: member.userId, isActive: true },
-        });
-        const activeHubMemberships = await tx.hubPointOperator.count({
-          where: { userId: member.userId, isActive: true },
-        });
-        if (!activeMemberships && !activeHubMemberships) {
-          await tx.user.updateMany({
-            where: { id: member.userId, role: { in: ["PARTNER_OPERATOR", "HUB_OPERATOR"] } },
-            data: { role: "CUSTOMER" },
-          });
-        }
         await tx.operationalAuditEvent.create({ data: {
           actorUserId, entityType: "TRANSPORT_PARTNER_MEMBER", entityId: member.id,
           action: isActive ? "PARTNER_MEMBER_ACTIVATED" : "PARTNER_MEMBER_SUSPENDED",

@@ -13,7 +13,6 @@ export function createPartnerExecutionController(service) {
         const result = await service.addMember({ ...req.body, partnerId: req.params.partnerId, actorUserId: req.user.id });
         if (result.notFound) return res.status(404).json({ success: false, error: { code: "PARTNER_NOT_FOUND", message: "Transport partner not found." } });
         if (result.blocker === "USER_NOT_ACTIVE") return res.status(409).json({ success: false, error: { code: "USER_NOT_ACTIVE", message: "Only active, email-verified users can be added to a partner." } });
-        if (result.blocker === "USER_ROLE_CONFLICT") return res.status(409).json({ success: false, error: { code: "USER_ROLE_CONFLICT", message: "This user already has a role that cannot be converted to a partner operator." } });
         if (result.blocker === "PARTNER_CLOSED") return res.status(409).json({ success: false, error: { code: "PARTNER_CLOSED", message: "Closed transport partners cannot receive new members." } });
         if (result.blocker === "LAST_ACTIVE_OWNER") return res.status(409).json({ success: false, error: { code: "LAST_ACTIVE_OWNER", message: "A partner must retain at least one active owner." } });
         return res.status(201).json({ success: true, data: { member: result.member } });

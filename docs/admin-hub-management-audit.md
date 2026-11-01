@@ -263,3 +263,22 @@ This audit does not authorize or implement:
 - hub application/organization schema changes.
 
 All backend behavior changes require a separately reviewed implementation slice and tests.
+
+
+## AH-1 implementation delta — membership identity separation
+
+**Implementation branch:** `feat/admin-membership-role-separation`
+
+The first corrective implementation removes the coupling identified in Section 3:
+
+- Adding a hub membership no longer changes `User.role`.
+- Deactivating a hub membership no longer demotes a user to `CUSTOMER`.
+- Adding a partner membership no longer changes `User.role`.
+- Deactivating a partner membership no longer demotes a user to `CUSTOMER`.
+- Membership assignment no longer rejects an otherwise active, email-verified user solely because their global role is not one of the former three operational roles. The global role and the scoped membership are now independent.
+- Membership audit events record the membership's prior role/status and resulting role/status rather than a synthetic global-role transition.
+- Obsolete `USER_ROLE_CONFLICT` response handling and the unused custody repository global-role mutation helper have been removed.
+
+The audit's earlier statements describe the baseline at the time AH-0 was performed; this section records the subsequent AH-1 code change. This change does not remove the legacy `HUB_OPERATOR` or `PARTNER_OPERATOR` enum values. Their eventual deprecation requires a separate inventory of persisted user records, frontend assumptions and external integrations.
+
+New service tests cover hub and partner membership activation/deactivation without global-role mutation. CI is the required validation gate before merge.
