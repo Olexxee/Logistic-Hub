@@ -182,7 +182,17 @@ test("partner ownership can be set at hub creation but cannot be changed through
   const create = createHubPointAdminSchema.safeParse({
     partnerId: "partner-1", serviceZoneId: "zone-1", name: "Partner Hub",
     address: "12 Allen Avenue, Ikeja", latitude: 6.6, longitude: 3.35,
+    reason: "Strategic partner hub onboarding",
   });
   assert.equal(create.success, true);
   assert.equal(updateHubPointAdminSchema.safeParse({ partnerId: "partner-2" }).success, false);
+});
+
+
+test("hub administration mutation schemas require a recorded reason", async () => {
+  const { hubPointStatusAdminSchema, hubOperatorVerificationSchema } = await import("../src/modules/hub-points/hub-points.admin.validators.js");
+  assert.equal(hubPointStatusAdminSchema.safeParse({ status: "SUSPENDED" }).success, false);
+  assert.equal(hubPointStatusAdminSchema.safeParse({ status: "SUSPENDED", reason: "Temporary operational disruption" }).success, true);
+  assert.equal(hubOperatorVerificationSchema.safeParse({ verificationStatus: "VERIFIED" }).success, false);
+  assert.equal(hubOperatorVerificationSchema.safeParse({ verificationStatus: "VERIFIED", reason: "Identity and business details checked" }).success, true);
 });
