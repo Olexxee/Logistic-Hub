@@ -135,6 +135,61 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       };
     },
 
+    async listHubOperatorsForManager({ hubPointId, userId, page = 1, limit = 25, isActive }) {
+      const hub = await repo.findHub(hubPointId);
+      if (!hub) return { notFound: true };
+      const membership = await repo.findHubOperator(hubPointId, userId);
+      if (!membership?.isActive || membership.role !== "MANAGER") return { forbidden: true };
+      const result = await repo.listHubOperators(hubPointId, {
+        skip: (page - 1) * limit, take: limit, isActive,
+      });
+      return {
+        hub: { id: hub.id, name: hub.name, status: hub.status },
+        items: result.items,
+        pagination: { page, limit, total: result.total, totalPages: Math.ceil(result.total / limit) },
+      };
+    },
+
+    async addHubStaff({ hubPointId, userId, reason, actorUserId }) {
+      return serializableTransaction(prismaClient, async tx => {
+        const hub = await repo.findHub(hubPointId, tx);
+        if (!hub) return { notFound: true };
+        if (!["PENDING", "ACTIVE"].includes(hub.status)) return { blocker: "HUB_NOT_OPEN_FOR_STAFF" };
+
+        const managerMembership = await repo.findHubOperator(hubPointId, actorUserId, tx);
+        if (!managerMembership?.isActive || managerMembership.role !== "MANAGER") {
+          return { forbidden: true };
+        }
+        if (userId === actorUserId) return { blocker: "SELF_MEMBERSHIP_CHANGE" };
+
+        const user = await repo.findUser(userId, tx);
+        if (!user || user.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
+
+        const existing = await tx.hubPointOperator.findUnique({
+          where: { hubPointId_userId: { hubPointId, userId } },
+        });
+        if (existing?.isActive && existing.role === "OPERATOR") {
+          return { operator: existing, replay: true };
+        }
+        if (existing?.role === "MANAGER") return { blocker: "MANAGER_MEMBERSHIP_PROTECTED" };
+        if (existing && !existing.isActive) return { blocker: "ADMIN_REVIEW_REQUIRED" };
+
+        const operator = await repo.upsertHubOperator({
+          hubPointId, userId, role: "OPERATOR", isActive: true,
+        }, tx);
+        await repo.createAudit({
+          actorUserId,
+          entityType: "HUB_POINT_OPERATOR",
+          entityId: operator.id,
+          action: "HUB_STAFF_ADDED_BY_MANAGER",
+          reason,
+          before: null,
+          after: { hubPointId, userId, role: "OPERATOR", isActive: true },
+        }, tx);
+        return { operator, replay: false };
+      });
+    },
+
     async addHubOperator({ hubPointId, userId, role = "OPERATOR", reason, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         const hub = await repo.findHub(hubPointId, tx);
