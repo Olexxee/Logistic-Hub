@@ -4,6 +4,10 @@ Logistic Hub is a Nigeria-focused logistics platform for coordinating local parc
 
 The platform coordinates the shipment lifecycle: booking, route and capacity checks, quotation, customer acceptance, payment verification, dispatch, custody transfers, delivery confirmation and financial reconciliation. It is designed to expand across Nigerian states through configurable geography, partner agreements and service coverage rather than one-off code changes.
 
+## Administration implementation
+
+- [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, current API contracts, role taxonomy, authorization boundaries and implementation blockers.
+
 ## Product blueprint
 
 ### Launch scope and operating principles
