@@ -2,94 +2,10 @@ import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { env } from "../../config/env.js";
 import { createPaymentsRepository } from "./payments.repository.js";
 import { createNotificationsService } from "../notifications/notifications.service.js";
-import { ServiceUnavailableError, ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
+import { ServiceUnavailableError, ConflictError } from "../../shared/http/app-error.js";
 
-export function createPaymentsService({ prismaClient, repository = createPaymentsRepository(prismaClient), notifications = createNotificationsService({ prismaClient }), secretKey = env.PAYSTACK_SECRET_KEY, enabled = env.PAYMENTS_ENABLED, refundsEnabled = env.REFUNDS_ENABLED, fetchImpl = fetch, clock = () => new Date() } = {}) {
+export function createPaymentsService({ prismaClient, repository = createPaymentsRepository(prismaClient), notifications = createNotificationsService({ prismaClient }), secretKey = env.PAYSTACK_SECRET_KEY, enabled = env.PAYMENTS_ENABLED, refundsEnabled = env.REFUNDS_ENABLED, fetchImpl = fetch } = {}) {
   return {
-
-    async createRefundRequest({ bookingType, bookingId, reason, user, idempotencyKey }) {
-      if (!["CUSTOMER", "ADMIN", "SUPPORT"].includes(user?.role)) throw new ForbiddenError();
-      if (typeof idempotencyKey !== "string" || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
-        throw new ConflictError("A valid Idempotency-Key header is required.", "IDEMPOTENCY_KEY_REQUIRED");
-      }
-      const normalizedType = bookingType === "PARCEL_DELIVERY" ? "PARCEL" : "RIDE";
-      const result = await repository.createRefundRequest({
-        bookingType: normalizedType, bookingId, userId: user.id, reason, idempotencyKey,
-        publicReference: "RF-" + createHash("sha256").update(user.id + ":" + idempotencyKey).digest("hex").slice(0, 16).toUpperCase(),
-        now: clock(),
-      });
-      if (result.notFound) throw new NotFoundError("Booking not found or not owned by this account.", "BOOKING_NOT_FOUND");
-      if (result.conflict === "IDEMPOTENCY_CONFLICT") throw new ConflictError("The idempotency key was already used for a different refund request.", "IDEMPOTENCY_CONFLICT");
-      if (result.conflict === "PAYMENT_NOT_CAPTURED") throw new ConflictError("A refund can only be requested for a successfully captured payment.", "PAYMENT_NOT_CAPTURED");
-      if (result.conflict === "PAYMENT_REFERENCE_MISSING") throw new ConflictError("The captured payment has no provider reference; support must investigate it.", "PAYMENT_REFERENCE_MISSING");
-      if (result.conflict === "NO_REFUNDABLE_BALANCE") throw new ConflictError("There is no remaining refundable balance for this payment.", "NO_REFUNDABLE_BALANCE");
-      return { ...result.refund, amountMinor: result.refund.amountMinor.toString(), replay: result.replay };
-    },
-    async listRefunds({ status, cursor, limit = 50 } = {}) {
-      const rows = await repository.listRefunds({ status, cursor, limit });
-      const hasMore = rows.length > limit;
-      const data = (hasMore ? rows.slice(0, limit) : rows).map(refund => ({
-        ...refund, amountMinor: refund.amountMinor.toString(),
-      }));
-      return { data, nextCursor: hasMore ? data.at(-1)?.id ?? null : null };
-    },
-
-    async rejectRefund({ refundId, actor, reason }) {
-      if (actor?.role !== "ADMIN") throw new ForbiddenError("Only an administrator can reject a refund request.");
-      const result = await repository.rejectRefundRequest({ refundId, actorUserId: actor.id, reason, now: clock() });
-      if (result.notFound) throw new NotFoundError("Refund request not found.", "REFUND_NOT_FOUND");
-      if (result.conflict) throw new ConflictError("This refund request cannot be rejected from its current state: " + result.conflict + ".", "REFUND_NOT_REJECTABLE");
-      return { ...result.refund, amountMinor: result.refund.amountMinor.toString(), replay: result.replay };
-    },
-    async processRefund({ refundId, actor }) {
-      if (actor?.role !== "ADMIN") throw new ForbiddenError("Only an administrator can approve and submit a refund.");
-      if (!refundsEnabled) throw new ServiceUnavailableError("Provider refund processing is disabled. Refund requests can be reviewed, but no money will be moved until REFUNDS_ENABLED is explicitly approved.", "REFUNDS_DISABLED");
-      if (!secretKey) throw new ServiceUnavailableError("Paystack is not configured.", "PAYSTACK_NOT_CONFIGURED");
-      const prepared = await repository.prepareRefundProcessing({ refundId, actorUserId: actor.id, now: clock() });
-      if (prepared.notFound) throw new NotFoundError("Refund request not found.", "REFUND_NOT_FOUND");
-      if (prepared.conflict) throw new ConflictError("This refund request cannot be processed from its current state: " + prepared.conflict + ".", "REFUND_NOT_PROCESSABLE");
-      if (prepared.outcomeUnknown) throw new ConflictError("The previous provider submission has an unknown outcome. Reconcile it in Paystack before taking further action; do not resubmit.", "REFUND_SUBMISSION_OUTCOME_UNKNOWN");
-      if (prepared.replay) return { ...prepared.refund, amountMinor: prepared.refund.amountMinor.toString(), replay: true };
-      const refund = prepared.refund;
-      if (refund.amountMinor > BigInt(Number.MAX_SAFE_INTEGER)) throw new ConflictError("Refund amount exceeds the provider's safe integer range.", "INVALID_REFUND_AMOUNT");
-      let response;
-      try {
-        response = await fetchImpl("https://api.paystack.co/refund", {
-          method: "POST",
-          headers: { Authorization: "Bearer " + secretKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transaction: refund.paymentAttempt.providerReference,
-            amount: Number(refund.amountMinor),
-            customer_note: refund.reason,
-            merchant_note: "Logistic Hub refund " + refund.publicReference,
-          }),
-        });
-      } catch {
-        await repository.markRefundSubmissionUnknown({ refundId, actorUserId: actor.id });
-        throw new ServiceUnavailableError("Paystack's response could not be confirmed. The refund remains locked for reconciliation; do not submit it again.", "REFUND_SUBMISSION_OUTCOME_UNKNOWN");
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.status || !body?.data) {
-        const providerResponse = {
-          status: body?.status === true,
-          message: typeof body?.message === "string" ? body.message.slice(0, 300) : "Provider rejected the refund request.",
-          providerStatusCode: response.status,
-        };
-        await repository.saveRefundProviderResult({ refundId, providerResponse, failed: true, actorUserId: actor.id });
-        throw new ServiceUnavailableError("Paystack rejected the refund submission. The request is marked failed and requires review before another attempt.", "REFUND_PROVIDER_REJECTED");
-      }
-      const providerReference = body.data.id != null ? String(body.data.id) : (body.data.reference != null ? String(body.data.reference) : null);
-      if (!providerReference) {
-        await repository.markRefundSubmissionUnknown({ refundId, actorUserId: actor.id });
-        throw new ServiceUnavailableError("Paystack accepted the request without returning a refund identifier. Reconciliation is required; do not resubmit.", "REFUND_SUBMISSION_OUTCOME_UNKNOWN");
-      }
-      const providerResponse = {
-        status: true, message: typeof body.message === "string" ? body.message.slice(0, 300) : "Refund accepted by provider.",
-        providerStatus: body.data.status ?? null, amount: body.data.amount ?? null, currency: body.data.currency ?? refund.currency,
-      };
-      const saved = await repository.saveRefundProviderResult({ refundId, providerReference, providerResponse, actorUserId: actor.id });
-      return { ...saved, amountMinor: saved.amountMinor.toString(), replay: false };
-    },
     async initialize({ bookingType, bookingId, userId, idempotencyKey }) {
       if (!enabled) throw new ServiceUnavailableError("Online payments are disabled until the project owner approves activation.", "PAYMENTS_DISABLED");
       if (!secretKey) throw new ServiceUnavailableError("Paystack is not configured.", "PAYSTACK_NOT_CONFIGURED");
