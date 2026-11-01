@@ -190,7 +190,7 @@ The implementation is not ready for launch until tests demonstrate that:
 
 ### Priority 5 implementation progress
 
-Work is underway on the feature branch feature/priority-5-delivery-legs-custody, stacked on the Priority 4 booking/quotation branch. The first slice adds the parcel delivery-leg model, creates a direct leg atomically when the sender accepts a driver fare, activates it only after server-verified payment, synchronizes leg progress with assignment and one-time verification transitions, and exposes an owner-scoped delivery-leg timeline API. It does not yet implement multi-leg routing, partner assignment, hub custody handovers or operational exceptions. Review the branch CI and pull request before treating this slice as complete.
+Priority 5 delivery-leg implementation is complete and has been extended by the subsequent merged work. The backend supports direct local legs, quote-driven multi-leg inter-state plans, delivery-leg dispatch, assignment execution and owner-scoped shipment timelines. Partner assignment and hub custody handovers are implemented in the Priority 6 work below; operational exception handling is extended by Phase 3D/3E. See the merged delivery-leg, quote, partner and hub work (including PRs #24–#29, #33 and #35–#37).
 
 ## Existing technical foundation
 
@@ -226,11 +226,9 @@ Priority 6 backend implementation now covers partner assignment/execution, hub c
 
 ## Current implementation status
 
-This README describes the **target product and technical blueprint**, not a claim that every workflow is already implemented. Authentication, partner agreements, quote versioning, multi-leg dispatch, hub custody, exceptions and complete settlement must be verified against the repository before they are treated as production-ready.
+This README combines the **target product blueprint** with the current implementation record. Core booking/authentication, quote versioning, variable delivery legs, partner execution, hub custody, operational exceptions, support/cancellation workflows and internal settlement/reconciliation have implementation coverage in the merged work recorded above. That does not by itself establish production readiness: route contracts, automated tests, deployment configuration and staging acceptance remain separate release gates.
 
-Existing parcel-booking list work is tracked in [PR #8](https://github.com/Olexxee/Logistic-Hub/pull/8). The broader technical foundation has also been tracked in [draft PR #3](https://github.com/Olexxee/Logistic-Hub/pull/3). Check the current PR and branch status before relying on any implementation-status statement.
-
-The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payments are hard-disabled and must not be enabled through configuration alone.
+The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payment initialization is hard-disabled; refund processing has a separate disabled-by-default gate. Internal partner settlement records do not initiate external transfers.
 
 **Release guardrails:** do not merge into `main`, apply production migrations, or accept live bookings/payments until implementation, tests, security review and applicable regulatory checks are complete and the repository owner explicitly approves the next step.
 
@@ -452,7 +450,7 @@ Phase Three is complete only when all 3A–3F acceptance criteria are met, the p
 
 ### Documentation reconciliation
 
-The canonical authentication contract is an HttpOnly refresh cookie plus a short-lived access token returned in JSON. The cookie is never returned in the response body; browser requests must include credentials and the trusted-origin CSRF header. The readiness and operational-workflow documents are being aligned to mounted routes and current runtime behavior in 3F-C.
+The canonical authentication contract is an HttpOnly refresh cookie plus a short-lived access token returned in JSON. The cookie is never returned in the response body; browser requests must include credentials and the trusted-origin CSRF header. The frontend-readiness and operational-workflow documents are reconciled to the mounted routes and current runtime behavior in this 3F-C slice.
 
 
 ## Private support evidence storage
