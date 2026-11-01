@@ -114,6 +114,15 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           });
           if (user?.status !== "ACTIVE" || !user.emailVerifiedAt) return { blocker: "USER_NOT_ACTIVE" };
         }
+        if (partner?.status === "ACTIVE" && nextIsActive && nextRole !== "OWNER") {
+          const eligibleOwners = await tx.transportPartnerMember.count({
+            where: {
+              partnerId, isActive: true, role: "OWNER", id: { not: member.id },
+              user: { status: "ACTIVE", emailVerifiedAt: { not: null } },
+            },
+          });
+          if (!eligibleOwners) return { blocker: "LAST_ACTIVE_OWNER" };
+        }
         const removesEligibleOwner = member.isActive && member.role === "OWNER" &&
           (!nextIsActive || nextRole !== "OWNER");
         if (partner?.status === "ACTIVE" && removesEligibleOwner) {
