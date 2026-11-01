@@ -72,6 +72,7 @@ These routes are not ADMIN-only, but they affect privileged operational resource
 | Partner membership discovery | `GET /api/v1/partner/memberships/mine` | Authentication | Caller identity only; must return the caller's memberships. |
 | Hub operator discovery | `GET /api/v1/hub-operator/memberships/mine` | Authentication | Caller identity only; must return the caller's memberships. |
 | Hub operations | `/api/v1/hub-operations/*` | Authentication | Must verify active hub membership, role, hub scope, handover parties and delivery-leg eligibility in the service layer. |
+| Hub staff management | `GET/POST /api/v1/hub-operations/hubs/:hubPointId/operators` | Authentication; service-level active MANAGER membership for the exact hub | Manager may view that hub's memberships and add OPERATOR memberships only. Cannot self-add, grant MANAGER, alter manager memberships, or reactivate an administrator-deactivated membership. Admin retains role changes and revocation. |
 | Custody handovers | `/api/v1/custody/handovers*` | Authentication | Must verify participant identity, booking ownership/party relationship and legal custody transition. |
 | Customer support | `POST /api/v1/support/tickets`; `GET /api/v1/support/tickets/mine` | Authentication | Customer ownership; customer reads must exclude internal-only staff content. |
 | Cancellation | `POST /api/v1/cancellations` | Authentication | Booking ownership and cancellation eligibility in the service/repository. |
