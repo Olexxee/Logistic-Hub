@@ -49,9 +49,10 @@ test("hub activation writes its audit event in the same transaction", async () =
     operationalAuditEvent: { create: async ({ data }) => { auditData = data; return { id: "audit-1" }; } },
   });
   const service = createHubPointsAdminService({ prismaClient });
-  const result = await service.setStatus("hub-1", "ACTIVE", "admin-1");
+  const result = await service.setStatus("hub-1", "ACTIVE", "admin-1", "Activation checks completed and approved");
   assert.equal(result.status, "ACTIVE");
   assert.equal(auditData.actorUserId, "admin-1");
+  assert.equal(auditData.reason, "Activation checks completed and approved");
   assert.equal(auditData.action, "HUB_STATUS_UPDATED");
   assert.deepEqual(auditData.before, { status: "PENDING" });
   assert.deepEqual(auditData.after, { status: "ACTIVE" });
@@ -186,6 +187,8 @@ test("partner ownership can be set at hub creation but cannot be changed through
   });
   assert.equal(create.success, true);
   assert.equal(updateHubPointAdminSchema.safeParse({ partnerId: "partner-2" }).success, false);
+  assert.equal(updateHubPointAdminSchema.safeParse({ name: "Updated Hub" }).success, false);
+  assert.equal(updateHubPointAdminSchema.safeParse({ name: "Updated Hub", reason: "Address and capacity revised" }).success, true);
 });
 
 
