@@ -260,7 +260,7 @@ AH-5.2 adds the partner membership roster and reasoned membership lifecycle admi
 
 ## 10. Validation and scope
 
-AH-5.0 was documentation-only and introduced no runtime or schema changes. AH-5.1 is a separate implementation slice that adds partner administration read/update routes and audit behavior. AH-5.1 introduces no Prisma schema changes or migrations and does not alter quote calculation, customer prices, payments, refunds, partner settlement, production data or geography imports.
+AH-5.0 was documentation-only and introduced no runtime or schema changes. AH-5.1 and AH-5.2 add partner administration and membership read/update routes with audit behavior. These slices introduce no Prisma schema changes or migrations and do not alter quote calculation, customer prices, payments, refunds, partner settlement, production data or geography imports.
 
 The AH-5.0 source audit was performed against router mounts, route validators/controllers/services/repositories and Prisma model relationships. AH-5.1 adds route tests, PostgreSQL-gated integration coverage and OpenAPI parity validation; passing CI is still required before merge.
 
