@@ -1,5 +1,5 @@
 import { prisma } from "../../db/prisma.js";
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 export function createCancellationsRepository(prismaClient=prisma){return{
  listMine({userId,cursor,limit=20}) {
   return prismaClient.bookingEvent.findMany({
@@ -43,7 +43,7 @@ export function createCancellationsRepository(prismaClient=prisma){return{
     });
     const remaining=paymentAttempt.amountMinor-(reserved._sum.amountMinor??0n);
     if(remaining>0n){
-     const suffix=createHash("sha256").update(bookingType+":"+booking.id).digest("hex").slice(0,16).toUpperCase();
+     const suffix=randomUUID().replaceAll("-","").slice(0,16).toUpperCase();
      refundRequestReference="RF-CANCEL-"+suffix;
      const idempotencyKey="cancel-refund-"+suffix;
      const refund=await tx.refundRequest.create({data:{
