@@ -8,6 +8,9 @@ export function createHubApplicationsRepository({ prismaClient }) {
     findMembership(partnerId, userId, tx = prismaClient) {
       return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
     },
+    findOwnerMembership(partnerId, userId, tx = prismaClient) {
+      return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
+    },
     findZone(serviceZoneId, tx = prismaClient) {
       return tx.serviceZone.findUnique({ where: { id: serviceZoneId }, include: { state: { include: { country: true } } } });
     },
