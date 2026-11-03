@@ -150,7 +150,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     assert.equal(rateResult.status, 201);
     assert.equal(rateResult.json.data.rate.transportChargeMinor, "250000");
 
-    const published = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST" });
+    const published = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST", body: { reason: "Published after checking negotiated partner rates." } });
     assert.equal(published.status, 200);
     assert.equal(published.json.data.rateCard.status, "ACTIVE");
 
