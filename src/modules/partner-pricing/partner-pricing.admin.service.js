@@ -155,7 +155,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         return { agreement };
       });
     },
-    async activateAgreement({ agreementId, actorUserId }) {
+    async activateAgreement({ agreementId, actorUserId, reason }) {
       return serializableTransaction(prismaClient, async tx => {
         const agreement = await tx.partnerAgreement.findUnique({ where: { id: agreementId }, include: { partner: true } });
         if (!agreement) return { notFound: true };
@@ -166,11 +166,11 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         const existing = await tx.partnerAgreement.findFirst({ where: { partnerId: agreement.partnerId, status: "ACTIVE", id: { not: agreement.id } }, select: { id: true } });
         if (existing) return { blocker: "ACTIVE_AGREEMENT_EXISTS" };
         const updated = await tx.partnerAgreement.update({ where: { id: agreement.id }, data: { status: "ACTIVE", approvedAt: now } });
-        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreement.id, action: "PARTNER_AGREEMENT_ACTIVATED", before: { status: agreement.status }, after: { status: updated.status, approvedAt: now.toISOString() } });
+        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreement.id, action: "PARTNER_AGREEMENT_ACTIVATED", reason, before: { status: agreement.status }, after: { status: updated.status, approvedAt: now.toISOString() } });
         return { agreement: updated };
       });
     },
-    async setAgreementStatus({ agreementId, status, actorUserId }) {
+    async setAgreementStatus({ agreementId, status, actorUserId, reason }) {
       return serializableTransaction(prismaClient, async tx => {
         const current = await tx.partnerAgreement.findUnique({ where: { id: agreementId } });
         if (!current) return { notFound: true };
@@ -183,7 +183,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
           if (activeAssignments) return { blocker: "AGREEMENT_HAS_ACTIVE_ASSIGNMENTS" };
         }
         const updated = await tx.partnerAgreement.update({ where: { id: agreementId }, data: { status } });
-        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreementId, action: "PARTNER_AGREEMENT_STATUS_UPDATED", before: { status: current.status }, after: { status: updated.status } });
+        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreementId, action: "PARTNER_AGREEMENT_STATUS_UPDATED", reason, before: { status: current.status }, after: { status: updated.status } });
         return { agreement: updated };
       });
     },
@@ -214,7 +214,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         return { rate };
       });
     },
-    async publishRateCard({ rateCardId, actorUserId }) {
+    async publishRateCard({ rateCardId, actorUserId, reason }) {
       return serializableTransaction(prismaClient, async tx => {
         const now = clock();
         const card = await tx.partnerRateCard.findUnique({ where: { id: rateCardId }, include: { agreement: { include: { partner: true } }, rates: { where: { isActive: true } } } });
@@ -226,9 +226,40 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
           id: true, agreementId: true, version: true, status: true, currency: true,
           effectiveFrom: true, effectiveUntil: true, publishedAt: true, updatedAt: true,
         } });
-        await audit(tx, { actorUserId, entityType: "PARTNER_RATE_CARD", entityId: card.id, action: "PARTNER_RATE_CARD_PUBLISHED", before: { status: card.status }, after: { status: published.status, publishedAt: now.toISOString(), version: published.version } });
+        await audit(tx, { actorUserId, entityType: "PARTNER_RATE_CARD", entityId: card.id, action: "PARTNER_RATE_CARD_PUBLISHED", reason, before: { status: card.status }, after: { status: published.status, publishedAt: now.toISOString(), version: published.version } });
         return { rateCard: published };
       });
+    },
+    async listAgreements({ partnerId, page = 1, limit = 20, search, status } = {}) {
+      const where = {
+        ...(status ? { status } : {}),
+        ...(search ? { reference: { contains: search, mode: "insensitive" } } : {}),
+      };
+      const [items, total] = await Promise.all([
+        repository.listAgreements({ partnerId, where, skip: (page - 1) * limit, take: limit }),
+        repository.countAgreements({ partnerId, where }),
+      ]);
+      return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    },
+    async getAgreement({ agreementId }) {
+      const agreement = await repository.findAgreementAdmin(agreementId);
+      return agreement ? { agreement } : { notFound: true };
+    },
+    async listRateCards({ agreementId, page = 1, limit = 20, status } = {}) {
+      const where = status ? { status } : {};
+      const [items, total] = await Promise.all([
+        repository.listRateCards({ agreementId, where, skip: (page - 1) * limit, take: limit }),
+        repository.countRateCards({ agreementId, where }),
+      ]);
+      return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    },
+    async getRateCard({ rateCardId }) {
+      const rateCard = await repository.findRateCardAdmin(rateCardId);
+      if (!rateCard) return { notFound: true };
+      return { rateCard: {
+        ...rateCard,
+        rates: rateCard.rates.map(rate => ({ ...rate, transportChargeMinor: rate.transportChargeMinor.toString() })),
+      } };
     },
   };
 }
