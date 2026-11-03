@@ -50,3 +50,42 @@ test("Paystack webhook rejects invalid signatures before provider verification",
   );
   assert.equal(called, false);
 });
+
+test("refund webhook can be processed while new payment collection remains disabled", async () => {
+  let received;
+  const service = createPaymentsService({
+    prismaClient: {},
+    repository: {
+      updateRefundFromWebhook: async input => { received = input; return { count: 1 }; },
+    },
+    notifications: { createAndDeliver: async () => ({}) },
+    secretKey,
+    enabled: false,
+    refundsEnabled: true,
+  });
+  const payload = { event: "refund.processed", data: { refund_reference: "87654" } };
+  const rawBody = Buffer.from(JSON.stringify(payload));
+  const signature = createHmac("sha512", secretKey).update(rawBody).digest("hex");
+  const result = await service.handleWebhook({ payload, rawBody, signature });
+  assert.equal(result.updatedCount, 1);
+  assert.equal(received.providerReference, "87654");
+  assert.equal(received.status, "PROCESSED");
+});
+
+test("refund webhook remains disabled unless REFUNDS_ENABLED is explicitly enabled", async () => {
+  const service = createPaymentsService({
+    prismaClient: {},
+    repository: { updateRefundFromWebhook: async () => { throw new Error("must not be called"); } },
+    notifications: { createAndDeliver: async () => ({}) },
+    secretKey,
+    enabled: false,
+    refundsEnabled: false,
+  });
+  const payload = { event: "refund.processed", data: { id: 87654 } };
+  const rawBody = Buffer.from(JSON.stringify(payload));
+  const signature = createHmac("sha512", secretKey).update(rawBody).digest("hex");
+  await assert.rejects(
+    () => service.handleWebhook({ payload, rawBody, signature }),
+    error => error.code === "REFUNDS_DISABLED" && error.statusCode === 503,
+  );
+});

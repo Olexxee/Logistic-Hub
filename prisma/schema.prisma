@@ -191,6 +191,13 @@ enum HubPointStatus {
   CLOSED
 }
 
+enum HubApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
 enum PartnerStatus {
   PENDING
   ACTIVE
@@ -347,6 +354,8 @@ model User {
 
   operationalAuditEvents OperationalAuditEvent[] @relation("OperationalAuditActor")
   partnerMemberships TransportPartnerMember[]
+  submittedHubApplications HubApplication[] @relation("HubApplicationApplicant")
+  reviewedHubApplications HubApplication[] @relation("HubApplicationReviewer")
   hubMemberships HubPointOperator[]
   initiatedCustodyHandovers CustodyHandover[] @relation("CustodyHandoverInitiator")
   confirmedCustodyHandovers CustodyHandover[] @relation("CustodyHandoverConfirmer")
@@ -596,6 +605,7 @@ model ServiceZone {
   pickupRideBookings       RideBooking[]         @relation("RidePickupZone")
   destinationRideBookings  RideBooking[]         @relation("RideDestinationZone")
   hubPoints                HubPoint[]
+  hubApplications          HubApplication[]
   originDeliveryLegs       DeliveryLeg[] @relation("DeliveryLegOriginZone")
   destinationDeliveryLegs  DeliveryLeg[] @relation("DeliveryLegDestinationZone")
   pricingRules             PricingRule[]
@@ -645,6 +655,7 @@ model DriverCoverage {
 
 model HubPoint {
   id                  String         @id @default(cuid())
+  partnerId           String?
   serviceZoneId       String
   name                String
   address             String
@@ -662,16 +673,53 @@ model HubPoint {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
+  partner TransportPartner? @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   serviceZone ServiceZone @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
   originDeliveryLegs DeliveryLeg[] @relation("DeliveryLegOriginHub")
   destinationDeliveryLegs DeliveryLeg[] @relation("DeliveryLegDestinationHub")
   operators HubPointOperator[]
+  application HubApplication?
   custodyHandovers CustodyHandover[]
   operationalCases OperationalCase[]
   intakeRecords HubIntakeRecord[]
 
   @@index([serviceZoneId, status])
+  @@index([partnerId, status])
   @@map("hub_points")
+}
+
+model HubApplication {
+  id                         String               @id @default(cuid())
+  partnerId                  String
+  applicantUserId             String
+  serviceZoneId               String
+  name                        String
+  address                     String
+  latitude                    Decimal              @db.Decimal(10, 7)
+  longitude                   Decimal              @db.Decimal(10, 7)
+  operatorName                String
+  operatorPhone               String
+  openingHours                Json
+  acceptedParcelTypes         Json
+  capacityConfig              Json
+  status                      HubApplicationStatus @default(PENDING)
+  reviewReason                String?
+  reviewedAt                  DateTime?
+  reviewedByUserId            String?
+  hubPointId                  String?              @unique
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @updatedAt
+
+  partner      TransportPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  applicant    User             @relation("HubApplicationApplicant", fields: [applicantUserId], references: [id], onDelete: Restrict)
+  reviewer     User?            @relation("HubApplicationReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  serviceZone  ServiceZone      @relation(fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  hubPoint     HubPoint?        @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
+
+  @@index([partnerId, status, createdAt])
+  @@index([applicantUserId, createdAt])
+  @@index([status, createdAt])
+  @@map("hub_applications")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1159,6 +1207,8 @@ model SupportTicket {
   bookingId        String?
   parcelBookingId  String?   // NEW — relation back to ParcelBooking
   rideBookingId    String?   // NEW — relation back to RideBooking
+  operationalCaseId String?  @unique
+  operationalCase   OperationalCase? @relation(fields: [operationalCaseId], references: [id], onDelete: SetNull)
   category         String
   subject          String
   description      String
@@ -1289,6 +1339,8 @@ model TransportPartner {
   operationalCases OperationalCase[]
   payables PartnerPayable[]
   settlementBatches PartnerSettlementBatch[]
+  hubPoints HubPoint[]
+  hubApplications HubApplication[]
 
   @@index([status, verificationStatus])
   @@map("transport_partners")
@@ -1445,9 +1497,10 @@ model HubPointOperator {
   id         String          @id @default(cuid())
   hubPointId String
   userId     String
-  role       HubOperatorRole @default(OPERATOR)
-  isActive   Boolean         @default(true)
-  createdAt  DateTime        @default(now())
+  role        HubOperatorRole @default(OPERATOR)
+  isActive    Boolean         @default(true)
+  canDispatch Boolean         @default(false)
+  createdAt   DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 
   hubPoint HubPoint @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
@@ -1572,6 +1625,7 @@ model OperationalCase {
   hubPointId        String?
   reportedByUserId  String
   assignedToUserId  String?
+  supportTicket     SupportTicket?
   title             String
   description       String
   evidence          Json?

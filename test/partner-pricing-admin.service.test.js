@@ -67,6 +67,7 @@ test("partner suspension is blocked while assignments are active", async () => {
 test("partner suspension suspends active agreements and audits the dependent transition", async () => {
   const events = [];
   let agreementUpdates = 0;
+  let hubUpdates = 0;
   const tx = {
     transportPartner: {
       findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED", verifiedAt: new Date("2026-10-01T00:00:00Z") }),
@@ -77,12 +78,27 @@ test("partner suspension suspends active agreements and audits the dependent tra
       findMany: async () => [{ id: "agreement-1", status: "ACTIVE" }],
       updateMany: async () => { agreementUpdates += 1; return { count: 1 }; },
     },
+    hubPoint: {
+      findMany: async () => [{ id: "hub-1", status: "ACTIVE" }],
+      updateMany: async () => { hubUpdates += 1; return { count: 1 }; },
+    },
     operationalAuditEvent: { create: async ({ data }) => { events.push(data); } },
   };
-  const result = await serviceWith(tx).setPartnerStatus({ partnerId: "partner-1", input: { status: "SUSPENDED" }, actorUserId: "admin-1" });
+  const result = await serviceWith(tx).setPartnerStatus({
+    partnerId: "partner-1",
+    input: { status: "SUSPENDED", reason: "Partner compliance review" },
+    actorUserId: "admin-1",
+  });
   assert.equal(result.partner.status, "SUSPENDED");
   assert.equal(agreementUpdates, 1);
+  assert.equal(hubUpdates, 1);
   assert.equal(events.some(event => event.action === "PARTNER_AGREEMENT_SUSPENDED_WITH_PARTNER"), true);
+  const hubEvent = events.find(event => event.action === "HUB_SUSPENDED_WITH_PARTNER");
+  assert.equal(hubEvent.entityType, "HUB_POINT");
+  assert.equal(hubEvent.entityId, "hub-1");
+  assert.equal(hubEvent.reason, "Partner compliance review");
+  assert.deepEqual(hubEvent.before, { status: "ACTIVE", partnerId: "partner-1" });
+  assert.deepEqual(hubEvent.after, { status: "SUSPENDED", partnerId: "partner-1", partnerStatus: "SUSPENDED" });
 });
 
 test("partner closure is blocked while agreements remain open", async () => {

@@ -12,7 +12,11 @@ export function createSupportRepository(prismaClient = prisma) {
       return null;
     },
     createTicket(data) {
-      return prismaClient.supportTicket.create({ data });
+      return prismaClient.supportTicket.create({ data: {
+        ...data,
+        ...(data.bookingType === "PARCEL" && data.bookingId ? { parcelBookingId: data.bookingId } : {}),
+        ...(data.bookingType === "RIDE" && data.bookingId ? { rideBookingId: data.bookingId } : {}),
+      } });
     },
     listMine({ customerId, cursor, limit }) {
       return prismaClient.supportTicket.findMany({
@@ -41,6 +45,7 @@ export function createSupportRepository(prismaClient = prisma) {
         orderBy: [{ priority: "desc" }, { createdAt: "asc" }, { id: "asc" }],
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        include: { operationalCase: { select: { id: true, publicReference: true, status: true, priority: true } } },
       });
     },
     findById(id, client = prismaClient) {

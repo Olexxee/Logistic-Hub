@@ -8,6 +8,7 @@ const schemas = {
     legId: z.object({ legId: id }),
     offerId: z.object({ offerId: id }),
     bookingLeg: z.object({ bookingId: id, legId: id }),
+    hubDispatch: z.object({ hubPointId: id, legId: id }),
   },
   proposeFare: z.object({ proposedFareMinor: z.string().regex(/^[1-9][0-9]{0,14}$/) }).strict(),
   acceptFare: z.object({ offerId: id }).strict(),
@@ -31,6 +32,7 @@ function validate(schema, source, key, message) {
 export const validateLegId = validate(schemas.params.legId, "params", "params", "The delivery leg ID is invalid.");
 export const validateOfferId = validate(schemas.params.offerId, "params", "params", "The delivery-leg offer ID is invalid.");
 export const validateBookingLegIds = validate(schemas.params.bookingLeg, "params", "params", "The booking or delivery leg ID is invalid.");
+export const validateHubDispatchParams = validate(schemas.params.hubDispatch, "params", "params", "The hub or delivery leg ID is invalid.");
 export const validateLegFareProposal = validate(schemas.proposeFare, "body", "body");
 export const validateLegFareAcceptance = validate(schemas.acceptFare, "body", "body");
 export const validateLegIdempotencyKey = validate(idempotencyKeySchema, "header", "idempotencyKey", "A valid Idempotency-Key header is required.");

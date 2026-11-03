@@ -4,6 +4,26 @@ Logistic Hub is a Nigeria-focused logistics platform for coordinating local parc
 
 The platform coordinates the shipment lifecycle: booking, route and capacity checks, quotation, customer acceptance, payment verification, dispatch, custody transfers, delivery confirmation and financial reconciliation. It is designed to expand across Nigerian states through configurable geography, partner agreements and service coverage rather than one-off code changes.
 
+## Administration implementation
+
+- [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, API contracts, role taxonomy, authorization boundaries and implementation blockers.
+- [AH-5 Partner & Geography contract audit](docs/ah-5-contract-audit.md) — AH-5.0 source-verified partner, membership, agreement, rate-card, geography, service-zone and hub integration readiness.
+
+### Admin & Hub Management progress
+
+- **AH-0:** backend contract and authorization audit completed; subsequent implementation deltas are recorded in the audit document.
+- **AH-1:** admin user and account controls implemented in the merged backend work.
+- **AH-2:** hub applications and approval flow are implemented. Partner OWNERs can submit applications; ADMIN review creates a PENDING hub and manager membership. Hub activation remains a separate operation.
+- **AH-3:** hub manager/staff membership management implemented; hub-scoped managers can add operators, while manager assignment and privileged membership controls remain ADMIN-governed.
+- **AH-4:** explicit ADMIN-granted hub dispatch delegation implemented through the canDispatch capability; dispatch matching remains scoped to the exact active hub membership.
+- **AH-5:** AH-5.0 contract audit, AH-5.1 partner administration, AH-5.2 partner membership administration, AH-5.3 partner agreements/rate-card administration and AH-5.4 Google Maps location integration are merged. Maps provides authenticated Nigeria-restricted Places Autocomplete, selected-place details and geocoding; no database migration or background address-processing job was introduced. **AH-5.6 partner/hub lifecycle synchronization is in progress** on `feat/ah-5-6-partner-hub-lifecycle-sync`: partner suspension/closure suspends active partner-owned hubs with audit events, and hub reactivation requires the owning partner to be ACTIVE and VERIFIED. AH-5.5 service-zone administration UI remains frontend work against the existing geography/service-zone contracts. The future first-party location-intelligence initiative is documented separately and is not part of AH-5.4.
+
+**AH-5 implementation gate:** frontend commercial screens must consume the implemented AH-5.3 endpoints and preserve rate-card version immutability. Agreement activation/status and rate-card publication require a reason. AH-5.6 enforces partner/hub lifecycle consistency: partner suspension or closure suspends active partner-owned hubs in the same transaction with audit records; hub activation requires an ACTIVE, VERIFIED owner. Reactivating a partner does not automatically reactivate its hubs; each hub requires an explicit, separately validated activation decision.
+
+## Product blueprint
+
+- [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, current API contracts, role taxonomy, authorization boundaries and implementation blockers.
+
 ## Product blueprint
 
 ### Launch scope and operating principles
@@ -14,7 +34,17 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - **Customer price acceptance:** the sender must approve the complete quote before the shipment is committed at that price.
 - **Capacity before collection:** for inter-state shipments, confirm a suitable transport option and an acceptable commercial quote before dispatching a local collection agent, unless the sender explicitly agrees to a different arrangement.
 - **Payments remain disabled:** no live payment collection, payout activation or production payment configuration without explicit repository-owner approval.
+- **Refunds are independently gated:** customer refund requests are recorded for ADMIN review; provider submission and refund webhooks remain disabled unless `REFUNDS_ENABLED=true` is explicitly approved and a Paystack secret key is configured. `PAYMENTS_ENABLED` remains disabled.
 - **Controlled repository workflow:** do not merge changes into `main` without explicit approval.
+
+### Refund and paid-cancellation controls
+
+- Unpaid bookings may be cancelled immediately under the existing booking lifecycle rules.
+- A paid cancellation moves the booking to `CANCELLATION_PENDING`, opens a high-priority support ticket and creates a `PENDING_REVIEW` refund request for the remaining captured balance. It does not call Paystack.
+- ADMIN reviews refund requests. Rejection is audited and restores a cancellation-pending booking to its prior recorded status. Approval submits a provider refund only when `REFUNDS_ENABLED=true`.
+- A cancellation is finalized only after Paystack confirms a full refund through a verified webhook or reconciliation. Partial refunds do not automatically cancel the booking.
+- An uncertain provider submission is locked against resubmission. ADMIN reconciliation looks up the unique merchant-note token and fetches the provider refund record; it never creates a second refund.
+- Refund amounts are integer minor units, idempotency keys are mandatory, refundable balances include pending/processing/processed refunds, and all review/provider transitions are audited.
 
 ### 1. End-to-end shipment flow
 
@@ -180,7 +210,7 @@ The implementation is not ready for launch until tests demonstrate that:
 
 ### Priority 5 implementation progress
 
-Work is underway on the feature branch feature/priority-5-delivery-legs-custody, stacked on the Priority 4 booking/quotation branch. The first slice adds the parcel delivery-leg model, creates a direct leg atomically when the sender accepts a driver fare, activates it only after server-verified payment, synchronizes leg progress with assignment and one-time verification transitions, and exposes an owner-scoped delivery-leg timeline API. It does not yet implement multi-leg routing, partner assignment, hub custody handovers or operational exceptions. Review the branch CI and pull request before treating this slice as complete.
+Priority 5 delivery-leg implementation is complete and has been extended by the subsequent merged work. The backend supports direct local legs, quote-driven multi-leg inter-state plans, delivery-leg dispatch, assignment execution and owner-scoped shipment timelines. Partner assignment and hub custody handovers are implemented in the Priority 6 work below; operational exception handling is extended by Phase 3D/3E. See the merged delivery-leg, quote, partner and hub work (including PRs #24–#29, #33 and #35–#37).
 
 ## Existing technical foundation
 
@@ -216,11 +246,9 @@ Priority 6 backend implementation now covers partner assignment/execution, hub c
 
 ## Current implementation status
 
-This README describes the **target product and technical blueprint**, not a claim that every workflow is already implemented. Authentication, partner agreements, quote versioning, multi-leg dispatch, hub custody, exceptions and complete settlement must be verified against the repository before they are treated as production-ready.
+This README combines the **target product blueprint** with the current implementation record. Core booking/authentication, quote versioning, variable delivery legs, partner execution, hub custody, operational exceptions, support/cancellation workflows and internal settlement/reconciliation have implementation coverage in the merged work recorded above. That does not by itself establish production readiness: route contracts, automated tests, deployment configuration and staging acceptance remain separate release gates.
 
-Existing parcel-booking list work is tracked in [PR #8](https://github.com/Olexxee/Logistic-Hub/pull/8). The broader technical foundation has also been tracked in [draft PR #3](https://github.com/Olexxee/Logistic-Hub/pull/3). Check the current PR and branch status before relying on any implementation-status statement.
-
-The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payments are hard-disabled and must not be enabled through configuration alone.
+The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payment initialization is hard-disabled; refund processing has a separate disabled-by-default gate. Internal partner settlement records do not initiate external transfers.
 
 **Release guardrails:** do not merge into `main`, apply production migrations, or accept live bookings/payments until implementation, tests, security review and applicable regulatory checks are complete and the repository owner explicitly approves the next step.
 
@@ -254,8 +282,8 @@ Both services must use the same PostgreSQL `DATABASE_URL`, Resend configuration 
 
 ## Phase Three — Operations, Administration and Support
 
-**Status: Blueprint approved for implementation planning; not an implementation-completion claim.**  
-**Baseline:** `main` at `21fea0517f68e1fa58c005fb8e4def99d0c637c9` (31 October 2026).  
+**Status: Phase Three implementation is in final contract/release hardening (3F-C); see the progress table below.**  
+**Baseline:** `main` after merged Phase Three PRs #45–#62 (1 November 2026).  
 **Implementation rule:** audit and extend the existing modules. Do not recreate APIs or schema that already satisfy the requirements. Keep all work on reviewable feature branches; do not merge to `main` without repository-owner approval.
 
 ### Phase Three objective
@@ -271,21 +299,28 @@ The following are present on the baseline branch. Their presence does **not** me
 | Capability | Existing implementation | Initial assessment |
 |---|---|---|
 | Admin user directory | `GET /api/v1/admin/users`; search, role/status filters and pagination in the discovery module | Read-only directory. No verified user-role/permission administration workflow established by this endpoint. |
-| Audit events | `GET /api/v1/admin/audit-events`; ADMIN-only router | Read-only audit listing exists. Audit coverage and query/filter controls require a systematic audit. |
-| Geography | Admin country/state/LGA routes under `/api/v1/geography/admin` | CRUD/status operations exist; verify deletion constraints, pagination, audit coverage and safe deactivation behavior. |
-| Service zones | Admin service-zone CRUD and per-service availability operations | Core controls exist; verify overlap/route semantics, history, audit coverage and effects on active bookings/assignments. |
-| Hubs | Hub administration service supports create/update, operator verification review and status changes | Existing operational validation and audit events exist for selected mutations. Verify operator membership lifecycle, delegated permissions, capacity and closure behavior end to end. |
-| Operational cases | Admin list/update endpoints with status transitions, priority, assignee and resolution | Core triage lifecycle exists. Verify concurrency, authorization, complete audit history, filters and case creation/linkage from every exception source. |
-| Support tickets | Customer create/list and ADMIN/SUPPORT queue/update endpoints | Basic ticket workflow exists. Verify assignment eligibility, transition rules, internal notes, customer-visible replies, escalation and audit trail. |
-| Cancellations | Customer-owned cancellation request endpoint | Cancellation policy is service/repository-driven. Verify all booking/fulfilment/payment states and support escalation paths; no automatic refund assumption. |
-| Partner administration | Partner pricing and execution modules, agreements, rate cards, quotes and memberships | Significant groundwork exists. Audit partner onboarding/status, membership assignment/revocation, agreement lifecycle and operator access before adding endpoints. |
+| Audit events | `GET /api/v1/admin/audit-events`; ADMIN-only router | Read-only audit listing and the Phase 3A mutation-audit foundation are implemented; see the audit coverage matrix. |
+| Geography | Admin country/state/LGA routes under `/api/v1/geography/admin` | Phase 3B lifecycle guards and serializable parent-geography mutations are implemented; see PRs #50–#51. |
+| Service zones | Admin service-zone CRUD and per-service availability operations | Phase 3B prevents unsafe deactivation or availability changes while active hubs depend on coverage; writes are transactionally guarded. |
+| Hubs | Hub administration service supports create/update, operator verification review and status changes | Phase 3B/3C lifecycle and membership invariants are implemented, including safe closure/suspension constraints; see PRs #50–#52. |
+| Operational cases | Admin list/update endpoints with status transitions, priority, assignee and resolution | Phase 3D adds the operations overview, filtered cursor queue, serialized updates and exception deduplication; support escalation is linked in 3E. |
+| Support tickets | Customer create/list and ADMIN/SUPPORT queue/update endpoints | Phase 3E implements validated assignment/lifecycle rules, public replies/internal notes, private evidence, operational-case escalation and audit coverage. |
+| Cancellations | Customer-owned cancellation request endpoint and customer cancellation history | Phase 3E implements unpaid cancellation, paid cancellation review, refund request/review/reconciliation and owner-scoped cancellation history; provider refunds remain disabled by default. |
+| Partner administration | Partner pricing and execution modules, agreements, rate cards, quotes and memberships | Phase 3C lifecycle/membership invariants and transactional commercial mutation safeguards are implemented; see PR #52. |
 
 ### Phase Three implementation progress
 
 | Slice | Status | Evidence |
 |---|---|---|
-| 3A.1 — Route and permission inventory | Implemented on the current work branch; CI validation pending | [Administrative route and permission inventory](docs/admin-route-permission-inventory.md); `test/admin-route-permission-inventory.test.js` |
-| 3A.2 — Audit coverage and safe admin mutation primitives | Implementation in progress; CI validation pending | Shared transaction-bound audit writer and mutation coverage across drivers, geography, service zones, hubs, support and finance; see [audit coverage matrix](docs/admin-audit-coverage.md). Partner execution/pricing/settlement, custody and operational cases already have transaction-bound audit paths. System-originated webhook actor design and final route-by-route verification remain open |
+| 3A.1 — Route and permission inventory | Merged; implemented | [Administrative route and permission inventory](docs/admin-route-permission-inventory.md); `test/admin-route-permission-inventory.test.js` |
+| 3A.2–3A.5 — Audit coverage, authorization regression, system actors and governance | Merged; implemented | PRs #46–#49; [audit coverage matrix](docs/admin-audit-coverage.md). Human and system audit actors, request correlation, mutation coverage and route-authorization regression tests are in place. |
+| 3B — Geography and service-coverage lifecycle integrity | Merged; implemented | PRs #50–#51. Transactional lifecycle guards for service zones, availability and hubs; parent geography mutations use bounded serializable retries. |
+| 3C — Partner/hub lifecycle and membership administration | Merged; implemented | PR #52. Partner activation/suspension/closure, agreement/rate-card concurrency and membership invariants hardened. |
+| 3D — Operational case completeness and controlled interventions | Merged; implemented | PRs #53–#54. Admin operations overview, filtered/paginated case queue and concurrency-safe case updates. |
+| 3E — Support workflow and cancellation coordination | Merged; implemented | PRs #55–#60. Ticket lifecycle, conversations, private evidence, cancellation history, case escalation and audited refund review. |
+| 3F-A — API contract and pagination alignment | Merged; implemented | PR #61. Standardized support/hub pagination envelopes and fixed shared query validation. |
+| 3F-B — Authentication and authorization hardening | Merged; implemented | PR #62. Session-bound access tokens, persisted-session checks on every authenticated request and database-authoritative roles. |
+| 3F-C — Documentation and contract reconciliation | Merged; implemented | Backend PR #63 and frontend PR #29. Reconciled the HttpOnly refresh-cookie contract, mounted authentication routes, operational workflow guidance and frontend readiness documentation. |
 
 3A.1 is deliberately documentation and regression protection only. It does not introduce granular permissions or change current role access.
 
@@ -402,7 +437,7 @@ Work:
 Work:
 - Reconcile README, API contracts, frontend readiness, OpenAPI implementation metadata and actual mounted Express routes.
 - Correct stale documentation that refers to old feature branches or retired authentication/payment behavior.
-- Resolve the refresh-token contract conflict: `docs/api-contracts.md` currently describes HttpOnly cookie behavior, while `docs/frontend-contract-readiness.md` currently says tokens are returned in JSON. Source code and tests must decide the canonical behavior; then update all documentation and OpenAPI consistently.
+- Keep the canonical refresh-token contract consistent across source, tests, API docs, frontend readiness and OpenAPI: the refresh token is an HttpOnly cookie, the short-lived access token is returned in JSON, and the retired JSON compatibility route returns HTTP 410.
 - Verify all Phase Three routes have strict request schemas, consistent response/error envelopes, pagination limits and stable operation IDs.
 - Add integration coverage for permissions, ownership, state transitions, idempotency, audit emission, concurrent updates and privacy boundaries.
 - Run `npm test`, `npm run api:validate` and `npm run db:validate` (plus the repository's full CI suite) on each implementation slice.
@@ -433,12 +468,31 @@ Each slice must be independently reviewable, include tests and update the API co
 
 Phase Three is complete only when all 3A–3F acceptance criteria are met, the permission matrix matches the mounted routes, all privileged mutations are auditable, operational cases and support workflows are lifecycle-safe, OpenAPI matches runtime behavior, and full CI passes. Existing endpoint presence or a passing frontend-readiness document alone is not sufficient evidence of completion.
 
-### Known documentation reconciliation items
+### Documentation reconciliation
 
-- `docs/api-contracts.md` and `docs/frontend-contract-readiness.md` disagree about refresh-token storage/transport. Verify implementation and tests, then choose one canonical contract.
-- `docs/operational-workflows.md` still describes endpoints as belonging to `feat/secure-lifecycle-payments` and says they are not deployed by that branch. Update its status and route descriptions to match the current default branch.
-- The README's older Priority 5 progress paragraph describes multi-leg routing and hub/partner custody as incomplete, while later Priority 6 progress and current source modules describe these capabilities as implemented. Reconcile the progress narrative against current code and tests before using it as a release checklist.
+The canonical authentication contract is an HttpOnly refresh cookie plus a short-lived access token returned in JSON. The cookie is never returned in the response body; browser requests must include credentials and the trusted-origin CSRF header. The frontend-readiness and operational-workflow documents are reconciled to the mounted routes and current runtime behavior in this 3F-C slice.
 
+
+## Google Maps provider configuration
+
+The Maps API is disabled by default. To enable the server-side Google provider, set:
+
+- `MAPS_PROVIDER=google`
+- `GOOGLE_MAPS_API_KEY` to a server-side key stored only in the backend secret manager.
+
+Enable Places API (New), Geocoding API and Routes API for the Google Cloud project. Restrict the key to these APIs and apply an appropriate server-side application restriction where the hosting environment supports it. Never expose this key in frontend environment variables or browser code. Maps endpoints require authentication and share a persistent limit of 60 requests per user per minute. The backend restricts autocomplete and geocoding to Nigeria; this does not mean a location is covered by an active Logistic Hub service zone.
+
+When displaying Places predictions in the frontend, include the Google Maps attribution/logo required by the current Places API display policies; do not present Google-derived predictions as Logistic Hub's independently sourced directory. Customer pickup/drop-off and partner/hub address forms should use the same flow: debounce input and begin autocomplete after at least three characters → use one URL-safe UUID v4 session token for that search → resolve the selected place with the same token → discard the token → let the user confirm → submit the normalized address and coordinates to the existing booking or hub application contract. A selected address is not proof of serviceability; the backend's service-zone and operational checks remain authoritative.
+
+## Future roadmap — first-party location intelligence
+
+A future initiative may build Logistic Hub's own searchable geographic dataset from independently sourced, properly licensed and appropriately consented first-party location information. It is explicitly outside the current AH-5.4 implementation.
+
+- Keep customer delivery addresses private; do not turn personal address records into a public/shared directory.
+- Keep source provenance, consent, verification and confidence separate from operational serviceability.
+- Google Places content must not be copied into or used to build/augment a separate mapping database. Retain Google Place IDs and other Google-derived data only as permitted by the applicable Google Maps Platform terms and policies.
+- Any future first-party directory should use independently sourced or licensed geographic data (for example, OpenStreetMap data subject to its ODbL obligations), plus independently verified operational locations.
+- A future migration must separately assess address search, map tiles, geocoding, routing and navigation; replacing autocomplete alone does not replace those capabilities.
 
 ## Private support evidence storage
 

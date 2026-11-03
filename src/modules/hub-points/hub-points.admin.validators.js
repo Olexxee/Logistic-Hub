@@ -16,6 +16,7 @@ export const capacityConfigAdminSchema = z.object({
 }).strict();
 
 export const createHubPointAdminSchema = z.object({
+  partnerId: z.string().trim().min(1).max(128).optional(),
   serviceZoneId: z.string().trim().min(1).max(128),
   name: z.string().trim().min(2).max(120),
   address: z.string().trim().min(5).max(500),
@@ -29,7 +30,7 @@ export const createHubPointAdminSchema = z.object({
 }).strict();
 
 export const updateHubPointAdminSchema = createHubPointAdminSchema
-  .omit({ serviceZoneId: true })
+  .omit({ serviceZoneId: true, partnerId: true })
   .partial()
   .refine((value) => Object.keys(value).length > 0, "At least one field must be supplied");
 

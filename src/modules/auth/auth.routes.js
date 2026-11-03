@@ -415,9 +415,7 @@ export function createAuthRouter({
 
   router.post("/logout", requireTrustedBrowserRequest, requireAuth, async (req, res, next) => {
     try {
-      if (req.auth.sessionId) {
-        await sessions.revokeSession({ sessionId: req.auth.sessionId, userId: req.user.id });
-      }
+      await sessions.revokeSession({ sessionId: req.auth.sessionId, userId: req.user.id });
       clearRefreshCookie(res);
       return res.status(200).json({ success: true, data: { message: "Session revoked." } });
     } catch (error) {

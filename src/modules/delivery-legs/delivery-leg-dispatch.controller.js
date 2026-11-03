@@ -6,6 +6,14 @@ export function createDeliveryLegDispatchController(service) {
       success: true,
       data: await service.requestOffers({ legId: req.validated.params.legId, user: req.user }),
     }),
+    requestOffersFromHub: async (req, res) => res.status(202).json({
+      success: true,
+      data: await service.requestOffers({
+        legId: req.validated.params.legId,
+        hubPointId: req.validated.params.hubPointId,
+        user: req.user,
+      }),
+    }),
     listDriverOffers: async (req, res) => res.status(200).json({
       success: true,
       data: await service.listDriverOffers({ userId: req.user.id }),

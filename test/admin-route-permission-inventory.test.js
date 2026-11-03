@@ -8,6 +8,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const modulesRoot = join(repositoryRoot, "src", "modules");
 
 const inventoriedAdminRouteFiles = [
+  "src/modules/admin-users/admin-users.routes.js",
   "src/modules/audit/audit.routes.js",
   "src/modules/custody/custody.routes.js",
   "src/modules/discovery/discovery.routes.js",
@@ -16,6 +17,7 @@ const inventoriedAdminRouteFiles = [
   "src/modules/finance/finance.routes.js",
   "src/modules/geography/geography.admin.routes.js",
   "src/modules/geography/service-zones.routes.js",
+  "src/modules/hub-applications/hub-applications.routes.js",
   "src/modules/hub-points/hub-points.routes.js",
   "src/modules/operational-cases/operational-cases.routes.js",
   "src/modules/operations-control/operations-control.routes.js",

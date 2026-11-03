@@ -31,9 +31,23 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
         if (!zone.isActive || !zone.state.isActive || !zone.state.country.isActive) {
           throw conflict("SERVICE_ZONE_INACTIVE", "A hub can only be registered in an active service zone.");
         }
+        if (input.partnerId) {
+          const partner = await tx.transportPartner.findUnique({ where: { id: input.partnerId } });
+          if (!partner || partner.status !== "ACTIVE" || partner.verificationStatus !== "VERIFIED") {
+            throw conflict("PARTNER_NOT_OPERATIONAL", "A partner-owned hub requires an active, verified transport partner.");
+          }
+        }
         const { latitude, longitude, ...data } = input;
-        const created = await tx.hubPoint.create({ data: { ...data, latitude, longitude, status: "PENDING" } });
-        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: created.id, action: "HUB_POINT_CREATED", after: { serviceZoneId: created.serviceZoneId, name: created.name, status: created.status } });
+        const created = await tx.hubPoint.create({
+          data: {
+            ...data,
+            partnerId: input.partnerId ?? null,
+            latitude,
+            longitude,
+            status: "PENDING",
+          },
+        });
+        await writeOperationalAuditEvent(tx, { actorUserId, entityType: "HUB_POINT", entityId: created.id, action: "HUB_POINT_CREATED", after: { partnerId: created.partnerId, serviceZoneId: created.serviceZoneId, name: created.name, status: created.status } });
         return created;
       });
     },
@@ -41,7 +55,10 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
       return serializableTransaction(prismaClient, async tx => {
         const current = await tx.hubPoint.findUnique({
           where: { id },
-          include: { serviceZone: { include: { state: { include: { country: true } }, availability: true } } },
+          include: {
+            serviceZone: { include: { state: { include: { country: true } }, availability: true } },
+            partner: { select: { id: true, status: true, verificationStatus: true } },
+          },
         });
         if (!current) return null;
         if (current.status === "CLOSED") throw conflict("HUB_CLOSED", "Closed hubs cannot be edited.");
@@ -119,6 +136,12 @@ export function createHubPointsAdminService({ prismaClient, clock = () => new Da
           }
         }
         if (status === "ACTIVE") {
+          if (current.partnerId && (
+            current.partner?.status !== "ACTIVE" ||
+            current.partner?.verificationStatus !== "VERIFIED"
+          )) {
+            throw conflict("HUB_PARTNER_NOT_OPERATIONAL", "A partner-owned hub can only be activated when its owning transport partner is active and verified.");
+          }
           const activeManagers = await tx.hubPointOperator.count({
             where: { hubPointId: id, isActive: true, role: "MANAGER", user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
           });

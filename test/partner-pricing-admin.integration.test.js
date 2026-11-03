@@ -72,7 +72,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
 
     const blockedActivation = await call(`/admin/transport-partners/${partner.id}/status`, {
       method: "PATCH",
-      body: { status: "ACTIVE" },
+      body: { status: "ACTIVE", reason: "Initial activation review." },
     });
     assert.equal(blockedActivation.status, 409);
     assert.equal(blockedActivation.json.error.code, "PARTNER_NOT_VERIFIED");
@@ -86,7 +86,7 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
 
     const verifiedPartner = await call(`/admin/transport-partners/${partner.id}/status`, {
       method: "PATCH",
-      body: { status: "ACTIVE", verificationStatus: "VERIFIED" },
+      body: { status: "ACTIVE", verificationStatus: "VERIFIED", reason: "Verification and owner checks passed." },
     });
     assert.equal(verifiedPartner.status, 200);
     assert.equal(verifiedPartner.json.data.partner.status, "ACTIVE");
@@ -104,9 +104,19 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     agreement = agreementResult.json.data.agreement;
     assert.equal(agreement.status, "DRAFT");
 
-    const activatedAgreement = await call(`/admin/partner-agreements/${agreement.id}/activate`, { method: "POST" });
+    const activatedAgreement = await call(`/admin/partner-agreements/${agreement.id}/activate`, { method: "POST", body: { reason: "Agreement terms reviewed and approved." } });
     assert.equal(activatedAgreement.status, 200);
     assert.equal(activatedAgreement.json.data.agreement.status, "ACTIVE");
+
+    const agreementList = await call(`/admin/transport-partners/${partner.id}/agreements?status=ACTIVE&page=1&limit=10`);
+    assert.equal(agreementList.status, 200);
+    assert.ok(agreementList.json.data.items.some(item => item.id === agreement.id));
+    assert.equal(agreementList.json.data.pagination.total, 1);
+
+    const agreementDetail = await call(`/admin/partner-agreements/${agreement.id}`);
+    assert.equal(agreementDetail.status, 200);
+    assert.equal(agreementDetail.json.data.agreement.partner.id, partner.id);
+    assert.equal(agreementDetail.json.data.agreement.rateCards.length, 0);
 
     const cardResult = await call(`/admin/partner-agreements/${agreement.id}/rate-cards`, {
       method: "POST",
@@ -116,9 +126,13 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     rateCard = cardResult.json.data.rateCard;
     assert.equal(rateCard.status, "DRAFT");
 
-    const blockedPublish = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST" });
+    const blockedPublish = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST", body: { reason: "Rate card reviewed against negotiated partner terms." } });
     assert.equal(blockedPublish.status, 409);
     assert.equal(blockedPublish.json.error.code, "RATE_CARD_HAS_NO_ACTIVE_RATES");
+
+    const cardList = await call(`/admin/partner-agreements/${agreement.id}/rate-cards?status=DRAFT&page=1&limit=10`);
+    assert.equal(cardList.status, 200);
+    assert.ok(cardList.json.data.items.some(item => item.id === rateCard.id));
 
     const rateResult = await call(`/admin/partner-rate-cards/${rateCard.id}/rates`, {
       method: "POST",
@@ -136,9 +150,15 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     assert.equal(rateResult.status, 201);
     assert.equal(rateResult.json.data.rate.transportChargeMinor, "250000");
 
-    const published = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST" });
+    const published = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST", body: { reason: "Published after checking negotiated partner rates." } });
     assert.equal(published.status, 200);
     assert.equal(published.json.data.rateCard.status, "ACTIVE");
+
+    const cardDetail = await call(`/admin/partner-rate-cards/${rateCard.id}`);
+    assert.equal(cardDetail.status, 200);
+    assert.equal(cardDetail.json.data.rateCard.rates.length, 1);
+    assert.equal(cardDetail.json.data.rateCard.rates[0].transportChargeMinor, "250000");
+    assert.equal(cardDetail.json.data.rateCard.rates[0].originServiceZone.id, zone.id);
 
     const persisted = await prisma.partnerRateCard.findUnique({
       where: { id: rateCard.id },
@@ -150,9 +170,33 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     assert.equal(persisted.agreement.status, "ACTIVE");
     assert.equal(persisted.agreement.partner.verificationStatus, "VERIFIED");
 
-    const listed = await call("/admin/transport-partners");
+    const detail = await call(`/admin/transport-partners/${partner.id}`);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.json.data.partner.id, partner.id);
+    assert.equal(detail.json.data.partner._count.agreements, 1);
+
+    const updatedProfile = await call(`/admin/transport-partners/${partner.id}`, {
+      method: "PATCH",
+      body: { contactName: "Updated Contact", reason: "Corrected partner contact record." },
+    });
+    assert.equal(updatedProfile.status, 200);
+    assert.equal(updatedProfile.json.data.partner.contactName, "Updated Contact");
+    const profileAudit = await prisma.operationalAuditEvent.findFirst({
+      where: { entityType: "TRANSPORT_PARTNER", entityId: partner.id, action: "PARTNER_PROFILE_UPDATED" },
+    });
+    assert.equal(profileAudit.reason, "Corrected partner contact record.");
+    assert.equal(profileAudit.before.contactName, null);
+    assert.equal(profileAudit.after.contactName, "Updated Contact");
+
+    const statusAudit = await prisma.operationalAuditEvent.findFirst({
+      where: { entityType: "TRANSPORT_PARTNER", entityId: partner.id, action: "PARTNER_STATUS_UPDATED" },
+    });
+    assert.equal(statusAudit.reason, "Verification and owner checks passed.");
+
+    const listed = await call("/admin/transport-partners?status=ACTIVE&verificationStatus=VERIFIED&search=Integration%20Partner&page=1&limit=10");
     assert.equal(listed.status, 200);
     assert.ok(listed.json.data.items.some((item) => item.id === partner.id && item._count.agreements === 1));
+    assert.ok(listed.json.data.pagination.total >= 1);
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
     if (rateCard) await prisma.operationalAuditEvent.deleteMany({ where: { entityId: rateCard.id } });

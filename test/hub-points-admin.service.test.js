@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHubPointsAdminService } from "../src/modules/hub-points/hub-points.admin.service.js";
 import { createCustodyService } from "../src/modules/custody/custody.service.js";
-import { openingHoursAdminSchema, capacityConfigAdminSchema } from "../src/modules/hub-points/hub-points.admin.validators.js";
+import { createHubPointAdminSchema, updateHubPointAdminSchema, openingHoursAdminSchema, capacityConfigAdminSchema } from "../src/modules/hub-points/hub-points.admin.validators.js";
 
 const openingHours = Object.fromEntries(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"].map(day => [day, [{ opensAt: "08:00", closesAt: "18:00" }]]));
 const readyHub = () => ({
@@ -37,6 +37,47 @@ test("hub activation is blocked until operational details are complete", async (
   hub.operatorPhone = null;
   const service = createHubPointsAdminService({ prismaClient: prismaFor(hub) });
   await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), { code: "HUB_OPERATIONAL_DETAILS_REQUIRED", statusCode: 409 });
+});
+
+test("partner-owned hub activation is blocked while its partner is suspended or unverified", async () => {
+  const hub = readyHub();
+  hub.partnerId = "partner-1";
+  hub.partner = { id: "partner-1", status: "SUSPENDED", verificationStatus: "VERIFIED" };
+  let managerLookupCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: {
+      findUnique: async () => hub,
+      update: async () => { throw new Error("Hub must not be activated."); },
+    },
+    hubPointOperator: { count: async () => { managerLookupCalled = true; return 1; } },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), {
+    code: "HUB_PARTNER_NOT_OPERATIONAL",
+    statusCode: 409,
+  });
+  assert.equal(managerLookupCalled, false);
+});
+
+test("partner-owned hub activation is allowed when its partner is active and verified", async () => {
+  const hub = readyHub();
+  hub.partnerId = "partner-1";
+  hub.partner = { id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" };
+  const prismaClient = prismaFor(hub);
+  let auditData;
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: {
+      findUnique: async () => hub,
+      update: async ({ data }) => ({ ...hub, ...data }),
+    },
+    hubPointOperator: { count: async () => 1 },
+    operationalAuditEvent: { create: async ({ data }) => { auditData = data; return { id: "audit-1" }; } },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  const result = await service.setStatus("hub-1", "ACTIVE", "admin-1");
+  assert.equal(result.status, "ACTIVE");
+  assert.equal(auditData.action, "HUB_STATUS_UPDATED");
 });
 
 test("hub activation writes its audit event in the same transaction", async () => {
@@ -175,4 +216,60 @@ test("an active hub cannot demote its last manager through operator upsert", asy
   });
   assert.equal(result.blocker, "LAST_ACTIVE_HUB_MANAGER");
   assert.equal(upsertCalled, false);
+});
+
+
+test("partner ownership can be set at hub creation but cannot be changed through generic edits", () => {
+  const create = createHubPointAdminSchema.safeParse({
+    partnerId: "partner-1", serviceZoneId: "zone-1", name: "Partner Hub",
+    address: "12 Allen Avenue, Ikeja", latitude: 6.6, longitude: 3.35,
+  });
+  assert.equal(create.success, true);
+  assert.equal(updateHubPointAdminSchema.safeParse({ partnerId: "partner-2" }).success, false);
+});
+
+
+test("admin-created hubs without a partner are explicitly platform-operated", async () => {
+  const zone = { id: "zone-1", isActive: true, state: { isActive: true, country: { isActive: true } } };
+  let createdData;
+  let auditData;
+  const tx = {
+    serviceZone: { findUnique: async () => zone },
+    transportPartner: { findUnique: async () => { throw new Error("Platform-operated hubs must not require a partner lookup."); } },
+    hubPoint: {
+      create: async ({ data }) => { createdData = data; return { id: "hub-platform", ...data }; },
+    },
+    operationalAuditEvent: {
+      create: async ({ data }) => { auditData = data; return { id: "audit-1", ...data }; },
+    },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createHubPointsAdminService({ prismaClient, clock: () => new Date("2026-11-01T12:00:00.000Z") });
+  const result = await service.create({
+    serviceZoneId: "zone-1", name: "Platform Ikeja Hub",
+    address: "12 Allen Avenue, Ikeja", latitude: 6.6, longitude: 3.35,
+  }, "admin-1");
+
+  assert.equal(result.partnerId, null);
+  assert.equal(createdData.partnerId, null);
+  assert.equal(createdData.status, "PENDING");
+  assert.equal(auditData.after.partnerId, null);
+});
+
+test("admin-created partner hubs require an active, verified existing transport partner", async () => {
+  const zone = { id: "zone-1", isActive: true, state: { isActive: true, country: { isActive: true } } };
+  let hubCreateCalled = false;
+  const tx = {
+    serviceZone: { findUnique: async () => zone },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "PENDING" }) },
+    hubPoint: { create: async () => { hubCreateCalled = true; } },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const prismaClient = { $transaction: async callback => callback(tx) };
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.create({
+    partnerId: "partner-1", serviceZoneId: "zone-1", name: "Partner Ikeja Hub",
+    address: "12 Allen Avenue, Ikeja", latitude: 6.6, longitude: 3.35,
+  }, "admin-1"), { code: "PARTNER_NOT_OPERATIONAL", statusCode: 409 });
+  assert.equal(hubCreateCalled, false);
 });

@@ -56,8 +56,29 @@ const hubExceptionSchema = z.object({
 const operatorSchema = z.object({
   userId: id,
   role: z.enum(["MANAGER", "OPERATOR"]).default("OPERATOR"),
+  reason: z.string().trim().min(5).max(1000),
 }).strict();
-const operatorStatusSchema = z.object({ isActive: z.boolean() }).strict();
+const hubStaffSchema = z.object({
+  userId: id,
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+const operatorStatusSchema = z.object({
+  isActive: z.boolean(),
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+const dispatchPermissionSchema = z.object({
+  canDispatch: z.boolean(),
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+const operatorRoleSchema = z.object({
+  role: z.enum(["MANAGER", "OPERATOR"]),
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+const hubOperatorsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  isActive: z.enum(["true", "false"]).transform(value => value === "true").optional(),
+}).strict();
 const phoneVerificationSchema = z.object({
   verified: z.boolean(),
   verificationMethod: z.enum(["CALLBACK", "IN_PERSON", "DOCUMENT_REVIEW", "ADMIN_REVOCATION"]),
@@ -119,8 +140,29 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
   const admin = roleMiddleware("ADMIN");
 
   router.patch("/admin/users/:userId/phone-verification", authMiddleware, admin, validateParams, validate(phoneVerificationSchema), asyncWrapper(controller.setRecipientPhoneVerification));
+  router.get("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, (req, res, next) => {
+    const parsed = hubOperatorsQuerySchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ success: false, error: {
+      code: "VALIDATION_ERROR", message: "One or more query parameters are invalid.",
+      details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
+    } });
+    req.validatedQuery = parsed.data;
+    return next();
+  }, asyncWrapper(controller.listHubOperators));
   router.post("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, validate(operatorSchema), asyncWrapper(controller.addHubOperator));
   router.patch("/admin/hub-points/:hubPointId/operators/:operatorId", authMiddleware, admin, validateParams, validate(operatorStatusSchema), asyncWrapper(controller.setHubOperatorStatus));
+  router.patch("/admin/hub-points/:hubPointId/operators/:operatorId/role", authMiddleware, admin, validateParams, validate(operatorRoleSchema), asyncWrapper(controller.updateHubOperatorRole));
+  router.patch("/admin/hub-points/:hubPointId/operators/:operatorId/dispatch-permission", authMiddleware, admin, validateParams, validate(dispatchPermissionSchema), asyncWrapper(controller.setHubOperatorDispatchPermission));
+  router.get("/hub-operations/hubs/:hubPointId/operators", authMiddleware, validateParams, (req, res, next) => {
+    const parsed = hubOperatorsQuerySchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ success: false, error: {
+      code: "VALIDATION_ERROR", message: "One or more query parameters are invalid.",
+      details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
+    } });
+    req.validatedQuery = parsed.data;
+    return next();
+  }, asyncWrapper(controller.listHubOperatorsForManager));
+  router.post("/hub-operations/hubs/:hubPointId/operators", authMiddleware, validateParams, validate(hubStaffSchema), asyncWrapper(controller.addHubStaff));
   router.get("/hub-operations/intakes", authMiddleware, (req, res, next) => {
     const parsed = hubIntakesQuerySchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ success: false, error: {

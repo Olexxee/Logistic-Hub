@@ -26,7 +26,43 @@ function rateCardPublishBlocker(card, now) {
 export function createPartnerPricingAdminService({ prismaClient, clock = () => new Date() }) {
   const repository = createPartnerPricingAdminRepository({ prismaClient });
   return {
-    async listPartners() { return { items: await repository.listPartners() }; },
+    async listPartners({ page = 1, limit = 20, search, status, verificationStatus } = {}) {
+      const where = {
+        ...(status ? { status } : {}),
+        ...(verificationStatus ? { verificationStatus } : {}),
+        ...(search ? { OR: [
+          { displayName: { contains: search, mode: "insensitive" } },
+          { legalName: { contains: search, mode: "insensitive" } },
+          { contactName: { contains: search, mode: "insensitive" } },
+          { contactEmail: { contains: search, mode: "insensitive" } },
+        ] } : {}),
+      };
+      const [items, total] = await Promise.all([
+        repository.listPartners({ where, skip: (page - 1) * limit, take: limit }),
+        repository.countPartners(where),
+      ]);
+      return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    },
+    async getPartner({ partnerId }) {
+      const partner = await repository.findPartnerAdmin(partnerId);
+      return partner ? { partner } : { notFound: true };
+    },
+    async updatePartner({ partnerId, input, actorUserId }) {
+      return serializableTransaction(prismaClient, async tx => {
+        const current = await tx.transportPartner.findUnique({ where: { id: partnerId } });
+        if (!current) return { notFound: true };
+        if (current.status === "CLOSED") return { blocker: "PARTNER_CLOSED" };
+        const { reason, ...changes } = input;
+        const updated = await tx.transportPartner.update({ where: { id: partnerId }, data: changes });
+        await audit(tx, {
+          actorUserId, entityType: "TRANSPORT_PARTNER", entityId: partnerId,
+          action: "PARTNER_PROFILE_UPDATED", reason,
+          before: Object.fromEntries(Object.keys(changes).map(key => [key, current[key]])),
+          after: Object.fromEntries(Object.keys(changes).map(key => [key, updated[key]])),
+        });
+        return { partner: updated };
+      });
+    },
     async createPartner({ input, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         const partner = await tx.transportPartner.create({ data: input });
@@ -38,36 +74,37 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
       return serializableTransaction(prismaClient, async tx => {
         const current = await tx.transportPartner.findUnique({ where: { id: partnerId } });
         if (!current) return { notFound: true };
-        const nextVerification = input.verificationStatus ?? current.verificationStatus;
+        const { reason, ...statusInput } = input;
+        const nextVerification = statusInput.verificationStatus ?? current.verificationStatus;
         if (current.status === "CLOSED") {
-          return input.status === "CLOSED" && nextVerification === current.verificationStatus
+          return statusInput.status === "CLOSED" && nextVerification === current.verificationStatus
             ? { partner: current, replay: true }
             : { blocker: "PARTNER_CLOSED" };
         }
-        if (current.status === input.status && nextVerification === current.verificationStatus) return { partner: current, replay: true };
+        if (current.status === statusInput.status && nextVerification === current.verificationStatus) return { partner: current, replay: true };
         const allowedTransitions = {
           PENDING: ["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"],
           ACTIVE: ["ACTIVE", "SUSPENDED", "CLOSED"],
           SUSPENDED: ["SUSPENDED", "ACTIVE", "CLOSED"],
         };
-        if (!allowedTransitions[current.status]?.includes(input.status)) return { blocker: "PARTNER_INVALID_STATUS_TRANSITION" };
-        if (input.status === "ACTIVE" && nextVerification !== "VERIFIED") return { blocker: "PARTNER_NOT_VERIFIED" };
-        if (current.status === "ACTIVE" && nextVerification !== "VERIFIED" && !["SUSPENDED", "CLOSED"].includes(input.status)) {
+        if (!allowedTransitions[current.status]?.includes(statusInput.status)) return { blocker: "PARTNER_INVALID_STATUS_TRANSITION" };
+        if (statusInput.status === "ACTIVE" && nextVerification !== "VERIFIED") return { blocker: "PARTNER_NOT_VERIFIED" };
+        if (current.status === "ACTIVE" && nextVerification !== "VERIFIED" && !["SUSPENDED", "CLOSED"].includes(statusInput.status)) {
           return { blocker: "PARTNER_MUST_BE_SUSPENDED" };
         }
-        if (input.status === "ACTIVE") {
+        if (statusInput.status === "ACTIVE") {
           const activeOwners = await tx.transportPartnerMember.count({
             where: { partnerId, isActive: true, role: "OWNER", user: { status: "ACTIVE", emailVerifiedAt: { not: null } } },
           });
           if (!activeOwners) return { blocker: "PARTNER_OWNER_REQUIRED" };
         }
-        if (["SUSPENDED", "CLOSED"].includes(input.status)) {
+        if (["SUSPENDED", "CLOSED"].includes(statusInput.status)) {
           const activeAssignments = await tx.partnerDeliveryAssignment.count({
             where: { partnerId, status: { in: ["ASSIGNED", "ACCEPTED", "IN_TRANSIT"] } },
           });
           if (activeAssignments) return { blocker: "PARTNER_HAS_ACTIVE_ASSIGNMENTS" };
         }
-        if (input.status === "CLOSED") {
+        if (statusInput.status === "CLOSED") {
           const [activeMembers, openAgreements, unsettledPayables] = await Promise.all([
             tx.transportPartnerMember.count({ where: { partnerId, isActive: true } }),
             tx.partnerAgreement.count({ where: { partnerId, status: { in: ["DRAFT", "ACTIVE", "SUSPENDED"] } } }),
@@ -77,7 +114,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
           if (openAgreements) return { blocker: "PARTNER_HAS_OPEN_AGREEMENTS" };
           if (unsettledPayables) return { blocker: "PARTNER_HAS_UNSETTLED_PAYABLES" };
         }
-        if (input.status === "SUSPENDED") {
+        if (statusInput.status === "SUSPENDED") {
           const activeAgreements = await tx.partnerAgreement.findMany({
             where: { partnerId, status: "ACTIVE" }, select: { id: true, status: true },
           });
@@ -89,17 +126,41 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
               await audit(tx, {
                 actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreement.id,
                 action: "PARTNER_AGREEMENT_SUSPENDED_WITH_PARTNER",
-                before: { status: agreement.status }, after: { status: "SUSPENDED", partnerId },
+                before: { status: agreement.status }, after: { status: "SUSPENDED", partnerId }, reason,
               });
             }
           }
         }
+        if (["SUSPENDED", "CLOSED"].includes(statusInput.status)) {
+          const activeHubs = await tx.hubPoint.findMany({
+            where: { partnerId, status: "ACTIVE" },
+            select: { id: true, status: true },
+          });
+          if (activeHubs.length) {
+            await tx.hubPoint.updateMany({
+              where: { partnerId, status: "ACTIVE" },
+              data: { status: "SUSPENDED" },
+            });
+            for (const hub of activeHubs) {
+              await audit(tx, {
+                actorUserId,
+                entityType: "HUB_POINT",
+                entityId: hub.id,
+                action: "HUB_SUSPENDED_WITH_PARTNER",
+                reason,
+                before: { status: hub.status, partnerId },
+                after: { status: "SUSPENDED", partnerId, partnerStatus: statusInput.status },
+              });
+            }
+          }
+        }
+
         const updated = await tx.transportPartner.update({ where: { id: partnerId }, data: {
-          status: input.status,
-          ...(input.verificationStatus ? { verificationStatus: input.verificationStatus } : {}),
-          ...(nextVerification === "VERIFIED" ? { verifiedAt: current.verifiedAt ?? clock() } : { verifiedAt: input.verificationStatus ? null : current.verifiedAt }),
+          status: statusInput.status,
+          ...(statusInput.verificationStatus ? { verificationStatus: statusInput.verificationStatus } : {}),
+          ...(nextVerification === "VERIFIED" ? { verifiedAt: current.verifiedAt ?? clock() } : { verifiedAt: statusInput.verificationStatus ? null : current.verifiedAt }),
         } });
-        await audit(tx, { actorUserId, entityType: "TRANSPORT_PARTNER", entityId: partnerId, action: "PARTNER_STATUS_UPDATED", before: { status: current.status, verificationStatus: current.verificationStatus }, after: { status: updated.status, verificationStatus: updated.verificationStatus } });
+        await audit(tx, { actorUserId, entityType: "TRANSPORT_PARTNER", entityId: partnerId, action: "PARTNER_STATUS_UPDATED", reason, before: { status: current.status, verificationStatus: current.verificationStatus }, after: { status: updated.status, verificationStatus: updated.verificationStatus } });
         return { partner: updated };
       });
     },
@@ -118,7 +179,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         return { agreement };
       });
     },
-    async activateAgreement({ agreementId, actorUserId }) {
+    async activateAgreement({ agreementId, actorUserId, reason }) {
       return serializableTransaction(prismaClient, async tx => {
         const agreement = await tx.partnerAgreement.findUnique({ where: { id: agreementId }, include: { partner: true } });
         if (!agreement) return { notFound: true };
@@ -129,11 +190,11 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         const existing = await tx.partnerAgreement.findFirst({ where: { partnerId: agreement.partnerId, status: "ACTIVE", id: { not: agreement.id } }, select: { id: true } });
         if (existing) return { blocker: "ACTIVE_AGREEMENT_EXISTS" };
         const updated = await tx.partnerAgreement.update({ where: { id: agreement.id }, data: { status: "ACTIVE", approvedAt: now } });
-        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreement.id, action: "PARTNER_AGREEMENT_ACTIVATED", before: { status: agreement.status }, after: { status: updated.status, approvedAt: now.toISOString() } });
+        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreement.id, action: "PARTNER_AGREEMENT_ACTIVATED", reason, before: { status: agreement.status }, after: { status: updated.status, approvedAt: now.toISOString() } });
         return { agreement: updated };
       });
     },
-    async setAgreementStatus({ agreementId, status, actorUserId }) {
+    async setAgreementStatus({ agreementId, status, actorUserId, reason }) {
       return serializableTransaction(prismaClient, async tx => {
         const current = await tx.partnerAgreement.findUnique({ where: { id: agreementId } });
         if (!current) return { notFound: true };
@@ -146,7 +207,7 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
           if (activeAssignments) return { blocker: "AGREEMENT_HAS_ACTIVE_ASSIGNMENTS" };
         }
         const updated = await tx.partnerAgreement.update({ where: { id: agreementId }, data: { status } });
-        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreementId, action: "PARTNER_AGREEMENT_STATUS_UPDATED", before: { status: current.status }, after: { status: updated.status } });
+        await audit(tx, { actorUserId, entityType: "PARTNER_AGREEMENT", entityId: agreementId, action: "PARTNER_AGREEMENT_STATUS_UPDATED", reason, before: { status: current.status }, after: { status: updated.status } });
         return { agreement: updated };
       });
     },
@@ -177,21 +238,73 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         return { rate };
       });
     },
-    async publishRateCard({ rateCardId, actorUserId }) {
+    async publishRateCard({ rateCardId, actorUserId, reason }) {
       return serializableTransaction(prismaClient, async tx => {
         const now = clock();
         const card = await tx.partnerRateCard.findUnique({ where: { id: rateCardId }, include: { agreement: { include: { partner: true } }, rates: { where: { isActive: true } } } });
         if (!card) return { notFound: true };
         const blocker = rateCardPublishBlocker(card, now);
         if (blocker) return { blocker };
-        await tx.partnerRateCard.updateMany({ where: { agreementId: card.agreementId, status: "ACTIVE", id: { not: card.id } }, data: { status: "RETIRED" } });
+        const previousCards = await tx.partnerRateCard.findMany({
+          where: { agreementId: card.agreementId, status: "ACTIVE", id: { not: card.id } },
+          select: { id: true, status: true, version: true },
+        });
+        if (previousCards.length) {
+          await tx.partnerRateCard.updateMany({
+            where: { id: { in: previousCards.map(previous => previous.id) } },
+            data: { status: "RETIRED" },
+          });
+          for (const previous of previousCards) {
+            await audit(tx, {
+              actorUserId, entityType: "PARTNER_RATE_CARD", entityId: previous.id,
+              action: "PARTNER_RATE_CARD_RETIRED_BY_NEW_VERSION", reason,
+              before: { status: previous.status, version: previous.version },
+              after: { status: "RETIRED", version: previous.version, replacementRateCardId: card.id },
+            });
+          }
+        }
         const published = await tx.partnerRateCard.update({ where: { id: card.id }, data: { status: "ACTIVE", publishedAt: now }, select: {
           id: true, agreementId: true, version: true, status: true, currency: true,
           effectiveFrom: true, effectiveUntil: true, publishedAt: true, updatedAt: true,
         } });
-        await audit(tx, { actorUserId, entityType: "PARTNER_RATE_CARD", entityId: card.id, action: "PARTNER_RATE_CARD_PUBLISHED", before: { status: card.status }, after: { status: published.status, publishedAt: now.toISOString(), version: published.version } });
+        await audit(tx, { actorUserId, entityType: "PARTNER_RATE_CARD", entityId: card.id, action: "PARTNER_RATE_CARD_PUBLISHED", reason, before: { status: card.status }, after: { status: published.status, publishedAt: now.toISOString(), version: published.version } });
         return { rateCard: published };
       });
+    },
+    async listAgreements({ partnerId, page = 1, limit = 20, search, status } = {}) {
+      const partner = await prismaClient.transportPartner.findUnique({ where: { id: partnerId }, select: { id: true } });
+      if (!partner) return { notFound: true };
+      const where = {
+        ...(status ? { status } : {}),
+        ...(search ? { reference: { contains: search, mode: "insensitive" } } : {}),
+      };
+      const [items, total] = await Promise.all([
+        repository.listAgreements({ partnerId, where, skip: (page - 1) * limit, take: limit }),
+        repository.countAgreements({ partnerId, where }),
+      ]);
+      return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    },
+    async getAgreement({ agreementId }) {
+      const agreement = await repository.findAgreementAdmin(agreementId);
+      return agreement ? { agreement } : { notFound: true };
+    },
+    async listRateCards({ agreementId, page = 1, limit = 20, status } = {}) {
+      const agreement = await prismaClient.partnerAgreement.findUnique({ where: { id: agreementId }, select: { id: true } });
+      if (!agreement) return { notFound: true };
+      const where = status ? { status } : {};
+      const [items, total] = await Promise.all([
+        repository.listRateCards({ agreementId, where, skip: (page - 1) * limit, take: limit }),
+        repository.countRateCards({ agreementId, where }),
+      ]);
+      return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    },
+    async getRateCard({ rateCardId }) {
+      const rateCard = await repository.findRateCardAdmin(rateCardId);
+      if (!rateCard) return { notFound: true };
+      return { rateCard: {
+        ...rateCard,
+        rates: rateCard.rates.map(rate => ({ ...rate, transportChargeMinor: rate.transportChargeMinor.toString() })),
+      } };
     },
   };
 }

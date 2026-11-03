@@ -67,6 +67,26 @@ export function createPartnerExecutionRepository({ prismaClient }) {
         tx.partnerDeliveryAssignment.count({ where }),
       ]).then(([items, total]) => ({ items, total }));
     },
+    listPartnerMembers(partnerId, { where = {}, skip = 0, take = 20 } = {}, tx = prismaClient) {
+      const scopedWhere = { partnerId, ...where };
+      return Promise.all([
+        tx.transportPartnerMember.findMany({
+          where: scopedWhere,
+          skip,
+          take,
+          orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+          select: {
+            id: true, partnerId: true, userId: true, role: true, isActive: true,
+            createdAt: true, updatedAt: true,
+            user: { select: {
+              id: true, fullName: true, email: true, phone: true,
+              role: true, status: true, emailVerifiedAt: true,
+            } },
+          },
+        }),
+        tx.transportPartnerMember.count({ where: scopedWhere }),
+      ]).then(([items, total]) => ({ items, total }));
+    },
     findMembership(partnerId, userId, tx = prismaClient) {
       return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
     },

@@ -36,6 +36,7 @@ export function createOperationalCasesRepository({ prismaClient }) {
           createdAt: true,
           updatedAt: true,
           parcelBooking: { select: { id: true, publicReference: true } },
+          supportTicket: { select: { id: true, publicReference: true, subject: true, status: true } },
           deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
           custodyHandover: { select: { id: true, status: true, fromPartyType: true, toPartyType: true } },
           partner: { select: { id: true, displayName: true } },

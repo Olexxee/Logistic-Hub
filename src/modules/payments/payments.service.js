@@ -4,7 +4,7 @@ import { createPaymentsRepository } from "./payments.repository.js";
 import { createNotificationsService } from "../notifications/notifications.service.js";
 import { ServiceUnavailableError, ConflictError } from "../../shared/http/app-error.js";
 
-export function createPaymentsService({ prismaClient, repository = createPaymentsRepository(prismaClient), notifications = createNotificationsService({ prismaClient }), secretKey = env.PAYSTACK_SECRET_KEY, enabled = env.PAYMENTS_ENABLED, fetchImpl = fetch } = {}) {
+export function createPaymentsService({ prismaClient, repository = createPaymentsRepository(prismaClient), notifications = createNotificationsService({ prismaClient }), secretKey = env.PAYSTACK_SECRET_KEY, enabled = env.PAYMENTS_ENABLED, refundsEnabled = env.REFUNDS_ENABLED, fetchImpl = fetch } = {}) {
   return {
     async initialize({ bookingType, bookingId, userId, idempotencyKey }) {
       if (!enabled) throw new ServiceUnavailableError("Online payments are disabled until the project owner approves activation.", "PAYMENTS_DISABLED");
@@ -49,11 +49,13 @@ export function createPaymentsService({ prismaClient, repository = createPayment
       return supplied.length === expected.length && timingSafeEqual(expected, supplied);
     },
     async handleWebhook({ payload, rawBody, signature }) {
-      if (!enabled) throw new ServiceUnavailableError("Paystack webhook processing is disabled until payment activation is approved.", "PAYMENTS_DISABLED");
+      const isRefundEvent = payload.event === "refund.processed" || payload.event === "refund.failed";
+      if (isRefundEvent && !refundsEnabled) throw new ServiceUnavailableError("Paystack refund webhook processing is disabled until refund activation is approved.", "REFUNDS_DISABLED");
+      if (!isRefundEvent && !enabled) throw new ServiceUnavailableError("Paystack webhook processing is disabled until payment activation is approved.", "PAYMENTS_DISABLED");
       if (!this.verifySignature(rawBody, signature)) throw Object.assign(new Error("Invalid Paystack signature."), { statusCode: 401, code: "INVALID_WEBHOOK_SIGNATURE" });
       if (payload.event === "refund.processed" || payload.event === "refund.failed") {
         const status = payload.event === "refund.processed" ? "PROCESSED" : "FAILED";
-        const providerReference = String(payload.data?.id ?? payload.data?.reference ?? "");
+        const providerReference = String(payload.data?.id ?? payload.data?.refund_reference ?? payload.data?.reference ?? "");
         if (!providerReference) return { accepted: true, ignored: true };
         const updated = await repository.updateRefundFromWebhook({ providerReference, status, providerResponse: { event: payload.event, id: providerReference } });
         return { accepted: true, updatedCount: updated.count };
