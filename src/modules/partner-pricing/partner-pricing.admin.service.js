@@ -221,7 +221,24 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
         if (!card) return { notFound: true };
         const blocker = rateCardPublishBlocker(card, now);
         if (blocker) return { blocker };
-        await tx.partnerRateCard.updateMany({ where: { agreementId: card.agreementId, status: "ACTIVE", id: { not: card.id } }, data: { status: "RETIRED" } });
+        const previousCards = await tx.partnerRateCard.findMany({
+          where: { agreementId: card.agreementId, status: "ACTIVE", id: { not: card.id } },
+          select: { id: true, status: true, version: true },
+        });
+        if (previousCards.length) {
+          await tx.partnerRateCard.updateMany({
+            where: { id: { in: previousCards.map(previous => previous.id) } },
+            data: { status: "RETIRED" },
+          });
+          for (const previous of previousCards) {
+            await audit(tx, {
+              actorUserId, entityType: "PARTNER_RATE_CARD", entityId: previous.id,
+              action: "PARTNER_RATE_CARD_RETIRED_BY_NEW_VERSION", reason,
+              before: { status: previous.status, version: previous.version },
+              after: { status: "RETIRED", version: previous.version, replacementRateCardId: card.id },
+            });
+          }
+        }
         const published = await tx.partnerRateCard.update({ where: { id: card.id }, data: { status: "ACTIVE", publishedAt: now }, select: {
           id: true, agreementId: true, version: true, status: true, currency: true,
           effectiveFrom: true, effectiveUntil: true, publishedAt: true, updatedAt: true,
