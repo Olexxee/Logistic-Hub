@@ -256,8 +256,8 @@ AH-5.2 partner membership administration is merged. AH-5.3 adds the agreement/ra
 |---|---|---|
 | AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
 | AH-5.1 Partner management | Merged | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions. |
-| AH-5.2 Partner memberships | Implemented in this branch | ADMIN roster with pagination/search/role/status filters; reasoned add/reactivate/role-change/deactivation; full before/after audit; last active OWNER and account eligibility safeguards. CI and merge pending. |
-| AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
+| AH-5.2 Partner memberships | Merged | ADMIN roster with pagination/search/role/status filters; reasoned add/reactivate/role-change/deactivation; full before/after audit; last active OWNER and account eligibility safeguards. |
+| AH-5.3 Agreements/rate cards | Implemented on feature branch; CI/review/merge pending | ADMIN agreement/card list and detail reads; rate detail and minor-unit serialization; mandatory reasons for agreement activation/status and card publication; audit prior-card retirement. Published versions remain immutable. |
 | AH-5.4 Geography | Ready for basic CRUD UI | Verify current seed coverage before national launch; avoid unverified bulk import. |
 | AH-5.5 Service zones | Ready for basic CRUD/availability UI | Add hub roster/count read support if UI needs it; do not claim polygon geofencing. |
 | AH-5.6 Cross-resource integration | Requires backend hardening | Implement and test partner/hub lifecycle policy, read-model needs and audit consistency. |
