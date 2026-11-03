@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { ZodError } from "zod";
 import { env } from "../../config/env.js";
+import { prisma } from "../../db/prisma.js";
+import { createPersistentRateLimit } from "../../shared/http/rate-limit.middleware.js";
 import { createMapsProvider } from "./maps.provider.js";
 import {
   autocompleteInputSchema,
@@ -30,8 +32,19 @@ function mapsUnavailable(res) {
   });
 }
 
-export function createMapsRouter({ provider = createMapsProvider(env) } = {}) {
+export function createMapsRouter({
+  provider = createMapsProvider(env),
+  prismaClient = prisma,
+  rateLimitMiddleware,
+} = {}) {
   const router = Router();
+  const mapsRateLimit = rateLimitMiddleware ?? createPersistentRateLimit({
+    prismaClient,
+    namespace: "maps-provider",
+    limit: 60,
+    windowMs: 60_000,
+  });
+  router.use(mapsRateLimit);
 
   router.post("/autocomplete", async (req, res, next) => {
     const parsed = autocompleteInputSchema.safeParse(req.body);
