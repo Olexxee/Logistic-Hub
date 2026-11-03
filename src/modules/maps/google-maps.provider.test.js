@@ -113,3 +113,19 @@ test("geocoding is restricted to and verifies Nigeria", async () => {
   assert.equal(result.location.latitude, 6.6018);
   assert.equal(requestUrl.searchParams.get("components"), "country:NG");
 });
+
+test("geocoding rejects a result outside Nigeria even when the provider returns it", async () => {
+  const provider = new GoogleMapsProvider({
+    apiKey: "test-key",
+    fetchImpl: async () => response({
+      status: "OK",
+      results: [{
+        formatted_address: "Accra, Ghana",
+        place_id: "place-456",
+        geometry: { location: { lat: 5.6037, lng: -0.187 } },
+        address_components: [{ short_name: "GH", types: ["country"] }],
+      }],
+    }),
+  });
+  assert.equal(await provider.geocode({ address: "Accra" }), null);
+});
