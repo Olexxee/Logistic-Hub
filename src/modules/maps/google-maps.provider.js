@@ -16,7 +16,8 @@ const ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
 
 function isNigeriaAddressComponent(components = []) {
   return components.some(component =>
-    component.types?.includes("country") && component.shortText === "NG"
+    component.types?.includes("country")
+    && (component.shortText || component.short_name) === "NG"
   );
 }
 
