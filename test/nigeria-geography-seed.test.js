@@ -60,6 +60,13 @@ test("dataset rejects missing or malformed source identifiers", () => {
   assert.throws(() => validateNigeriaGeography(data), /Invalid source LGA ID/);
 });
 
+test("dataset rejects an LGA source ID belonging to another state", () => {
+  const data = structuredClone(nigeriaGeography);
+  data[0].lgas[0].sourceId = "NG002001";
+  data[0].lgas[0].code = "NG002001";
+  assert.throws(() => validateNigeriaGeography(data), /does not belong to parent state Abia/);
+});
+
 test("empty database plan creates one country, 37 states and 774 LGAs", () => {
   const plan = buildNigeriaGeographyPlan(emptyExisting());
   assert.equal(plan.createCountry, true);
