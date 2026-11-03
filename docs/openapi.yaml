@@ -2585,7 +2585,16 @@ paths:
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Agreement detail, partner eligibility and rate-card version summaries. }
+        '200':
+          description: Agreement detail, partner eligibility and rate-card version summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { type: object, description: Agreement detail and rate-card version summaries. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
