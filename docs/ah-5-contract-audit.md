@@ -212,9 +212,9 @@ Existing safeguards:
 ### Implemented
 
 - Partner-linked hubs persist partnerId; partner application approval creates the hub with the application partner.
-- Partner status suspension suspends active partner agreements in the same transaction.
+- Partner status suspension suspends active partner agreements and partner-owned ACTIVE hubs in the same serializable transaction, with dependent audit events.
 - Agreement/rate-card eligibility checks require active/verified partner and valid agreement/card effective dates.
-- Hub activation requires active geography, active parcel availability, an active verified manager and complete operational details.
+- Hub activation requires active geography, active parcel availability, an active verified manager, complete operational details and (for partner-owned hubs) an ACTIVE, VERIFIED owning partner.
 - Hub/service-zone and geography parent-child mutations protect active dependent resources.
 
 ### AH-5.6 lifecycle policy and implementation
@@ -232,7 +232,6 @@ This prevents a suspended or closed partner from retaining operationally active 
 ### Other integration gaps
 
 - There is no single admin read model joining partner, members, agreements, hubs and service coverage.
-- No ADMIN member/agreement/rate-card read endpoints exist for full detail screens.
 - Hub/partner membership and commercial mutation audit reasons are inconsistent or absent. The shared audit history is not a substitute for missing decision context.
 
 ## AH-5.1 implementation update
