@@ -1,7 +1,8 @@
 import { createPartnerPricingAdminService } from "./partner-pricing.admin.service.js";
 import {
   partnerIdSchema, partnerInputSchema, partnerListQuerySchema, partnerProfileUpdateSchema,
-  partnerStatusInputSchema, agreementInputSchema, agreementStatusInputSchema, rateCardInputSchema, partnerRateInputSchema,
+  partnerStatusInputSchema, agreementInputSchema, agreementStatusInputSchema, agreementActivationInputSchema,
+  agreementListQuerySchema, rateCardListQuerySchema, rateCardPublishInputSchema, rateCardInputSchema, partnerRateInputSchema,
 } from "./partner-pricing.admin.validators.js";
 
 function invalid(res, issues) {
@@ -75,6 +76,42 @@ export function createPartnerPricingAdminController({ prismaClient }) {
         return res.status(200).json({ success: true, data: result });
       } catch (error) { return next(error); }
     },
+    listAgreements: async (req, res, next) => {
+      const partnerId = parsedId(req, res, "partnerId"); if (!partnerId) return;
+      const parsed = agreementListQuerySchema.safeParse(req.query);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
+      try {
+        const result = await service.listAgreements({ partnerId, ...parsed.data });
+        if (result.notFound) return failure(res, "NOT_FOUND", "Transport partner not found.", 404);
+        return res.status(200).json({ success: true, data: result });
+      } catch (error) { return next(error); }
+    },
+    getAgreement: async (req, res, next) => {
+      const id = parsedId(req, res, "agreementId"); if (!id) return;
+      try {
+        const result = await service.getAgreement({ agreementId: id });
+        if (result.notFound) return failure(res, "NOT_FOUND", "Partner agreement not found.", 404);
+        return res.status(200).json({ success: true, data: result });
+      } catch (error) { return next(error); }
+    },
+    listRateCards: async (req, res, next) => {
+      const agreementId = parsedId(req, res, "agreementId"); if (!agreementId) return;
+      const parsed = rateCardListQuerySchema.safeParse(req.query);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
+      try {
+        const result = await service.listRateCards({ agreementId, ...parsed.data });
+        if (result.notFound) return failure(res, "NOT_FOUND", "Partner agreement not found.", 404);
+        return res.status(200).json({ success: true, data: result });
+      } catch (error) { return next(error); }
+    },
+    getRateCard: async (req, res, next) => {
+      const id = parsedId(req, res, "rateCardId"); if (!id) return;
+      try {
+        const result = await service.getRateCard({ rateCardId: id });
+        if (result.notFound) return failure(res, "NOT_FOUND", "Partner rate card not found.", 404);
+        return res.status(200).json({ success: true, data: result });
+      } catch (error) { return next(error); }
+    },
     createAgreement: async (req, res, next) => {
       const id = parsedId(req, res, "partnerId"); if (!id) return;
       const parsed = agreementInputSchema.safeParse(req.body);
@@ -88,8 +125,10 @@ export function createPartnerPricingAdminController({ prismaClient }) {
     },
     activateAgreement: async (req, res, next) => {
       const id = parsedId(req, res, "agreementId"); if (!id) return;
+      const parsed = agreementActivationInputSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const result = await service.activateAgreement({ agreementId: id, actorUserId: req.user.id });
+        const result = await service.activateAgreement({ agreementId: id, actorUserId: req.user.id, reason: parsed.data.reason });
         if (result.notFound) return failure(res, "NOT_FOUND", "Partner agreement not found.", 404);
         const errors = {
           NOT_DRAFT: ["AGREEMENT_NOT_DRAFT", "Only draft agreements can be activated."],
@@ -106,7 +145,7 @@ export function createPartnerPricingAdminController({ prismaClient }) {
       const parsed = agreementStatusInputSchema.safeParse(req.body);
       if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const result = await service.setAgreementStatus({ agreementId: id, status: parsed.data.status, actorUserId: req.user.id });
+        const result = await service.setAgreementStatus({ agreementId: id, status: parsed.data.status, actorUserId: req.user.id, reason: parsed.data.reason });
         if (result.notFound) return failure(res, "NOT_FOUND", "Partner agreement not found.", 404);
         if (result.blocker === "AGREEMENT_TERMINAL") return failure(res, "AGREEMENT_TERMINAL", "Expired or terminated agreements cannot be changed.");
         if (result.blocker === "USE_ACTIVATION_ENDPOINT") return failure(res, "USE_ACTIVATION_ENDPOINT", "Use the agreement activation endpoint to enforce partner and effective-date checks.");
@@ -139,8 +178,10 @@ export function createPartnerPricingAdminController({ prismaClient }) {
     },
     publishRateCard: async (req, res, next) => {
       const id = parsedId(req, res, "rateCardId"); if (!id) return;
+      const parsed = rateCardPublishInputSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
       try {
-        const result = await service.publishRateCard({ rateCardId: id, actorUserId: req.user.id });
+        const result = await service.publishRateCard({ rateCardId: id, actorUserId: req.user.id, reason: parsed.data.reason });
         if (result.notFound) return failure(res, "NOT_FOUND", "Partner rate card not found.", 404);
         const errors = {
           NOT_DRAFT: ["RATE_CARD_NOT_DRAFT", "Only draft rate cards can be published."],
