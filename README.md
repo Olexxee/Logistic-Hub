@@ -482,7 +482,7 @@ The Maps API is disabled by default. To enable the server-side Google provider, 
 
 Enable Places API (New), Geocoding API and Routes API for the Google Cloud project. Restrict the key to these APIs and apply an appropriate server-side application restriction where the hosting environment supports it. Never expose this key in frontend environment variables or browser code. Maps endpoints require authentication and share a persistent limit of 60 requests per user per minute. The backend restricts autocomplete and geocoding to Nigeria; this does not mean a location is covered by an active Logistic Hub service zone.
 
-Customer pickup/drop-off and partner/hub address forms should use the same flow: autocomplete → selected-place details → user confirmation → submit the normalized address and coordinates to the existing booking or hub application contract. A selected address is not proof of serviceability; the backend's service-zone and operational checks remain authoritative.
+Customer pickup/drop-off and partner/hub address forms should use the same flow: debounce input and begin autocomplete after at least three characters → use one URL-safe UUID v4 session token for that search → resolve the selected place with the same token → discard the token → let the user confirm → submit the normalized address and coordinates to the existing booking or hub application contract. A selected address is not proof of serviceability; the backend's service-zone and operational checks remain authoritative.
 
 ## Future roadmap — first-party location intelligence
 
