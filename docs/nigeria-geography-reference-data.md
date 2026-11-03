@@ -49,7 +49,7 @@ When NODE_ENV=production, the runner additionally refuses to write unless the op
 npm run db:seed:nigeria -- --apply --confirm-database=<database-name> --allow-production
 ~~~
 
-Do not copy these commands into a production shell until the dry-run output, database host and database name have been independently checked. The seed is not run automatically during deployment, installation or migration.
+Do not copy these commands into a production shell until the dry-run output, database host and database name have been independently checked. Example for a database named with spaces: npm run db:seed:nigeria -- --apply --confirm-database="the logistic hub". The seed is not run automatically during deployment, installation or migration.
 
 ## Safety and matching behaviour
 
