@@ -38,6 +38,7 @@ export function createMapsRouter({
   rateLimitMiddleware,
 } = {}) {
   const router = Router();
+  router.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
   const mapsRateLimit = rateLimitMiddleware ?? createPersistentRateLimit({
     prismaClient,
     namespace: "maps-provider",
