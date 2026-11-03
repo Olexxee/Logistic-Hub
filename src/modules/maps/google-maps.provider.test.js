@@ -38,6 +38,7 @@ test("autocomplete restricts suggestions to Nigeria and normalizes place predict
   });
   assert.equal(request.url, "https://places.googleapis.com/v1/places:autocomplete");
   assert.equal(request.options.headers["X-Goog-Api-Key"], "test-key");
+  assert.equal(request.options.headers["X-Goog-FieldMask"], "suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types");
   const body = JSON.parse(request.options.body);
   assert.deepEqual(body.includedRegionCodes, ["ng"]);
   assert.equal(body.sessionToken, "session-123");
