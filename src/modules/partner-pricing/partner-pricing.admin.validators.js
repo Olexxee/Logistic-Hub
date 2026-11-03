@@ -43,6 +43,24 @@ export const agreementInputSchema = z.object({
 });
 export const agreementStatusInputSchema = z.object({
   status: z.enum(["ACTIVE", "SUSPENDED", "EXPIRED", "TERMINATED"]),
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+export const agreementActivationInputSchema = z.object({
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+export const rateCardPublishInputSchema = z.object({
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+export const agreementListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().max(160).optional(),
+  status: z.enum(["DRAFT", "ACTIVE", "SUSPENDED", "EXPIRED", "TERMINATED"]).optional(),
+}).strict();
+export const rateCardListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(["DRAFT", "ACTIVE", "RETIRED"]).optional(),
 }).strict();
 export const rateCardInputSchema = z.object({
   currency: z.string().trim().length(3).default("NGN"),
