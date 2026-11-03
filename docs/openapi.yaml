@@ -2691,7 +2691,16 @@ paths:
           in: query
           schema: { type: string, enum: [DRAFT, ACTIVE, RETIRED] }
       responses:
-        '200': { description: Paginated version list with rate counts. }
+        '200':
+          description: Paginated version list with rate counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { type: object, description: Paginated rate-card version list and pagination metadata. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
