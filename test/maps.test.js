@@ -45,7 +45,6 @@ test("geocoding normalizes provider data and handles no results", async () => {
           geometry: { location: { lat: 6.6018, lng: 3.3515 } },
           address_components: [{ short_name: "NG", types: ["country"] }],
         }],
-        }],
       }),
     }),
   });
