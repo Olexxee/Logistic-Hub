@@ -75,3 +75,47 @@ test("partner profile and status mutations require an audit reason", async () =>
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 });
+
+
+test("agreement and rate-card admin reads are mounted and lifecycle decisions require reasons", async () => {
+  const prismaClient = {
+    transportPartner: { findMany: async () => [], count: async () => 0, findUnique: async () => ({ id: "partner-1" }) },
+    partnerAgreement: {
+      findMany: async () => [], count: async () => 0,
+      findUnique: async ({ where }) => ({ id: where.id, partner: { id: "partner-1", displayName: "Partner", status: "ACTIVE", verificationStatus: "VERIFIED" }, rateCards: [], _count: { deliveryAssignments: 0, payables: 0, quotes: 0 } }),
+    },
+    partnerRateCard: {
+      findMany: async () => [], count: async () => 0,
+      findUnique: async ({ where }) => ({ id: where.id, agreement: { id: "agreement-1", partner: { id: "partner-1", displayName: "Partner", status: "ACTIVE", verificationStatus: "VERIFIED" } }, rates: [] }),
+    },
+  };
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1", createPartnerPricingRouter({
+    prismaClient,
+    authMiddleware: (req, _res, next) => { req.user = { id: "admin", role: "ADMIN" }; next(); },
+    adminMiddleware: (_req, _res, next) => next(),
+  }));
+  const server = createServer(app);
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}/api/v1/admin`;
+    for (const path of [
+      "/transport-partners/partner-1/agreements",
+      "/partner-agreements/agreement-1",
+      "/partner-agreements/agreement-1/rate-cards",
+      "/partner-rate-cards/card-1",
+    ]) {
+      const response = await fetch(base + path);
+      assert.equal(response.status, 200, path);
+    }
+    const activation = await fetch(base + "/partner-agreements/agreement-1/activate", { method: "POST" });
+    assert.equal(activation.status, 400);
+    const publish = await fetch(base + "/partner-rate-cards/card-1/publish", { method: "POST" });
+    assert.equal(publish.status, 400);
+    const invalidFilter = await fetch(base + "/partner-agreements/agreement-1/rate-cards?limit=101");
+    assert.equal(invalidFilter.status, 400);
+  } finally {
+    await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
