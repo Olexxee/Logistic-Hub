@@ -473,6 +473,16 @@ Phase Three is complete only when all 3A–3F acceptance criteria are met, the p
 The canonical authentication contract is an HttpOnly refresh cookie plus a short-lived access token returned in JSON. The cookie is never returned in the response body; browser requests must include credentials and the trusted-origin CSRF header. The frontend-readiness and operational-workflow documents are reconciled to the mounted routes and current runtime behavior in this 3F-C slice.
 
 
+## Future roadmap — first-party location intelligence
+
+A future initiative may build Logistic Hub's own searchable geographic dataset from independently sourced, properly licensed and appropriately consented first-party location information. It is explicitly outside the current AH-5.4 implementation.
+
+- Keep customer delivery addresses private; do not turn personal address records into a public/shared directory.
+- Keep source provenance, consent, verification and confidence separate from operational serviceability.
+- Google Places content must not be copied into or used to build/augment a separate mapping database. Retain Google Place IDs and other Google-derived data only as permitted by the applicable Google Maps Platform terms and policies.
+- Any future first-party directory should use independently sourced or licensed geographic data (for example, OpenStreetMap data subject to its ODbL obligations), plus independently verified operational locations.
+- A future migration must separately assess address search, map tiles, geocoding, routing and navigation; replacing autocomplete alone does not replace those capabilities.
+
 ## Private support evidence storage
 
 Support-ticket evidence is stored in a private Firebase Storage bucket. The API authenticates to Google Cloud Storage server-to-server using a Base64-encoded Firebase service-account JSON document. The browser never receives service-account credentials or a public object URL.
