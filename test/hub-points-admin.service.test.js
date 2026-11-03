@@ -39,6 +39,47 @@ test("hub activation is blocked until operational details are complete", async (
   await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), { code: "HUB_OPERATIONAL_DETAILS_REQUIRED", statusCode: 409 });
 });
 
+test("partner-owned hub activation is blocked while its partner is suspended or unverified", async () => {
+  const hub = readyHub();
+  hub.partnerId = "partner-1";
+  hub.partner = { id: "partner-1", status: "SUSPENDED", verificationStatus: "VERIFIED" };
+  let managerLookupCalled = false;
+  const prismaClient = prismaFor(hub);
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: {
+      findUnique: async () => hub,
+      update: async () => { throw new Error("Hub must not be activated."); },
+    },
+    hubPointOperator: { count: async () => { managerLookupCalled = true; return 1; } },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  await assert.rejects(service.setStatus("hub-1", "ACTIVE", "admin-1"), {
+    code: "HUB_PARTNER_NOT_OPERATIONAL",
+    statusCode: 409,
+  });
+  assert.equal(managerLookupCalled, false);
+});
+
+test("partner-owned hub activation is allowed when its partner is active and verified", async () => {
+  const hub = readyHub();
+  hub.partnerId = "partner-1";
+  hub.partner = { id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" };
+  const prismaClient = prismaFor(hub);
+  let auditData;
+  prismaClient.$transaction = async callback => callback({
+    hubPoint: {
+      findUnique: async () => hub,
+      update: async ({ data }) => ({ ...hub, ...data }),
+    },
+    hubPointOperator: { count: async () => 1 },
+    operationalAuditEvent: { create: async ({ data }) => { auditData = data; return { id: "audit-1" }; } },
+  });
+  const service = createHubPointsAdminService({ prismaClient });
+  const result = await service.setStatus("hub-1", "ACTIVE", "admin-1");
+  assert.equal(result.status, "ACTIVE");
+  assert.equal(auditData.action, "HUB_STATUS_UPDATED");
+});
+
 test("hub activation writes its audit event in the same transaction", async () => {
   const hub = readyHub();
   let auditData;
