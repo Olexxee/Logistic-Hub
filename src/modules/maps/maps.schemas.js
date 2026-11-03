@@ -7,12 +7,12 @@ export const coordinatesSchema = z.object({
 
 export const autocompleteInputSchema = z.object({
   input: z.string().trim().min(2).max(200),
-  sessionToken: z.string().trim().min(1).max(256).optional(),
+  sessionToken: z.string().trim().regex(/^[A-Za-z0-9_-]{1,36}$/).optional(),
 }).strict();
 
 export const placeDetailsInputSchema = z.object({
   placeId: z.string().trim().min(1).max(256),
-  sessionToken: z.string().trim().min(1).max(256).optional(),
+  sessionToken: z.string().trim().regex(/^[A-Za-z0-9_-]{1,36}$/).optional(),
 }).strict();
 
 export const autocompleteSuggestionSchema = z.object({
