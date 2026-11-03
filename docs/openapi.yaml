@@ -2507,6 +2507,36 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Status transition is not eligible. }
   /admin/transport-partners/{partnerId}/agreements:
+    get:
+      tags: [Admin]
+      operationId: listPartnerAgreements
+      summary: List a transport partner's agreements
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: status
+          in: query
+          schema: { type: string, enum: [DRAFT, ACTIVE, SUSPENDED, EXPIRED, TERMINATED] }
+      responses:
+        '200': { description: Paginated partner agreements and commercial summary counts. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Admin]
       operationId: createPartnerAgreement
@@ -2541,6 +2571,24 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /admin/partner-agreements/{agreementId}:
+    get:
+      tags: [Admin]
+      operationId: getPartnerAgreement
+      summary: Get an agreement and its versioned rate-card history
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Agreement detail, partner eligibility and rate-card version summaries. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/partner-agreements/{agreementId}/activate:
     post:
       tags: [Admin]
@@ -2554,8 +2602,18 @@ paths:
           in: path
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
-        '200': { description: Agreement activated. }
+        '200': { description: Agreement activated and decision reason audited. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2581,9 +2639,10 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [status]
+              required: [status, reason]
               properties:
                 status: { type: string, enum: [ACTIVE, SUSPENDED, EXPIRED, TERMINATED] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200': { description: Agreement status updated. }
         '400': { $ref: '#/components/responses/ValidationError' }
@@ -2592,6 +2651,33 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Agreement is terminal or activation checks are required. }
   /admin/partner-agreements/{agreementId}/rate-cards:
+    get:
+      tags: [Admin]
+      operationId: listPartnerRateCards
+      summary: List versioned rate cards under an agreement
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: status
+          in: query
+          schema: { type: string, enum: [DRAFT, ACTIVE, RETIRED] }
+      responses:
+        '200': { description: Paginated version list with rate counts. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Admin]
       operationId: createPartnerRateCard
@@ -2622,6 +2708,25 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Agreement status does not allow rate-card creation. }
+  /admin/partner-rate-cards/{rateCardId}:
+    get:
+      tags: [Admin]
+      operationId: getPartnerRateCard
+      summary: Get a rate-card version and its route-specific rates
+      description: Monetary transport charges are returned as integer minor-unit strings. Published rate-card versions are read-only; create a new version for changes.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rateCardId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Rate-card detail including route zones and rate constraints. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/partner-rate-cards/{rateCardId}/rates:
     post:
       tags: [Admin]
@@ -2677,9 +2782,19 @@ paths:
           in: path
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200':
-          description: Rate card published and previous active version retired.
+          description: Rate card published and previous active version retired; retirement and publication reasons are audited.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
