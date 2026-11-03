@@ -143,7 +143,7 @@ paths:
               required: [input]
               properties:
                 input: { type: string, minLength: 2, maxLength: 200 }
-                sessionToken: { type: string, minLength: 1, maxLength: 256 }
+                sessionToken: { type: string, minLength: 1, maxLength: 36, pattern: "^[A-Za-z0-9_-]+$" }
       responses:
         '200':
           description: Up to five normalized place predictions.
@@ -187,7 +187,7 @@ paths:
               required: [placeId]
               properties:
                 placeId: { type: string, minLength: 1, maxLength: 256 }
-                sessionToken: { type: string, minLength: 1, maxLength: 256 }
+                sessionToken: { type: string, minLength: 1, maxLength: 36, pattern: "^[A-Za-z0-9_-]+$" }
       responses:
         '200':
           description: Selected Nigerian place details.
