@@ -180,6 +180,12 @@ Hierarchy safeguards:
 - No dedicated geography change-history read endpoint exists beyond the shared ADMIN audit stream.
 - Do not assume the database currently contains all 36 states, FCT and 774 LGAs merely because the model supports the hierarchy. Verify seeded records before declaring national coverage.
 
+## 6.1 Nigeria geography reference-data readiness
+
+The country/state/LGA ADMIN CRUD endpoints above do not populate a complete reference dataset. The database must be independently checked; do not infer completeness from the existence of Prisma models or routes. The expected Nigeria baseline is one country, 37 state-level units (36 states plus FCT) and 774 LGAs.
+
+A separate backend side quest records the import scope and safeguards in [docs/nigeria-geography-reference-data.md](./nigeria-geography-reference-data.md). At this point the source dataset has not been approved, no seed/import has been implemented, and no target database has been mutated by this work. The import must be deterministic and idempotent, preserve existing IDs and operational references, validate every LGA's parent state, and never create service zones or imply serviceability.
+
 ## 7. Service zones and availability
 
 ### Confirmed ADMIN endpoints
@@ -261,7 +267,7 @@ AH-5.2 partner membership administration is merged. AH-5.3 adds the agreement/ra
 | AH-5.3 Agreements/rate cards | Merged | ADMIN agreement/card list and detail reads; route-rate detail and minor-unit serialization; reasoned lifecycle decisions and immutable published versions. |
 | AH-5.4 Google Maps location integration | Merged | Authenticated Nigeria-restricted Places Autocomplete, selected-place details and geocoding; no database migration or address-processing job. |
 | AH-5.5 Service zones | Frontend work outstanding | Build service-zone and service-availability administration UI against existing CRUD/availability contracts; do not claim polygon geofencing. |
-| AH-5.6 Cross-resource integration | Implemented on feature branch; CI/merge pending | Synchronize partner suspension/closure with partner-owned active hubs; enforce partner eligibility on hub activation; audit all dependent transitions. |
+| AH-5.6 Cross-resource integration | Merged | Backend PR #78 synchronizes partner suspension/closure with partner-owned active hubs; enforces partner eligibility on hub activation; audits dependent transitions. |
 
 ## 10. Validation and scope
 
