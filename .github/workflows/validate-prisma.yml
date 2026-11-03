@@ -56,8 +56,8 @@ jobs:
         run: npm run db:generate
       - name: Validate OpenAPI contracts
         run: npm run api:validate
-      - name: Validate initial migration constraint snapshot
-        run: npm run db:validate-initial-migration
+      - name: Validate foundation integrity migration snapshot
+        run: npm run db:validate-foundation-constraints
       - name: Apply committed migrations to disposable PostgreSQL
         run: npx prisma migrate deploy --schema prisma/schema.prisma
       - name: Check migration history status
