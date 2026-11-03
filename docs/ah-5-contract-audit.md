@@ -217,15 +217,17 @@ Existing safeguards:
 - Hub activation requires active geography, active parcel availability, an active verified manager and complete operational details.
 - Hub/service-zone and geography parent-child mutations protect active dependent resources.
 
-### Gap requiring a policy decision and backend implementation
+### AH-5.6 lifecycle policy and implementation
 
-**Partner suspension does not currently suspend partner-owned hubs.** The partner status service suspends active agreements, but it does not find or suspend active HubPoint records with that partnerId. Conversely, hub activation validates manager, zone and operational details but does not verify that a non-null owning partner is still ACTIVE and VERIFIED.
+**Implemented on `feat/ah-5-6-partner-hub-lifecycle-sync`; pending CI and merge.**
 
-This creates a split operational state: a suspended partner can retain an ACTIVE partner-owned hub, and the hub status transition may allow activation without revalidating its partner. Before AH-5.6, define whether partner suspension must:
-1. automatically suspend all partner-owned ACTIVE hubs, with audit events; and
-2. block activation of a partner-owned hub unless its partner is ACTIVE and VERIFIED.
+- When a partner transitions to SUSPENDED or CLOSED, every partner-owned ACTIVE hub is changed to SUSPENDED in the same serializable transaction as the partner/agreement transition.
+- Each affected hub receives its own `HUB_SUSPENDED_WITH_PARTNER` operational audit event, including actor, reason, partner ID and before/after status.
+- A partner-owned hub can transition to ACTIVE only when its owning partner is currently ACTIVE and VERIFIED.
+- Reactivating a partner does not automatically reactivate its hubs. Hub reactivation remains a separate ADMIN decision and continues to require active verified hub management, service-zone availability and complete operational details.
+- Existing delivery legs, custody records and hub history are not deleted or rewritten. Existing partner assignment safeguards remain in force before partner suspension/closure.
 
-The conservative default is to enforce both, while preserving existing delivery/custody history and requiring explicit reactivation after partner re-verification.
+This prevents a suspended or closed partner from retaining operationally active hubs without silently changing historical shipment or custody records.
 
 ### Other integration gaps
 
@@ -257,10 +259,10 @@ AH-5.2 partner membership administration is merged. AH-5.3 adds the agreement/ra
 | AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
 | AH-5.1 Partner management | Merged | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions. |
 | AH-5.2 Partner memberships | Merged | ADMIN roster with pagination/search/role/status filters; reasoned add/reactivate/role-change/deactivation; full before/after audit; last active OWNER and account eligibility safeguards. |
-| AH-5.3 Agreements/rate cards | Implemented on feature branch; CI/review/merge pending | ADMIN agreement/card list and detail reads; rate detail and minor-unit serialization; mandatory reasons for agreement activation/status and card publication; audit prior-card retirement. Published versions remain immutable. |
-| AH-5.4 Geography | Ready for basic CRUD UI | Verify current seed coverage before national launch; avoid unverified bulk import. |
-| AH-5.5 Service zones | Ready for basic CRUD/availability UI | Add hub roster/count read support if UI needs it; do not claim polygon geofencing. |
-| AH-5.6 Cross-resource integration | Requires backend hardening | Implement and test partner/hub lifecycle policy, read-model needs and audit consistency. |
+| AH-5.3 Agreements/rate cards | Merged | ADMIN agreement/card list and detail reads; route-rate detail and minor-unit serialization; reasoned lifecycle decisions and immutable published versions. |
+| AH-5.4 Google Maps location integration | Merged | Authenticated Nigeria-restricted Places Autocomplete, selected-place details and geocoding; no database migration or address-processing job. |
+| AH-5.5 Service zones | Frontend work outstanding | Build service-zone and service-availability administration UI against existing CRUD/availability contracts; do not claim polygon geofencing. |
+| AH-5.6 Cross-resource integration | Implemented on feature branch; CI/merge pending | Synchronize partner suspension/closure with partner-owned active hubs; enforce partner eligibility on hub activation; audit all dependent transitions. |
 
 ## 10. Validation and scope
 
@@ -273,8 +275,8 @@ The AH-5.0 source audit was performed against router mounts, route validators/co
 1. **AH-5.1:** partner directory, detail, profile and lifecycle administration API completed; frontend workspace can now be implemented against the published contracts.
 2. **AH-5.2:** partner member roster and reasoned membership lifecycle API; frontend membership UI can follow after this slice merges.
 3. **AH-5.3:** agreement/rate-card read endpoints, then versioned commercial administration.
-4. **AH-5.4:** country/state/LGA admin UI, after verifying the actual seeded dataset.
-5. **AH-5.5:** service-zone and availability UI; add hub roster/count support if operationally needed.
+4. **AH-5.4:** Google Maps address discovery, selected-place details and Nigeria-restricted geocoding; frontend address-selection consumers follow the backend contract.
+5. **AH-5.5:** service-zone and availability administration UI against the existing backend contracts.
 6. **AH-5.6:** partner/hub lifecycle synchronization and regression tests before treating integrated operations as complete.
 
 Do not implement all missing endpoints speculatively in AH-5.0. Each backend change should be a scoped implementation slice with route/service tests and OpenAPI parity.
