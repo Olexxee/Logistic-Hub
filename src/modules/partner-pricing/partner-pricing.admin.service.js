@@ -248,6 +248,8 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
       });
     },
     async listAgreements({ partnerId, page = 1, limit = 20, search, status } = {}) {
+      const partner = await prismaClient.transportPartner.findUnique({ where: { id: partnerId }, select: { id: true } });
+      if (!partner) return { notFound: true };
       const where = {
         ...(status ? { status } : {}),
         ...(search ? { reference: { contains: search, mode: "insensitive" } } : {}),
@@ -263,6 +265,8 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
       return agreement ? { agreement } : { notFound: true };
     },
     async listRateCards({ agreementId, page = 1, limit = 20, status } = {}) {
+      const agreement = await prismaClient.partnerAgreement.findUnique({ where: { id: agreementId }, select: { id: true } });
+      if (!agreement) return { notFound: true };
       const where = status ? { status } : {};
       const [items, total] = await Promise.all([
         repository.listRateCards({ agreementId, where, skip: (page - 1) * limit, take: limit }),
