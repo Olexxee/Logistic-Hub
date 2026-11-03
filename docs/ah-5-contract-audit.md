@@ -64,22 +64,22 @@ All partner administration routes are protected by authentication and ADMIN role
 
 | Method | Endpoint | Contract |
 |---|---|---|
-| POST | /api/v1/admin/transport-partners/:partnerId/members | Adds or reactivates a user with role OWNER, OPERATIONS or DISPATCHER. |
-| PATCH | /api/v1/admin/transport-partners/:partnerId/members/:memberId | Sets isActive true or false. |
+| GET | /api/v1/admin/transport-partners/:partnerId/members | Paginated partner roster; supports search, role and active-status filters. |
+| POST | /api/v1/admin/transport-partners/:partnerId/members | Adds or reactivates an eligible user with role OWNER, OPERATIONS or DISPATCHER; requires a reason. |
+| PATCH | /api/v1/admin/transport-partners/:partnerId/members/:memberId | Updates role and/or active status; requires a reason. |
 
-The add-member operation requires an active, email-verified user. The last active eligible OWNER safeguard is enforced when the partner is ACTIVE. A CLOSED partner cannot receive or change members.
+The roster defaults to page 1 and limit 20, with a maximum limit of 100. Search matches member full name, email and phone. The response includes membership ID, partner/user IDs, partner-scoped role, active status, membership timestamps and a restricted user profile (name, email, phone, global account role/status and email-verification timestamp). It does not expose password hashes, auth sessions, tokens or credentials.
 
-Membership is scoped by TransportPartnerMember; the global User.role is not changed by membership assignment/deactivation in the current implementation.
+Membership writes run in serializable transactions and emit an operational audit event in the same transaction. Each successful mutation records the actor, reason, action and before/after partner ID, user ID, role and active status. An unchanged request returns the current membership without creating a duplicate mutation event.
 
-### Gaps
+Only ACTIVE, email-verified user accounts can be added or reactivated. A CLOSED partner cannot receive or change memberships. For ACTIVE partners, adding/reactivating a non-OWNER or demoting/deactivating the last active verified OWNER is rejected with LAST_ACTIVE_OWNER. Reactivation through either POST or PATCH re-checks account eligibility. The partner-scoped PartnerMemberRole remains separate from global User.role; membership operations do not elevate or demote platform privileges.
 
-- No ADMIN endpoint to list members for a partner.
-- No member detail/history endpoint.
-- No role-update endpoint distinct from add/reactivate; the add endpoint can upsert an existing member's role and active status.
-- Membership mutation validators do not accept a reason, and the audit events do not include a decision reason.
-- No membership pagination or filtering contract.
+### Remaining gaps
 
-A frontend member table cannot be built safely from the current ADMIN API without either a new read endpoint or an explicitly authorized reuse of another endpoint. The self-service GET /api/v1/partner/memberships/mine is not a substitute: it returns the authenticated user's memberships, not a partner's complete member roster.
+- No dedicated per-member event-history endpoint exists. Administrators can use the shared ADMIN audit-event stream, filtered by entity type TRANSPORT_PARTNER_MEMBER and the membership entity ID.
+- There is no hard-delete membership endpoint; deactivation preserves the membership row and its audit history by design.
+
+The ADMIN roster contract is sufficient to build a paginated partner-member workspace. Do not substitute GET /api/v1/partner/memberships/mine, which returns only the authenticated user's own memberships.
 
 ## 4. Partner agreements and rate cards
 
@@ -244,15 +244,15 @@ Directory defaults are page 1 and limit 20; maximum limit is 100. Search matches
 
 Closed partners cannot have their profile changed. Existing partner status-transition guards remain in place, including active verified OWNER requirement, active assignment protection, agreement suspension on partner suspension, and close-out checks for members, agreements and unsettled payables.
 
-This slice does not expose partner membership rosters or agreement/rate-card history. Those read contracts remain AH-5.2 and AH-5.3 respectively. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
+AH-5.2 adds the partner membership roster and reasoned membership lifecycle administration. Agreement/rate-card history read contracts remain AH-5.3. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
 
 ## 9. AH-5 slice readiness
 
 | Slice | Current readiness | Required work before/during implementation |
 |---|---|---|
 | AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
-| AH-5.1 Partner management | Implemented in this branch | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions; CI and merge pending. |
-| AH-5.2 Partner memberships | Blocked for full roster UI | Add ADMIN list endpoint with pagination and role/status fields; add mutation reason and complete before/after audit. Preserve last active OWNER safeguard. |
+| AH-5.1 Partner management | Merged | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions. |
+| AH-5.2 Partner memberships | Implemented in this branch | ADMIN roster with pagination/search/role/status filters; reasoned add/reactivate/role-change/deactivation; full before/after audit; last active OWNER and account eligibility safeguards. CI and merge pending. |
 | AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
 | AH-5.4 Geography | Ready for basic CRUD UI | Verify current seed coverage before national launch; avoid unverified bulk import. |
 | AH-5.5 Service zones | Ready for basic CRUD/availability UI | Add hub roster/count read support if UI needs it; do not claim polygon geofencing. |
@@ -260,14 +260,14 @@ This slice does not expose partner membership rosters or agreement/rate-card his
 
 ## 10. Validation and scope
 
-AH-5.0 was documentation-only and introduced no runtime or schema changes. AH-5.1 is a separate implementation slice that adds partner administration read/update routes and audit behavior. AH-5.1 introduces no Prisma schema changes or migrations and does not alter quote calculation, customer prices, payments, refunds, partner settlement, production data or geography imports.
+AH-5.0 was documentation-only and introduced no runtime or schema changes. AH-5.1 and AH-5.2 add partner administration and membership read/update routes with audit behavior. These slices introduce no Prisma schema changes or migrations and do not alter quote calculation, customer prices, payments, refunds, partner settlement, production data or geography imports.
 
 The AH-5.0 source audit was performed against router mounts, route validators/controllers/services/repositories and Prisma model relationships. AH-5.1 adds route tests, PostgreSQL-gated integration coverage and OpenAPI parity validation; passing CI is still required before merge.
 
 ## 11. Recommended implementation order
 
 1. **AH-5.1:** partner directory, detail, profile and lifecycle administration API completed; frontend workspace can now be implemented against the published contracts.
-2. **AH-5.2:** partner member roster read endpoint and reasoned mutations before the membership UI.
+2. **AH-5.2:** partner member roster and reasoned membership lifecycle API; frontend membership UI can follow after this slice merges.
 3. **AH-5.3:** agreement/rate-card read endpoints, then versioned commercial administration.
 4. **AH-5.4:** country/state/LGA admin UI, after verifying the actual seeded dataset.
 5. **AH-5.5:** service-zone and availability UI; add hub roster/count support if operationally needed.

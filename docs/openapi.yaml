@@ -3075,10 +3075,43 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /admin/transport-partners/{partnerId}/members:
+    get:
+      tags: [Partner execution, Admin]
+      operationId: listTransportPartnerMembers
+      summary: List a transport partner's members for administration
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 160 }
+        - name: role
+          in: query
+          schema: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER] }
+        - name: isActive
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200': { description: Partner members and pagination metadata. }
+        '400': { description: Invalid membership query. }
+        '401': { description: Authentication required. }
+        '403': { description: Administrator access required. }
+        '404': { description: Partner not found. }
     post:
       tags: [Partner execution, Admin]
       operationId: addTransportPartnerMember
-      summary: Add an active user to a transport partner
+      summary: Add or reactivate a transport partner member, or change their partner role
       security:
         - bearerAuth: []
       x-implementation-status: implemented
@@ -3094,22 +3127,24 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [userId]
+              required: [userId, reason]
               properties:
                 userId: { type: string }
                 role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER], default: OPERATIONS }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
-        '201': { description: Partner membership created or reactivated. }
+        '201': { description: Partner membership created or reactivated; an active unchanged membership returns 200. }
+        '200': { description: Existing membership already has the requested active role; no mutation is performed. }
         '400': { description: Invalid membership input. }
         '401': { description: Authentication required. }
         '403': { description: Administrator access required. }
         '404': { description: Partner not found. }
-        '409': { description: User is inactive or has an incompatible role. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/transport-partners/{partnerId}/members/{memberId}:
     patch:
       tags: [Partner execution, Admin]
       operationId: setTransportPartnerMemberStatus
-      summary: Activate or suspend a transport partner member
+      summary: Update a transport partner member role and/or active status
       security:
         - bearerAuth: []
       x-implementation-status: implemented
@@ -3129,15 +3164,18 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [isActive]
+              required: [reason]
               properties:
                 isActive: { type: boolean }
+                role: { type: string, enum: [OWNER, OPERATIONS, DISPATCHER] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
       responses:
-        '200': { description: Membership status updated. }
+        '200': { description: Membership role and/or active status updated; unchanged requests return the current membership. }
         '400': { description: Invalid membership input. }
         '401': { description: Authentication required. }
         '403': { description: Administrator access required. }
         '404': { description: Membership not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/delivery-legs/{legId}/partner-assignment:
     post:
       tags: [Partner execution, Admin]
