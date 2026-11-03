@@ -2750,7 +2750,16 @@ paths:
           required: true
           schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Rate-card detail including route zones and rate constraints. }
+        '200':
+          description: Rate-card detail including route zones and rate constraints.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { type: object, description: Rate-card version and route-rate detail. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
