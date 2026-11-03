@@ -55,6 +55,7 @@ export function validateNigeriaGeography(dataset = nigeriaGeography) {
     for (const lga of state.lgas) {
       if (!lga || typeof lga.name !== "string" || !lga.name.trim()) fail("Empty LGA name in " + state.name + ".");
       if (!/^NG\d{6}$/.test(lga.sourceId ?? "")) fail("Invalid source LGA ID for " + state.name + " / " + lga.name + ".");
+      if (!lga.sourceId.startsWith(state.sourceId)) fail("LGA source ID does not belong to parent state " + state.name + " / " + lga.name + ".");
       if (lga.code !== lga.sourceId) fail("LGA code must equal its stable source ID for " + state.name + " / " + lga.name + ".");
       allLgaSourceIds.push(lga.sourceId);
       lgaCount += 1;
@@ -283,7 +284,12 @@ function parseArguments(args) {
     if (allowed.has(arg) || arg.startsWith("--confirm-database=")) continue;
     fail("Unknown argument: " + arg);
   }
-  const confirmArg = args.find((arg) => arg.startsWith("--confirm-database="));
+  if (args.includes("--apply") && args.includes("--dry-run")) {
+    fail("--apply and --dry-run cannot be used together.");
+  }
+  const confirmationArgs = args.filter((arg) => arg.startsWith("--confirm-database="));
+  if (confirmationArgs.length > 1) fail("Provide --confirm-database only once.");
+  const confirmArg = confirmationArgs[0];
   return {
     apply: args.includes("--apply"),
     allowProduction: args.includes("--allow-production"),
