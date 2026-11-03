@@ -104,9 +104,19 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     agreement = agreementResult.json.data.agreement;
     assert.equal(agreement.status, "DRAFT");
 
-    const activatedAgreement = await call(`/admin/partner-agreements/${agreement.id}/activate`, { method: "POST" });
+    const activatedAgreement = await call(`/admin/partner-agreements/${agreement.id}/activate`, { method: "POST", body: { reason: "Agreement terms reviewed and approved." } });
     assert.equal(activatedAgreement.status, 200);
     assert.equal(activatedAgreement.json.data.agreement.status, "ACTIVE");
+
+    const agreementList = await call(`/admin/transport-partners/${partner.id}/agreements?status=ACTIVE&page=1&limit=10`);
+    assert.equal(agreementList.status, 200);
+    assert.ok(agreementList.json.data.items.some(item => item.id === agreement.id));
+    assert.equal(agreementList.json.data.pagination.total, 1);
+
+    const agreementDetail = await call(`/admin/partner-agreements/${agreement.id}`);
+    assert.equal(agreementDetail.status, 200);
+    assert.equal(agreementDetail.json.data.agreement.partner.id, partner.id);
+    assert.equal(agreementDetail.json.data.agreement.rateCards.length, 0);
 
     const cardResult = await call(`/admin/partner-agreements/${agreement.id}/rate-cards`, {
       method: "POST",
@@ -116,9 +126,13 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     rateCard = cardResult.json.data.rateCard;
     assert.equal(rateCard.status, "DRAFT");
 
-    const blockedPublish = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST" });
+    const blockedPublish = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST", body: { reason: "Rate card reviewed against negotiated partner terms." } });
     assert.equal(blockedPublish.status, 409);
     assert.equal(blockedPublish.json.error.code, "RATE_CARD_HAS_NO_ACTIVE_RATES");
+
+    const cardList = await call(`/admin/partner-agreements/${agreement.id}/rate-cards?status=DRAFT&page=1&limit=10`);
+    assert.equal(cardList.status, 200);
+    assert.ok(cardList.json.data.items.some(item => item.id === rateCard.id));
 
     const rateResult = await call(`/admin/partner-rate-cards/${rateCard.id}/rates`, {
       method: "POST",
@@ -136,9 +150,15 @@ test("partner, agreement, and rate-card administration enforces publish prerequi
     assert.equal(rateResult.status, 201);
     assert.equal(rateResult.json.data.rate.transportChargeMinor, "250000");
 
-    const published = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST" });
+    const published = await call(`/admin/partner-rate-cards/${rateCard.id}/publish`, { method: "POST", body: { reason: "Published after checking negotiated partner rates." } });
     assert.equal(published.status, 200);
     assert.equal(published.json.data.rateCard.status, "ACTIVE");
+
+    const cardDetail = await call(`/admin/partner-rate-cards/${rateCard.id}`);
+    assert.equal(cardDetail.status, 200);
+    assert.equal(cardDetail.json.data.rateCard.rates.length, 1);
+    assert.equal(cardDetail.json.data.rateCard.rates[0].transportChargeMinor, "250000");
+    assert.equal(cardDetail.json.data.rateCard.rates[0].originServiceZone.id, zone.id);
 
     const persisted = await prisma.partnerRateCard.findUnique({
       where: { id: rateCard.id },

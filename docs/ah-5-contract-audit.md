@@ -87,12 +87,16 @@ The ADMIN roster contract is sufficient to build a paginated partner-member work
 
 | Method | Endpoint | Contract |
 |---|---|---|
+| GET | /api/v1/admin/transport-partners/:partnerId/agreements | Paginated ADMIN agreement list; supports page, limit, reference search and status filter. |
 | POST | /api/v1/admin/transport-partners/:partnerId/agreements | Creates a DRAFT agreement with reference, currency, effective dates and optional commercial terms. |
-| POST | /api/v1/admin/partner-agreements/:agreementId/activate | Activates an eligible DRAFT agreement. |
-| PATCH | /api/v1/admin/partner-agreements/:agreementId/status | Suspends, expires or terminates an agreement; ACTIVE must use the activation route. |
+| GET | /api/v1/admin/partner-agreements/:agreementId | Returns agreement detail, partner eligibility/status, versioned rate-card summaries and aggregate counts. |
+| POST | /api/v1/admin/partner-agreements/:agreementId/activate | Activates an eligible DRAFT agreement; requires an audit reason. |
+| PATCH | /api/v1/admin/partner-agreements/:agreementId/status | Suspends, expires or terminates an agreement; ACTIVE must use the activation route. Requires an audit reason. |
+| GET | /api/v1/admin/partner-agreements/:agreementId/rate-cards | Paginated rate-card version list with status filters and active-rate counts. |
 | POST | /api/v1/admin/partner-agreements/:agreementId/rate-cards | Creates the next version as a DRAFT rate card. |
+| GET | /api/v1/admin/partner-rate-cards/:rateCardId | Returns a rate-card version and its route rates, zone names/statuses, constraints and minor-unit charge strings. |
 | POST | /api/v1/admin/partner-rate-cards/:rateCardId/rates | Adds a rate to a DRAFT rate card. |
-| POST | /api/v1/admin/partner-rate-cards/:rateCardId/publish | Publishes an eligible DRAFT rate card and retires the prior ACTIVE card for that agreement. |
+| POST | /api/v1/admin/partner-rate-cards/:rateCardId/publish | Publishes an eligible DRAFT rate card and retires the prior ACTIVE card for that agreement; requires an audit reason. |
 
 These routes are mounted under the partner-pricing router, which applies authentication and ADMIN authorization router-wide.
 
@@ -244,7 +248,7 @@ Directory defaults are page 1 and limit 20; maximum limit is 100. Search matches
 
 Closed partners cannot have their profile changed. Existing partner status-transition guards remain in place, including active verified OWNER requirement, active assignment protection, agreement suspension on partner suspension, and close-out checks for members, agreements and unsettled payables.
 
-AH-5.2 adds the partner membership roster and reasoned membership lifecycle administration. Agreement/rate-card history read contracts remain AH-5.3. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
+AH-5.2 partner membership administration is merged. AH-5.3 adds the agreement/rate-card history read contracts and reasoned lifecycle decisions described below. Partner suspension does not yet synchronize partner-owned hub status; that remains AH-5.6.
 
 ## 9. AH-5 slice readiness
 
@@ -252,15 +256,15 @@ AH-5.2 adds the partner membership roster and reasoned membership lifecycle admi
 |---|---|---|
 | AH-5.0 Contract audit | Complete | Source-verified gaps recorded in this document. |
 | AH-5.1 Partner management | Merged | Directory filters/pagination, detail, reasoned profile update and reasoned status/verification decisions. |
-| AH-5.2 Partner memberships | Implemented in this branch | ADMIN roster with pagination/search/role/status filters; reasoned add/reactivate/role-change/deactivation; full before/after audit; last active OWNER and account eligibility safeguards. CI and merge pending. |
-| AH-5.3 Agreements/rate cards | Blocked for history/detail UI | Add ADMIN read endpoints for agreements, cards and rates; add decision reasons. Use versioned rate cards; do not mutate published rates in place. |
+| AH-5.2 Partner memberships | Merged | ADMIN roster with pagination/search/role/status filters; reasoned add/reactivate/role-change/deactivation; full before/after audit; last active OWNER and account eligibility safeguards. |
+| AH-5.3 Agreements/rate cards | Implemented on feature branch; CI/review/merge pending | ADMIN agreement/card list and detail reads; rate detail and minor-unit serialization; mandatory reasons for agreement activation/status and card publication; audit prior-card retirement. Published versions remain immutable. |
 | AH-5.4 Geography | Ready for basic CRUD UI | Verify current seed coverage before national launch; avoid unverified bulk import. |
 | AH-5.5 Service zones | Ready for basic CRUD/availability UI | Add hub roster/count read support if UI needs it; do not claim polygon geofencing. |
 | AH-5.6 Cross-resource integration | Requires backend hardening | Implement and test partner/hub lifecycle policy, read-model needs and audit consistency. |
 
 ## 10. Validation and scope
 
-AH-5.0 was documentation-only and introduced no runtime or schema changes. AH-5.1 and AH-5.2 add partner administration and membership read/update routes with audit behavior. These slices introduce no Prisma schema changes or migrations and do not alter quote calculation, customer prices, payments, refunds, partner settlement, production data or geography imports.
+AH-5.0 was documentation-only and introduced no runtime or schema changes. AH-5.1 and AH-5.2 add partner administration and membership read/update routes with audit behavior. AH-5.3 adds commercial history read routes and reasoned lifecycle audit behavior. These slices introduce no Prisma schema changes or migrations and do not alter quote calculation, customer prices, payments, refunds, partner settlement, production data or geography imports.
 
 The AH-5.0 source audit was performed against router mounts, route validators/controllers/services/repositories and Prisma model relationships. AH-5.1 adds route tests, PostgreSQL-gated integration coverage and OpenAPI parity validation; passing CI is still required before merge.
 
