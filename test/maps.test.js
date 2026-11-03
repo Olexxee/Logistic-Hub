@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { coordinatesSchema, geocodeInputSchema, routeInputSchema } from "../src/modules/maps/maps.schemas.js";
+import { autocompleteInputSchema, coordinatesSchema, geocodeInputSchema, placeDetailsInputSchema, routeInputSchema } from "../src/modules/maps/maps.schemas.js";
 import { createMapsProvider } from "../src/modules/maps/maps.provider.js";
 import { GoogleMapsProvider } from "../src/modules/maps/google-maps.provider.js";
 
@@ -21,6 +21,13 @@ test("map requests reject malformed addresses and routes", () => {
     origin: { latitude: 6.5, longitude: 3.4 },
     destination: { latitude: 200, longitude: 3.5 },
   }).success, false);
+});
+
+test("Places inputs validate identifiers and URL-safe session tokens", () => {
+  assert.equal(autocompleteInputSchema.safeParse({ input: "Ikeja", sessionToken: "3519edfe-0f75-4a30-bfe4-7cbd89340b2c" }).success, true);
+  assert.equal(autocompleteInputSchema.safeParse({ input: "Ikeja", sessionToken: "x".repeat(37) }).success, false);
+  assert.equal(autocompleteInputSchema.safeParse({ input: "Ikeja", sessionToken: "token with spaces" }).success, false);
+  assert.equal(placeDetailsInputSchema.safeParse({ placeId: "ChIJ123" }).success, true);
 });
 
 test("maps are explicitly unavailable when provider is none", () => {
