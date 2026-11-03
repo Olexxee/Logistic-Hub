@@ -131,6 +131,30 @@ export function createPartnerPricingAdminService({ prismaClient, clock = () => n
             }
           }
         }
+        if (["SUSPENDED", "CLOSED"].includes(statusInput.status)) {
+          const activeHubs = await tx.hubPoint.findMany({
+            where: { partnerId, status: "ACTIVE" },
+            select: { id: true, status: true },
+          });
+          if (activeHubs.length) {
+            await tx.hubPoint.updateMany({
+              where: { partnerId, status: "ACTIVE" },
+              data: { status: "SUSPENDED" },
+            });
+            for (const hub of activeHubs) {
+              await audit(tx, {
+                actorUserId,
+                entityType: "HUB_POINT",
+                entityId: hub.id,
+                action: "HUB_SUSPENDED_WITH_PARTNER",
+                reason,
+                before: { status: hub.status, partnerId },
+                after: { status: "SUSPENDED", partnerId, partnerStatus: statusInput.status },
+              });
+            }
+          }
+        }
+
         const updated = await tx.transportPartner.update({ where: { id: partnerId }, data: {
           status: statusInput.status,
           ...(statusInput.verificationStatus ? { verificationStatus: statusInput.verificationStatus } : {}),
