@@ -124,6 +124,100 @@ paths:
                       $ref: '#/components/schemas/ServiceZone'
         '400':
           $ref: '#/components/responses/ValidationError'
+  /maps/autocomplete:
+    post:
+      tags: [Maps]
+      operationId: autocompleteNigerianLocations
+      summary: Find Nigerian address and place suggestions
+      description: Uses Places Autocomplete (New). Suggestions are transient provider results and do not establish operational serviceability.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [input]
+              properties:
+                input: { type: string, minLength: 2, maxLength: 200 }
+                sessionToken: { type: string, minLength: 1, maxLength: 36, pattern: "^[A-Za-z0-9_-]+$" }
+      responses:
+        '200':
+          description: Up to five normalized place predictions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/PlacesAutocompleteResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: Maps provider is disabled or unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /maps/place-details:
+    post:
+      tags: [Maps]
+      operationId: getNigerianPlaceDetails
+      summary: Resolve a selected place prediction
+      description: Returns normalized coordinates and address components only when the selected place is in Nigeria. Provider content must be used and retained in accordance with Google Maps Platform policies.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [placeId]
+              properties:
+                placeId: { type: string, minLength: 1, maxLength: 256 }
+                sessionToken: { type: string, minLength: 1, maxLength: 36, pattern: "^[A-Za-z0-9_-]+$" }
+      responses:
+        '200':
+          description: Selected Nigerian place details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    $ref: '#/components/schemas/PlaceDetailsResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Place was not found or is outside Nigeria.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: Maps provider is disabled or unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /maps/geocode:
     post:
       tags: [Maps]
@@ -5944,6 +6038,44 @@ components:
                 $ref: '#/components/schemas/ServiceType'
               isEnabled:
                 type: boolean
+    PlacesAutocompleteResult:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [placeId, text, types]
+            properties:
+              placeId: { type: string }
+              text: { type: string }
+              mainText: { type: string }
+              secondaryText: { type: string }
+              types:
+                type: array
+                items: { type: string }
+    PlaceDetailsResult:
+      type: object
+      required: [placeId, formattedAddress, location, countryCode, addressComponents]
+      properties:
+        placeId: { type: string }
+        formattedAddress: { type: string }
+        location:
+          $ref: '#/components/schemas/Coordinates'
+        countryCode: { type: string, const: NG }
+        addressComponents:
+          type: array
+          items:
+            type: object
+            required: [longText, shortText, types]
+            properties:
+              longText: { type: string }
+              shortText: { type: string }
+              types:
+                type: array
+                items: { type: string }
     GeocodeResult:
       type: object
       required: [formattedAddress, location]

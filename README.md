@@ -16,7 +16,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - **AH-2:** hub applications and approval flow are implemented. Partner OWNERs can submit applications; ADMIN review creates a PENDING hub and manager membership. Hub activation remains a separate operation.
 - **AH-3:** hub manager/staff membership management implemented; hub-scoped managers can add operators, while manager assignment and privileged membership controls remain ADMIN-governed.
 - **AH-4:** explicit ADMIN-granted hub dispatch delegation implemented through the canDispatch capability; dispatch matching remains scoped to the exact active hub membership.
-- **AH-5:** AH-5.0 contract audit, AH-5.1 partner administration and AH-5.2 partner membership administration are merged. **AH-5.3 is implemented on the current feature branch, pending CI/review/merge:** ADMIN agreement list/detail and rate-card list/detail reads, route-specific rate detail with minor-unit strings, mandatory reasons for agreement activation/status decisions and rate-card publication, and audit records for retiring the prior active rate-card version. No schema change or migration. AH-5.4 geography data/UI verification, AH-5.5 service-zone UI, and AH-5.6 partner/hub lifecycle synchronization remain outstanding.
+- **AH-5:** AH-5.0 contract audit, AH-5.1 partner administration, AH-5.2 partner membership administration and AH-5.3 partner agreements/rate-card administration are merged. **AH-5.4 Google Maps location integration is in progress on `feat/ah-5.4-google-maps-location-integration`:** authenticated Nigeria-restricted Places Autocomplete and selected-place details, with existing geocoding constrained to Nigeria; no database migration is currently planned. The future first-party location-intelligence initiative is documented separately and is not part of AH-5.4. AH-5.5 service-zone UI and AH-5.6 partner/hub lifecycle synchronization remain outstanding.
 
 **AH-5 implementation gate:** frontend commercial screens must consume the implemented AH-5.3 endpoints and preserve rate-card version immutability. Agreement activation/status and rate-card publication require a reason. Partner suspension still does not synchronize partner-owned hub status; AH-5.6 must enforce the conservative policy: suspend partner-owned ACTIVE hubs with audit and block hub activation unless the owning partner is ACTIVE and VERIFIED.
 
@@ -472,6 +472,27 @@ Phase Three is complete only when all 3A–3F acceptance criteria are met, the p
 
 The canonical authentication contract is an HttpOnly refresh cookie plus a short-lived access token returned in JSON. The cookie is never returned in the response body; browser requests must include credentials and the trusted-origin CSRF header. The frontend-readiness and operational-workflow documents are reconciled to the mounted routes and current runtime behavior in this 3F-C slice.
 
+
+## Google Maps provider configuration
+
+The Maps API is disabled by default. To enable the server-side Google provider, set:
+
+- `MAPS_PROVIDER=google`
+- `GOOGLE_MAPS_API_KEY` to a server-side key stored only in the backend secret manager.
+
+Enable Places API (New), Geocoding API and Routes API for the Google Cloud project. Restrict the key to these APIs and apply an appropriate server-side application restriction where the hosting environment supports it. Never expose this key in frontend environment variables or browser code. Maps endpoints require authentication and share a persistent limit of 60 requests per user per minute. The backend restricts autocomplete and geocoding to Nigeria; this does not mean a location is covered by an active Logistic Hub service zone.
+
+When displaying Places predictions in the frontend, include the Google Maps attribution/logo required by the current Places API display policies; do not present Google-derived predictions as Logistic Hub's independently sourced directory. Customer pickup/drop-off and partner/hub address forms should use the same flow: debounce input and begin autocomplete after at least three characters → use one URL-safe UUID v4 session token for that search → resolve the selected place with the same token → discard the token → let the user confirm → submit the normalized address and coordinates to the existing booking or hub application contract. A selected address is not proof of serviceability; the backend's service-zone and operational checks remain authoritative.
+
+## Future roadmap — first-party location intelligence
+
+A future initiative may build Logistic Hub's own searchable geographic dataset from independently sourced, properly licensed and appropriately consented first-party location information. It is explicitly outside the current AH-5.4 implementation.
+
+- Keep customer delivery addresses private; do not turn personal address records into a public/shared directory.
+- Keep source provenance, consent, verification and confidence separate from operational serviceability.
+- Google Places content must not be copied into or used to build/augment a separate mapping database. Retain Google Place IDs and other Google-derived data only as permitted by the applicable Google Maps Platform terms and policies.
+- Any future first-party directory should use independently sourced or licensed geographic data (for example, OpenStreetMap data subject to its ODbL obligations), plus independently verified operational locations.
+- A future migration must separately assess address search, map tiles, geocoding, routing and navigation; replacing autocomplete alone does not replace those capabilities.
 
 ## Private support evidence storage
 
