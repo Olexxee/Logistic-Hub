@@ -242,7 +242,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         where: { userId },
         select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true },
       });
-      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || (profile.kycTier === "TEST_LIMITED" && env.DRIVER_KYC_MODE !== "TEST") || !profile.isOnline || !profile.isAvailable) {
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED")) || !profile.isOnline || !profile.isAvailable) {
         throw forbidden("A verified, online and available driver profile is required.");
       }
 
@@ -288,7 +288,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           where: { userId },
           select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true },
         });
-        if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || (profile.kycTier === "TEST_LIMITED" && env.DRIVER_KYC_MODE !== "TEST") || !profile.isOnline || !profile.isAvailable) {
+        if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED")) || !profile.isOnline || !profile.isAvailable) {
           throw forbidden("A verified, online and available driver profile is required.");
         }
 
