@@ -161,3 +161,22 @@ test("TEST_LIMITED parcel completion does not create a driver payout record",asy
   assert.equal(result.status,"COMPLETED");
   assert.equal(payoutCreated,false);
 });
+
+test("unverified driver cannot advance an assignment or consume a verification code",async()=>{
+  const assignment={
+    id:"unverified-assignment",status:"ACCEPTED",
+    driverProfile:{id:"driver-1",userId:"driver-user",verificationStatus:"PENDING",kycTier:"TEST_LIMITED",suspendedAt:null},
+  };
+  let tokenLookup=false;
+  const repository=createAssignmentsRepository({
+    $transaction:callback=>callback({
+      driverAssignment:{findUnique:async()=>assignment},
+      verificationToken:{findFirst:async()=>{tokenLookup=true;return{id:"token-1"};}},
+    }),
+  });
+  const transition=await repository.transition({assignmentId:assignment.id,driverUserId:"driver-user",nextStatus:"ARRIVED_AT_PICKUP",now:new Date()});
+  const verification=await repository.verifyCode({assignmentId:assignment.id,driverUserId:"driver-user",action:"PICKUP",tokenHash:"hash",now:new Date()});
+  assert.deepEqual(transition,{forbidden:true});
+  assert.deepEqual(verification,{forbidden:true});
+  assert.equal(tokenLookup,false);
+});
