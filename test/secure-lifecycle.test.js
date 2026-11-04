@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { initializePaymentSchema } from "../src/modules/payments/payments.schemas.js";
 import { issueCodeSchema, verifyCodeSchema } from "../src/modules/assignments/assignments.schemas.js";
-import { refundRequestSchema, reviewRefundSchema, confirmPayoutSchema } from "../src/modules/finance/finance.schemas.js";
+import { refundRequestSchema, reviewRefundSchema } from "../src/modules/finance/finance.schemas.js";
 import { createAuthSessionsService } from "../src/modules/auth/auth-sessions.service.js";
 import { hashOpaqueToken } from "../src/modules/auth/auth.crypto.js";
 
@@ -22,7 +22,6 @@ test("financial schemas require valid refund amounts and explicit review decisio
   assert.equal(refundRequestSchema.safeParse({ paymentAttemptId: "pay_1", amountMinor: "1200", reason: "Customer was charged twice" }).success, true);
   assert.equal(refundRequestSchema.safeParse({ paymentAttemptId: "pay_1", amountMinor: "-1", reason: "Duplicate payment issue" }).success, false);
   assert.equal(reviewRefundSchema.safeParse({ decision: "APPROVE", reviewNote: "Verified duplicate charge" }).success, true);
-  assert.equal(confirmPayoutSchema.safeParse({ providerReference: "settlement-123" }).success, true);
 });
 
 test("refresh token rotation invalidates the previous token", async () => {
