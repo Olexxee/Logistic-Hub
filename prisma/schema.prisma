@@ -31,6 +31,25 @@ enum UserStatus {
   CLOSED
 }
 
+enum DriverKycTier {
+  TEST_LIMITED
+  FULL
+}
+
+enum DriverDocumentType {
+  IDENTITY
+  DRIVER_LICENSE
+  VEHICLE_REGISTRATION
+  VEHICLE_INSURANCE
+  ROADWORTHINESS
+}
+
+enum DriverDocumentReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum VerificationStatus {
   NOT_SUBMITTED
   PENDING
@@ -362,6 +381,7 @@ model User {
   reportedOperationalCases OperationalCase[] @relation("OperationalCaseReporter")
   assignedOperationalCases OperationalCase[] @relation("OperationalCaseAssignee")
   createdPartnerAssignments PartnerDeliveryAssignment[] @relation("PartnerDeliveryAssignmentAssigner")
+  reviewedDriverDocuments DriverVerificationDocument[] @relation("DriverDocumentReviewer")
   driverProfile    DriverProfile?
   sentParcels      ParcelBooking[]    @relation("ParcelSender")
   rideBookings     RideBooking[]      @relation("RidePassenger")
@@ -449,6 +469,7 @@ model DriverProfile {
   id                  String             @id @default(cuid())
   userId              String             @unique
   verificationStatus  VerificationStatus @default(NOT_SUBMITTED)
+  kycTier             DriverKycTier       @default(FULL)
   suspendedAt         DateTime?
   suspensionReason    String?
   reinstatedAt        DateTime?
@@ -464,6 +485,7 @@ model DriverProfile {
 
   user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicles           Vehicle[]
+  verificationDocuments DriverVerificationDocument[]
   locations          DriverLocation[]
   coverage           DriverCoverage[]
   offers             DriverOffer[]
@@ -511,9 +533,35 @@ model Vehicle {
   updatedAt          DateTime           @updatedAt
 
   driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  verificationDocuments DriverVerificationDocument[]
 
   @@index([driverProfileId, isActive, verificationStatus])
   @@map("vehicles")
+}
+
+model DriverVerificationDocument {
+  id             String                     @id @default(cuid())
+  driverProfileId String
+  vehicleId      String?
+  mediaAssetId   String                     @unique
+  documentType   DriverDocumentType
+  reviewStatus   DriverDocumentReviewStatus @default(PENDING)
+  reviewReason   String?
+  reviewedAt     DateTime?
+  reviewedById   String?
+  expiresAt      DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  vehicle       Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  mediaAsset    MediaAsset    @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  reviewedBy    User?         @relation("DriverDocumentReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@index([driverProfileId, documentType, reviewStatus, createdAt])
+  @@index([vehicleId, documentType, reviewStatus, createdAt])
+  @@index([reviewStatus, createdAt])
+  @@map("driver_verification_documents")
 }
 
 model DriverLocation {
@@ -1264,6 +1312,7 @@ model MediaAsset {
 
   uploadedBy User @relation("MediaAssetUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
   ticketAttachments SupportTicketAttachment[]
+  driverVerificationDocument DriverVerificationDocument?
 
   @@index([uploadedById, createdAt])
   @@index([deletedAt, createdAt])
