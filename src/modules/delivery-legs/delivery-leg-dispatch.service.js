@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { env } from "../../config/env.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 import { createDeliveryLegDispatchRepository } from "./delivery-leg-dispatch.repository.js";
 
@@ -23,7 +24,7 @@ function conflict(code, message) {
   return new ConflictError(message, code);
 }
 function assertEligibleDriver(driver, leg, now) {
-  if (!driver || driver.verificationStatus !== "VERIFIED" || !driver.isOnline || !driver.isAvailable) return false;
+  if (!driver || driver.verificationStatus !== "VERIFIED" || driver.suspendedAt || (driver.kycTier === "TEST_LIMITED" && env.DRIVER_KYC_MODE !== "TEST") || !driver.isOnline || !driver.isAvailable) return false;
   if (!driver.lastLocationAt || driver.lastLocationAt > now || driver.lastLocationAt < new Date(now.getTime() - 5 * 60_000)) return false;
   const location = driver.locations?.[0];
   if (!location || location.recordedAt > now || location.recordedAt < new Date(now.getTime() - 5 * 60_000)) return false;
@@ -129,7 +130,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
 
     async listDriverOffers({ userId }) {
       const profile = await db.findDriverProfile(userId);
-      if (!profile || profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) {
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || (profile.kycTier === "TEST_LIMITED" && env.DRIVER_KYC_MODE !== "TEST") || !profile.isOnline || !profile.isAvailable) {
         throw new ForbiddenError("A verified, online and available driver profile is required.");
       }
       return (await db.findDriverOffers(profile.id, clock())).map(serializeDriverOffer);
@@ -143,7 +144,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         return await db.transaction(async (tx) => {
           const profile = await tx.driverProfile.findUnique({
             where: { userId },
-            select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
+            select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true },
           });
           if (!profile) throw new ForbiddenError("A verified driver profile is required.");
           const offer = await db.findOfferForDriver(tx, offerId);
@@ -280,7 +281,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const driverReserved = await tx.driverProfile.updateMany({
             where: {
               id: offer.driverProfileId,
-              verificationStatus: "VERIFIED", isOnline: true, isAvailable: true,
+              verificationStatus: "VERIFIED", kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] }, suspendedAt: null, isOnline: true, isAvailable: true,
               lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
               user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
               vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
