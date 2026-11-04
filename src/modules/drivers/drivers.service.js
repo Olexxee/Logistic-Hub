@@ -216,7 +216,8 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
           select: { id: true, userId: true, verificationStatus: true, kycTier: true, isOnline: true, isAvailable: true, suspendedAt: true },
         });
         if (!profile) return null;
-        if (!["PENDING", "REJECTED"].includes(profile.verificationStatus)) {
+        const isKycReassessment = profile.verificationStatus === "VERIFIED" && profile.kycTier === "UNASSESSED";
+        if (!["PENDING", "REJECTED"].includes(profile.verificationStatus) && !isKycReassessment) {
           throw conflict("DRIVER_NOT_REVIEWABLE", "Only pending or previously rejected driver applications can be reviewed.");
         }
 
@@ -284,7 +285,7 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
           actorUserId,
           entityType: "DRIVER_PROFILE",
           entityId: profile.id,
-          action: approved ? "DRIVER_VERIFICATION_APPROVED" : "DRIVER_VERIFICATION_REJECTED",
+          action: isKycReassessment ? (approved ? "DRIVER_KYC_REASSESSED" : "DRIVER_KYC_REASSESSMENT_REJECTED") : (approved ? "DRIVER_VERIFICATION_APPROVED" : "DRIVER_VERIFICATION_REJECTED"),
           reason,
           before: {
             verificationStatus: profile.verificationStatus,
@@ -298,6 +299,7 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
             isOnline: updated.isOnline,
             isAvailable: updated.isAvailable,
           },
+          metadata: { isKycReassessment },
         });
         return {
           id: updated.id,
