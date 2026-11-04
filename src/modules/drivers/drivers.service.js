@@ -136,6 +136,13 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
         if (!hasActiveVehicle || !hasEligibleCoverage) {
           throw conflict("DRIVER_NOT_READY", "At least one verified active vehicle and enabled coverage in an active service zone are required.");
         }
+        const activeAssignment = await prismaClient.driverAssignment.findFirst({
+          where: { driverProfileId: profile.id, status: { in: ["AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"] } },
+          select: { id: true },
+        });
+        if (activeAssignment) {
+          throw conflict("DRIVER_HAS_ACTIVE_ASSIGNMENT", "A driver with an active assignment cannot mark themselves available for another dispatch.");
+        }
       }
       const updated = await prismaClient.driverProfile.update({
         where: { id: profile.id },
