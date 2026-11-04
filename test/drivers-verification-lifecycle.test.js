@@ -128,3 +128,14 @@ test("test-limited driver approval does not require identity documents", async (
   assert.equal(result.kycTier, "TEST_LIMITED");
   assert.equal(fixture.state.profile.verificationStatus, "VERIFIED");
 });
+
+test("rejected test-tier driver can resubmit with an audited explanation without full KYC", async () => {
+  const fixture = transactionClient({ profile: { verificationStatus: "REJECTED", kycTier: "TEST_LIMITED" } });
+  const service = createDriversService({ prismaClient: fixture.prismaClient });
+  const result = await service.reapply({ userId: "user-1", reason: "Corrected my vehicle details and availability information." });
+  assert.equal(result.verificationStatus, "PENDING");
+  assert.equal(result.isOnline, false);
+  assert.equal(result.isAvailable, false);
+  assert.equal(fixture.events[0].action, "DRIVER_APPLICATION_RESUBMITTED");
+  assert.equal(fixture.events[0].actorUserId, "user-1");
+});
