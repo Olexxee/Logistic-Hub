@@ -13,6 +13,8 @@ export function createDriverAssignmentExpiryWorker({ prismaClient, clock = () =>
 
   async function expireOne(assignmentId, now) {
     return prismaClient.$transaction(async (tx) => {
+      // Serialize expiry against payment-attempt creation on the same assignment row.
+      await tx.$queryRaw`SELECT id FROM driver_assignments WHERE id = ${assignmentId} FOR UPDATE`;
       const assignment = await tx.driverAssignment.findUnique({
         where: { id: assignmentId },
         include: { parcelBooking: true, rideBooking: true, deliveryLeg: true },
