@@ -23,7 +23,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 ## Driver assignment lifecycle
 
-DRV-03 availability/location hardening and DRV-04A assignment lifecycle hardening are merged. DRV-04B PostgreSQL concurrency tests are in PR #95 with CI passed, pending merge. DRV-04C unpaid-reservation expiry/release is implemented in a stacked PR pending CI and review. See [Current Implementation Stopping Point](docs/current-implementation-status.md) for the exact completed/remaining work and [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md) for lifecycle invariants.
+DRV-03 availability/location hardening, DRV-04A assignment lifecycle hardening and DRV-04B PostgreSQL reservation-concurrency coverage are merged. DRV-04C unpaid-reservation expiry/release is implemented in PR #96; its CI passed and it is awaiting merge. See [Current Implementation Stopping Point](docs/current-implementation-status.md) for the exact completed/remaining work and [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md) for lifecycle invariants.
 
 ## Driver verification and staged KYC
 
@@ -33,7 +33,7 @@ Driver documents are stored privately through Cloudinary, signature-validated, a
 
 ## Runtime deployment model
 
-The API and outbox email worker run in one Node process. Deploy one Render Web Service with `npm start`; a separate worker service is no longer required. See [Current Implementation Stopping Point](docs/current-implementation-status.md).
+The API, outbox email worker and unpaid-assignment expiry worker run in one Node process. Deploy one Render Web Service with `npm start`; separate worker services are not required. See [Current Implementation Stopping Point](docs/current-implementation-status.md).
 
 ## Product blueprint
 
