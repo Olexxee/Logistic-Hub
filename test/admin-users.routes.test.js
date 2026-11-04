@@ -39,6 +39,8 @@ function makePrisma() {
   const tx = {
     user: {
       findUnique: async () => state.user,
+      findMany: async () => [state.user],
+      count: async () => 1,
       update: async ({ data }) => { state.user = { ...state.user, ...data }; return state.user; },
     },
     authSession: {
@@ -47,7 +49,7 @@ function makePrisma() {
     },
     operationalAuditEvent: { create: async ({ data }) => { state.audits.push(data); return data; } },
   };
-  return { state, prismaClient: { $transaction: async callback => callback(tx) } };
+  return { state, prismaClient: { user: { findMany: async () => [state.user], count: async () => 1 }, $transaction: async callback => callback(tx) } };
 }
 
 test("admin user controls reject non-admin users", async () => {
@@ -107,5 +109,31 @@ test("admin account actions require a reason", async () => {
     assert.equal(response.status, 400);
     assert.equal(state.user.status, "ACTIVE");
     assert.deepEqual(state.audits, []);
+  });
+});
+
+
+test("admin can search the user directory with bounded pagination", async () => {
+  const { prismaClient } = makePrisma();
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/admin/users?search=Test&page=1&limit=10`, {
+      headers: { "x-user-role": "ADMIN" },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.items.length, 1);
+    assert.equal(body.data.pagination.page, 1);
+    assert.equal(body.data.pagination.limit, 10);
+    assert.equal(body.data.pagination.total, 1);
+  });
+});
+
+test("non-admin users cannot access the user directory", async () => {
+  const { prismaClient } = makePrisma();
+  await withServer(createApp(prismaClient), async base => {
+    const response = await fetch(`${base}/api/v1/admin/users`, {
+      headers: { "x-user-role": "SUPPORT" },
+    });
+    assert.equal(response.status, 403);
   });
 });

@@ -8,6 +8,15 @@ export function createAdminUsersService({ prismaClient, clock = () => new Date()
   const repository = createAdminUsersRepository({ prismaClient });
 
   return {
+    async listUsers({ search, role, status, page = 1, limit = 25 }) {
+      const filters = { search, role, status };
+      const [items, total] = await Promise.all([
+        repository.listUsers({ ...filters, skip: (page - 1) * limit, take: limit }),
+        repository.countUsers(filters),
+      ]);
+      return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    },
+
     async updateStatus({ userId, status, reason, actorUserId }) {
       return repository.transaction(async tx => {
         const user = await repository.findUser(userId, tx);

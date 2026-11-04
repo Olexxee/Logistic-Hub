@@ -4,6 +4,11 @@ export function createAdminUsersController({ prismaClient, clock }) {
   const service = createAdminUsersService({ prismaClient, clock });
 
   return {
+    list: async (req, res) => {
+      const data = await service.listUsers(req.validated.query);
+      return res.status(200).json({ success: true, data });
+    },
+
     updateStatus: async (req, res) => {
       const result = await service.updateStatus({
         userId: req.params.userId,
