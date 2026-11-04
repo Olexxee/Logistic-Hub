@@ -13,7 +13,7 @@ const ALLOWED_TYPES = new Map([
   ["application/pdf", { extension: ".pdf", signature: b => b.length >= 5 && b.subarray(0,5).toString("ascii") === "%PDF-" }],
 ]);
 const DOCUMENT_TYPES = new Set(["IDENTITY","DRIVER_LICENSE","VEHICLE_REGISTRATION","VEHICLE_INSURANCE","ROADWORTHINESS"]);
-function safeName(value) { return (basename(String(value ?? "driver-document").replace(/[\u0000-\u001f\u007f]/g,"")).trim() || "driver-document").slice(0,160); }
+function safeName(value) { return (basename(String(value ?? "driver-document").replace(/\\/g,"/").replace(/[\u0000-\u001f\u007f]/g,"")).trim() || "driver-document").slice(0,160); }
 
 export function createDriverDocumentsService({ prismaClient, storage = createCloudinaryStorage(), legacyStorage = createFirebaseStorage() }) {
   async function ownProfile(userId) {
