@@ -62,3 +62,8 @@ ALTER TABLE "shipment_quotes"
       + "platformChargeMinor"
       + "otherChargesMinor"
   );
+
+
+CREATE UNIQUE INDEX "shipment_quotes_one_accepted_per_booking"
+  ON "shipment_quotes" ("parcelBookingId")
+  WHERE "status" = 'ACCEPTED';
