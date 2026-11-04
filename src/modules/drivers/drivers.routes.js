@@ -12,6 +12,7 @@ import {
   vehicleVerificationSchema,
 } from "./drivers.schemas.js";
 import { createDriversService } from "./drivers.service.js";
+import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { createDriversAdminRouter } from "./drivers.admin.routes.js";
 import { createDriverDocumentsRouter } from "./driver-documents.routes.js";
 
@@ -61,6 +62,14 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
       return next(error);
     }
   });
+
+  router.post("/me/reapply", authMiddleware, asyncWrapper(async (req, res) => {
+    const parsed = z.object({ reason: z.string().trim().min(10).max(500) }).strict().safeParse(req.body);
+    if (!parsed.success) return validationError(res, parsed.error.issues);
+    const result = await service.reapply({ userId: req.user.id, reason: parsed.data.reason });
+    if (!result) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Driver profile not found." } });
+    return res.status(200).json({ success: true, data: result });
+  }));
 
   router.patch("/availability", authMiddleware, requireDriver, async (req, res, next) => {
     const parsed = driverAvailabilitySchema.safeParse(req.body);
