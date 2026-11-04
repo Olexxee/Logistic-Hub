@@ -4729,47 +4729,6 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { description: Paystack reconciliation is temporarily unavailable. }
-  /finance/admin/payouts:
-    get:
-      tags: [Finance]
-      operationId: listFinancePayouts
-      summary: List payout requests for admin and support review
-      x-implementation-status: implemented
-      security:
-        - bearerAuth: []
-      responses:
-        '200': { description: Payout requests. }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-  /finance/admin/payouts/{payoutId}/confirm-settlement:
-    patch:
-      tags: [Finance]
-      operationId: confirmFinancePayoutSettlement
-      summary: Record confirmation of an off-platform payout settlement
-      x-implementation-status: implemented
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: payoutId
-          in: path
-          required: true
-          schema: { type: string, minLength: 1, maxLength: 128 }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [providerReference]
-              properties:
-                providerReference: { type: string, minLength: 3, maxLength: 128 }
-      responses:
-        '200': { description: Settlement confirmation recorded. }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
   /finance/admin/reconciliation:
     get:
       tags: [Finance]
