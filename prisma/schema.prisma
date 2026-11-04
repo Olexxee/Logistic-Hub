@@ -1208,6 +1208,7 @@ model VerificationToken {
   tokenHash        String                  @unique
   status           VerificationTokenStatus @default(ACTIVE)
   expiresAt        DateTime
+  failedAttempts   Int                     @default(0)
   consumedAt       DateTime?
   consumedByUserId String?
   createdAt        DateTime                @default(now())
