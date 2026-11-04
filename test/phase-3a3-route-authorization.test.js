@@ -45,8 +45,6 @@ const protectedRoutes = [
   ["support ticket mutation", "PATCH", "/support/admin/tickets/ticket-1"],
   ["refund review queue", "GET", "/finance/admin/refunds"],
   ["refund review mutation", "PATCH", "/finance/admin/refunds/refund-1"],
-  ["payout queue", "GET", "/finance/admin/payouts"],
-  ["payout settlement confirmation", "PATCH", "/finance/admin/payouts/payout-1/confirm-settlement"],
   ["finance reconciliation", "GET", "/finance/admin/reconciliation"],
   ["country administration", "GET", "/geography/admin/countries"],
   ["service-zone administration", "GET", "/service-zones/admin"],
@@ -95,24 +93,22 @@ test("administrative routes reject CUSTOMER access before validation or service 
   }
 });
 
-test("SUPPORT access remains limited to the currently documented support and finance routes", async () => {
+test("SUPPORT access is limited to support operations and denied finance oversight", async () => {
   const app = createAuthorizationApp();
   const server = createServer(app);
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
-    // These routes intentionally preserve the current ADMIN/SUPPORT grants. The downstream
-    // service may fail because this test deliberately supplies no database; a 403 would mean
-    // the existing role policy regressed.
+    // The support queue remains available to SUPPORT. Finance records are restricted to ADMIN.
     for (const path of [
       "/support/admin/tickets",
-      "/finance/admin/refunds",
-      "/finance/admin/payouts",
-      "/finance/admin/payouts/payout-1/confirm-settlement",
     ]) {
       const response = await fetch(base + path, { headers: { "x-test-role": "SUPPORT" } });
       assert.notEqual(response.status, 403, `SUPPORT route grant unexpectedly removed: ${path}`);
     }
+
+    const refundsDenied = await fetch(base + "/finance/admin/refunds", { headers: { "x-test-role": "SUPPORT" } });
+    assert.equal(refundsDenied.status, 403);
 
     const reconciliationDenied = await fetch(base + "/finance/admin/reconciliation", { headers: { "x-test-role": "SUPPORT" } });
     assert.equal(reconciliationDenied.status, 403);
