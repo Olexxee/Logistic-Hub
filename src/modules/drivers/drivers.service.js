@@ -218,7 +218,7 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
         if (!profile) return null;
         const isKycReassessment = profile.verificationStatus === "VERIFIED" && profile.kycTier === "UNASSESSED";
         if (!["PENDING", "REJECTED"].includes(profile.verificationStatus) && !isKycReassessment) {
-          throw conflict("DRIVER_NOT_REVIEWABLE", "Only pending or previously rejected driver applications can be reviewed.");
+          throw conflict("DRIVER_NOT_REVIEWABLE", "Only pending, previously rejected or explicitly unassessed legacy driver profiles can be reviewed.");
         }
 
         const approved = verificationStatus === "VERIFIED";
