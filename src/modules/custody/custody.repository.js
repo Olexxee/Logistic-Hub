@@ -113,7 +113,7 @@ export function createCustodyRepository({ prismaClient }) {
         where: {
           ...(status ? { status } : {}),
           ...(hubPointId ? { hubPointId } : {}),
-          ...(q ? { parcelBooking: { publicReference: { contains: q, mode: "insensitive" } } } : {}),
+          ...(q ? { parcelBooking: { is: { publicReference: { contains: q, mode: "insensitive" } } } } : {}),
         },
         orderBy: [{ initiatedAt: "desc" }, { id: "desc" }],
         take: limit + 1,
