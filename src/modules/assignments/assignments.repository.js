@@ -77,7 +77,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId)return {forbidden:true};
-    if(a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || !(a.driverProfile.kycTier==="FULL" || (env.DRIVER_KYC_MODE==="TEST" && a.driverProfile.kycTier==="TEST_LIMITED"))) return {forbidden:true};
+    if(a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || !(a.driverProfile.kycTier==="FULL" || (env.DRIVER_KYC_MODE==="TEST" && a.driverProfile.kycTier==="TEST_LIMITED")) || (a.rideBookingId && a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
     const isParcel=Boolean(a.parcelBookingId);const booking=a.parcelBooking||a.rideBooking;
     const tokenAction=action==="PICKUP"?(isParcel?"PARCEL_PICKUP":"RIDE_PICKUP"):(isParcel?"PARCEL_DELIVERY":"RIDE_COMPLETION");
     const token=await tx.verificationToken.findFirst({where:{...(isParcel?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),...(a.deliveryLegId?{deliveryLegId:a.deliveryLegId}:{}),action:tokenAction,tokenHash,status:"ACTIVE",expiresAt:{gt:now}}});
