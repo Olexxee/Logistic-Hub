@@ -49,7 +49,7 @@ function makePrisma() {
     },
     operationalAuditEvent: { create: async ({ data }) => { state.audits.push(data); return data; } },
   };
-  return { state, prismaClient: { $transaction: async callback => callback(tx) } };
+  return { state, prismaClient: { user: { findMany: async () => [state.user], count: async () => 1 }, $transaction: async callback => callback(tx) } };
 }
 
 test("admin user controls reject non-admin users", async () => {
