@@ -134,3 +134,64 @@ test("expired parcel booking cannot be reset when its delivery leg changed concu
   await assert.rejects(worker.runOnce(), { code: "DELIVERY_LEG_RELEASE_CONFLICT" });
   assert.equal(calls.some(([name]) => name === "bookingEvent.create"), false);
 });
+
+
+test("payment attempt creation locks and rechecks the active assignment before creating a charge attempt", async () => {
+  const { createPaymentsRepository } = await import("../src/modules/payments/payments.repository.js");
+  const calls = [];
+  const assignment = { id: "assignment_1", status: "AWAITING_PAYMENT", paymentExpiresAt: new Date(Date.now() + 60_000) };
+  const attempt = { id: "attempt_1", idempotencyKey: "payment-key-0001" };
+  const tx = {
+    $queryRaw: async (...args) => { calls.push(["lock", args]); return []; },
+    driverAssignment: {
+      findFirst: async (input) => { calls.push(["findReservation", input]); return { id: assignment.id }; },
+      findUnique: async (input) => { calls.push(["recheckReservation", input]); return assignment; },
+    },
+    paymentAttempt: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+      create: async ({ data }) => { calls.push(["createAttempt", data]); return attempt; },
+    },
+  };
+  const repository = createPaymentsRepository({ $transaction: async callback => callback(tx) });
+  const result = await repository.createAttempt({
+    parcelBookingId: "parcel_1",
+    provider: "PAYSTACK",
+    idempotencyKey: "payment-key-0001",
+    status: "INITIALIZED",
+    amountMinor: 1000n,
+    currency: "NGN",
+  });
+
+  assert.equal(result.id, "attempt_1");
+  assert.deepEqual(calls.map(([name]) => name), ["findReservation", "lock", "recheckReservation", "createAttempt"]);
+});
+
+test("payment attempt creation rejects a reservation that expired while waiting for its row lock", async () => {
+  const { createPaymentsRepository } = await import("../src/modules/payments/payments.repository.js");
+  const tx = {
+    $queryRaw: async () => [],
+    driverAssignment: {
+      findFirst: async () => ({ id: "assignment_1" }),
+      findUnique: async () => ({ status: "FAILED", paymentExpiresAt: new Date(Date.now() - 1_000) }),
+    },
+    paymentAttempt: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+      create: async () => { throw new Error("Must not create a payment attempt."); },
+    },
+  };
+  const repository = createPaymentsRepository({ $transaction: async callback => callback(tx) });
+
+  await assert.rejects(
+    repository.createAttempt({
+      parcelBookingId: "parcel_1",
+      provider: "PAYSTACK",
+      idempotencyKey: "payment-key-0002",
+      status: "INITIALIZED",
+      amountMinor: 1000n,
+      currency: "NGN",
+    }),
+    { code: "ASSIGNMENT_RESERVATION_EXPIRED", statusCode: 409 },
+  );
+});
