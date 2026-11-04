@@ -4,12 +4,12 @@ import { createDriverDocumentsService } from "../src/modules/drivers/driver-docu
 
 const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00]);
 function fixture() {
-  const state = { uploads: [], deletes: [], docs: [], audit: [], asset: null };
+  const state = { uploads: [], deletes: [], docs: [], audit: [], downloads: 0, asset: null };
   const tx = {
     mediaAsset: { create: async ({data}) => { state.asset = {id:"asset-1",...data}; return state.asset; } },
     driverVerificationDocument: {
       create: async ({data,include}) => {
-        const doc = {id:"doc-1",...data,createdAt:new Date("2026-11-04T12:00:00Z"),mediaAsset:{originalName:state.asset.originalName,mimeType:state.asset.mimeType,sizeBytes:state.asset.sizeBytes},vehicle:null};
+        const doc = {id:"doc-1",...data,createdAt:new Date("2026-11-04T12:00:00Z"),mediaAsset:state.asset,driverProfile:{userId:"user-1",user:{fullName:"Test Driver",email:null,phone:null}},vehicle:null};
         state.docs.push(doc); return doc;
       },
       findUnique: async () => state.docs[0] ?? null,
@@ -29,7 +29,7 @@ function fixture() {
     provider:"CLOUDINARY", bucket:"test-cloud",
     upload: async input => {state.uploads.push(input);return input.objectPath;},
     delete: async input => state.deletes.push(input),
-    download: async () => png,
+    download: async () => {state.downloads+=1;return png;},
   };
   return {state,service:createDriverDocumentsService({prismaClient,storage,legacyStorage:storage})};
 }
@@ -69,4 +69,21 @@ test("a driver cannot attach a vehicle document to another driver's vehicle",asy
   const {state,service}=fixture();
   await assert.rejects(service.uploadMine({user:{id:"user-1"},buffer:png,mimeType:"image/png",originalName:"registration.png",documentType:"VEHICLE_REGISTRATION",vehicleId:"vehicle-2"}),error=>error.statusCode===404);
   assert.equal(state.uploads.length,0);
+});
+
+test("driver cannot download another driver's private verification document",async()=>{
+  const {state,service}=fixture();
+  await service.uploadMine({user:{id:"user-1"},buffer:png,mimeType:"image/png",originalName:"identity.png",documentType:"IDENTITY"});
+  await assert.rejects(service.downloadDocument({documentId:"doc-1",user:{id:"other-user",role:"CUSTOMER"}}),error=>error.statusCode===404);
+  assert.equal(state.downloads,0);
+});
+
+test("Admin document download is allowed and audited",async()=>{
+  const {state,service}=fixture();
+  await service.uploadMine({user:{id:"user-1"},buffer:png,mimeType:"image/png",originalName:"identity.png",documentType:"IDENTITY"});
+  const result=await service.downloadDocument({documentId:"doc-1",user:{id:"admin-1",role:"ADMIN"}});
+  assert.equal(result.mimeType,"image/png");
+  assert.equal(result.buffer.equals(png),true);
+  assert.equal(state.downloads,1);
+  assert.equal(state.audit.at(-1).action,"DRIVER_VERIFICATION_DOCUMENT_DOWNLOADED");
 });
