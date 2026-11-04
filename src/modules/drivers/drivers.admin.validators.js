@@ -6,6 +6,7 @@ const pagination = {
 export const driverAdminListSchema = z.object({
   ...pagination,
   verificationStatus: z.enum(["NOT_SUBMITTED", "PENDING", "VERIFIED", "REJECTED", "EXPIRED"]).optional(),
+  kycTier: z.enum(["UNASSESSED", "TEST_LIMITED", "FULL"]).optional(),
 }).strict();
 export const vehicleAdminListSchema = z.object({
   ...pagination,
