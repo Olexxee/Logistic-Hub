@@ -286,9 +286,9 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         return await prismaClient.$transaction(async (tx) => {
         const profile = await tx.driverProfile.findUnique({
           where: { userId },
-          select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
+          select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true },
         });
-        if (!profile || profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) {
+        if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || (profile.kycTier === "TEST_LIMITED" && env.DRIVER_KYC_MODE !== "TEST") || !profile.isOnline || !profile.isAvailable) {
           throw forbidden("A verified, online and available driver profile is required.");
         }
 
@@ -431,6 +431,8 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           where: {
             id: offer.driverProfileId,
             verificationStatus: "VERIFIED",
+            kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] },
+            suspendedAt: null,
             isOnline: true,
             isAvailable: true,
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
