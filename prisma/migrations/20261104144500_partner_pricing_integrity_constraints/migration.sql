@@ -43,3 +43,22 @@ ALTER TABLE "parcel_bookings"
       )
     )
   );
+
+
+ALTER TABLE "shipment_quotes"
+  ADD CONSTRAINT "shipment_quotes_valid_charge_totals"
+  CHECK (
+    "transportChargeMinor" > 0
+    AND "collectionChargeMinor" >= 0
+    AND "hubHandlingChargeMinor" >= 0
+    AND "destinationDeliveryChargeMinor" >= 0
+    AND "platformChargeMinor" >= 0
+    AND "otherChargesMinor" >= 0
+    AND "totalCustomerChargeMinor" =
+      "transportChargeMinor"
+      + "collectionChargeMinor"
+      + "hubHandlingChargeMinor"
+      + "destinationDeliveryChargeMinor"
+      + "platformChargeMinor"
+      + "otherChargesMinor"
+  );
