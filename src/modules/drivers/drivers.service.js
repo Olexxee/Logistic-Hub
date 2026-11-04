@@ -1,3 +1,5 @@
+import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
+
 function forbidden(message = "You do not have permission to perform this action.") {
   const error = new Error(message);
   error.statusCode = 403;
@@ -171,13 +173,18 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
       };
     },
 
-    async reviewDriver({ driverProfileId, verificationStatus }) {
-      const profile = await prismaClient.driverProfile.findUnique({
-        where: { id: driverProfileId },
-        select: { id: true, userId: true },
-      });
-      if (!profile) return null;
+    async reviewDriver({ driverProfileId, verificationStatus, reason, actorUserId }) {
       return prismaClient.$transaction(async (tx) => {
+        const profile = await tx.driverProfile.findUnique({
+          where: { id: driverProfileId },
+          select: { id: true, userId: true, verificationStatus: true, isOnline: true, isAvailable: true, suspendedAt: true },
+        });
+        if (!profile) return null;
+        if (!["PENDING", "REJECTED"].includes(profile.verificationStatus)) {
+          throw conflict("DRIVER_NOT_REVIEWABLE", "Only pending or previously rejected driver applications can be reviewed.");
+        }
+
+        const approved = verificationStatus === "VERIFIED";
         const updated = await tx.driverProfile.update({
           where: { id: profile.id },
           data: {
@@ -187,9 +194,30 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
           },
           select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true, userId: true },
         });
+        await tx.vehicle.updateMany({
+          where: { driverProfileId: profile.id, verificationStatus: "VERIFIED" },
+          data: { isActive: approved && !profile.suspendedAt },
+        });
         await tx.user.update({
           where: { id: profile.userId },
-          data: { role: verificationStatus === "VERIFIED" ? "DRIVER" : "CUSTOMER" },
+          data: { role: approved ? "DRIVER" : "CUSTOMER" },
+        });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId,
+          entityType: "DRIVER_PROFILE",
+          entityId: profile.id,
+          action: approved ? "DRIVER_VERIFICATION_APPROVED" : "DRIVER_VERIFICATION_REJECTED",
+          reason,
+          before: {
+            verificationStatus: profile.verificationStatus,
+            isOnline: profile.isOnline,
+            isAvailable: profile.isAvailable,
+          },
+          after: {
+            verificationStatus: updated.verificationStatus,
+            isOnline: updated.isOnline,
+            isAvailable: updated.isAvailable,
+          },
         });
         return {
           id: updated.id,
@@ -201,16 +229,42 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
       });
     },
 
-    async reviewVehicle({ vehicleId, verificationStatus }) {
-      const vehicle = await prismaClient.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true } });
-      if (!vehicle) return null;
-      return prismaClient.vehicle.update({
-        where: { id: vehicle.id },
-        data: {
-          verificationStatus,
-          isActive: verificationStatus === "VERIFIED",
-        },
-        select: { id: true, verificationStatus: true, isActive: true },
+    async reviewVehicle({ vehicleId, verificationStatus, reason, actorUserId }) {
+      return prismaClient.$transaction(async (tx) => {
+        const vehicle = await tx.vehicle.findUnique({
+          where: { id: vehicleId },
+          select: {
+            id: true,
+            driverProfileId: true,
+            verificationStatus: true,
+            isActive: true,
+            driverProfile: { select: { verificationStatus: true, suspendedAt: true } },
+          },
+        });
+        if (!vehicle) return null;
+        if (!["PENDING", "REJECTED"].includes(vehicle.verificationStatus)) {
+          throw conflict("VEHICLE_NOT_REVIEWABLE", "Only pending or previously rejected vehicles can be reviewed.");
+        }
+        const approved = verificationStatus === "VERIFIED";
+        const updated = await tx.vehicle.update({
+          where: { id: vehicle.id },
+          data: {
+            verificationStatus,
+            isActive: approved && vehicle.driverProfile.verificationStatus === "VERIFIED" && !vehicle.driverProfile.suspendedAt,
+          },
+          select: { id: true, verificationStatus: true, isActive: true, driverProfileId: true },
+        });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId,
+          entityType: "VEHICLE",
+          entityId: vehicle.id,
+          action: approved ? "DRIVER_VEHICLE_VERIFICATION_APPROVED" : "DRIVER_VEHICLE_VERIFICATION_REJECTED",
+          reason,
+          before: { verificationStatus: vehicle.verificationStatus, isActive: vehicle.isActive },
+          after: { verificationStatus: updated.verificationStatus, isActive: updated.isActive },
+          metadata: { driverProfileId: vehicle.driverProfileId },
+        });
+        return { id: updated.id, verificationStatus: updated.verificationStatus, isActive: updated.isActive };
       });
     },
 

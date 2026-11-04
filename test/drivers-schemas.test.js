@@ -29,6 +29,7 @@ test("driver location coordinates are bounded", () => {
 });
 
 test("only explicit verification decisions are accepted", () => {
-  assert.equal(driverVerificationSchema.safeParse({ verificationStatus: "VERIFIED" }).success, true);
-  assert.equal(driverVerificationSchema.safeParse({ verificationStatus: "PENDING" }).success, false);
+  assert.equal(driverVerificationSchema.safeParse({ verificationStatus: "VERIFIED", reason: "Identity documents reviewed" }).success, true);
+  assert.equal(driverVerificationSchema.safeParse({ verificationStatus: "PENDING", reason: "Identity documents reviewed" }).success, false);
+  assert.equal(driverVerificationSchema.safeParse({ verificationStatus: "REJECTED", reason: "No" }).success, false);
 });
