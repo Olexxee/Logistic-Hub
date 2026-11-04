@@ -23,6 +23,7 @@ test("driver eligibility requires verified profile, verified vehicle, and curren
   let zone;
   let availability;
   let user;
+  let reviewerUser;
   let profile;
   let vehicle;
   let server;
@@ -37,6 +38,7 @@ test("driver eligibility requires verified profile, verified vehicle, and curren
       data: { serviceZoneId: zone.id, serviceType: "PARCEL_DELIVERY", isEnabled: true },
     });
     user = await prisma.user.create({ data: { fullName: `Priority 3 Driver ${suffix}` } });
+    reviewerUser = await prisma.user.create({ data: { fullName: `Priority 3 Admin ${suffix}`, role: "ADMIN" } });
     profile = await prisma.driverProfile.create({
       data: { userId: user.id, verificationStatus: "PENDING", isOnline: false, isAvailable: false },
     });
@@ -69,13 +71,13 @@ test("driver eligibility requires verified profile, verified vehicle, and curren
       (error) => error.statusCode === 403,
     );
 
-    await service.reviewDriver({ driverProfileId: profile.id, verificationStatus: "VERIFIED", reason: "Integration test driver verification approval", actorUserId: user.id });
+    await service.reviewDriver({ driverProfileId: profile.id, verificationStatus: "VERIFIED", reason: "Integration test driver verification approval", actorUserId: reviewerUser.id });
     await assert.rejects(
       service.setAvailability({ userId: user.id, input: { isOnline: true, isAvailable: true } }),
       (error) => error.code === "DRIVER_NOT_READY",
     );
 
-    await service.reviewVehicle({ vehicleId: vehicle.id, verificationStatus: "VERIFIED", reason: "Integration test vehicle verification approval", actorUserId: user.id });
+    await service.reviewVehicle({ vehicleId: vehicle.id, verificationStatus: "VERIFIED", reason: "Integration test vehicle verification approval", actorUserId: reviewerUser.id });
     await prisma.serviceAvailability.update({ where: { id: availability.id }, data: { isEnabled: false } });
     await assert.rejects(
       service.setAvailability({ userId: user.id, input: { isOnline: true, isAvailable: true } }),
@@ -102,6 +104,7 @@ test("driver eligibility requires verified profile, verified vehicle, and curren
     if (profile) await prisma.driverCoverage.deleteMany({ where: { driverProfileId: profile.id } });
     if (vehicle) await prisma.vehicle.deleteMany({ where: { id: vehicle.id } });
     if (profile) await prisma.driverProfile.deleteMany({ where: { id: profile.id } });
+    if (reviewerUser) await prisma.user.deleteMany({ where: { id: reviewerUser.id } });
     if (user) await prisma.user.deleteMany({ where: { id: user.id } });
     if (availability) await prisma.serviceAvailability.deleteMany({ where: { id: availability.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
