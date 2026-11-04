@@ -18,7 +18,20 @@ export function createHubPointsRouter({ prismaClient = prisma, authMiddleware = 
   const router = Router();
   const service = createHubPointsService({ prismaClient });
   const admin = createHubPointsAdminController({ prismaClient });
+  const operators = createHubOperatorsAdminController({ prismaClient });
   const requireAdmin = roleMiddleware("ADMIN");
+
+  const validate = (schema, source = "body") => (req, res, next) => {
+    const parsed = schema.safeParse(req[source]);
+    if (!parsed.success) return res.status(400).json({ success: false, error: {
+      code: "VALIDATION_ERROR",
+      message: "One or more fields are invalid.",
+      details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
+    } });
+    req[source] = parsed.data;
+    if (source === "query") req.validatedQuery = parsed.data;
+    return next();
+  };
 
   router.get("/admin", authMiddleware, requireAdmin, admin.list);
   router.post("/admin", authMiddleware, requireAdmin, admin.create);
