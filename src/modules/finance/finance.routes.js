@@ -8,7 +8,6 @@ import { createFinanceController } from "./finance.controller.js";
 import {
   refundRequestSchema,
   reviewRefundSchema,
-  confirmPayoutSchema,
 } from "./finance.schemas.js";
 
 export function requireFinanceIdempotencyKey(req, res, next) {
@@ -33,8 +32,6 @@ export function createFinanceRouter({
   const router = Router();
   const controller = createFinanceController(createFinanceService({ prismaClient }));
   const refundId = z.object({ refundId: z.string().trim().min(1).max(128) });
-  const payoutId = z.object({ payoutId: z.string().trim().min(1).max(128) });
-  const supportFinanceAccess = roleMiddleware("ADMIN", "SUPPORT");
   const adminAccess = roleMiddleware("ADMIN");
 
   router.post(
@@ -45,7 +42,7 @@ export function createFinanceRouter({
     requireFinanceIdempotencyKey,
     controller.requestRefund,
   );
-  router.get("/admin/refunds", authMiddleware, supportFinanceAccess, controller.refunds);
+  router.get("/admin/refunds", authMiddleware, adminAccess, controller.refunds);
   router.post("/admin/refunds/:refundId/reconcile", authMiddleware, adminAccess, validate(refundId, "params"), controller.reconcileRefund);
   router.patch(
     "/admin/refunds/:refundId",
@@ -54,15 +51,6 @@ export function createFinanceRouter({
     validate(refundId, "params"),
     validate(reviewRefundSchema),
     controller.reviewRefund,
-  );
-  router.get("/admin/payouts", authMiddleware, supportFinanceAccess, controller.payouts);
-  router.patch(
-    "/admin/payouts/:payoutId/confirm-settlement",
-    authMiddleware,
-    supportFinanceAccess,
-    validate(payoutId, "params"),
-    validate(confirmPayoutSchema),
-    controller.confirmPayout,
   );
   router.get("/admin/reconciliation", authMiddleware, adminAccess, controller.reconciliation);
 
