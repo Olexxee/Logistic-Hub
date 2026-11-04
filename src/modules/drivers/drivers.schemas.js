@@ -25,13 +25,14 @@ export const driverLocationSchema = z.object({
   accuracyMeters: z.number().finite().min(0).max(10000).optional(),
 }).strict();
 
-export const driverVerificationSchema = z.object({
+const verificationReviewFields = {
   verificationStatus: z.enum(["VERIFIED", "REJECTED"]),
-}).strict();
+  reason: z.string().trim().min(10).max(500),
+};
 
-export const vehicleVerificationSchema = z.object({
-  verificationStatus: z.enum(["VERIFIED", "REJECTED"]),
-}).strict();
+export const driverVerificationSchema = z.object(verificationReviewFields).strict();
+
+export const vehicleVerificationSchema = z.object(verificationReviewFields).strict();
 
 export const driverCoverageSchema = z.object({
   driverProfileId: z.string().trim().min(1).max(128),
