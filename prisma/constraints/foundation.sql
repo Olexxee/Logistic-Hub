@@ -1,6 +1,6 @@
 -- Supplemental PostgreSQL integrity constraints.
--- Immutable initial-constraint snapshot, applied as part of the initial Prisma migration.
--- Keep this file and the migration suffix identical; CI validates this invariant.
+-- Immutable foundation-integrity migration snapshot.
+-- Keep this file and the timestamped migration SQL identical; CI validates this invariant.
 -- Add future integrity changes through new timestamped migrations, not by rewriting this snapshot.
 
 -- A polymorphic booking reference must point to exactly one booking type.

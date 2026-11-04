@@ -8,7 +8,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 - [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, API contracts, role taxonomy, authorization boundaries and implementation blockers.
 - [AH-5 Partner & Geography contract audit](docs/ah-5-contract-audit.md) — AH-5.0 source-verified partner, membership, agreement, rate-card, geography, service-zone and hub integration readiness.
-- [Nigeria Geography Reference Data side quest](docs/nigeria-geography-reference-data.md) — scope, safety rules and acceptance criteria for validating and importing Nigeria's country/state/LGA reference hierarchy.
+- [Nigeria geography reference data](docs/nigeria-geography-reference-data.md) — source attribution, 37 state-level units, 774 LGAs/Area Councils and the safe dry-run/apply seed workflow.
 
 ### Admin & Hub Management progress
 

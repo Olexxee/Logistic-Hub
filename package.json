@@ -14,9 +14,10 @@
     "db:generate": "prisma generate",
     "test": "node --test",
     "api:validate": "node scripts/validate-openapi.js && node scripts/validate-route-contract.js",
-    "db:validate-initial-migration": "node scripts/validate-initial-migration.js",
+    "db:validate-foundation-constraints": "node scripts/validate-foundation-constraints.js",
     "postinstall": "npm run db:generate",
-    "worker": "node src/workers/worker.js"
+    "worker": "node src/workers/worker.js",
+    "db:seed:nigeria": "node scripts/seed-nigeria-geography.js"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
