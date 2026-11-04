@@ -33,6 +33,7 @@ function createHarness({
     ...assignment,
   };
   const tx = {
+    $queryRaw: async () => [],
     driverAssignment: {
       findUnique: async () => defaultAssignment,
       updateMany: async (input) => { calls.push(["assignment.updateMany", input]); return { count: assignmentUpdateCount }; },
