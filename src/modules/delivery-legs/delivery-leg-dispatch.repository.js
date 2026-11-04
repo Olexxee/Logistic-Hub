@@ -1,3 +1,5 @@
+import { env } from "../../config/env.js";
+
 const ACTIVE_ASSIGNMENT_STATUSES = [
   "AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED",
   "IN_PROGRESS", "ARRIVED_AT_DESTINATION",
@@ -33,6 +35,8 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
       return tx.driverProfile.findMany({
         where: {
           verificationStatus: "VERIFIED",
+          kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] },
+          suspendedAt: null,
           isOnline: true,
           isAvailable: true,
           lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
@@ -76,7 +80,7 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
     findDriverProfile(userId) {
       return prismaClient.driverProfile.findUnique({
         where: { userId },
-        select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
+        select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true },
       });
     },
     findDriverOffers(profileId, now) {

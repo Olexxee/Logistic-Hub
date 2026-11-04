@@ -35,7 +35,7 @@ export function createRideDispatchService({ prismaClient, clock = () => new Date
         if (ride.status !== "DRAFT") throw failure(409, "RIDE_STATE_CONFLICT", "Only a draft ride can request driver offers.");
         const drivers = await tx.driverProfile.findMany({
           where: {
-            verificationStatus: "VERIFIED", isOnline: true, isAvailable: true,
+            verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true,
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
             vehicles: { some: { type: ride.vehicleType, isActive: true, verificationStatus: "VERIFIED" } },
             coverage: { some: { serviceZoneId: ride.pickupServiceZoneId, serviceType: "PASSENGER_RIDE", isEnabled: true } },
@@ -84,9 +84,9 @@ export function createRideDispatchService({ prismaClient, clock = () => new Date
 
     async listDriverOffers({ userId }) {
       const profile = await prismaClient.driverProfile.findUnique({
-        where: { userId }, select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
+        where: { userId }, select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true },
       });
-      if (!profile || profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) {
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.kycTier !== "FULL" || profile.suspendedAt || !profile.isOnline || !profile.isAvailable) {
         throw forbidden();
       }
       const offers = await prismaClient.driverOffer.findMany({
@@ -118,7 +118,7 @@ export function createRideDispatchService({ prismaClient, clock = () => new Date
           return { offerId: existing.id, status: existing.status, proposedFareMinor: existing.proposedFareMinor?.toString(), expiresAt: existing.expiresAt, replay: true };
         }
         const profile = await tx.driverProfile.findUnique({ where: { userId }, select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true } });
-        if (!profile || profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) throw forbidden();
+        if (!profile || profile.verificationStatus !== "VERIFIED" || profile.kycTier !== "FULL" || profile.suspendedAt || !profile.isOnline || !profile.isAvailable) throw forbidden();
         const offer = await tx.driverOffer.findUnique({ where: { id: offerId }, include: { rideBooking: true } });
         if (!offer || offer.driverProfileId !== profile.id || !offer.rideBookingId || offer.status !== "OFFERED" ||
             offer.proposedFareMinor != null || offer.expiresAt <= now || offer.rideBooking?.status !== "MATCHING") {

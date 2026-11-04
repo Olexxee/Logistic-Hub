@@ -1,14 +1,14 @@
 export function createDriversAdminRepository({ prismaClient }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
   return {
-    async listDrivers({ verificationStatus, page, limit }) {
-      const where = verificationStatus ? { verificationStatus } : {};
+    async listDrivers({ verificationStatus, kycTier, page, limit }) {
+      const where = { ...(verificationStatus ? { verificationStatus } : {}), ...(kycTier ? { kycTier } : {}) };
       const [items, total] = await Promise.all([
         prismaClient.driverProfile.findMany({
           where, orderBy: [{ createdAt: "desc" }, { id: "asc" }],
           skip: (page - 1) * limit, take: limit,
           select: {
-            id: true, verificationStatus: true, suspendedAt: true, suspensionReason: true, reinstatedAt: true, isOnline: true, isAvailable: true,
+            id: true, verificationStatus: true, kycTier: true, suspendedAt: true, suspensionReason: true, reinstatedAt: true, isOnline: true, isAvailable: true,
             serviceRadiusMeters: true, averageRating: true, completedJobs: true,
             cancelledJobs: true, lastLocationAt: true, createdAt: true, updatedAt: true,
             user: { select: { id: true, fullName: true, email: true, phone: true, status: true, createdAt: true } },

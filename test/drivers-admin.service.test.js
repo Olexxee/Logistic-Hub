@@ -39,3 +39,17 @@ test("driver admin list rejects invalid verification status", () => {
 test("vehicle admin list rejects unbounded page sizes", () => {
   assert.equal(vehicleAdminListSchema.safeParse({ limit: "1000" }).success, false);
 });
+
+test("driver admin list filters by KYC tier to expose legacy profiles for reassessment", async () => {
+  let findArgs, countArgs;
+  const prismaClient = { driverProfile: {
+    findMany: async args => { findArgs = args; return []; },
+    count: async args => { countArgs = args; return 3; },
+  } };
+  const service = createDriversAdminService({ prismaClient });
+  const query = driverAdminListSchema.parse({ kycTier: "UNASSESSED" });
+  const result = await service.listDrivers(query);
+  assert.deepEqual(findArgs.where, { kycTier: "UNASSESSED" });
+  assert.deepEqual(countArgs.where, { kycTier: "UNASSESSED" });
+  assert.equal(result.total, 3);
+});

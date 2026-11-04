@@ -49,7 +49,7 @@ const allowedOrigins = env.CORS_ORIGINS
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF", "X-File-Content-Type", "X-File-Name"] }));
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF", "X-File-Content-Type", "X-File-Name", "X-Document-Type", "X-Vehicle-ID"] }));
 app.use(express.json({
   limit: "1mb",
   verify: (req, _res, buffer) => {
