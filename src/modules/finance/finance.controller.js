@@ -22,18 +22,6 @@ export function createFinanceController(service) {
       const data = await service.listRefunds({ status: req.query.status });
       res.status(200).json({ success: true, data });
     }),
-    payouts: asyncWrapper(async (req, res) => {
-      const data = await service.listPayouts({ status: req.query.status });
-      res.status(200).json({ success: true, data });
-    }),
-    confirmPayout: asyncWrapper(async (req, res) => {
-      const data = await service.confirmPayout({
-        id: req.params.payoutId,
-        providerReference: req.body.providerReference,
-        user: req.user,
-      });
-      res.status(200).json({ success: true, data });
-    }),
     reconciliation: asyncWrapper(async (_req, res) => {
       const data = await service.reconciliation();
       res.status(200).json({ success: true, data });
