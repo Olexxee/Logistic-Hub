@@ -1,4 +1,5 @@
 import test from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { createDeliveryLegDispatchService } from "../src/modules/delivery-legs/delivery-leg-dispatch.service.js";
 
@@ -261,4 +262,49 @@ test("hub dispatch delegation cannot accept fare proposals or create assignments
     }),
     error => error.statusCode === 403,
   );
+});
+
+
+test("a repeated fare proposal replays after the driver becomes unavailable", async () => {
+  const offerId = "offer_retry";
+  const idempotencyKey = "driver-fare-retry-after-acceptance";
+  const proposedFareMinor = "2500";
+  const proposalPayloadHash = createHash("sha256")
+    .update(JSON.stringify({ offerId, proposedFareMinor }))
+    .digest("hex");
+  const repository = {
+    transaction: callback => callback({
+      driverProfile: {
+        findUnique: async () => ({
+          id: "profile_1",
+          verificationStatus: "VERIFIED",
+          isOnline: true,
+          isAvailable: false,
+        }),
+      },
+    }),
+    findOfferForDriver: async () => ({
+      id: offerId,
+      driverProfileId: "profile_1",
+      status: "ACCEPTED",
+      proposedFareMinor: 2500n,
+      proposalIdempotencyKey: idempotencyKey,
+      proposalPayloadHash,
+      currency: "NGN",
+    }),
+    updateOffer: async () => {
+      throw new Error("An idempotent replay must not update the offer.");
+    },
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  const result = await service.proposeFare({
+    offerId,
+    userId: "driver_user_1",
+    proposedFareMinor,
+    idempotencyKey,
+  });
+
+  assert.equal(result.replay, true);
+  assert.equal(result.status, "ACCEPTED");
+  assert.equal(result.proposedFareMinor, proposedFareMinor);
 });
