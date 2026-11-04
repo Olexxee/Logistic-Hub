@@ -160,8 +160,6 @@ async function shutdown(signal, exitCode = 0) {
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
     });
 
-    await stopOutboxWorker(signal);
-
     const forceExitTimer = setTimeout(() => {
       log("error", "server.shutdown.timeout", {
         timeoutMs: SHUTDOWN_TIMEOUT_MS,
@@ -170,6 +168,8 @@ async function shutdown(signal, exitCode = 0) {
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
     forceExitTimer.unref();
+
+    await stopOutboxWorker(signal);
 
     try {
       await new Promise((resolve, reject) => {
