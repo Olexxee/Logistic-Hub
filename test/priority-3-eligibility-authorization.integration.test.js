@@ -69,13 +69,13 @@ test("driver eligibility requires verified profile, verified vehicle, and curren
       (error) => error.statusCode === 403,
     );
 
-    await service.reviewDriver({ driverProfileId: profile.id, verificationStatus: "VERIFIED" });
+    await service.reviewDriver({ driverProfileId: profile.id, verificationStatus: "VERIFIED", reason: "Integration test driver verification approval", actorUserId: user.id });
     await assert.rejects(
       service.setAvailability({ userId: user.id, input: { isOnline: true, isAvailable: true } }),
       (error) => error.code === "DRIVER_NOT_READY",
     );
 
-    await service.reviewVehicle({ vehicleId: vehicle.id, verificationStatus: "VERIFIED" });
+    await service.reviewVehicle({ vehicleId: vehicle.id, verificationStatus: "VERIFIED", reason: "Integration test vehicle verification approval", actorUserId: user.id });
     await prisma.serviceAvailability.update({ where: { id: availability.id }, data: { isEnabled: false } });
     await assert.rejects(
       service.setAvailability({ userId: user.id, input: { isOnline: true, isAvailable: true } }),
