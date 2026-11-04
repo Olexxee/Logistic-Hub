@@ -19,7 +19,7 @@ export function createCloudinaryStorage({ client = cloudinary.v2, fetchImpl = fe
     async upload({ objectPath, buffer, mimeType }) {
       configure();
       const type = resourceType(mimeType);
-      const publicId = type === "raw" ? objectPath : objectPath.replace(/\\.[^.]+$/, "");
+      const publicId = type === "raw" ? objectPath : objectPath.replace(/\.[^.]+$/, "");
       try {
         const result = await client.uploader.upload(`data:${mimeType};base64,${buffer.toString("base64")}`, {
           public_id: publicId, resource_type: type, type: "authenticated",
