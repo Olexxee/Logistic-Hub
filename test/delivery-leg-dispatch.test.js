@@ -315,3 +315,18 @@ test("a repeated fare proposal replays after the driver becomes unavailable", as
   assert.equal(result.status, "ACCEPTED");
   assert.equal(result.proposedFareMinor, proposedFareMinor);
 });
+
+test("TEST_LIMITED driver can receive parcel delivery offers in TEST mode",async()=>{
+  let offers=[];
+  const testDriver={...validDriver("test-limited-driver"),kycTier:"TEST_LIMITED"};
+  const repository={
+    transaction:callback=>callback({}),findLeg:async()=>leg,listActiveOffers:async()=>[],
+    findEligibleDrivers:async()=>[testDriver],
+    createOffers:async(_tx,data)=>{offers=data;return{count:data.length};},
+    recordEvent:async()=>{},
+  };
+  const service=createDeliveryLegDispatchService({prismaClient:{},repository,clock:()=>now});
+  const result=await service.requestOffers({legId:leg.id,user:{id:"sender_1",role:"CUSTOMER"}});
+  assert.equal(result.offersCreated,1);
+  assert.equal(offers[0].driverProfileId,"test-limited-driver");
+});
