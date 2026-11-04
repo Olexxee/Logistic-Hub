@@ -1251,7 +1251,7 @@ model SupportTicketMessage {
 
 model MediaAsset {
   id             String    @id @default(cuid())
-  storageProvider String   @default("FIREBASE")
+  storageProvider String   @default("CLOUDINARY")
   bucket         String
   objectPath     String    @unique
   originalName   String
