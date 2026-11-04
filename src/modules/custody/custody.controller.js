@@ -98,6 +98,14 @@ export function createCustodyController(service) {
       if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "The custody handover is no longer awaiting confirmation." } });
       return res.status(200).json({ success: true, data: result });
     },
+    listAdminCustodyHandovers: async (req, res) => {
+      const result = await service.listAdminCustodyHandovers(req.validatedQuery);
+      return res.status(200).json({ success: true, data: result });
+    },
+    listAdminHubIntakes: async (req, res) => {
+      const result = await service.listAdminHubIntakes(req.validatedQuery);
+      return res.status(200).json({ success: true, data: result });
+    },
     listHubIntakes: async (req, res) => {
       const result = await service.listHubIntakes({ ...req.validatedQuery, userId: req.user.id });
       return res.status(200).json({ success: true, data: result });

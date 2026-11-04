@@ -115,6 +115,21 @@ const handoverDecisionSchema = z.object({
   return !any || all;
 }, { message: "Provide all parcel dimensions or none." });
 
+const adminCustodyQuerySchema = z.object({
+  status: z.enum(["PENDING_CONFIRMATION", "CONFIRMED", "REJECTED", "CANCELLED", "EXPIRED"]).optional(),
+  hubPointId: id.optional(),
+  q: z.string().trim().min(2).max(64).optional(),
+  cursor: id.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
+const adminIntakesQuerySchema = z.object({
+  status: z.enum(["RECEIVED", "RELEASED", "EXCEPTION"]).optional(),
+  hubPointId: id.optional(),
+  q: z.string().trim().min(2).max(64).optional(),
+  cursor: id.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
+
 function validate(schema) {
   return (req, res, next) => {
     const parsed = schema.safeParse(req.body);
@@ -126,6 +141,18 @@ function validate(schema) {
     return next();
   };
 }
+function validateQuery(schema) {
+  return (req, res, next) => {
+    const parsed = schema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ success: false, error: {
+      code: "VALIDATION_ERROR", message: "One or more query parameters are invalid.",
+      details: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })),
+    } });
+    req.validatedQuery = parsed.data;
+    return next();
+  };
+}
+
 function validateParams(req, res, next) {
   if (Object.values(req.params).some(value => !id.safeParse(value).success)) {
     return res.status(400).json({ success: false, error: { code: "VALIDATION_ERROR", message: "A valid identifier is required." } });
@@ -139,6 +166,8 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
   const controller = createCustodyController(service);
   const admin = roleMiddleware("ADMIN");
 
+  router.get("/admin/custody-handovers", authMiddleware, admin, validateQuery(adminCustodyQuerySchema), asyncWrapper(controller.listAdminCustodyHandovers));
+  router.get("/admin/hub-intakes", authMiddleware, admin, validateQuery(adminIntakesQuerySchema), asyncWrapper(controller.listAdminHubIntakes));
   router.patch("/admin/users/:userId/phone-verification", authMiddleware, admin, validateParams, validate(phoneVerificationSchema), asyncWrapper(controller.setRecipientPhoneVerification));
   router.get("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, (req, res, next) => {
     const parsed = hubOperatorsQuerySchema.safeParse(req.query);
