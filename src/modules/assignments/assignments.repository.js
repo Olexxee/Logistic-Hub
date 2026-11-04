@@ -1,5 +1,19 @@
 import { prisma } from "../../db/prisma.js";
 import { env } from "../../config/env.js";
+
+const ASSIGNMENT_TRANSITIONS = Object.freeze({
+ ACCEPTED: ["ARRIVED_AT_PICKUP"],
+ ARRIVED_AT_PICKUP: [],
+ PICKUP_CONFIRMED: ["IN_PROGRESS"],
+ IN_PROGRESS: ["ARRIVED_AT_DESTINATION"],
+ ARRIVED_AT_DESTINATION: [],
+});
+
+export function isAllowedAssignmentTransition(currentStatus, nextStatus) {
+ return (ASSIGNMENT_TRANSITIONS[currentStatus] ?? []).includes(nextStatus);
+}
+
+export const MAX_VERIFICATION_CODE_ATTEMPTS = 5;
 export function createAssignmentsRepository(prismaClient = prisma) {
  return {
   async listDriverAssignments({userId,skip,take}){
@@ -51,8 +65,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
     if(a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || !(a.driverProfile.kycTier==="FULL" || (env.DRIVER_KYC_MODE==="TEST" && a.driverProfile.kycTier==="TEST_LIMITED")) || (a.rideBookingId && a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
-    const allowed={ACCEPTED:["ARRIVED_AT_PICKUP"],ARRIVED_AT_PICKUP:[],PICKUP_CONFIRMED:["IN_PROGRESS"],IN_PROGRESS:["ARRIVED_AT_DESTINATION"],ARRIVED_AT_DESTINATION:[]};
-    if(!(allowed[a.status]||[]).includes(nextStatus))return {conflict:true,status:a.status};
+    if(!isAllowedAssignmentTransition(a.status,nextStatus))return {conflict:true,status:a.status};
     const transition = await tx.driverAssignment.updateMany({
      where: { id: a.id, status: a.status },
      data: {
@@ -68,7 +81,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(a.parcelBookingId) await tx.parcelBooking.update({where:{id:a.parcelBookingId},data:{status:nextStatus==="ARRIVED_AT_PICKUP"?"PICKUP_VERIFICATION_PENDING":nextStatus==="IN_PROGRESS"?"IN_TRANSIT":nextStatus==="ARRIVED_AT_DESTINATION"?"DELIVERY_VERIFICATION_PENDING":nextStatus==="COMPLETED"?"COMPLETED":a.parcelBooking.status,...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
     if(a.rideBookingId) await tx.rideBooking.update({where:{id:a.rideBookingId},data:{status:nextStatus==="ARRIVED_AT_PICKUP"?"DRIVER_ARRIVED":nextStatus==="IN_PROGRESS"?"TRIP_IN_PROGRESS":nextStatus==="ARRIVED_AT_DESTINATION"?"TRIP_COMPLETION_PENDING":nextStatus==="COMPLETED"?"COMPLETED":a.rideBooking.status,...(nextStatus==="IN_PROGRESS"?{tripStartedAt:now}:{}),...(nextStatus==="COMPLETED"?{completedAt:now}:{})}});
     await tx.bookingEvent.create({data:{...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),actorUserId:driverUserId,eventType:"ASSIGNMENT_STATUS_CHANGED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id}}});
-    if(nextStatus==="COMPLETED") await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true,completedJobs:{increment:1}}});
+    if(nextStatus==="COMPLETED") await tx.driverProfile.update({where:{id:a.driverProfileId},data:{completedJobs:{increment:1}}});
     return {id:updated.id,status:updated.status,updatedAt:updated.updatedAt};
    });
   },
@@ -80,11 +93,19 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || !(a.driverProfile.kycTier==="FULL" || (env.DRIVER_KYC_MODE==="TEST" && a.driverProfile.kycTier==="TEST_LIMITED")) || (a.rideBookingId && a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
     const isParcel=Boolean(a.parcelBookingId);const booking=a.parcelBooking||a.rideBooking;
     const tokenAction=action==="PICKUP"?(isParcel?"PARCEL_PICKUP":"RIDE_PICKUP"):(isParcel?"PARCEL_DELIVERY":"RIDE_COMPLETION");
-    const token=await tx.verificationToken.findFirst({where:{...(isParcel?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),...(a.deliveryLegId?{deliveryLegId:a.deliveryLegId}:{}),action:tokenAction,tokenHash,status:"ACTIVE",expiresAt:{gt:now}}});
+    const token=await tx.verificationToken.findFirst({where:{...(isParcel?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),...(a.deliveryLegId?{deliveryLegId:a.deliveryLegId}:{}),action:tokenAction,status:"ACTIVE",expiresAt:{gt:now}}});
     if(!token)return {invalid:true};
     const expected=action==="PICKUP"?"ARRIVED_AT_PICKUP":"ARRIVED_AT_DESTINATION";
     if(a.status!==expected)return {conflict:true,status:a.status};
-    const consumed=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now}},data:{status:"CONSUMED",consumedAt:now,consumedByUserId:driverUserId}});
+    if(token.failedAttempts>=MAX_VERIFICATION_CODE_ATTEMPTS){
+     await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE"},data:{status:"REVOKED"}});
+     return {invalid:true};
+    }
+    if(token.tokenHash!==tokenHash){
+     const attempts=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now},failedAttempts:token.failedAttempts},data:{failedAttempts:{increment:1},...(token.failedAttempts+1>=MAX_VERIFICATION_CODE_ATTEMPTS?{status:"REVOKED"}:{})}});
+     return {invalid:true,locked:attempts.count===1&&token.failedAttempts+1>=MAX_VERIFICATION_CODE_ATTEMPTS};
+    }
+    const consumed=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now},failedAttempts:{lt:MAX_VERIFICATION_CODE_ATTEMPTS}},data:{status:"CONSUMED",consumedAt:now,consumedByUserId:driverUserId}});
     if(consumed.count!==1)return {invalid:true};
     const nextStatus=action==="PICKUP"?"PICKUP_CONFIRMED":"COMPLETED";
     await tx.driverAssignment.update({where:{id:a.id},data:{status:nextStatus,...(action==="PICKUP"?{pickupAt:now}:{completedAt:now})}});
@@ -117,7 +138,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     }});
     else await tx.rideBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"TRIP_IN_PROGRESS":"COMPLETED",...(action==="PICKUP"?{tripStartedAt:now}:{completedAt:now})}});
     await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:driverUserId,eventType:action==="PICKUP"?"PICKUP_VERIFIED":"COMPLETION_VERIFIED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id,...(a.deliveryLegId?{deliveryLegId:a.deliveryLegId}:{}),...(nextDeliveryLegId?{nextDeliveryLegId}:{})}}});
-    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{isAvailable:true,completedJobs:{increment:1}}});if(a.driverProfile.kycTier==="FULL")await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
+    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{completedJobs:{increment:1}}});if(a.driverProfile.kycTier==="FULL")await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
     return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):isParcel?(finalDeliveryLeg?"COMPLETED":"IN_TRANSIT"):"COMPLETED",nextDeliveryLegId,verifiedAt:now};
    });
   },
