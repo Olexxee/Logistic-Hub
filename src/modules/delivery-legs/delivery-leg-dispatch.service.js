@@ -145,14 +145,17 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             where: { userId },
             select: { id: true, verificationStatus: true, isOnline: true, isAvailable: true },
           });
-          if (!profile || profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) {
-            throw new ForbiddenError("A verified, online and available driver profile is required.");
-          }
+          if (!profile) throw new ForbiddenError("A verified driver profile is required.");
           const offer = await db.findOfferForDriver(tx, offerId);
           if (!offer || offer.driverProfileId !== profile.id) throw new NotFoundError("Delivery-leg offer not found.");
+          // An idempotent retry must replay the original result even if the driver
+          // became unavailable after the proposal was first committed.
           if (offer.proposalIdempotencyKey === idempotencyKey) {
             if (offer.proposalPayloadHash !== proposalHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
             return { offerId, proposedFareMinor: offer.proposedFareMinor.toString(), currency: offer.currency, status: offer.status, replay: true };
+          }
+          if (profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) {
+            throw new ForbiddenError("A verified, online and available driver profile is required.");
           }
           if (offer.status !== "OFFERED" || offer.proposedFareMinor != null
             || offer.expiresAt <= now || offer.deliveryLeg.status !== "READY_FOR_ASSIGNMENT") {
