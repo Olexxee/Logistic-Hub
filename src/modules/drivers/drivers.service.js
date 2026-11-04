@@ -176,6 +176,38 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
       };
     },
 
+    async reapply({ userId, reason }) {
+      return prismaClient.$transaction(async tx => {
+        const profile = await tx.driverProfile.findUnique({
+          where: { userId },
+          select: { id: true, verificationStatus: true, kycTier: true, isOnline: true, isAvailable: true, updatedAt: true },
+        });
+        if (!profile) return null;
+        if (profile.verificationStatus !== "REJECTED") throw conflict("DRIVER_NOT_REAPPLICABLE", "Only rejected driver applications can be resubmitted.");
+        if (env.DRIVER_KYC_MODE === "STRICT") {
+          const updatedEvidence = await tx.driverVerificationDocument.findFirst({
+            where: { driverProfileId: profile.id, reviewStatus: "PENDING", createdAt: { gt: profile.updatedAt } },
+            select: { id: true },
+          });
+          if (!updatedEvidence) throw conflict("REAPPLICATION_EVIDENCE_REQUIRED", "Upload updated verification evidence before reapplying in strict mode.");
+        }
+        const updated = await tx.driverProfile.update({
+          where: { id: profile.id },
+          data: { verificationStatus: "PENDING", isOnline: false, isAvailable: false },
+          select: { id: true, verificationStatus: true, kycTier: true, isOnline: true, isAvailable: true },
+        });
+        await tx.user.update({ where: { id: userId }, data: { role: "CUSTOMER" } });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId: userId, entityType: "DRIVER_PROFILE", entityId: profile.id,
+          action: "DRIVER_APPLICATION_RESUBMITTED", reason,
+          before: { verificationStatus: profile.verificationStatus, isOnline: profile.isOnline, isAvailable: profile.isAvailable },
+          after: { verificationStatus: updated.verificationStatus, isOnline: updated.isOnline, isAvailable: updated.isAvailable },
+          metadata: { kycTier: updated.kycTier },
+        });
+        return updated;
+      });
+    },
+
     async reviewDriver({ driverProfileId, verificationStatus, reason, actorUserId }) {
       return prismaClient.$transaction(async (tx) => {
         const profile = await tx.driverProfile.findUnique({
