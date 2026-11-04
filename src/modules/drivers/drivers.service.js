@@ -34,6 +34,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
         id: profile.id,
         verificationStatus: profile.verificationStatus,
         kycTier: profile.kycTier,
+        kycMode: env.DRIVER_KYC_MODE,
         suspendedAt: profile.suspendedAt,
         suspensionReason: profile.suspensionReason,
         isOnline: profile.isOnline,
