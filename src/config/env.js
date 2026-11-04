@@ -5,6 +5,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_STAGE: z.enum(["local", "staging", "production"]).optional(),
   DRIVER_KYC_MODE: z.enum(["TEST", "STRICT"]).optional(),
+  DRIVER_LOCATION_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
   DATABASE_URL: z.string().url(),
   CORS_ORIGINS: z.string().optional().default(""),
