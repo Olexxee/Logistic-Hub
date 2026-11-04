@@ -236,10 +236,46 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
           },
           select: { id: true, verificationStatus: true, kycTier: true, isOnline: true, isAvailable: true, userId: true },
         });
-        await tx.vehicle.updateMany({
-          where: { driverProfileId: profile.id, verificationStatus: "VERIFIED" },
-          data: { isActive: approved && !profile.suspendedAt },
-        });
+        if (approved && env.DRIVER_KYC_MODE === "STRICT") {
+          const verifiedVehicles = await tx.vehicle.findMany({
+            where: { driverProfileId: profile.id, verificationStatus: "VERIFIED" },
+            select: { id: true, type: true },
+          });
+          const [license, registrationDocuments] = await Promise.all([
+            tx.driverVerificationDocument.findFirst({
+              where: { driverProfileId: profile.id, vehicleId: null, documentType: "DRIVER_LICENSE", reviewStatus: "APPROVED" },
+              select: { id: true },
+            }),
+            tx.driverVerificationDocument.findMany({
+              where: { vehicleId: { in: verifiedVehicles.map(vehicle => vehicle.id) }, documentType: "VEHICLE_REGISTRATION", reviewStatus: "APPROVED" },
+              select: { vehicleId: true },
+            }),
+          ]);
+          const registeredVehicleIds = new Set(registrationDocuments.map(document => document.vehicleId));
+          const eligibleVehicleIds = verifiedVehicles
+            .filter(vehicle => vehicle.type === "BICYCLE" || (license && registeredVehicleIds.has(vehicle.id)))
+            .map(vehicle => vehicle.id);
+          const ineligibleVehicleIds = verifiedVehicles
+            .filter(vehicle => !eligibleVehicleIds.includes(vehicle.id))
+            .map(vehicle => vehicle.id);
+          if (eligibleVehicleIds.length) {
+            await tx.vehicle.updateMany({
+              where: { id: { in: eligibleVehicleIds } },
+              data: { isActive: !profile.suspendedAt },
+            });
+          }
+          if (ineligibleVehicleIds.length) {
+            await tx.vehicle.updateMany({
+              where: { id: { in: ineligibleVehicleIds } },
+              data: { isActive: false },
+            });
+          }
+        } else {
+          await tx.vehicle.updateMany({
+            where: { driverProfileId: profile.id, verificationStatus: "VERIFIED" },
+            data: { isActive: approved && !profile.suspendedAt },
+          });
+        }
         await tx.user.update({
           where: { id: profile.userId },
           data: { role: approved ? "DRIVER" : "CUSTOMER" },
