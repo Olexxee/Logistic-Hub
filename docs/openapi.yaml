@@ -616,6 +616,174 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { description: Driver profile or vehicle already exists. }
+  /drivers/me/reapply:
+    post:
+      tags: [Drivers]
+      operationId: reapplyDriverVerification
+      summary: Resubmit a rejected driver application
+      description: TEST mode permits a reason-only resubmission. STRICT mode requires newly uploaded pending evidence since the previous review.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { description: Driver application returned to pending review. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Application is not rejected or new evidence is required. }
+  /drivers/me/documents:
+    get:
+      tags: [Drivers]
+      operationId: listMyDriverVerificationDocuments
+      summary: List private verification documents for the authenticated driver
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Driver's submitted document metadata. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Drivers]
+      operationId: uploadMyDriverVerificationDocument
+      summary: Upload a private driver or vehicle verification document
+      description: Accepts JPEG, PNG, WebP or PDF files up to 10 MB. The file is uploaded as an octet stream; document type and file metadata are supplied in headers.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: X-File-Content-Type
+          required: true
+          schema: { type: string, enum: [image/jpeg, image/png, image/webp, application/pdf] }
+        - in: header
+          name: X-File-Name
+          required: true
+          schema: { type: string, maxLength: 160 }
+        - in: header
+          name: X-Document-Type
+          required: true
+          schema: { type: string, enum: [IDENTITY, DRIVER_LICENSE, VEHICLE_REGISTRATION, VEHICLE_INSURANCE, ROADWORTHINESS] }
+        - in: header
+          name: X-Vehicle-ID
+          required: false
+          schema: { type: string, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201': { description: Private document stored and queued for review. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { description: File exceeds the upload limit. }
+        '415': { description: Unsupported upload content type. }
+  /drivers/me/documents/{documentId}/download:
+    get:
+      tags: [Drivers]
+      operationId: downloadMyDriverVerificationDocument
+      summary: Download one of the authenticated driver's private verification documents
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Private document bytes with no-store cache policy. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/documents:
+    get:
+      tags: [Admin]
+      operationId: listDriverVerificationDocuments
+      summary: List driver verification documents for Admin review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - in: query
+          name: reviewStatus
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+        - in: query
+          name: driverProfileId
+          schema: { type: string, maxLength: 128 }
+        - in: query
+          name: vehicleId
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: Paginated private document metadata with driver and vehicle context. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /drivers/admin/documents/{documentId}/review:
+    patch:
+      tags: [Admin]
+      operationId: reviewDriverVerificationDocument
+      summary: Approve or reject a driver verification document
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reviewStatus, reason]
+              properties:
+                reviewStatus: { type: string, enum: [APPROVED, REJECTED] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { description: Document review decision recorded and audited. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Document has already been reviewed. }
+  /drivers/admin/documents/{documentId}/download:
+    get:
+      tags: [Admin]
+      operationId: downloadDriverVerificationDocumentForReview
+      summary: Download private driver verification evidence for Admin review
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Private document bytes; download is audited. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /drivers/availability:
     patch:
       tags: [Drivers]
@@ -720,9 +888,10 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [verificationStatus]
+              required: [verificationStatus, reason]
               properties:
                 verificationStatus: { type: string, enum: [VERIFIED, REJECTED] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
       responses:
         '200': { description: Driver verification updated. }
         '401': { $ref: '#/components/responses/Unauthorized' }
