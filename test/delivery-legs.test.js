@@ -135,7 +135,7 @@ test("pickup verification records parcel pickup separately from transit start", 
   };
   const tx = {
     driverAssignment: { findUnique: async () => assignment, update: async () => ({}) },
-    verificationToken: { findFirst: async () => ({ id: "pickup_token" }), updateMany: async () => ({ count: 1 }) },
+    verificationToken: { findFirst: async () => ({ id: "pickup_token", tokenHash: "pickup-hash", failedAttempts: 0 }), updateMany: async () => ({ count: 1 }) },
     deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
     parcelBooking: { update: async () => ({}) },
     bookingEvent: { create: async () => ({}) },
@@ -216,7 +216,7 @@ test("completing a non-final leg activates only the next leg and keeps the booki
   const tx = {
     driverAssignment: { findUnique: async () => assignment, update: async () => ({}) },
     verificationToken: {
-      findFirst: async () => ({ id: "token_first_leg" }),
+      findFirst: async () => ({ id: "token_first_leg", tokenHash: "first-leg-token-hash", failedAttempts: 0 }),
       updateMany: async () => ({ count: 1 }),
     },
     deliveryLeg: {
@@ -276,7 +276,7 @@ test("verified recipient handover completes the linked delivery leg in the same 
       update: async () => ({}),
     },
     verificationToken: {
-      findFirst: async (query) => { tokenQuery = query; return { id: "token_1" }; },
+      findFirst: async (query) => { tokenQuery = query; return { id: "token_1", tokenHash: "sha256-hash", failedAttempts: 0 }; },
       updateMany: async () => ({ count: 1 }),
     },
     deliveryLeg: {
