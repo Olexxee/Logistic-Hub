@@ -21,6 +21,10 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 **AH-5 implementation gate:** frontend commercial screens must consume the implemented AH-5.3 endpoints and preserve rate-card version immutability. Agreement activation/status and rate-card publication require a reason. AH-5.6 enforces partner/hub lifecycle consistency: partner suspension or closure suspends active partner-owned hubs in the same transaction with audit records; hub activation requires an ACTIVE, VERIFIED owner. Reactivating a partner does not automatically reactivate its hubs; each hub requires an explicit, separately validated activation decision. **Geography readiness remains a separate data task:** verify/import the Nigeria country, 37 state-level units and 774 LGAs before claiming complete reference coverage; this must not imply service availability.
 
+## Driver assignment lifecycle
+
+DRV-04 backend hardening adds an explicit assignment transition policy, atomic one-time verification-code consumption with a five-attempt lockout, and prevents assignment completion from silently re-enabling driver availability. Hub custody remains a separate two-party workflow. Unpaid reservation expiry/reassignment is not yet implemented and remains a separate release task. See [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md).
+
 ## Driver verification and staged KYC
 
 The driver verification workflow now supports private evidence uploads, Admin document review, audited reapplication and explicit test-versus-strict KYC tiers. Local/staging testing can use `DRIVER_KYC_MODE=TEST` to approve `TEST_LIMITED` drivers without full identity evidence. Test-limited drivers are restricted to parcel delivery, cannot receive passenger-ride offers, and do not accrue payout records. Production requires `APP_STAGE=production` and `DRIVER_KYC_MODE=STRICT`; strict review requires an approved identity document and the applicable driver-license/vehicle-registration evidence. See [Driver Verification and Staged KYC Policy](docs/driver-kyc-policy.md).
