@@ -116,7 +116,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
           },
         },
       });
-      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || (profile.kycTier === "TEST_LIMITED" && env.DRIVER_KYC_MODE !== "TEST")) {
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED"))) {
         throw forbidden(profile?.suspendedAt ? "This driver account is suspended. Contact operations before attempting to go online." : "Driver verification must be completed before going online.");
       }
       if (input.isAvailable) {
@@ -150,7 +150,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
         where: { userId },
         select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true },
       });
-      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !profile.isOnline || (profile.kycTier === "TEST_LIMITED" && env.DRIVER_KYC_MODE !== "TEST")) {
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !profile.isOnline || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED"))) {
         throw forbidden("Only a verified online driver can publish a location.");
       }
       const recordedAt = clock();
@@ -339,7 +339,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
           where: { id: vehicle.id },
           data: {
             verificationStatus,
-            isActive: approved && vehicle.driverProfile.verificationStatus === "VERIFIED" && !vehicle.driverProfile.suspendedAt && (vehicle.driverProfile.kycTier === "FULL" || env.DRIVER_KYC_MODE === "TEST"),
+            isActive: approved && vehicle.driverProfile.verificationStatus === "VERIFIED" && !vehicle.driverProfile.suspendedAt && (vehicle.driverProfile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && vehicle.driverProfile.kycTier === "TEST_LIMITED")),
           },
           select: { id: true, verificationStatus: true, isActive: true, driverProfileId: true },
         });
