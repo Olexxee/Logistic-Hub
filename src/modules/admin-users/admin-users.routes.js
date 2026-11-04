@@ -5,6 +5,7 @@ import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { validate } from "../../shared/http/validate.js";
 import { createAdminUsersController } from "./admin-users.controller.js";
 import {
+  adminUserListQuerySchema,
   adminUserParamsSchema,
   adminUserSessionRevocationSchema,
   adminUserStatusSchema,
@@ -19,6 +20,14 @@ export function createAdminUsersRouter({
   const router = Router();
   const controller = createAdminUsersController({ prismaClient, clock });
   const admin = roleMiddleware("ADMIN");
+
+  router.get(
+    "/",
+    authMiddleware,
+    admin,
+    validate(adminUserListQuerySchema, "query"),
+    asyncWrapper(controller.list),
+  );
 
   router.patch(
     "/:userId/status",
