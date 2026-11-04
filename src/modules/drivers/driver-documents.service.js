@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { createCloudinaryStorage } from "../media/cloudinary-storage.js";
 import { createFirebaseStorage } from "../media/firebase-storage.js";
-import { NotFoundError, ValidationError, ForbiddenError, ConflictError } from "../../shared/http/app-error.js";
+import { NotFoundError, ValidationError, ConflictError } from "../../shared/http/app-error.js";
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
