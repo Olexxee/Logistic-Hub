@@ -17,7 +17,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - **AH-2:** hub applications and approval flow are implemented. Partner OWNERs can submit applications; ADMIN review creates a PENDING hub and manager membership. Hub activation remains a separate operation.
 - **AH-3:** hub manager/staff membership management implemented; hub-scoped managers can add operators, while manager assignment and privileged membership controls remain ADMIN-governed.
 - **AH-4:** explicit ADMIN-granted hub dispatch delegation implemented through the canDispatch capability; dispatch matching remains scoped to the exact active hub membership.
-- **AH-5:** AH-5.0–AH-5.6 backend work is merged. This includes partner administration, memberships, agreements/rate cards, Nigeria-restricted Google Maps integration, service-zone/geography contracts and partner/hub lifecycle synchronization. Frontend AH-5.5 service-zone administration is merged in `Olexxee/logistic-frontend` PR #32. The geography schema and ADMIN CRUD routes exist, but a canonical Nigeria reference-data import has not been implemented or verified. See [Nigeria Geography Reference Data](docs/nigeria-geography-reference-data.md). The future first-party location-intelligence initiative is separate from AH-5.4.
+- **AH-5:** AH-5.0–AH-5.6 backend work is merged. This includes partner administration, memberships, agreements/rate cards, Nigeria-restricted Google Maps integration, service-zone/geography contracts and partner/hub lifecycle synchronization. Frontend AH-5.5 service-zone administration is merged in `Olexxee/logistic-frontend` PR #32. The geography schema and ADMIN CRUD routes exist. A source-attributed Nigeria dataset and safe, dry-run-by-default seed runner are implemented; execution against the hosted/production database is **not verified** and must not be assumed. See [Nigeria Geography Reference Data](docs/nigeria-geography-reference-data.md). The future first-party location-intelligence initiative is separate from AH-5.4.
 
 **AH-5 implementation gate:** frontend commercial screens must consume the implemented AH-5.3 endpoints and preserve rate-card version immutability. Agreement activation/status and rate-card publication require a reason. AH-5.6 enforces partner/hub lifecycle consistency: partner suspension or closure suspends active partner-owned hubs in the same transaction with audit records; hub activation requires an ACTIVE, VERIFIED owner. Reactivating a partner does not automatically reactivate its hubs; each hub requires an explicit, separately validated activation decision. **Geography readiness remains a separate data task:** verify/import the Nigeria country, 37 state-level units and 774 LGAs before claiming complete reference coverage; this must not imply service availability.
 
@@ -26,6 +26,18 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, current API contracts, role taxonomy, authorization boundaries and implementation blockers.
 
 ## Product blueprint
+
+
+### Admin workspace implementation status
+
+The platform Admin workspace is implemented in the frontend main branch through ADM-01 and ADM-03–ADM-07 (latest audit-log closeout: frontend PR #41). It is a platform-administration and operational-oversight workspace, not a customer account with elevated permissions.
+
+- User directory, account suspension/reactivation and session revocation are implemented with audited backend controls.
+- Hub applications, hub lifecycle, partner administration, memberships, agreements/rate cards and service-area administration are represented in the merged Admin work.
+- Admin booking/quote/leg oversight and custody/hub-intake visibility are read-only operational views; Admin does not perform customer booking, driver dispatch, partner assignment or hub custody actions through customer/operator workflows.
+- Admin finance and support controls include refund review/reconciliation and support management. Payment checkout remains disabled; external payouts are not available.
+- Audit-log search, filters, pagination and read-only event detail/snapshots are implemented.
+- Staging role/permission acceptance and deployment verification remain outstanding. Owner governance and a typed Admin settings editor remain deliberately deferred.
 
 ### Launch scope and operating principles
 
@@ -247,7 +259,7 @@ Priority 6 backend implementation now covers partner assignment/execution, hub c
 
 ## Current implementation status
 
-This README combines the **target product blueprint** with the current implementation record. Core booking/authentication, quote versioning, variable delivery legs, partner execution, hub custody, operational exceptions, support/cancellation workflows and internal settlement/reconciliation have implementation coverage in the merged work recorded above. That does not by itself establish production readiness: route contracts, automated tests, deployment configuration and staging acceptance remain separate release gates.
+This README combines the **target product blueprint** with the current implementation record. Core booking/authentication, quote versioning, variable delivery legs, driver execution, partner execution, hub custody, operational exceptions, support/cancellation workflows, internal settlement/reconciliation and the backend contracts supporting the Admin workspace have implementation coverage in merged work. The frontend Admin workspace (user/access management, hub/partner administration, operational oversight, finance/support controls and audit logs) is also merged in Olexxee/logistic-frontend through PR #41. This does not establish production readiness: route contracts, automated tests, deployment configuration and staging acceptance remain separate release gates.
 
 The initial rollout targets **multiple Lagos LGAs**. The intended commercial sequence is **partner-rate/capacity selection → sender quote acceptance → payment → dispatch**, with authorized quotation fallback for uncovered routes. Maps default to disabled. Payment initialization is hard-disabled; refund processing has a separate disabled-by-default gate. Internal partner settlement records do not initiate external transfers.
 
