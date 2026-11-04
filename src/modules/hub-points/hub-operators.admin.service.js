@@ -61,8 +61,7 @@ export function createHubOperatorsAdminService({ prismaClient }) {
         if (existing?.isActive && existing.role === role && existing.canDispatch === canDispatch) {
           return { member: existing, unchanged: true };
         }
-        if (hub.status === "ACTIVE" && existing?.role === "MANAGER" &&
-          (!existing.isActive || role !== "MANAGER")) {
+        if (hub.status === "ACTIVE" && existing?.isActive && existing.role === "MANAGER" && role !== "MANAGER") {
           await assertManagerRemains(tx, hubPointId, existing.id);
         }
         if (hub.status === "ACTIVE" && role !== "MANAGER") {
