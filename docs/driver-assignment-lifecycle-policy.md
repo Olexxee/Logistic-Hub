@@ -1,6 +1,6 @@
 # Driver assignment lifecycle hardening
 
-**Implementation status:** DRV-04A is merged in backend PR #93. DRV-04B concurrency tests are in PR #95 with CI passed, pending merge. DRV-04C expiry/release worker implementation is in a stacked PR pending CI and review. DRV-04C explicit cancellation/rejection integration and DRV-04D–DRV-04F remain open. See [Current Implementation Stopping Point](./current-implementation-status.md).
+**Implementation status:** DRV-04A is merged in backend PR #93 and DRV-04B reservation concurrency is merged in backend PR #95. DRV-04C expiry/release worker implementation is in PR #96 with CI passed, awaiting merge. DRV-04C explicit cancellation/rejection integration and DRV-04D–DRV-04F remain open. See [Current Implementation Stopping Point](./current-implementation-status.md).
 
 ## Assignment transitions
 
@@ -20,7 +20,7 @@ Completing an assignment increments the driver's completed-job count but does no
 
 ## Operational boundaries
 
-Assignment completion does not complete a hub custody handover. Custody release/receipt remains a separate two-party operational event. This change does not introduce automatic expiry/reassignment of unpaid reservations; those require a separate policy and job lifecycle with explicit payment/offer reconciliation.
+Assignment completion does not complete a hub custody handover. Custody release/receipt remains a separate two-party operational event. Unpaid reservation expiry/release is implemented in PR #96. Automatic release remains blocked whenever a payment attempt exists; payment reconciliation must be implemented before enabling live payments. Explicit rejection/cancellation/failure release integration remains outstanding.
 
 ## Migration and rollout
 
