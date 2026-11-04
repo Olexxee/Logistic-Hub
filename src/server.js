@@ -1,10 +1,17 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./db/prisma.js";
+import { emailService } from "./shared/email/email.service.js";
+import { createOutboxWorker } from "./shared/jobs/outbox-worker.service.js";
 
 const startedAt = Date.now();
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const OUTBOX_POLL_INTERVAL_MS = 1_000;
 let shutdownPromise;
+let outboxWorker;
+let outboxWorkerTimer;
+let outboxWorkerPoll;
+let outboxWorkerStopping = false;
 
 function log(level, event, details = {}) {
   const writer = level === "fatal" ? console.error : (console[level] ?? console.log);
@@ -16,6 +23,67 @@ function log(level, event, details = {}) {
     environment: env.NODE_ENV,
     ...details,
   }));
+}
+
+function startOutboxWorker() {
+  if (outboxWorker || outboxWorkerStopping) return;
+
+  if (!emailService.configured) {
+    log("warn", "outbox.worker.disabled", {
+      reason: "email_provider_not_configured",
+    });
+    return;
+  }
+
+  outboxWorker = createOutboxWorker({
+    prismaClient: prisma,
+    email: emailService,
+  });
+  log("info", "outbox.worker.started", {
+    workerId: outboxWorker.workerId,
+    pollIntervalMs: OUTBOX_POLL_INTERVAL_MS,
+    mode: "embedded",
+  });
+  void pollOutbox();
+}
+
+async function pollOutbox() {
+  if (outboxWorkerStopping || !outboxWorker) return;
+
+  outboxWorkerPoll = (async () => {
+    try {
+      await outboxWorker.runOnce();
+    } catch (error) {
+      log("error", "outbox.poll.failed", {
+        errorName: error?.name,
+        errorCode: error?.code ?? "WORKER_ERROR",
+        message: error?.message,
+      });
+    }
+  })();
+
+  await outboxWorkerPoll;
+  outboxWorkerPoll = undefined;
+
+  if (!outboxWorkerStopping) {
+    outboxWorkerTimer = setTimeout(() => void pollOutbox(), OUTBOX_POLL_INTERVAL_MS);
+    outboxWorkerTimer.unref?.();
+  }
+}
+
+async function stopOutboxWorker(signal) {
+  outboxWorkerStopping = true;
+  if (outboxWorkerTimer) clearTimeout(outboxWorkerTimer);
+  outboxWorkerTimer = undefined;
+
+  if (outboxWorkerPoll) await outboxWorkerPoll;
+
+  if (outboxWorker) {
+    log("info", "outbox.worker.stopped", {
+      workerId: outboxWorker.workerId,
+      signal,
+    });
+  }
 }
 
 const server = app.listen(env.PORT);
@@ -31,7 +99,9 @@ server.on("listening", () => {
 
   // Keep the HTTP process alive when PostgreSQL is unavailable so that
   // liveness diagnostics remain reachable; readiness returns HTTP 503.
-  void checkDatabaseConnection();
+  void checkDatabaseConnection().then((connected) => {
+    if (connected) startOutboxWorker();
+  });
 });
 
 server.on("error", (error) => {
@@ -89,6 +159,8 @@ async function shutdown(signal, exitCode = 0) {
       signal,
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
     });
+
+    await stopOutboxWorker(signal);
 
     const forceExitTimer = setTimeout(() => {
       log("error", "server.shutdown.timeout", {
