@@ -23,6 +23,8 @@ const driver = {
   id: "driver-profile-1",
   serviceRadiusMeters: 5000,
   verificationStatus: "VERIFIED",
+  kycTier: "FULL",
+  suspendedAt: null,
   isOnline: true,
   isAvailable: true,
   lastLocationAt: new Date(now.getTime() - 10_000),
