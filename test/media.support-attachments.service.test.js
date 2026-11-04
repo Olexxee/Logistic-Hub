@@ -28,7 +28,7 @@ function setup({ ticket = { id: "ticket-1", customerId: "customer-1", status: "O
   const storage = {
     provider: "CLOUDINARY",
     bucket: "test-cloud",
-    upload: async input => state.uploaded.push(input),
+    upload: async input => { state.uploaded.push(input); return input.objectPath; },
     delete: async input => state.deleted.push(input),
   };
   return { state, service: createMediaService({ prismaClient, storage }) };
