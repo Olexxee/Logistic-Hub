@@ -129,3 +129,35 @@ test("suspended driver cannot consume pickup or delivery verification codes",asy
   assert.deepEqual(result,{forbidden:true});
   assert.equal(tokenLookup,false);
 });
+
+
+test("TEST_LIMITED drivers cannot execute a passenger-ride assignment",async()=>{
+  const assignment={id:"ride-assignment-1",rideBookingId:"ride-1",status:"ACCEPTED",driverProfile:{userId:"driver-user",verificationStatus:"VERIFIED",kycTier:"TEST_LIMITED",suspendedAt:null}};
+  const repository=createAssignmentsRepository({$transaction:callback=>callback({driverAssignment:{findUnique:async()=>assignment}})});
+  const result=await repository.transition({assignmentId:assignment.id,driverUserId:"driver-user",nextStatus:"ARRIVED_AT_PICKUP",now:new Date()});
+  assert.deepEqual(result,{forbidden:true});
+});
+
+test("TEST_LIMITED parcel completion does not create a driver payout record",async()=>{
+  let payoutCreated=false;
+  const assignment={
+    id:"test-parcel-assignment",parcelBookingId:"parcel-1",rideBookingId:null,deliveryLegId:null,
+    status:"ARRIVED_AT_DESTINATION",driverProfileId:"test-driver",
+    driverProfile:{id:"test-driver",userId:"driver-user",verificationStatus:"VERIFIED",kycTier:"TEST_LIMITED",suspendedAt:null},
+    parcelBooking:{id:"parcel-1",senderId:"sender-1",publicReference:"TEST-PARCEL-1"},
+    agreedFareMinor:2500n,currency:"NGN",
+  };
+  const repository=createAssignmentsRepository({
+    $transaction:callback=>callback({
+      driverAssignment:{findUnique:async()=>assignment,update:async()=>({})},
+      verificationToken:{findFirst:async()=>({id:"token-1"}),updateMany:async()=>({count:1})},
+      parcelBooking:{update:async()=>({})},
+      bookingEvent:{create:async()=>({})},
+      driverProfile:{update:async()=>({})},
+      driverPayout:{upsert:async()=>{payoutCreated=true;return{};}},
+    }),
+  });
+  const result=await repository.verifyCode({assignmentId:assignment.id,driverUserId:"driver-user",action:"DELIVERY",tokenHash:"valid-hash",now:new Date()});
+  assert.equal(result.status,"COMPLETED");
+  assert.equal(payoutCreated,false);
+});
