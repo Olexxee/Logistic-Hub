@@ -1,8 +1,8 @@
 export function createDriversAdminRepository({ prismaClient }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
   return {
-    async listDrivers({ verificationStatus, page, limit }) {
-      const where = verificationStatus ? { verificationStatus } : {};
+    async listDrivers({ verificationStatus, kycTier, page, limit }) {
+      const where = { ...(verificationStatus ? { verificationStatus } : {}), ...(kycTier ? { kycTier } : {}) };
       const [items, total] = await Promise.all([
         prismaClient.driverProfile.findMany({
           where, orderBy: [{ createdAt: "desc" }, { id: "asc" }],
