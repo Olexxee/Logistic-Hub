@@ -22,7 +22,7 @@ An Admin may approve a driver profile without identity or licence documents. The
 TEST_LIMITED drivers:
 - May receive local parcel-delivery opportunities only.
 - Must still have an active account, a verified/active vehicle, enabled parcel-delivery coverage, online/available state and a fresh location.
-- Cannot receive passenger-ride offers.
+- Cannot receive passenger-ride offers or execute passenger-ride assignments.
 - Do not accrue driver payout records on completion.
 - Remain blocked from dispatch and assignment execution if suspended or no longer verified.
 - Must not be described in the product or admin workspace as fully KYC-verified.
