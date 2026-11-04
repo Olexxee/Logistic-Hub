@@ -1,5 +1,7 @@
 # Driver assignment lifecycle hardening
 
+**Implementation status:** DRV-04A is merged in backend PR #93. DRV-04B through DRV-04F remain open; see [Current Implementation Stopping Point](./current-implementation-status.md). This policy describes intended safeguards and must not be read as proof that every listed lifecycle stage is implemented.
+
 ## Assignment transitions
 
 Driver actions are an ordered state machine: `ACCEPTED → ARRIVED_AT_PICKUP → PICKUP_CONFIRMED → IN_PROGRESS → ARRIVED_AT_DESTINATION → COMPLETED`. Pickup and delivery completion are verified separately by one-time owner codes. Skipped, repeated, terminal, or out-of-order transitions return a conflict; repository writes use a status compare-and-set inside the transaction.
