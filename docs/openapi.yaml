@@ -4196,6 +4196,45 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
 
 
+  /admin/custody-handovers:
+    get:
+      tags: [Admin]
+      operationId: listAdminCustodyHandovers
+      summary: List custody handovers across the platform for operational oversight
+      description: ADMIN-only read queue. Returns party types and operational condition summaries but excludes evidence URIs and party account contact details.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING_CONFIRMATION, CONFIRMED, REJECTED, CANCELLED, EXPIRED] } }
+        - { name: hubPointId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: q, in: query, description: Booking public reference search (2–64 characters)., schema: { type: string, minLength: 2, maxLength: 64 } }
+        - { name: cursor, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/hub-intakes:
+    get:
+      tags: [Admin]
+      operationId: listAdminHubIntakes
+      summary: List hub intake records across the platform for operational oversight
+      description: ADMIN-only read queue. Returns parcel condition and dimensions but excludes evidence URIs and customer contact details.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [RECEIVED, RELEASED, EXCEPTION] } }
+        - { name: hubPointId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: q, in: query, description: Booking public reference search (2–64 characters)., schema: { type: string, minLength: 2, maxLength: 64 } }
+        - { name: cursor, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/operations/overview:
     get:
       tags: [Admin]
