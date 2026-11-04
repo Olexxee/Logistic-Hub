@@ -3,6 +3,8 @@ import { z } from "zod";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  APP_STAGE: z.enum(["local", "staging", "production"]).optional(),
+  DRIVER_KYC_MODE: z.enum(["TEST", "STRICT"]).optional(),
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
   DATABASE_URL: z.string().url(),
   CORS_ORIGINS: z.string().optional().default(""),
@@ -92,4 +94,10 @@ if (parsed.data.PAYMENTS_ENABLED) {
   );
 }
 
-export const env = Object.freeze({ ...parsed.data, PAYMENTS_ENABLED: false });
+const appStage = parsed.data.APP_STAGE ?? (parsed.data.NODE_ENV === "production" ? "production" : "local");
+const driverKycMode = parsed.data.DRIVER_KYC_MODE ?? (appStage === "production" ? "STRICT" : "TEST");
+if (appStage === "production" && driverKycMode !== "STRICT") {
+  throw new Error("DRIVER_KYC_MODE=TEST is not permitted when APP_STAGE=production.");
+}
+
+export const env = Object.freeze({ ...parsed.data, APP_STAGE: appStage, DRIVER_KYC_MODE: driverKycMode, PAYMENTS_ENABLED: false });
