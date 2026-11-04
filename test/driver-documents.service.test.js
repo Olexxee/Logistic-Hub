@@ -21,6 +21,7 @@ function fixture() {
   };
   const prismaClient = {
     driverProfile: { findUnique: async () => ({id:"driver-1",userId:"user-1"}) },
+    driverVerificationDocument: { findUnique: async () => state.docs[0] ?? null },
     vehicle: { findFirst: async ({where}) => where.id==="vehicle-1" ? {id:"vehicle-1"} : null },
     mediaAsset: { findUnique: async () => state.asset },
     $transaction: async callback => callback(tx),
