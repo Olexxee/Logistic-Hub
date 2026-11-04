@@ -42,6 +42,7 @@ test("driver approval activates verified vehicles, disables availability and aud
     actorUserId: "admin-1",
   });
   assert.equal(result.verificationStatus, "VERIFIED");
+  assert.equal(result.kycTier, "TEST_LIMITED");
   assert.equal(result.isOnline, false);
   assert.equal(result.isAvailable, false);
   assert.equal(fixture.state.role, "DRIVER");
@@ -113,4 +114,17 @@ test("vehicle approval cannot reactivate a vehicle for a suspended driver", asyn
     actorUserId: "admin-1",
   });
   assert.equal(result.isActive, false);
+});
+
+test("test-limited driver approval does not require identity documents", async () => {
+  const fixture = transactionClient({ profile: { verificationStatus: "PENDING" } });
+  const service = createDriversService({ prismaClient: fixture.prismaClient });
+  const result = await service.reviewDriver({
+    driverProfileId: "driver-1",
+    verificationStatus: "VERIFIED",
+    reason: "Approved for controlled parcel-delivery testing",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.kycTier, "TEST_LIMITED");
+  assert.equal(fixture.state.profile.verificationStatus, "VERIFIED");
 });
