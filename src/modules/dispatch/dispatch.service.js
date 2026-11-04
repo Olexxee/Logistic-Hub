@@ -6,7 +6,7 @@ function payloadHash(value) {
 }
 
 const ACTIVE_ASSIGNMENT_STATUSES = ["AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"];
-const MAX_DRIVER_LOCATION_AGE_MS = 5 * 60 * 1000;
+const MAX_DRIVER_LOCATION_AGE_MS = env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000;
 
 export function distanceBetweenCoordinatesMeters(latitudeA, longitudeA, latitudeB, longitudeB) {
   const radians = (degrees) => (degrees * Math.PI) / 180;
