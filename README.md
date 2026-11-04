@@ -23,13 +23,17 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 ## Driver assignment lifecycle
 
-DRV-04 backend hardening adds an explicit assignment transition policy, atomic one-time verification-code consumption with a five-attempt lockout, and prevents assignment completion from silently re-enabling driver availability. Hub custody remains a separate two-party workflow. Unpaid reservation expiry/reassignment is not yet implemented and remains a separate release task. See [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md).
+DRV-03 availability/location hardening and DRV-04A assignment lifecycle hardening are merged. DRV-04B–DRV-04F remain outstanding. See [Current Implementation Stopping Point](docs/current-implementation-status.md) for the exact completed/remaining work and [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md) for lifecycle invariants.
 
 ## Driver verification and staged KYC
 
 The driver verification workflow now supports private evidence uploads, Admin document review, audited reapplication and explicit test-versus-strict KYC tiers. Local/staging testing can use `DRIVER_KYC_MODE=TEST` to approve `TEST_LIMITED` drivers without full identity evidence. Test-limited drivers are restricted to parcel delivery, cannot receive passenger-ride offers, and do not accrue payout records. Production requires `APP_STAGE=production` and `DRIVER_KYC_MODE=STRICT`; strict review requires an approved identity document and the applicable driver-license/vehicle-registration evidence. See [Driver Verification and Staged KYC Policy](docs/driver-kyc-policy.md).
 
 Driver documents are stored privately through Cloudinary, signature-validated, access-controlled and audited. Rejected applications can be resubmitted under the mode-specific evidence rules. This is not a claim that all statutory KYC requirements have been implemented; the policy document records the initial strict-mode checklist and release gates.
+
+## Runtime deployment model
+
+The API and outbox email worker run in one Node process. Deploy one Render Web Service with `npm start`; a separate worker service is no longer required. See [Current Implementation Stopping Point](docs/current-implementation-status.md).
 
 ## Product blueprint
 
