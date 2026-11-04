@@ -396,7 +396,9 @@ test("payment initialization and unpaid-reservation expiry serialize on the assi
         recipientPhone: "+2348000000000",
         parcelCategory: "DOCUMENT",
         parcelSize: "SMALL",
+        driverFareMinor: 1000n,
         connectionFeeMinor: 300n,
+        customerPayableMinor: 1300n,
         pricingSnapshot: {},
       },
     });
