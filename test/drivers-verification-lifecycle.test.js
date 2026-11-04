@@ -201,3 +201,18 @@ test("STRICT mode requires both vehicle registration and driver licence before m
     error => error.code === "VEHICLE_DOCUMENTS_REQUIRED",
   );
 });
+
+test("TEST mode can explicitly reassess a legacy verified UNASSESSED driver", async () => {
+  const fixture = transactionClient({ profile: { verificationStatus: "VERIFIED", kycTier: "UNASSESSED" } });
+  const service = createDriversService({ prismaClient: fixture.prismaClient, kycMode: "TEST" });
+  const result = await service.reviewDriver({
+    driverProfileId: "driver-1",
+    verificationStatus: "VERIFIED",
+    reason: "Legacy driver reassessed for controlled parcel testing.",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.verificationStatus, "VERIFIED");
+  assert.equal(result.kycTier, "TEST_LIMITED");
+  assert.equal(fixture.events[0].action, "DRIVER_KYC_REASSESSED");
+  assert.equal(fixture.events[0].metadata.isKycReassessment, true);
+});
