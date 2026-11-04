@@ -678,7 +678,8 @@ paths:
       parameters:
         - in: query
           name: entityType
-          schema: { type: string, enum: [DRIVER_PROFILE, HUB_POINT, TRANSPORT_PARTNER, PARTNER_AGREEMENT, PARTNER_RATE_CARD] }
+          description: Extensible entity type emitted by operational modules (for example DRIVER_PROFILE, HUB_POINT, REFUND_REQUEST or PARTNER_RATE_CARD).
+          schema: { type: string, minLength: 1, maxLength: 80 }
         - in: query
           name: entityId
           schema: { type: string, minLength: 1, maxLength: 128 }
