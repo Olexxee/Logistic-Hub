@@ -1,10 +1,18 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./db/prisma.js";
+import { emailService } from "./shared/email/email.service.js";
+import { createOutboxWorker } from "./shared/jobs/outbox-worker.service.js";
 
 const startedAt = Date.now();
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const OUTBOX_POLL_INTERVAL_MS = 1_000;
 let shutdownPromise;
+let outboxWorker;
+let outboxWorkerTimer;
+let outboxWorkerPoll;
+let outboxWorkerStopping = false;
+let outboxWorkerFailures = 0;
 
 function log(level, event, details = {}) {
   const writer = level === "fatal" ? console.error : (console[level] ?? console.log);
@@ -16,6 +24,73 @@ function log(level, event, details = {}) {
     environment: env.NODE_ENV,
     ...details,
   }));
+}
+
+function startOutboxWorker() {
+  if (outboxWorker || outboxWorkerStopping) return;
+
+  if (!emailService.configured) {
+    log("warn", "outbox.worker.disabled", {
+      reason: "email_provider_not_configured",
+    });
+    return;
+  }
+
+  outboxWorker = createOutboxWorker({
+    prismaClient: prisma,
+    email: emailService,
+  });
+  log("info", "outbox.worker.started", {
+    workerId: outboxWorker.workerId,
+    pollIntervalMs: OUTBOX_POLL_INTERVAL_MS,
+    mode: "embedded",
+  });
+  void pollOutbox();
+}
+
+async function pollOutbox() {
+  if (outboxWorkerStopping || !outboxWorker) return;
+
+  outboxWorkerPoll = (async () => {
+    try {
+      await outboxWorker.runOnce();
+      outboxWorkerFailures = 0;
+    } catch (error) {
+      outboxWorkerFailures += 1;
+      log("error", "outbox.poll.failed", {
+        errorName: error?.name,
+        errorCode: error?.code ?? "WORKER_ERROR",
+        message: error?.message,
+        consecutiveFailures: outboxWorkerFailures,
+      });
+    }
+  })();
+
+  await outboxWorkerPoll;
+  outboxWorkerPoll = undefined;
+
+  if (!outboxWorkerStopping) {
+    const retryDelayMs = outboxWorkerFailures
+      ? Math.min(30_000, OUTBOX_POLL_INTERVAL_MS * (2 ** Math.min(outboxWorkerFailures, 5)))
+      : OUTBOX_POLL_INTERVAL_MS;
+    outboxWorkerTimer = setTimeout(() => void pollOutbox(), retryDelayMs);
+    outboxWorkerTimer.unref?.();
+  }
+}
+
+async function stopOutboxWorker(signal) {
+  outboxWorkerStopping = true;
+  if (outboxWorkerTimer) clearTimeout(outboxWorkerTimer);
+  outboxWorkerTimer = undefined;
+
+  if (outboxWorkerPoll) await outboxWorkerPoll;
+
+  if (outboxWorker) {
+    log("info", "outbox.worker.stopped", {
+      workerId: outboxWorker.workerId,
+      signal,
+    });
+  }
 }
 
 const server = app.listen(env.PORT);
@@ -31,7 +106,9 @@ server.on("listening", () => {
 
   // Keep the HTTP process alive when PostgreSQL is unavailable so that
   // liveness diagnostics remain reachable; readiness returns HTTP 503.
-  void checkDatabaseConnection();
+  // Start after the initial connectivity check even if PostgreSQL is temporarily unavailable.
+  // The poll loop backs off and retries, so a transient outage does not disable email delivery.
+  void checkDatabaseConnection().then(() => startOutboxWorker());
 });
 
 server.on("error", (error) => {
@@ -98,6 +175,8 @@ async function shutdown(signal, exitCode = 0) {
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
     forceExitTimer.unref();
+
+    await stopOutboxWorker(signal);
 
     try {
       await new Promise((resolve, reject) => {
