@@ -23,7 +23,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 ## Driver assignment lifecycle
 
-DRV-03 availability/location hardening and DRV-04A assignment lifecycle hardening are merged. DRV-04B–DRV-04F remain outstanding. See [Current Implementation Stopping Point](docs/current-implementation-status.md) for the exact completed/remaining work and [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md) for lifecycle invariants.
+DRV-03 availability/location hardening and DRV-04A assignment lifecycle hardening are merged. DRV-04B PostgreSQL concurrency regression tests are in progress; DRV-04C–DRV-04F remain outstanding. See [Current Implementation Stopping Point](docs/current-implementation-status.md) for the exact completed/remaining work and [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md) for lifecycle invariants.
 
 ## Driver verification and staged KYC
 

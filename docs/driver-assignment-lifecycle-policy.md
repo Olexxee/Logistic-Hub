@@ -1,6 +1,6 @@
 # Driver assignment lifecycle hardening
 
-**Implementation status:** DRV-04A is merged in backend PR #93. DRV-04B through DRV-04F remain open; see [Current Implementation Stopping Point](./current-implementation-status.md). This policy describes intended safeguards and must not be read as proof that every listed lifecycle stage is implemented.
+**Implementation status:** DRV-04A is merged in backend PR #93. DRV-04B concurrency regression tests are being added in a separate PR; DRV-04C through DRV-04F remain open. See [Current Implementation Stopping Point](./current-implementation-status.md). This policy describes intended safeguards and must not be read as proof that every listed lifecycle stage is implemented.
 
 ## Assignment transitions
 
@@ -25,3 +25,18 @@ Assignment completion does not complete a hub custody handover. Custody release/
 ## Migration and rollout
 
 Migration `20261104170000_driver_verification_attempt_limits` adds a non-null counter with a zero default, preserving existing token rows. Apply through the normal reviewed migration workflow; do not run it against production without the release owner approving the deployment and migration window.
+
+
+## Reservation concurrency invariants
+
+The foundation integrity migration already enforces one active assignment per parcel booking, one active assignment per ride booking, and one active job per driver through partial unique indexes. AWAITING_PAYMENT is an active reservation state; COMPLETED, CANCELLED and FAILED release those uniqueness slots.
+
+The acceptance transaction also uses conditional updates on the driver's availability, selected offer and delivery-leg state. These compare-and-set operations provide early, domain-specific conflict responses; the PostgreSQL unique indexes remain the final integrity boundary if concurrent transactions race past an earlier read.
+
+The DRV-04B disposable-PostgreSQL regression test races:
+- Two different drivers attempting to reserve the same parcel booking and delivery leg.
+- One driver attempting to reserve two different parcel bookings and delivery legs.
+
+Each race must commit exactly one active assignment and reject the competing insert with a unique-constraint violation. The booking-level invariant is intentionally stronger than a per-leg invariant: one parcel booking cannot have two active driver assignments on different legs at the same time. This preserves sequential leg execution and avoids overlapping driver reservations.
+
+No new index or schema migration is needed for DRV-04B. The existing partial unique indexes are defined in 20261103100000_foundation_integrity_constraints.

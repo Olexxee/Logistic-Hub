@@ -1,9 +1,11 @@
 ## Current implementation stopping point
 
-**Last completed backend milestone:** DRV-03 availability/location hardening is merged. DRV-04A assignment transition integrity, verification-code attempt limits/single-use consumption, and safe availability behavior are merged in backend PR #93.
+**Last completed backend milestone:** DRV-03 availability/location hardening and DRV-04A assignment transition/verification hardening are merged (backend PR #93).
+
+**Current implementation slice:** DRV-04B adds disposable-PostgreSQL race tests for the existing partial unique indexes: concurrent reservations for the same booking/leg and concurrent reservations by the same driver. The tests assert one committed reservation and one PostgreSQL unique-constraint rejection. This work is in an open PR until CI passes; it is not yet a merged milestone.
 
 **Next unfinished DRV-04 work:**
-- DRV-04B: prove assignment reservation concurrency prevents duplicate driver/leg/booking reservations under simultaneous requests.
+- DRV-04C: implement and test expiry/release/reassignment for rejected, cancelled, failed and unpaid assignments without stale reservations.
 - DRV-04C: implement and test expiry/release/reassignment for rejected, cancelled, failed and unpaid assignments without stale reservations.
 - DRV-04D: extend integration tests for concurrent verification, retry limits, replay and lifecycle ownership boundaries.
 - DRV-04E: verify assignment lifecycle interactions with hub custody while preserving custody as a separate two-party event.
