@@ -37,7 +37,7 @@ test("ADMIN custody queue is paginated, filterable and excludes evidence payload
     assert.equal(body.data.items[0].id, "handover-1");
     assert.equal(body.data.nextCursor, null);
     assert.equal(received.where.status, "PENDING_CONFIRMATION");
-    assert.equal(received.where.parcelBooking.publicReference.contains, "LH-PCL");
+    assert.equal(received.where.parcelBooking.is.publicReference.contains, "LH-PCL");
     assert.equal(received.take, 11);
     assert.equal(received.select.evidence, undefined);
   });
