@@ -147,6 +147,8 @@ test("driver offer cards expose service-zone names, not precise pickup or destin
       findUnique: async () => ({
         id: "driver_profile_1",
         verificationStatus: "VERIFIED",
+        kycTier: "FULL",
+        suspendedAt: null,
         isOnline: true,
         isAvailable: true,
       }),
