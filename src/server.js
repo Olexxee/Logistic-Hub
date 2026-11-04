@@ -12,6 +12,7 @@ let outboxWorker;
 let outboxWorkerTimer;
 let outboxWorkerPoll;
 let outboxWorkerStopping = false;
+let outboxWorkerFailures = 0;
 
 function log(level, event, details = {}) {
   const writer = level === "fatal" ? console.error : (console[level] ?? console.log);
@@ -53,11 +54,14 @@ async function pollOutbox() {
   outboxWorkerPoll = (async () => {
     try {
       await outboxWorker.runOnce();
+      outboxWorkerFailures = 0;
     } catch (error) {
+      outboxWorkerFailures += 1;
       log("error", "outbox.poll.failed", {
         errorName: error?.name,
         errorCode: error?.code ?? "WORKER_ERROR",
         message: error?.message,
+        consecutiveFailures: outboxWorkerFailures,
       });
     }
   })();
@@ -66,7 +70,10 @@ async function pollOutbox() {
   outboxWorkerPoll = undefined;
 
   if (!outboxWorkerStopping) {
-    outboxWorkerTimer = setTimeout(() => void pollOutbox(), OUTBOX_POLL_INTERVAL_MS);
+    const retryDelayMs = outboxWorkerFailures
+      ? Math.min(30_000, OUTBOX_POLL_INTERVAL_MS * (2 ** Math.min(outboxWorkerFailures, 5)))
+      : OUTBOX_POLL_INTERVAL_MS;
+    outboxWorkerTimer = setTimeout(() => void pollOutbox(), retryDelayMs);
     outboxWorkerTimer.unref?.();
   }
 }
@@ -99,9 +106,9 @@ server.on("listening", () => {
 
   // Keep the HTTP process alive when PostgreSQL is unavailable so that
   // liveness diagnostics remain reachable; readiness returns HTTP 503.
-  void checkDatabaseConnection().then((connected) => {
-    if (connected) startOutboxWorker();
-  });
+  // Start after the initial connectivity check even if PostgreSQL is temporarily unavailable.
+  // The poll loop backs off and retries, so a transient outage does not disable email delivery.
+  void checkDatabaseConnection().then(() => startOutboxWorker());
 });
 
 server.on("error", (error) => {
