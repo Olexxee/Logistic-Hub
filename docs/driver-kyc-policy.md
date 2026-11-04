@@ -4,7 +4,7 @@
 
 The driver workflow supports controlled product testing before full KYC operations are ready. Reduced checks are represented explicitly as a **TEST_LIMITED** tier; they are not represented as full identity verification.
 
-`verificationStatus` answers whether the platform has approved the driver profile. `kycTier` answers what level of evidence and operational capability that approval carries. These are deliberately separate.
+`verificationStatus` answers whether the platform has approved the driver profile. `kycTier` answers what level of evidence and operational capability that approval carries. These are deliberately separate. Existing profiles are migrated as `UNASSESSED`; they are not silently upgraded to FULL. An Admin must explicitly review them under the active mode before they can become dispatch-eligible.
 
 ## Environment controls
 
@@ -17,7 +17,7 @@ The driver workflow supports controlled product testing before full KYC operatio
 
 ## TEST mode
 
-An Admin may approve a driver profile without identity or licence documents. The approval is recorded as `verificationStatus=VERIFIED` and `kycTier=TEST_LIMITED`.
+An Admin may approve a driver profile without identity or licence documents. The approval is recorded as `verificationStatus=VERIFIED` and `kycTier=TEST_LIMITED`. Profiles with `kycTier=UNASSESSED` remain ineligible until reviewed.
 
 TEST_LIMITED drivers:
 - May receive local parcel-delivery opportunities only.
