@@ -28,3 +28,13 @@ test("TEST_LIMITED drivers can publish location only after going online in test 
   assert.equal(recorded,true);
   assert.equal(result.id,"loc-1");
 });
+
+test("UNASSESSED legacy profiles cannot go online even in TEST mode",async()=>{
+  const profile={
+    id:"legacy-driver",verificationStatus:"VERIFIED",kycTier:"UNASSESSED",suspendedAt:null,
+    vehicles:[{isActive:true,verificationStatus:"VERIFIED"}],
+    coverage:[{serviceType:"PARCEL_DELIVERY",serviceZone:{isActive:true,state:{isActive:true,country:{isActive:true}},availability:[{serviceType:"PARCEL_DELIVERY",isEnabled:true,startsAt:null,endsAt:null}]}}],
+  };
+  const service=createDriversService({prismaClient:{driverProfile:{findUnique:async()=>profile}}});
+  await assert.rejects(service.setAvailability({userId:"legacy-driver-user",input:{isOnline:true,isAvailable:true}}),error=>error.statusCode===403);
+});
