@@ -667,6 +667,18 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
+    async listAdminCustodyHandovers({ status, hubPointId, q, cursor, limit = 25 }) {
+      const rows = await repo.listAdminCustodyHandovers({ status, hubPointId, q, cursor, limit });
+      const hasMore = rows.length > limit;
+      return { items: hasMore ? rows.slice(0, limit) : rows, nextCursor: hasMore ? rows[limit - 1].id : null };
+    },
+
+    async listAdminHubIntakes({ status, hubPointId, q, cursor, limit = 25 }) {
+      const rows = await repo.listAdminHubIntakes({ status, hubPointId, q, cursor, limit });
+      const hasMore = rows.length > limit;
+      return { items: hasMore ? rows.slice(0, limit) : rows, nextCursor: hasMore ? rows[limit - 1].id : null };
+    },
+
     async listHubIntakes({ userId, status = "RECEIVED", hubPointId, cursor, limit = 25 }) {
       const memberships = await repo.findHubOperatorsForUser(userId);
       const hubIds = memberships.map(item => item.hubPointId);
