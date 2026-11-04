@@ -1,0 +1,1 @@
+// Cloudinary storage adapter
