@@ -26,8 +26,9 @@ function setup({ ticket = { id: "ticket-1", customerId: "customer-1", status: "O
     $transaction: async callback => callback(tx),
   };
   const storage = {
-    bucket: "logistic-hub-evidence",
-    upload: async input => state.uploaded.push(input),
+    provider: "CLOUDINARY",
+    bucket: "test-cloud",
+    upload: async input => { state.uploaded.push(input); return input.objectPath; },
     delete: async input => state.deleted.push(input),
   };
   return { state, service: createMediaService({ prismaClient, storage }) };
@@ -47,7 +48,7 @@ test("ticket owner can upload valid evidence and the asset metadata is audited",
   assert.equal(result.mimeType, "image/png");
   assert.equal(result.sizeBytes, String(png.length));
   assert.equal(state.uploaded.length, 1);
-  assert.equal(state.media.storageProvider, "FIREBASE");
+  assert.equal(state.media.storageProvider, "CLOUDINARY");
   assert.equal(state.audit[0].action, "SUPPORT_TICKET_EVIDENCE_UPLOADED");
   assert.match(state.media.objectPath, /^support-tickets\/ticket-1\/[0-9a-f-]+\.png$/);
 });

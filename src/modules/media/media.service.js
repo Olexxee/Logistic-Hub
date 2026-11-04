@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { createFirebaseStorage } from "./firebase-storage.js";
+import { createCloudinaryStorage } from "./cloudinary-storage.js";
 import { NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
 
@@ -31,7 +32,7 @@ function publicAsset(asset) {
   };
 }
 
-export function createMediaService({ prismaClient, storage = createFirebaseStorage() }) {
+export function createMediaService({ prismaClient, storage = createCloudinaryStorage(), legacyStorage = createFirebaseStorage() }) {
   async function findAccessibleTicket(ticketId, user) {
     const ticket = await prismaClient.supportTicket.findUnique({ where: { id: ticketId } });
     if (!ticket || !canAccessTicket(ticket, user)) throw new NotFoundError("Support ticket not found.");
@@ -69,14 +70,14 @@ export function createMediaService({ prismaClient, storage = createFirebaseStora
       const objectPath = `support-tickets/${ticketId}/${randomUUID()}${type.extension}`;
       const sha256 = createHash("sha256").update(buffer).digest("hex");
 
-      await storage.upload({ objectPath, buffer, mimeType });
+      const storedObjectPath = await storage.upload({ objectPath, buffer, mimeType }) ?? objectPath;
       try {
         const created = await prismaClient.$transaction(async tx => {
           const asset = await tx.mediaAsset.create({
             data: {
-              storageProvider: "FIREBASE",
+              storageProvider: storage.provider ?? "CLOUDINARY",
               bucket: storage.bucket,
-              objectPath,
+              objectPath: storedObjectPath,
               originalName: name,
               mimeType,
               sizeBytes: BigInt(buffer.length),
@@ -98,7 +99,7 @@ export function createMediaService({ prismaClient, storage = createFirebaseStora
         });
         return created;
       } catch (error) {
-        await storage.delete({ objectPath }).catch(() => {});
+        await storage.delete({ objectPath: storedObjectPath, mimeType }).catch(() => {});
         throw error;
       }
     },
@@ -110,7 +111,9 @@ export function createMediaService({ prismaClient, storage = createFirebaseStora
         include: { mediaAsset: true },
       });
       if (!attachment) throw new NotFoundError("Evidence attachment not found.");
-      const buffer = await storage.download({ objectPath: attachment.mediaAsset.objectPath });
+      const asset = attachment.mediaAsset;
+      const assetStorage = asset.storageProvider === "FIREBASE" ? legacyStorage : storage;
+      const buffer = await assetStorage.download({ objectPath: asset.objectPath, mimeType: asset.mimeType });
       await prismaClient.$transaction(async tx => {
         await writeOperationalAuditEvent(tx, {
           actorUserId: user.id,
