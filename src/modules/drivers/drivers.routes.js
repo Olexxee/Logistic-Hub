@@ -41,7 +41,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
   const requireAdmin = roleMiddleware("ADMIN");
   const requireDriver = roleMiddleware("DRIVER");
   router.use("/admin", createDriversAdminRouter({ prismaClient, authMiddleware, roleMiddleware }));
-  router.use(createDriverDocumentsRouter({ prismaClient, authMiddleware, roleMiddleware }));
+  router.use("/", createDriverDocumentsRouter({ prismaClient, authMiddleware, roleMiddleware }));
 
   router.get("/me", authMiddleware, async (req, res, next) => {
     try {
