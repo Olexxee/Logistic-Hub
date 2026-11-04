@@ -108,6 +108,47 @@ export function createCustodyRepository({ prismaClient }) {
     createAudit(data, tx = prismaClient) {
       return tx.operationalAuditEvent.create({ data });
     },
+    listAdminCustodyHandovers({ status, hubPointId, q, cursor, limit = 25 } = {}, tx = prismaClient) {
+      return tx.custodyHandover.findMany({
+        where: {
+          ...(status ? { status } : {}),
+          ...(hubPointId ? { hubPointId } : {}),
+          ...(q ? { parcelBooking: { publicReference: { contains: q, mode: "insensitive" } } } : {}),
+        },
+        orderBy: [{ initiatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true,
+          fromPartyType: true, toPartyType: true, status: true,
+          conditionAtRelease: true, conditionAtReceipt: true,
+          expiresAt: true, initiatedAt: true, confirmedAt: true, rejectedAt: true, rejectionReason: true,
+          parcelBooking: { select: { publicReference: true, status: true } },
+          deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+          hubPoint: { select: { id: true, name: true } },
+        },
+      });
+    },
+    listAdminHubIntakes({ status, hubPointId, q, cursor, limit = 25 } = {}, tx = prismaClient) {
+      return tx.hubIntakeRecord.findMany({
+        where: {
+          ...(status ? { status } : {}),
+          ...(hubPointId ? { hubPointId } : {}),
+          ...(q ? { parcelBooking: { publicReference: { contains: q, mode: "insensitive" } } } : {}),
+        },
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true,
+          status: true, weightGrams: true, lengthMm: true, widthMm: true, heightMm: true,
+          volumeCm3: true, conditionAtReceipt: true, receivedAt: true, releasedAt: true,
+          parcelBooking: { select: { publicReference: true, status: true, parcelCategory: true, parcelSize: true } },
+          deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+          hubPoint: { select: { id: true, name: true } },
+        },
+      });
+    },
     listHubHandovers(hubPointIds, { direction = "incoming", status, cursor, limit = 25 } = {}, tx = prismaClient) {
       const where = direction === "incoming"
         ? { toPartyType: "HUB", toPartyId: { in: hubPointIds }, ...(status ? { status } : {}) }
