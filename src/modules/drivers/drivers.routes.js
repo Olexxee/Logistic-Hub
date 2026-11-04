@@ -88,7 +88,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     const parsed = driverVerificationSchema.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error.issues);
     try {
-      const result = await service.reviewDriver({ driverProfileId: parsedId.data, verificationStatus: parsed.data.verificationStatus });
+      const result = await service.reviewDriver({ driverProfileId: parsedId.data, verificationStatus: parsed.data.verificationStatus, reason: parsed.data.reason, actorUserId: req.user.id });
       if (!result) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Driver profile not found." } });
       let emailStatus = "not_sent";
       if (email.configured && result.userId) {
@@ -128,7 +128,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
     const parsed = vehicleVerificationSchema.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error.issues);
     try {
-      const result = await service.reviewVehicle({ vehicleId: parsedId.data, verificationStatus: parsed.data.verificationStatus });
+      const result = await service.reviewVehicle({ vehicleId: parsedId.data, verificationStatus: parsed.data.verificationStatus, reason: parsed.data.reason, actorUserId: req.user.id });
       if (!result) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Vehicle not found." } });
       return res.status(200).json({ success: true, data: result });
     } catch (error) {
