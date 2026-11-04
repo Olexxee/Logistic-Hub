@@ -13,7 +13,7 @@ The driver workflow supports controlled product testing before full KYC operatio
 | `APP_STAGE` | `local`, `staging`, `production` | Derived from `NODE_ENV` |
 | `DRIVER_KYC_MODE` | `TEST`, `STRICT` | `TEST` for local/staging; `STRICT` for production |
 
-`APP_STAGE=production` rejects `DRIVER_KYC_MODE=TEST`. A staging deployment must set `APP_STAGE=staging` explicitly if its `NODE_ENV` is production. Do not change `NODE_ENV` merely to bypass the KYC guard.
+`APP_STAGE=production` rejects `DRIVER_KYC_MODE=TEST`. A staging deployment must set `APP_STAGE=staging` explicitly if its `NODE_ENV` is production. It must use a separate staging database and test data; do not point TEST mode at production records. Do not change `NODE_ENV` merely to bypass the KYC guard.
 
 ## TEST mode
 
@@ -58,8 +58,9 @@ Before enabling production driver operations:
 1. Set `APP_STAGE=production` and `DRIVER_KYC_MODE=STRICT`.
 2. Confirm production Cloudinary access is private and credentials are server-only.
 3. Confirm required document types and expiry rules with the applicable legal/compliance owner.
-4. Complete Admin document review and driver eligibility acceptance tests.
-5. Keep payments and external payouts disabled until separately approved.
-6. Run staging role, upload/download, dispatch, suspension and reapplication tests.
+4. Implement document expiry enforcement, malware scanning and a documented retention/deletion policy before collecting real identity evidence.
+5. Complete Admin document review and driver eligibility acceptance tests.
+6. Keep payments and external payouts disabled until separately approved.
+7. Run staging role, upload/download, dispatch, suspension and reapplication tests.
 
 Never enable TEST mode against production data.
