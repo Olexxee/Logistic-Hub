@@ -22,8 +22,8 @@ CREATE TABLE "driver_verification_documents" (
 );
 
 CREATE UNIQUE INDEX "driver_verification_documents_mediaAssetId_key" ON "driver_verification_documents"("mediaAssetId");
-CREATE INDEX "driver_verification_documents_driverProfileId_documentType_reviewStatus_createdAt_idx" ON "driver_verification_documents"("driverProfileId", "documentType", "reviewStatus", "createdAt");
-CREATE INDEX "driver_verification_documents_vehicleId_documentType_reviewStatus_createdAt_idx" ON "driver_verification_documents"("vehicleId", "documentType", "reviewStatus", "createdAt");
+CREATE INDEX "driver_verification_documents_driverProfileId_documentType__idx" ON "driver_verification_documents"("driverProfileId", "documentType", "reviewStatus", "createdAt");
+CREATE INDEX "driver_verification_documents_vehicleId_documentType_review_idx" ON "driver_verification_documents"("vehicleId", "documentType", "reviewStatus", "createdAt");
 CREATE INDEX "driver_verification_documents_reviewStatus_createdAt_idx" ON "driver_verification_documents"("reviewStatus", "createdAt");
 
 ALTER TABLE "driver_verification_documents"
