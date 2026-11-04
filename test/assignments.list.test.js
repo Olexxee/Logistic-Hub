@@ -150,7 +150,7 @@ test("TEST_LIMITED parcel completion does not create a driver payout record",asy
   const repository=createAssignmentsRepository({
     $transaction:callback=>callback({
       driverAssignment:{findUnique:async()=>assignment,update:async()=>({})},
-      verificationToken:{findFirst:async()=>({id:"token-1"}),updateMany:async()=>({count:1})},
+      verificationToken:{findFirst:async()=>({id:"token-1",tokenHash:"valid-hash",failedAttempts:0}),updateMany:async()=>({count:1})},
       parcelBooking:{update:async()=>({})},
       bookingEvent:{create:async()=>({})},
       driverProfile:{update:async()=>({})},
