@@ -92,3 +92,40 @@ test("listMine returns an empty page when the driver has no paid parcel assignme
   const result = await service.listMine({ userId: "driver-user-2", page: 1, limit: 20 });
   assert.deepEqual(result, { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } });
 });
+
+import { createAssignmentsRepository } from "../src/modules/assignments/assignments.repository.js";
+
+test("suspended driver cannot advance an existing assignment",async()=>{
+  let mutationAttempted=false;
+  const assignment={
+    id:"assignment-1",status:"ACCEPTED",
+    driverProfile:{id:"driver-1",userId:"driver-user",verificationStatus:"VERIFIED",kycTier:"FULL",suspendedAt:new Date()},
+  };
+  const repository=createAssignmentsRepository({
+    $transaction:callback=>callback({
+      driverAssignment:{
+        findUnique:async()=>assignment,
+        updateMany:async()=>{mutationAttempted=true;return{count:1};},
+      },
+    }),
+  });
+  const result=await repository.transition({assignmentId:"assignment-1",driverUserId:"driver-user",nextStatus:"ARRIVED_AT_PICKUP",now:new Date()});
+  assert.deepEqual(result,{forbidden:true});
+  assert.equal(mutationAttempted,false);
+});
+
+test("suspended driver cannot consume pickup or delivery verification codes",async()=>{
+  let tokenLookup=false;
+  const assignment={
+    id:"assignment-1",status:"ARRIVED_AT_PICKUP",driverProfile:{id:"driver-1",userId:"driver-user",verificationStatus:"VERIFIED",kycTier:"FULL",suspendedAt:new Date()},
+  };
+  const repository=createAssignmentsRepository({
+    $transaction:callback=>callback({
+      driverAssignment:{findUnique:async()=>assignment},
+      verificationToken:{findFirst:async()=>{tokenLookup=true;return{id:"token-1"};}},
+    }),
+  });
+  const result=await repository.verifyCode({assignmentId:"assignment-1",driverUserId:"driver-user",action:"PICKUP",tokenHash:"hash",now:new Date()});
+  assert.deepEqual(result,{forbidden:true});
+  assert.equal(tokenLookup,false);
+});
