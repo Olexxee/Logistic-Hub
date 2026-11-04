@@ -29,6 +29,8 @@ function validDriver(id = "driver_1") {
     id,
     serviceRadiusMeters: 5000,
     verificationStatus: "VERIFIED",
+    kycTier: "FULL",
+    suspendedAt: null,
     isOnline: true,
     isAvailable: true,
     lastLocationAt: now,
@@ -74,7 +76,7 @@ test("interstate transport legs cannot be dispatched to local drivers", async ()
 
 test("driver offer cards contain zone and hub summaries but no precise addresses or coordinates", async () => {
   const repository = {
-    findDriverProfile: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", isOnline: true, isAvailable: true }),
+    findDriverProfile: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }),
     findDriverOffers: async () => [{
       id: "offer_1", currency: "NGN", expiresAt: now, createdAt: now,
       deliveryLeg: {
@@ -107,7 +109,7 @@ test("driver fare proposals are idempotent and scoped to the driver's own leg of
   };
   const repository = {
     transaction: (callback) => callback({
-      driverProfile: { findUnique: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", isOnline: true, isAvailable: true }) },
+      driverProfile: { findUnique: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
     }),
     findOfferForDriver: async () => offer,
     updateOffer: async (_tx, where, data) => { offerUpdate = { where, data }; return { count: 1 }; },
@@ -278,6 +280,8 @@ test("a repeated fare proposal replays after the driver becomes unavailable", as
         findUnique: async () => ({
           id: "profile_1",
           verificationStatus: "VERIFIED",
+          kycTier: "FULL",
+          suspendedAt: null,
           isOnline: true,
           isAvailable: false,
         }),
