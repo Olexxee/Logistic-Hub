@@ -22,20 +22,22 @@ async function serve(role, run) {
   finally { await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }
 
-test("audit history is ADMIN-only", async () => {
-  await serve("CUSTOMER", async base => {
-    const response = await fetch(`${base}/admin/audit-events`);
-    assert.equal(response.status, 403);
-  });
+test("audit history denies every non-ADMIN role", async () => {
+  for (const role of ["CUSTOMER", "DRIVER", "SUPPORT", "HUB_OPERATOR", "PARTNER_OPERATOR"]) {
+    await serve(role, async base => {
+      const response = await fetch(`${base}/admin/audit-events`);
+      assert.equal(response.status, 403, `${role} must be denied`);
+    });
+  }
 });
 
 test("admin audit history supports entity and action filters", async () => {
   await serve("ADMIN", async (base, getQuery) => {
-    const response = await fetch(`${base}/admin/audit-events?entityType=DRIVER_PROFILE&entityId=driver-1&action=DRIVER_SUSPENDED&page=1&limit=10`);
+    const response = await fetch(`${base}/admin/audit-events?entityType=DRIVER_PROFILE&entityId=driver-1&action=DRIVER_SUSPENDED&actorUserId=admin-1&page=1&limit=10`);
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.data.items[0].id, "event-1");
-    assert.deepEqual(getQuery().where, { entityType: "DRIVER_PROFILE", entityId: "driver-1", action: "DRIVER_SUSPENDED" });
+    assert.deepEqual(getQuery().where, { entityType: "DRIVER_PROFILE", entityId: "driver-1", action: "DRIVER_SUSPENDED", actorUserId: "admin-1" });
   });
 });
 
