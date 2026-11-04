@@ -32,6 +32,7 @@ enum UserStatus {
 }
 
 enum DriverKycTier {
+  UNASSESSED
   TEST_LIMITED
   FULL
 }
@@ -469,7 +470,7 @@ model DriverProfile {
   id                  String             @id @default(cuid())
   userId              String             @unique
   verificationStatus  VerificationStatus @default(NOT_SUBMITTED)
-  kycTier             DriverKycTier       @default(FULL)
+  kycTier             DriverKycTier       @default(UNASSESSED)
   suspendedAt         DateTime?
   suspensionReason    String?
   reinstatedAt        DateTime?
