@@ -249,16 +249,16 @@ test("PostgreSQL serializes concurrent active assignment reservations by booking
   });
 
   try {
-    country = await prisma.country.create({ data: { code: \`T\${tag}\`, name: \`Reservation Test Country \${tag}\` } });
+    country = await prisma.country.create({ data: { code: `T${tag}`, name: `Reservation Test Country ${tag}` } });
     state = await prisma.state.create({
-      data: { countryId: country.id, code: \`S\${tag}\`, name: \`Reservation Test State \${tag}\` },
+      data: { countryId: country.id, code: `S${tag}`, name: `Reservation Test State ${tag}` },
     });
     zone = await prisma.serviceZone.create({
-      data: { stateId: state.id, code: \`Z\${tag}\`, name: \`Reservation Test Zone \${tag}\` },
+      data: { stateId: state.id, code: `Z${tag}`, name: `Reservation Test Zone ${tag}` },
     });
-    sender = await prisma.user.create({ data: { fullName: \`Reservation Sender \${tag}\` } });
-    driverUserA = await prisma.user.create({ data: { fullName: \`Reservation Driver A \${tag}\` } });
-    driverUserB = await prisma.user.create({ data: { fullName: \`Reservation Driver B \${tag}\` } });
+    sender = await prisma.user.create({ data: { fullName: `Reservation Sender ${tag}` } });
+    driverUserA = await prisma.user.create({ data: { fullName: `Reservation Driver A ${tag}` } });
+    driverUserB = await prisma.user.create({ data: { fullName: `Reservation Driver B ${tag}` } });
     driverA = await prisma.driverProfile.create({ data: { userId: driverUserA.id } });
     driverB = await prisma.driverProfile.create({ data: { userId: driverUserB.id } });
 
@@ -282,8 +282,8 @@ test("PostgreSQL serializes concurrent active assignment reservations by booking
         pricingSnapshot: {},
       },
     });
-    bookingA = await createBooking(\`RACE-A-\${tag}\`);
-    bookingB = await createBooking(\`RACE-B-\${tag}\`);
+    bookingA = await createBooking(`RACE-A-${tag}`);
+    bookingB = await createBooking(`RACE-B-${tag}`);
 
     const createLeg = (bookingId) => prisma.deliveryLeg.create({
       data: {
