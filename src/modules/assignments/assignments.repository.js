@@ -1,5 +1,19 @@
 import { prisma } from "../../db/prisma.js";
 import { env } from "../../config/env.js";
+
+const ASSIGNMENT_TRANSITIONS = Object.freeze({
+ ACCEPTED: ["ARRIVED_AT_PICKUP"],
+ ARRIVED_AT_PICKUP: [],
+ PICKUP_CONFIRMED: ["IN_PROGRESS"],
+ IN_PROGRESS: ["ARRIVED_AT_DESTINATION"],
+ ARRIVED_AT_DESTINATION: [],
+});
+
+export function isAllowedAssignmentTransition(currentStatus, nextStatus) {
+ return (ASSIGNMENT_TRANSITIONS[currentStatus] ?? []).includes(nextStatus);
+}
+
+export const MAX_VERIFICATION_CODE_ATTEMPTS = 5;
 export function createAssignmentsRepository(prismaClient = prisma) {
  return {
   async listDriverAssignments({userId,skip,take}){
@@ -51,8 +65,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
     if(a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || !(a.driverProfile.kycTier==="FULL" || (env.DRIVER_KYC_MODE==="TEST" && a.driverProfile.kycTier==="TEST_LIMITED")) || (a.rideBookingId && a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
-    const allowed={ACCEPTED:["ARRIVED_AT_PICKUP"],ARRIVED_AT_PICKUP:[],PICKUP_CONFIRMED:["IN_PROGRESS"],IN_PROGRESS:["ARRIVED_AT_DESTINATION"],ARRIVED_AT_DESTINATION:[]};
-    if(!(allowed[a.status]||[]).includes(nextStatus))return {conflict:true,status:a.status};
+    if(!isAllowedAssignmentTransition(a.status,nextStatus))return {conflict:true,status:a.status};
     const transition = await tx.driverAssignment.updateMany({
      where: { id: a.id, status: a.status },
      data: {
@@ -84,15 +97,15 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(!token)return {invalid:true};
     const expected=action==="PICKUP"?"ARRIVED_AT_PICKUP":"ARRIVED_AT_DESTINATION";
     if(a.status!==expected)return {conflict:true,status:a.status};
-    if(token.failedAttempts>=5){
+    if(token.failedAttempts>=MAX_VERIFICATION_CODE_ATTEMPTS){
      await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE"},data:{status:"REVOKED"}});
      return {invalid:true};
     }
     if(token.tokenHash!==tokenHash){
-     const attempts=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now},failedAttempts:token.failedAttempts},data:{failedAttempts:{increment:1},...(token.failedAttempts+1>=5?{status:"REVOKED"}:{})}});
-     return {invalid:true,locked:attempts.count===1&&token.failedAttempts+1>=5};
+     const attempts=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now},failedAttempts:token.failedAttempts},data:{failedAttempts:{increment:1},...(token.failedAttempts+1>=MAX_VERIFICATION_CODE_ATTEMPTS?{status:"REVOKED"}:{})}});
+     return {invalid:true,locked:attempts.count===1&&token.failedAttempts+1>=MAX_VERIFICATION_CODE_ATTEMPTS};
     }
-    const consumed=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now},failedAttempts:{lt:5}},data:{status:"CONSUMED",consumedAt:now,consumedByUserId:driverUserId}});
+    const consumed=await tx.verificationToken.updateMany({where:{id:token.id,status:"ACTIVE",expiresAt:{gt:now},failedAttempts:{lt:MAX_VERIFICATION_CODE_ATTEMPTS}},data:{status:"CONSUMED",consumedAt:now,consumedByUserId:driverUserId}});
     if(consumed.count!==1)return {invalid:true};
     const nextStatus=action==="PICKUP"?"PICKUP_CONFIRMED":"COMPLETED";
     await tx.driverAssignment.update({where:{id:a.id},data:{status:nextStatus,...(action==="PICKUP"?{pickupAt:now}:{completedAt:now})}});
