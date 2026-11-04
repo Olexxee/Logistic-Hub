@@ -17,6 +17,9 @@ const envSchema = z.object({
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   REFUNDS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   PAYSTACK_SECRET_KEY: z.string().optional().default(""),
+  CLOUDINARY_CLOUD_NAME: z.string().optional().default(""),
+  CLOUDINARY_API_KEY: z.string().optional().default(""),
+  CLOUDINARY_API_SECRET: z.string().optional().default(""),
   FIREBASE_SERVICE_ACCOUNT_BASE64: z.string().optional().default(""),
   FIREBASE_STORAGE_BUCKET: z.string().optional().default(""),
 });
@@ -59,6 +62,11 @@ if (parsed.data.NODE_ENV === "production") {
 
 if (parsed.data.NODE_ENV === "production" && parsed.data.JWT_ACCESS_SECRET.length < 32) {
   throw new Error("JWT_ACCESS_SECRET must contain at least 32 characters in production.");
+}
+
+const cloudinaryFields = [parsed.data.CLOUDINARY_CLOUD_NAME, parsed.data.CLOUDINARY_API_KEY, parsed.data.CLOUDINARY_API_SECRET].map(value => Boolean(value.trim()));
+if (cloudinaryFields.some(Boolean) && !cloudinaryFields.every(Boolean)) {
+  throw new Error("CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET must be configured together.");
 }
 
 if (Boolean(parsed.data.FIREBASE_SERVICE_ACCOUNT_BASE64.trim()) !== Boolean(parsed.data.FIREBASE_STORAGE_BUCKET.trim())) {
