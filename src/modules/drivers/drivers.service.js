@@ -186,7 +186,7 @@ export function createDriversService({ prismaClient, clock = () => new Date() })
         if (profile.verificationStatus !== "REJECTED") throw conflict("DRIVER_NOT_REAPPLICABLE", "Only rejected driver applications can be resubmitted.");
         if (env.DRIVER_KYC_MODE === "STRICT") {
           const updatedEvidence = await tx.driverVerificationDocument.findFirst({
-            where: { driverProfileId: profile.id, reviewStatus: "PENDING", createdAt: { gt: profile.updatedAt } },
+            where: { driverProfileId: profile.id, reviewStatus: { in: ["PENDING", "APPROVED"] }, createdAt: { gt: profile.updatedAt } },
             select: { id: true },
           });
           if (!updatedEvidence) throw conflict("REAPPLICATION_EVIDENCE_REQUIRED", "Upload updated verification evidence before reapplying in strict mode.");
