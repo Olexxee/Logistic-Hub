@@ -1149,6 +1149,111 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /hub-points/admin/{hubPointId}/operators:
+    get:
+      tags: [Admin]
+      operationId: listAdminHubOperators
+      summary: List operators assigned to a hub
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: hubPointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: search
+          schema: { type: string, minLength: 1, maxLength: 160 }
+        - in: query
+          name: role
+          schema: { type: string, enum: [MANAGER, OPERATOR] }
+        - in: query
+          name: isActive
+          schema: { type: boolean }
+      responses:
+        '200': { description: Hub operator memberships and pagination metadata. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Admin]
+      operationId: addAdminHubOperator
+      summary: Add or reactivate a hub operator membership
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: hubPointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [userId, reason]
+              properties:
+                userId: { type: string, minLength: 1, maxLength: 128 }
+                role: { type: string, enum: [MANAGER, OPERATOR], default: OPERATOR }
+                canDispatch: { type: boolean, default: false }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Membership already active with the requested permissions. }
+        '201': { description: Hub operator membership created or reactivated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /hub-points/admin/{hubPointId}/operators/{memberId}:
+    patch:
+      tags: [Admin]
+      operationId: updateAdminHubOperator
+      summary: Update a hub operator role, dispatch permission or active status
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: hubPointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              minProperties: 2
+              properties:
+                isActive: { type: boolean }
+                role: { type: string, enum: [MANAGER, OPERATOR] }
+                canDispatch: { type: boolean }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Hub operator membership updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /hub-points/admin/{hubPointId}:
     patch:
       tags: [Admin]
