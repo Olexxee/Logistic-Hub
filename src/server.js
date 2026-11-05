@@ -3,16 +3,23 @@ import { env } from "./config/env.js";
 import { prisma } from "./db/prisma.js";
 import { emailService } from "./shared/email/email.service.js";
 import { createOutboxWorker } from "./shared/jobs/outbox-worker.service.js";
+import { createDriverAssignmentExpiryWorker } from "./shared/jobs/driver-assignment-expiry.service.js";
 
 const startedAt = Date.now();
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const OUTBOX_POLL_INTERVAL_MS = 1_000;
+const ASSIGNMENT_EXPIRY_POLL_INTERVAL_MS = 30_000;
 let shutdownPromise;
 let outboxWorker;
 let outboxWorkerTimer;
 let outboxWorkerPoll;
 let outboxWorkerStopping = false;
 let outboxWorkerFailures = 0;
+let assignmentExpiryWorker;
+let assignmentExpiryTimer;
+let assignmentExpiryPoll;
+let assignmentExpiryStopping = false;
+let assignmentExpiryFailures = 0;
 
 function log(level, event, details = {}) {
   const writer = level === "fatal" ? console.error : (console[level] ?? console.log);
@@ -93,6 +100,52 @@ async function stopOutboxWorker(signal) {
   }
 }
 
+function startDriverAssignmentExpiryWorker() {
+  if (assignmentExpiryWorker || assignmentExpiryStopping) return;
+  assignmentExpiryWorker = createDriverAssignmentExpiryWorker({ prismaClient: prisma });
+  log("info", "driver.assignment.expiry_worker.started", {
+    pollIntervalMs: ASSIGNMENT_EXPIRY_POLL_INTERVAL_MS,
+    mode: "embedded",
+  });
+  void pollDriverAssignmentExpiry();
+}
+
+async function pollDriverAssignmentExpiry() {
+  if (assignmentExpiryStopping || !assignmentExpiryWorker) return;
+  assignmentExpiryPoll = (async () => {
+    try {
+      const result = await assignmentExpiryWorker.runOnce();
+      assignmentExpiryFailures = 0;
+      if (result.expired > 0) log("info", "driver.assignment.reservations_expired", result);
+    } catch (error) {
+      assignmentExpiryFailures += 1;
+      log("error", "driver.assignment.expiry_poll.failed", {
+        errorName: error?.name,
+        errorCode: error?.code ?? "ASSIGNMENT_EXPIRY_WORKER_ERROR",
+        message: error?.message,
+        consecutiveFailures: assignmentExpiryFailures,
+      });
+    }
+  })();
+  await assignmentExpiryPoll;
+  assignmentExpiryPoll = undefined;
+  if (!assignmentExpiryStopping) {
+    const retryDelayMs = assignmentExpiryFailures
+      ? Math.min(5 * 60_000, ASSIGNMENT_EXPIRY_POLL_INTERVAL_MS * (2 ** Math.min(assignmentExpiryFailures, 4)))
+      : ASSIGNMENT_EXPIRY_POLL_INTERVAL_MS;
+    assignmentExpiryTimer = setTimeout(() => void pollDriverAssignmentExpiry(), retryDelayMs);
+    assignmentExpiryTimer.unref?.();
+  }
+}
+
+async function stopDriverAssignmentExpiryWorker(signal) {
+  assignmentExpiryStopping = true;
+  if (assignmentExpiryTimer) clearTimeout(assignmentExpiryTimer);
+  assignmentExpiryTimer = undefined;
+  if (assignmentExpiryPoll) await assignmentExpiryPoll;
+  if (assignmentExpiryWorker) log("info", "driver.assignment.expiry_worker.stopped", { signal });
+}
+
 const server = app.listen(env.PORT);
 
 server.on("listening", () => {
@@ -108,7 +161,10 @@ server.on("listening", () => {
   // liveness diagnostics remain reachable; readiness returns HTTP 503.
   // Start after the initial connectivity check even if PostgreSQL is temporarily unavailable.
   // The poll loop backs off and retries, so a transient outage does not disable email delivery.
-  void checkDatabaseConnection().then(() => startOutboxWorker());
+  void checkDatabaseConnection().then(() => {
+    startOutboxWorker();
+    startDriverAssignmentExpiryWorker();
+  });
 });
 
 server.on("error", (error) => {
@@ -177,6 +233,7 @@ async function shutdown(signal, exitCode = 0) {
     forceExitTimer.unref();
 
     await stopOutboxWorker(signal);
+    await stopDriverAssignmentExpiryWorker(signal);
 
     try {
       await new Promise((resolve, reject) => {

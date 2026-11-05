@@ -2,7 +2,55 @@ import { prisma } from "../../db/prisma.js";
 export function createPaymentsRepository(prismaClient = prisma) {
  return {
   findBooking({bookingType,bookingId,userId}) { return bookingType === "PARCEL" ? prismaClient.parcelBooking.findFirst({where:{id:bookingId,senderId:userId},include:{assignments:{where:{status:"AWAITING_PAYMENT"},take:1,include:{driverProfile:{include:{settlementAccounts:{where:{provider:"PAYSTACK",status:"ACTIVE"},take:1}}}}}}}) : prismaClient.rideBooking.findFirst({where:{id:bookingId,passengerId:userId},include:{assignments:{where:{status:"AWAITING_PAYMENT"},take:1,include:{driverProfile:{include:{settlementAccounts:{where:{provider:"PAYSTACK",status:"ACTIVE"},take:1}}}}}}}); },
-  createAttempt(data) { return prismaClient.paymentAttempt.upsert({where:{idempotencyKey:data.idempotencyKey},create:data,update:{}}); },
+  createAttempt(data) {
+   return prismaClient.$transaction(async tx => {
+    const bookingWhere = data.parcelBookingId
+     ? { parcelBookingId: data.parcelBookingId }
+     : { rideBookingId: data.rideBookingId };
+    const existing = await tx.paymentAttempt.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
+    if (existing) return existing;
+
+    const reservation = await tx.driverAssignment.findFirst({
+     where: {
+      ...bookingWhere,
+      status: "AWAITING_PAYMENT",
+      OR: [{ paymentExpiresAt: null }, { paymentExpiresAt: { gt: new Date() } }],
+     },
+     orderBy: { createdAt: "desc" },
+     select: { id: true },
+    });
+    if (!reservation) {
+     throw Object.assign(new Error("The driver reservation is no longer active."), {
+      statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
+     });
+    }
+
+    // The expiry worker locks this same row before releasing the reservation.
+    // Whichever transaction wins the lock decides whether payment can start.
+    await tx.$queryRaw`SELECT id FROM driver_assignments WHERE id = ${reservation.id} FOR UPDATE`;
+    const currentReservation = await tx.driverAssignment.findUnique({
+     where: { id: reservation.id },
+     select: { status: true, paymentExpiresAt: true },
+    });
+    if (!currentReservation || currentReservation.status !== "AWAITING_PAYMENT"
+     || (currentReservation.paymentExpiresAt && currentReservation.paymentExpiresAt <= new Date())) {
+     throw Object.assign(new Error("The driver reservation expired before payment initialization."), {
+      statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
+     });
+    }
+
+    const unresolvedAttempt = await tx.paymentAttempt.findFirst({
+     where: { ...bookingWhere, status: { in: ["INITIALIZED", "PENDING"] } },
+     select: { id: true },
+    });
+    if (unresolvedAttempt) {
+     throw Object.assign(new Error("A payment attempt is already awaiting provider reconciliation."), {
+      statusCode: 409, code: "PAYMENT_ATTEMPT_PENDING",
+     });
+    }
+    return tx.paymentAttempt.create({ data });
+   });
+  },
   findUserEmail(userId) { return prismaClient.user.findUnique({where:{id:userId},select:{email:true}}); },
   saveAuthorization({id,authorizationUrl,accessCode}) { return prismaClient.paymentAttempt.update({where:{id},data:{providerPayload:{authorizationUrl,accessCode}}}); },
   updateRefundFromWebhook({ providerReference, status, providerResponse }) {
