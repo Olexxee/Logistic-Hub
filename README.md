@@ -1,5 +1,9 @@
 # Logistic Hub
 
+## Marketplace integration
+
+- [MarketIQ LI-01 integration contract v1.0](docs/integrations/marketIQ-v1.md) — external identity, platform-funded booking, quote-before-payment/booking-after-payment flow, idempotency, signed webhooks and reconciliation boundaries. Contract only; integration routes are not yet implemented.
+
 Logistic Hub is a Nigeria-focused logistics platform for coordinating local parcel delivery and inter-state shipments through verified workers, transport partners and operational hubs.
 
 The platform coordinates the shipment lifecycle: booking, route and capacity checks, quotation, customer acceptance, payment verification, dispatch, custody transfers, delivery confirmation and financial reconciliation. It is designed to expand across Nigerian states through configurable geography, partner agreements and service coverage rather than one-off code changes.
