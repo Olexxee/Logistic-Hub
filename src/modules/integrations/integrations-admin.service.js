@@ -96,6 +96,45 @@ export function createIntegrationsAdminService({ prismaClient, clock = () => new
       });
     },
 
+    async updateBillingAgreementStatus({ clientId, agreementId, status, reason, actorUserId }) {
+      return repository.transaction(async tx => {
+        const client = await repository.findClient(clientId, tx);
+        if (!client) throw new NotFoundError("Integration client not found.", "INTEGRATION_CLIENT_NOT_FOUND");
+        const agreement = await tx.integrationBillingAgreement.findFirst({ where: { id: agreementId, clientId } });
+        if (!agreement) throw new NotFoundError("Billing agreement not found for this integration client.", "INTEGRATION_BILLING_AGREEMENT_NOT_FOUND");
+        if (["EXPIRED", "REVOKED"].includes(agreement.status) && status !== agreement.status) {
+          throw new ConflictError("Expired or revoked billing agreements are terminal. Create a new version.", "INTEGRATION_BILLING_AGREEMENT_TERMINAL");
+        }
+        const allowed = {
+          DRAFT: ["DRAFT", "ACTIVE", "REVOKED"],
+          ACTIVE: ["ACTIVE", "SUSPENDED", "EXPIRED", "REVOKED"],
+          SUSPENDED: ["SUSPENDED", "ACTIVE", "EXPIRED", "REVOKED"],
+        };
+        if (!allowed[agreement.status]?.includes(status)) {
+          throw new ConflictError("Invalid billing agreement lifecycle transition.", "INTEGRATION_BILLING_AGREEMENT_TRANSITION_INVALID");
+        }
+        if (agreement.status === status) return { agreement, replay: true };
+        if (status === "ACTIVE") {
+          const now = clock();
+          if (agreement.effectiveFrom > now || (agreement.effectiveUntil && agreement.effectiveUntil <= now)) {
+            throw new ConflictError("The agreement is outside its effective dates.", "INTEGRATION_BILLING_AGREEMENT_OUTSIDE_EFFECTIVE_DATES");
+          }
+          const activeSibling = await tx.integrationBillingAgreement.findFirst({
+            where: { clientId, reference: agreement.reference, status: "ACTIVE", id: { not: agreement.id } },
+          });
+          if (activeSibling) throw new ConflictError("Another version of this agreement reference is already active.", "INTEGRATION_BILLING_AGREEMENT_VERSION_ACTIVE");
+        }
+        const updated = await tx.integrationBillingAgreement.update({ where: { id: agreement.id }, data: { status } });
+        await repository.writeAudit(tx, {
+          actorUserId, entityType: "INTEGRATION_BILLING_AGREEMENT", entityId: agreement.id,
+          action: "INTEGRATION_BILLING_AGREEMENT_STATUS_CHANGED", reason,
+          before: { status: agreement.status, reference: agreement.reference, version: agreement.version },
+          after: { status: updated.status, reference: updated.reference, version: updated.version, clientId },
+        });
+        return { agreement: updated, replay: false };
+      });
+    },
+
     async createBillingAgreement({ clientId, reference, billingModel, effectiveFrom, effectiveUntil, terms, reason, actorUserId }) {
       const from = effectiveFrom ?? clock();
       if (effectiveUntil && effectiveUntil <= from) throw new ValidationError("Agreement end date must be later than its start date.");
