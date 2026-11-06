@@ -75,6 +75,7 @@ app.use(pinoHttp({
     "req.headers.authorization",
     "req.headers.cookie",
     "req.headers.x-api-key",
+    "req.headers.x-integration-secret",
     "res.headers.set-cookie",
   ],
   customLogLevel: (_req, res, error) => {
