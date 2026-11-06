@@ -42,7 +42,7 @@ CREATE TABLE "integration_billing_agreements" (
   CONSTRAINT "integration_billing_agreements_valid_dates" CHECK ("effectiveUntil" IS NULL OR "effectiveUntil" > "effectiveFrom")
 );
 CREATE UNIQUE INDEX "integration_billing_agreements_clientId_reference_version_key" ON "integration_billing_agreements"("clientId", "reference", "version");
-CREATE INDEX "integration_billing_agreements_clientId_status_dates_idx" ON "integration_billing_agreements"("clientId", "status", "effectiveFrom", "effectiveUntil");
+CREATE INDEX "integration_billing_agreements_clientId_status_effectiveFro_idx" ON "integration_billing_agreements"("clientId", "status", "effectiveFrom", "effectiveUntil");
 
 CREATE TABLE "integration_idempotency_records" (
   "id" TEXT NOT NULL, "clientId" TEXT NOT NULL, "operation" TEXT NOT NULL,
@@ -53,8 +53,8 @@ CREATE TABLE "integration_idempotency_records" (
   CONSTRAINT "integration_idempotency_records_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "integration_idempotency_records_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "integration_clients"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
-CREATE UNIQUE INDEX "integration_idempotency_records_clientId_operation_idempotencyKey_key" ON "integration_idempotency_records"("clientId", "operation", "idempotencyKey");
-CREATE INDEX "integration_idempotency_records_clientId_operation_createdAt_idx" ON "integration_idempotency_records"("clientId", "operation", "createdAt");
+CREATE UNIQUE INDEX "integration_idempotency_records_clientId_operation_idempote_key" ON "integration_idempotency_records"("clientId", "operation", "idempotencyKey");
+CREATE INDEX "integration_idempotency_records_clientId_operation_createdA_idx" ON "integration_idempotency_records"("clientId", "operation", "createdAt");
 CREATE INDEX "integration_idempotency_records_expiresAt_idx" ON "integration_idempotency_records"("expiresAt");
 
 CREATE TABLE "integration_external_references" (
@@ -65,5 +65,5 @@ CREATE TABLE "integration_external_references" (
   CONSTRAINT "integration_external_references_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "integration_external_references_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "integration_clients"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
-CREATE UNIQUE INDEX "integration_external_references_clientId_resourceType_externalReference_key" ON "integration_external_references"("clientId", "resourceType", "externalReference");
-CREATE INDEX "integration_external_references_internalResource_idx" ON "integration_external_references"("internalResourceType", "internalResourceId");
+CREATE UNIQUE INDEX "integration_external_references_clientId_resourceType_exter_key" ON "integration_external_references"("clientId", "resourceType", "externalReference");
+CREATE INDEX "integration_external_references_internalResourceType_intern_idx" ON "integration_external_references"("internalResourceType", "internalResourceId");
