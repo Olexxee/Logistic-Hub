@@ -18,6 +18,16 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED" } = {}) {
     { id: "rate_carton", rateCardId: "card_1", parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 4000n, estimatedTransitMinutes: 240, rateCard },
   ];
+  const alternateRateCard = {
+    id: "card_2", version: 2, agreementId: "partner_agreement_2", status: "ACTIVE", currency: "NGN",
+    agreement: { id: "partner_agreement_2", partner: { id: "partner_2", displayName: "Alternate carrier" } },
+  };
+  rates.push(
+    { id: "rate_box_alt", rateCardId: "card_2", parcelCategory: "box", minWeightGrams: 0, maxWeightGrams: 10000,
+      maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 3000n, estimatedTransitMinutes: 150, rateCard: alternateRateCard },
+    { id: "rate_carton_alt", rateCardId: "card_2", parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
+      maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 4500n, estimatedTransitMinutes: 200, rateCard: alternateRateCard },
+  );
   const tx = {
     integrationIdempotencyRecord: {
       findUnique: async ({ where }) => state.idempotency.find(r => r.clientId === where.clientId_operation_idempotencyKey.clientId
@@ -96,7 +106,7 @@ test("quote session prices every package against one contracted rate card", asyn
   const result = await service.createQuote({ client, idempotencyKey: "quote-create-001", input: baseInput });
   assert.equal(result.statusCode, 201);
   assert.equal(result.body.quoteSession.status, "QUOTED");
-  assert.equal(result.body.options.length, 1);
+  assert.equal(result.body.options.length, 2);
   assert.equal(result.body.options[0].logisticsCostMinor, "6500");
   assert.equal(result.body.options[0].platformChargeMinor, "500");
   assert.equal(result.body.options[0].customerChargeMinor, "7000");
@@ -146,6 +156,7 @@ test("acceptance selects one option and rejects the remaining alternatives", asy
   assert.equal(accepted.body.status, "SELECTED");
   assert.equal(state.sessions[0].status, "SELECTED");
   assert.equal(state.options[0].status, "SELECTED");
+  assert.equal(state.options[1].status, "REJECTED");
 });
 
 test("quote creation refuses billing models whose financial workflows are not implemented", async () => {
