@@ -63,7 +63,6 @@ test("PostgreSQL enforces exactly one parcel-booking owner and persists all inte
         data: { ...bookingData, publicReference: `GIL04B-NONE-${tag}`,
           pickupServiceZoneId: zone.id, destinationServiceZoneId: zone.id },
       }),
-      "A booking without an owner must be rejected by PostgreSQL",
     );
 
     await assert.rejects(
@@ -71,7 +70,6 @@ test("PostgreSQL enforces exactly one parcel-booking owner and persists all inte
         data: { ...bookingData, publicReference: `GIL04B-BOTH-${tag}`, senderId: sender.id,
           integrationClientId: client.id, pickupServiceZoneId: zone.id, destinationServiceZoneId: zone.id },
       }),
-      "A booking with two owners must be rejected by PostgreSQL",
     );
 
     await prisma.parcelBookingPackage.createMany({
