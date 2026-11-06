@@ -1,6 +1,6 @@
 # GIL-04 — Integration Booking Bridge
 
-**Status:** GIL-04A is implemented and merged in PR #100. GIL-04B source audit and implementation contract are documented in [GIL-04B — Integration-Owned Booking and Package Persistence](gil-04b-booking-ownership-and-packages.md). No GIL-04B schema/runtime changes have been applied yet.
+**Status:** GIL-04A is implemented and merged in PR #100. GIL-04B ownership/package schema and migration are implemented on the integration branch; PostgreSQL integrity tests are added. The integration shipment factory and endpoint remain unimplemented.
 
 ## Objective
 
