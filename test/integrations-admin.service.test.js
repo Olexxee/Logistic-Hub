@@ -76,7 +76,7 @@ test("credential issuance persists only a hash and returns the secret once", asy
 test("revoked clients cannot be reactivated", async () => {
   const { prismaClient } = makePrisma();
   const service = createIntegrationsAdminService({ prismaClient });
-  const client = await service.createClient({ code: "market_iq", name: "MarketIQ", scopes: [], actorUserId: "admin_1" });
+  const client = await service.createClient({ code: "market_iq", name: "MarketIQ", scopes: [], reason: "Register MarketIQ integration", actorUserId: "admin_1" });
   await service.updateClientStatus({ clientId: client.id, status: "REVOKED", reason: "Client permanently retired", actorUserId: "admin_1" });
   await assert.rejects(
     service.updateClientStatus({ clientId: client.id, status: "ACTIVE", reason: "Attempted restore", actorUserId: "admin_1" }),
@@ -87,7 +87,7 @@ test("revoked clients cannot be reactivated", async () => {
 test("billing agreement versions increase within a client reference", async () => {
   const { state, prismaClient } = makePrisma();
   const service = createIntegrationsAdminService({ prismaClient, clock: () => new Date("2026-01-01T00:00:00.000Z") });
-  const client = await service.createClient({ code: "market_iq", name: "MarketIQ", scopes: [], actorUserId: "admin_1" });
+  const client = await service.createClient({ code: "market_iq", name: "MarketIQ", scopes: [], reason: "Register MarketIQ integration", actorUserId: "admin_1" });
   const first = await service.createBillingAgreement({
     clientId: client.id, reference: "marketplace-default", billingModel: "PLATFORM_COLLECTED",
     reason: "Initial agreed billing model", actorUserId: "admin_1",
