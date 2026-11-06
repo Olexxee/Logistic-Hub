@@ -41,6 +41,28 @@ enum IntegrationAgreementStatus {
   REVOKED
 }
 
+enum IntegrationQuoteSessionStatus {
+  QUOTED
+  SELECTED
+  REQUIRES_MEASUREMENT
+  NO_COVERAGE
+  EXPIRED
+}
+
+enum IntegrationQuoteOptionStatus {
+  AVAILABLE
+  SELECTED
+  REJECTED
+  EXPIRED
+}
+
+enum PackageAssessmentStatus {
+  DECLARED
+  ESTIMATED
+  MEASURED
+  REQUIRES_MEASUREMENT
+}
+
 enum UserRole {
   CUSTOMER
   DRIVER
@@ -1441,6 +1463,7 @@ model PartnerAgreement {
   partner   TransportPartner   @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   rateCards PartnerRateCard[]
   quotes    ShipmentQuote[]
+  integrationQuoteOptions IntegrationQuoteOption[]
   deliveryAssignments PartnerDeliveryAssignment[]
   payables PartnerPayable[]
 
@@ -1463,6 +1486,7 @@ model PartnerRateCard {
 
   agreement PartnerAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
   rates     PartnerRate[]
+  integrationQuoteOptions IntegrationQuoteOption[]
 
   @@unique([agreementId, version])
   @@index([status, effectiveFrom, effectiveUntil])
@@ -1904,10 +1928,105 @@ model IntegrationBillingAgreement {
   updatedAt      DateTime                   @updatedAt
 
   client IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  quoteSessions IntegrationQuoteSession[]
 
   @@unique([clientId, reference, version])
   @@index([clientId, status, effectiveFrom, effectiveUntil])
   @@map("integration_billing_agreements")
+}
+
+model IntegrationQuoteSession {
+  id                       String                         @id @default(cuid())
+  clientId                 String
+  billingAgreementId       String
+  billingAgreementVersion  Int
+  externalReference        String
+  idempotencyKey           String
+  payloadHash              String
+  status                   IntegrationQuoteSessionStatus @default(QUOTED)
+  currency                 String                        @default("NGN")
+  pickupServiceZoneId      String
+  destinationServiceZoneId String
+  pickupAddress            String
+  pickupLatitude           Decimal                       @db.Decimal(10, 7)
+  pickupLongitude          Decimal                       @db.Decimal(10, 7)
+  destinationAddress       String
+  destinationLatitude      Decimal                       @db.Decimal(10, 7)
+  destinationLongitude     Decimal                       @db.Decimal(10, 7)
+  recipientName            String
+  recipientPhone           String
+  expiresAt                DateTime
+  selectedOptionId         String?
+  assessmentSnapshot       Json
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+
+  client           IntegrationClient          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  billingAgreement IntegrationBillingAgreement @relation(fields: [billingAgreementId], references: [id], onDelete: Restrict)
+  packages         IntegrationQuotePackage[]
+  options          IntegrationQuoteOption[]
+
+  @@unique([clientId, externalReference])
+  @@unique([clientId, idempotencyKey])
+  @@index([clientId, status, createdAt])
+  @@index([billingAgreementId, createdAt])
+  @@map("integration_quote_sessions")
+}
+
+model IntegrationQuotePackage {
+  id                   String                  @id @default(cuid())
+  quoteSessionId        String
+  externalPackageRef    String?
+  packageCategory       String
+  description           String?
+  weightGrams           Int?
+  lengthMm              Int?
+  widthMm               Int?
+  heightMm              Int?
+  declaredValueMinor    BigInt?
+  assessmentStatus      PackageAssessmentStatus @default(DECLARED)
+  assessmentSource      String                  @default("INTEGRATOR_DECLARED")
+  assessedAt            DateTime                @default(now())
+  assessmentConfidence  Decimal?                @db.Decimal(5, 4)
+  createdAt             DateTime                @default(now())
+
+  quoteSession IntegrationQuoteSession @relation(fields: [quoteSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([quoteSessionId, externalPackageRef])
+  @@index([quoteSessionId, assessmentStatus])
+  @@map("integration_quote_packages")
+}
+
+model IntegrationQuoteOption {
+  id                       String                         @id @default(cuid())
+  quoteSessionId            String
+  optionCode                String
+  status                    IntegrationQuoteOptionStatus @default(AVAILABLE)
+  partnerAgreementId        String
+  partnerRateCardId         String
+  currency                  String                         @default("NGN")
+  logisticsCostMinor        BigInt
+  platformChargeMinor       BigInt
+  otherChargesMinor         BigInt                         @default(0)
+  customerChargeMinor       BigInt
+  estimatedTransitMinutes   Int?
+  routeMode                 String
+  packageRateSnapshot       Json
+  routeSnapshot             Json
+  expiresAt                 DateTime
+  selectedAt                DateTime?
+  createdAt                 DateTime                       @default(now())
+  updatedAt                 DateTime                       @updatedAt
+
+  quoteSession     IntegrationQuoteSession @relation(fields: [quoteSessionId], references: [id], onDelete: Restrict)
+  partnerAgreement PartnerAgreement        @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
+  partnerRateCard  PartnerRateCard         @relation(fields: [partnerRateCardId], references: [id], onDelete: Restrict)
+
+  @@unique([quoteSessionId, optionCode])
+  @@index([quoteSessionId, status, customerChargeMinor])
+  @@index([partnerAgreementId])
+  @@index([partnerRateCardId])
+  @@map("integration_quote_options")
 }
 
 model IntegrationIdempotencyRecord {
