@@ -119,6 +119,31 @@ test("cross-state quote falls back to an end-to-end leg when hub coverage is inc
 });
 
 
+
+test("multi-package hub selection requires capacity for the full consignment", async () => {
+  const originHub = hub("origin_hub", "zone_lagos", 6.525, 3.38);
+  const destinationHub = hub("destination_hub", "zone_ogun", 6.81, 3.51);
+  originHub.capacityConfig = { maxParcels: 1 };
+  destinationHub.capacityConfig = { maxParcels: 10 };
+  const { tx, created } = transaction({
+    zones: [
+      { id: "zone_lagos", stateId: "NG-LA" },
+      { id: "zone_ogun", stateId: "NG-OG" },
+    ],
+    hubs: [originHub, destinationHub],
+  });
+  const plan = await createMultiLegPlan({
+    tx,
+    booking: booking({ packages: [{ packageCategory: "BOX" }, { packageCategory: "BOX" }] }),
+    quote: { id: "quote_capacity" },
+    now,
+  });
+
+  assert.equal(plan.routeMode, "END_TO_END");
+  assert.equal(created.length, 1);
+  assert.equal(created[0].type, "INTERSTATE_TRANSPORT");
+});
+
 test("an end-to-end quote pins its topology if hubs become eligible before plan creation", async () => {
   const { tx, created } = transaction({
     zones: [
