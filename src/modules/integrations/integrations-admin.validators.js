@@ -14,6 +14,7 @@ export const integrationClientListQuerySchema = z.object({
 export const integrationClientCreateSchema = z.object({
   code: z.string().trim().min(2).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/),
   name: z.string().trim().min(2).max(120),
+  reason,
   scopes,
   metadata: z.record(z.unknown()).optional(),
 }).strict();
