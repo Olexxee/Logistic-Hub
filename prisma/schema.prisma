@@ -860,7 +860,8 @@ model ParcelBooking {
   idempotencyPayloadHash        String?
   fareAcceptanceIdempotencyKey  String?       @unique
   fareAcceptancePayloadHash     String?
-  senderId                      String
+  senderId                      String?
+  integrationClientId            String?
   pickupServiceZoneId           String
   destinationServiceZoneId      String
   status                        BookingStatus @default(DRAFT)
@@ -894,7 +895,9 @@ model ParcelBooking {
   createdAt                     DateTime      @default(now())
   updatedAt                     DateTime      @updatedAt
 
-  sender                 User              @relation("ParcelSender", fields: [senderId], references: [id], onDelete: Restrict)
+  sender                 User?             @relation("ParcelSender", fields: [senderId], references: [id], onDelete: Restrict)
+  integrationClient      IntegrationClient? @relation(fields: [integrationClientId], references: [id], onDelete: Restrict)
+  packages               ParcelBookingPackage[]
   pickupServiceZone      ServiceZone       @relation("ParcelPickupZone", fields: [pickupServiceZoneId], references: [id], onDelete: Restrict)
   destinationServiceZone ServiceZone       @relation("ParcelDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   offers                 DriverOffer[]
@@ -913,10 +916,39 @@ model ParcelBooking {
   hubIntakeRecords       HubIntakeRecord[]
 
   @@index([senderId, createdAt])
+  @@index([integrationClientId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
   @@index([destinationServiceZoneId, status, createdAt])
   @@index([status, paymentStatus, createdAt])
   @@map("parcel_bookings")
+}
+
+model ParcelBookingPackage {
+  id                    String                  @id @default(cuid())
+  parcelBookingId       String
+  sequence              Int
+  externalPackageRef    String?
+  packageCategory       String
+  description           String?
+  weightGrams           Int?
+  lengthMm              Int?
+  widthMm               Int?
+  heightMm              Int?
+  declaredValueMinor    BigInt?
+  assessmentStatus      PackageAssessmentStatus @default(DECLARED)
+  assessmentSource      String                  @default("INTEGRATOR_DECLARED")
+  assessedAt            DateTime                @default(now())
+  assessmentSnapshot    Json?
+  rateSnapshot          Json?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+
+  @@unique([parcelBookingId, sequence])
+  @@unique([parcelBookingId, externalPackageRef])
+  @@index([parcelBookingId, assessmentStatus])
+  @@map("parcel_booking_packages")
 }
 
 model RideBooking {
@@ -1890,6 +1922,7 @@ model IntegrationClient {
   idempotencyRecords  IntegrationIdempotencyRecord[]
   externalReferences  IntegrationExternalReference[]
   quoteSessions      IntegrationQuoteSession[]
+  parcelBookings     ParcelBooking[]
 
   @@index([status, createdAt])
   @@map("integration_clients")
