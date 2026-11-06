@@ -174,7 +174,7 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
         const matches = cardRates.filter(rate => rate.parcelCategory === pkg.packageCategory && rateFitsPackage(rate, pkg));
         // Overlapping rate definitions are ambiguous. Do not choose a price arbitrarily.
         if (matches.length !== 1) { valid = false; break; }
-        packageMatches.push({ packageId: pkg.id, externalPackageRef: pkg.externalPackageRef, rate: matches[0] });
+        packageMatches.push({ packageRef: pkg.externalPackageRef ?? `package-${packages.indexOf(pkg) + 1}`, externalPackageRef: pkg.externalPackageRef ?? null, rate: matches[0] });
       }
       if (!valid) continue;
       const logisticsCost = packageMatches.reduce((sum, item) => sum + item.rate.transportChargeMinor, 0n);
@@ -190,7 +190,7 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
         customerCharge,
         estimatedTransitMinutes: transit.length ? Math.max(...transit) : null,
         rateSnapshot: packageMatches.map(item => ({
-          packageId: item.packageId, externalPackageRef: item.externalPackageRef,
+          packageRef: item.packageRef, externalPackageRef: item.externalPackageRef,
           rateId: item.rate.id, transportChargeMinor: item.rate.transportChargeMinor.toString(),
           estimatedTransitMinutes: item.rate.estimatedTransitMinutes,
         })),
