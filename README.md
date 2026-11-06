@@ -1,8 +1,9 @@
 # Logistic Hub
 
-## Marketplace integration
+## Generic business integrations
 
-- [MarketIQ LI-01 integration contract v1.0](docs/integrations/marketIQ-v1.md) — external identity, platform-funded booking, quote-before-payment/booking-after-payment flow, idempotency, signed webhooks and reconciliation boundaries. Contract only; integration routes are not yet implemented.
+- [Generic Logistics Integration API](docs/integrations/generic-logistics-integration-v1.md) — reusable multi-client boundary for commerce, importation and fulfilment platforms, including client credentials, billing agreements, multi-option quotes, package assessment, shipment references and webhook roadmap. GIL-01 adds the client registry data foundation; external API endpoints are not yet implemented.
+- [MarketIQ integration decisions](docs/integrations/marketIQ-v1.md) — MarketIQ-specific commercial and checkout decisions, treated as one integration client of the generic API.
 
 Logistic Hub is a Nigeria-focused logistics platform for coordinating local parcel delivery and inter-state shipments through verified workers, transport partners and operational hubs.
 
