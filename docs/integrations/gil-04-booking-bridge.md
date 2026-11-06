@@ -1,6 +1,6 @@
 # GIL-04 — Integration Booking Bridge
 
-**Status:** Architecture audit complete; implementation gates identified. No shipment-creation endpoint is implemented by this document.
+**Status:** GIL-04A implementation is in progress. Quote generation now uses the shared operational route resolver and fails closed when local execution legs do not have a fixed contracted price. Shipment creation is not implemented by this document.
 
 ## Objective
 
@@ -33,6 +33,8 @@ GIL-03 accepts 1–50 package records and stores individual weights/dimensions/r
 **Required direction:** preserve package-level facts on the booking in a first-class package model. Do not silently collapse a multi-package consignment into the first package's category or dimensions. Existing single-package customer booking behavior must remain compatible.
 
 ### 3. Quote-to-execution pricing parity
+
+**GIL-04A implementation:** the integration quote engine and delivery-plan builder now share `resolveDeliveryRoute`. Quote options are emitted only for `END_TO_END` routes, where the contracted partner rate prices the single interstate leg and the platform fee is explicit. Same-state `LOCAL_DIRECT` and `HUB_ASSISTED` routes return `REQUIRES_OPERATIONAL_PRICING` with no selectable options until local-driver charges are fixed before collection. The selected end-to-end topology is persisted in the route snapshot and is pinned during later delivery-plan creation, so a newly activated hub cannot silently change a priced one-leg route into three legs.
 
 GIL-03 currently prices package rates plus the platform connection fee. Its route mode is a quote-level pricing label. The existing execution planner may create:
 - no delivery legs for a same-state `LOCAL_DIRECT` route;
@@ -106,7 +108,7 @@ A failure at any step must roll back the booking, packages, quote, route plan, e
 
 | Slice | Scope | Exit criteria |
 |---|---|---|
-| GIL-04A | Quote/execution parity | Quote options include a feasible operational plan and complete priced components; no post-payment fare surprise |
+| GIL-04A | Quote/execution parity | Shared route resolver; end-to-end routes are priced as one leg; local/hub-assisted routes fail closed with `REQUIRES_OPERATIONAL_PRICING` until local-driver charges are fixed |
 | GIL-04B | Integration-owned booking and package persistence | Nullable sender is constrained to integration-owned records; user-owned booking behavior remains unchanged; packages are normalized |
 | GIL-04C | Atomic shipment creation | Selected quote, external payment attestation, accepted ShipmentQuote, route plan, booking and idempotency commit atomically |
 | GIL-04D | Shipment retrieval and recovery | Client-scoped ID and external-reference reads; no cross-client disclosure |
