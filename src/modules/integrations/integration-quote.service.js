@@ -309,6 +309,24 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
     },
 
     async getQuote({ clientId, quoteSessionId }) {
+      const now = clock();
+      const current = await prismaClient.integrationQuoteSession.findFirst({
+        where: { id: quoteSessionId, clientId },
+        select: { id: true, status: true, expiresAt: true },
+      });
+      if (!current) throw new NotFoundError("Quote session not found.", "INTEGRATION_QUOTE_NOT_FOUND");
+      if (current.status === "QUOTED" && current.expiresAt <= now) {
+        await prismaClient.$transaction(async tx => {
+          await tx.integrationQuoteSession.updateMany({
+            where: { id: current.id, clientId, status: "QUOTED", expiresAt: { lte: now } },
+            data: { status: "EXPIRED" },
+          });
+          await tx.integrationQuoteOption.updateMany({
+            where: { quoteSessionId: current.id, status: "AVAILABLE", expiresAt: { lte: now } },
+            data: { status: "EXPIRED" },
+          });
+        });
+      }
       const session = await prismaClient.integrationQuoteSession.findFirst({
         where: { id: quoteSessionId, clientId },
         include: { billingAgreement: { select: { reference: true } }, packages: { orderBy: { createdAt: "asc" } }, options: { orderBy: [{ customerChargeMinor: "asc" }, { optionCode: "asc" }] } },
