@@ -150,7 +150,13 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
           },
         },
       },
-      include: { rateCard: { include: { agreement: { include: { partner: { select: { id: true, displayName: true } } } } } },
+      include: {
+        rateCard: {
+          include: {
+            agreement: { include: { partner: { select: { id: true, displayName: true } } } },
+          },
+        },
+      },
       orderBy: [{ rateCardId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     });
 
