@@ -62,7 +62,7 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED" } = {}) {
     },
     integrationQuoteOption: {
       create: async ({ data }) => {
-        const option = { id: `option_${state.options.length + 1}`, createdAt: new Date(), updatedAt: new Date(), ...data };
+        const option = { id: `option_${state.options.length + 1}`, status: "AVAILABLE", createdAt: new Date(), updatedAt: new Date(), ...data };
         state.options.push(option);
         return option;
       },
@@ -131,7 +131,7 @@ test("same idempotency key and payload replays the original quote response", asy
   const first = await service.createQuote({ client, idempotencyKey: "quote-create-003", input: baseInput });
   const second = await service.createQuote({ client, idempotencyKey: "quote-create-003", input: baseInput });
   assert.equal(second.replay, true);
-  assert.deepEqual(second.body, first.body);
+  assert.deepEqual(JSON.parse(JSON.stringify(second.body)), JSON.parse(JSON.stringify(first.body)));
   assert.equal(state.sessions.length, 1);
 });
 
