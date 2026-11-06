@@ -132,6 +132,9 @@ test("hub-assisted routes require fixed local pickup and final-mile pricing befo
 
   assert.equal(result.body.quoteSession.status, "REQUIRES_OPERATIONAL_PRICING");
   assert.equal(result.body.quoteSession.assessment.routeMode, "HUB_ASSISTED");
+  assert.equal(result.body.quoteSession.assessment.routeSnapshot.hubAssisted, true);
+  assert.equal(result.body.quoteSession.assessment.routeSnapshot.originHub, undefined);
+  assert.equal(result.body.quoteSession.assessment.routeSnapshot.legs[0].destinationHubPointId, undefined);
   assert.match(result.body.quoteSession.assessment.reason, /local pickup and final-mile/i);
   assert.equal(result.body.options.length, 0);
   assert.equal(state.options.length, 0);
