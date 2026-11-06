@@ -118,6 +118,57 @@ test("cross-state quote falls back to an end-to-end leg when hub coverage is inc
   assert.deepEqual(created[0].metadata, { quoteId: "quote_2", routePlanVersion: 1 });
 });
 
+
+
+test("multi-package hub selection requires capacity for the full consignment", async () => {
+  const originHub = hub("origin_hub", "zone_lagos", 6.525, 3.38);
+  const destinationHub = hub("destination_hub", "zone_ogun", 6.81, 3.51);
+  originHub.capacityConfig = { maxParcels: 1 };
+  destinationHub.capacityConfig = { maxParcels: 10 };
+  const { tx, created } = transaction({
+    zones: [
+      { id: "zone_lagos", stateId: "NG-LA" },
+      { id: "zone_ogun", stateId: "NG-OG" },
+    ],
+    hubs: [originHub, destinationHub],
+  });
+  const plan = await createMultiLegPlan({
+    tx,
+    booking: booking({ packages: [{ packageCategory: "BOX" }, { packageCategory: "BOX" }] }),
+    quote: { id: "quote_capacity" },
+    now,
+  });
+
+  assert.equal(plan.routeMode, "END_TO_END");
+  assert.equal(created.length, 1);
+  assert.equal(created[0].type, "INTERSTATE_TRANSPORT");
+});
+
+test("an end-to-end quote pins its topology if hubs become eligible before plan creation", async () => {
+  const { tx, created } = transaction({
+    zones: [
+      { id: "zone_lagos", stateId: "NG-LA" },
+      { id: "zone_ogun", stateId: "NG-OG" },
+    ],
+    hubs: [
+      hub("origin_hub", "zone_lagos", 6.525, 3.38),
+      hub("destination_hub", "zone_ogun", 6.81, 3.51),
+    ],
+  });
+  const plan = await createMultiLegPlan({
+    tx,
+    booking: booking(),
+    quote: { id: "quote_pinned", inputSnapshot: { routeSnapshot: { routeMode: "END_TO_END" } } },
+    now,
+  });
+
+  assert.equal(plan.routeMode, "END_TO_END");
+  assert.equal(created.length, 1);
+  assert.equal(created[0].type, "INTERSTATE_TRANSPORT");
+  assert.equal(created[0].originHubPointId, null);
+  assert.equal(created[0].destinationHubPointId, null);
+});
+
 test("same-state quote does not create an unnecessary hub-assisted route", async () => {
   const { tx, created } = transaction({
     zones: [

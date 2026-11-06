@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { resolveDeliveryRoute } from "../delivery-legs/delivery-route-planner.js";
 import { ConflictError, NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 
 function stable(value) {
@@ -104,30 +105,77 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
   }
 
   async function buildOptions(tx, { packages, input, agreement, now, expiresAt }) {
-    const zones = await tx.serviceZone.findMany({
-      where: { id: { in: [input.pickupServiceZoneId, input.destinationServiceZoneId] }, isActive: true },
-      select: { id: true, code: true, name: true, stateId: true },
-    });
-    if (zones.length !== new Set([input.pickupServiceZoneId, input.destinationServiceZoneId]).size) {
-      throw new ConflictError("One or both requested service zones are inactive or unavailable.", "SERVICE_ZONE_UNAVAILABLE");
-    }
-    const zoneById = new Map(zones.map(zone => [zone.id, zone]));
-
     if (packages.some(pkg => pkg.weightGrams == null)) {
-      return { status: "REQUIRES_MEASUREMENT", options: [], assessment: {
+      return {
         status: "REQUIRES_MEASUREMENT",
-        reason: "Weight is required for a defensible contracted-rate match. No estimated weight is generated.",
-        packageCount: packages.length,
-      } };
+        options: [],
+        assessment: {
+          status: "REQUIRES_MEASUREMENT",
+          reason: "Weight is required for a defensible contracted-rate match. No estimated weight is generated.",
+          packageCount: packages.length,
+        },
+      };
     }
-    const routeMode = zoneById.get(input.pickupServiceZoneId).stateId === zoneById.get(input.destinationServiceZoneId).stateId
-      ? "LOCAL_DIRECT" : "INTERSTATE_CONTRACTED";
+    const route = await resolveDeliveryRoute({
+      tx,
+      booking: {
+        pickupServiceZoneId: input.pickupServiceZoneId,
+        destinationServiceZoneId: input.destinationServiceZoneId,
+        pickupLatitude: input.pickup.latitude,
+        pickupLongitude: input.pickup.longitude,
+        destinationLatitude: input.destination.latitude,
+        destinationLongitude: input.destination.longitude,
+        packages,
+      },
+    });
+    const zoneById = new Map(route.zones.map(zone => [zone.id, zone]));
     const routeSnapshot = {
-      routeMode,
-      origin: { serviceZoneId: input.pickupServiceZoneId, code: zoneById.get(input.pickupServiceZoneId).code, name: zoneById.get(input.pickupServiceZoneId).name },
-      destination: { serviceZoneId: input.destinationServiceZoneId, code: zoneById.get(input.destinationServiceZoneId).code, name: zoneById.get(input.destinationServiceZoneId).name },
-      note: "This is a contracted pricing route. The operational leg/hub plan is determined by Logistic Hub after shipment creation.",
+      routeMode: route.routeMode,
+      origin: {
+        serviceZoneId: input.pickupServiceZoneId,
+        code: zoneById.get(input.pickupServiceZoneId).code,
+        name: zoneById.get(input.pickupServiceZoneId).name,
+        latitude: input.pickup.latitude,
+        longitude: input.pickup.longitude,
+      },
+      destination: {
+        serviceZoneId: input.destinationServiceZoneId,
+        code: zoneById.get(input.destinationServiceZoneId).code,
+        name: zoneById.get(input.destinationServiceZoneId).name,
+        latitude: input.destination.latitude,
+        longitude: input.destination.longitude,
+      },
+      hubAssisted: route.routeMode === "HUB_ASSISTED",
+      legs: route.legs.map(leg => ({
+        sequence: leg.sequence,
+        type: leg.type,
+        originServiceZoneId: leg.originServiceZoneId,
+        destinationServiceZoneId: leg.destinationServiceZoneId,
+        origin: { latitude: Number(leg.originLatitude), longitude: Number(leg.originLongitude) },
+        destination: { latitude: Number(leg.destinationLatitude), longitude: Number(leg.destinationLongitude) },
+      })),
+      routePlanVersion: 1,
     };
+
+    // Local driver legs still use a separate driver fare proposal/acceptance flow.
+    // Hub-assisted routes add local pickup and final-mile legs with the same issue.
+    // Until those charges are contractually fixed before customer collection, fail closed.
+    if (route.routeMode !== "END_TO_END") {
+      return {
+        status: "REQUIRES_OPERATIONAL_PRICING",
+        options: [],
+        assessment: {
+          status: "REQUIRES_OPERATIONAL_PRICING",
+          packageCount: packages.length,
+          routeMode: route.routeMode,
+          reason: route.routeMode === "LOCAL_DIRECT"
+            ? "Local delivery currently relies on driver fare negotiation. A fixed integration price is not available."
+            : "The operational route requires local pickup and final-mile execution charges that are not yet included in contracted integration pricing.",
+          routeSnapshot,
+          assessedAt: now.toISOString(),
+        },
+      };
+    }
 
     const pricingRules = await tx.pricingRule.findMany({
       where: {
@@ -182,7 +230,6 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       let valid = true;
       for (const pkg of packages) {
         const matches = cardRates.filter(rate => rate.parcelCategory === pkg.packageCategory && rateFitsPackage(rate, pkg));
-        // Overlapping rate definitions are ambiguous. Do not choose a price arbitrarily.
         if (matches.length !== 1) { valid = false; break; }
         packageMatches.push({ packageRef: pkg.externalPackageRef ?? `package-${packages.indexOf(pkg) + 1}`, externalPackageRef: pkg.externalPackageRef ?? null, rate: matches[0] });
       }
@@ -212,7 +259,14 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       : a.customerCharge > b.customerCharge ? 1 : a.rateCardId.localeCompare(b.rateCardId));
     return {
       status: candidates.length ? "QUOTED" : "NO_COVERAGE",
-      assessment: { status: "DECLARED", packageCount: packages.length, source: "INTEGRATOR_DECLARED", assessedAt: now.toISOString() },
+      assessment: {
+        status: candidates.length ? "DECLARED" : "NO_COVERAGE",
+        packageCount: packages.length,
+        source: "INTEGRATOR_DECLARED",
+        operationalPlanStatus: "FULLY_PRICED",
+        routeSnapshot,
+        assessedAt: now.toISOString(),
+      },
       options: candidates.slice(0, 10).map((candidate, index) => ({
         ...candidate, optionCode: `OPTION-${String(index + 1).padStart(2, "0")}`,
         routeSnapshot, expiresAt,
