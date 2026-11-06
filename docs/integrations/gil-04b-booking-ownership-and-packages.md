@@ -1,6 +1,6 @@
 # GIL-04B — Integration-Owned Booking and Package Persistence
 
-**Status:** Source audit and implementation contract. No schema or runtime changes are included in this document.
+**Status:** GIL-04B schema and migration are implemented on the integration branch. PostgreSQL ownership/package integrity coverage has been added; runtime shipment creation is not implemented.
 
 ## Objective
 
@@ -31,7 +31,7 @@ The integration boundary must not be implemented by weakening these customer che
 
 ### Exactly-one-owner invariant
 
-Add an explicit nullable `integrationClientId` relation to `ParcelBooking`, make `senderId` nullable, and enforce the invariant in PostgreSQL:
+Implemented: `ParcelBooking.integrationClientId` is an explicit nullable relation, `senderId` is nullable, and PostgreSQL enforces the ownership invariant:
 
 ```sql
 CHECK (
@@ -47,9 +47,10 @@ Add a client/creation-time index for operational lookup. Keep the foreign key re
 
 ### First-class booking packages
 
-Add a `ParcelBookingPackage` model related to `ParcelBooking` with, at minimum:
+Implemented: `ParcelBookingPackage` is related to `ParcelBooking` and stores:
 
-- `packageRef` (stable per-booking reference; unique within a booking)
+- `sequence` (stable 1-based package order, unique within a booking)
+- optional `externalPackageRef` (unique within a booking when supplied)
 - `packageCategory` and optional description
 - declared `weightGrams`, `lengthMm`, `widthMm`, and `heightMm`
 - optional `declaredValueMinor` as BigInt
@@ -76,9 +77,9 @@ Legacy `parcelCategory`, `parcelSize`, and `parcelDescription` fields remain for
 - Existing `senderId` values remain unchanged.
 - Add the ownership check constraint after adding the nullable integration-client foreign key; verify there are no invalid legacy rows before applying it.
 - Add package table and indexes without rewriting existing bookings into guessed package facts.
-- Add tests proving legacy customer create/list/detail/quote/dispatch authorization remains unchanged.
-- Add PostgreSQL tests for the ownership XOR: user-only accepted, integration-only accepted, both rejected, neither rejected, invalid client FK rejected.
-- Add package persistence tests for one package, multiple packages, nullable external references, declared values, ordering and rollback.
+- Added PostgreSQL tests for the ownership XOR: user-only and integration-only accepted, both and neither rejected.
+- Added package persistence coverage for multiple packages, nullable external references, declared values, package ordering and rate snapshots.
+- Still required before GIL-04B is complete: invalid client FK coverage, rollback coverage, explicit legacy customer authorization regression tests, full PostgreSQL CI execution.
 - Run Prisma validation/client generation, migration apply/history and schema-drift checks, OpenAPI/route validation, the complete Node suite and PostgreSQL integrity suite.
 
 ## Explicit non-goals
