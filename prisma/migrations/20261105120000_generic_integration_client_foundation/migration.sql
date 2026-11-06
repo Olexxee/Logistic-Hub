@@ -53,7 +53,7 @@ CREATE TABLE "integration_idempotency_records" (
   CONSTRAINT "integration_idempotency_records_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "integration_idempotency_records_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "integration_clients"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
-CREATE UNIQUE INDEX "integration_idempotency_records_clientId_operation_key_key" ON "integration_idempotency_records"("clientId", "operation", "idempotencyKey");
+CREATE UNIQUE INDEX "integration_idempotency_records_clientId_operation_idempotencyKey_key" ON "integration_idempotency_records"("clientId", "operation", "idempotencyKey");
 CREATE INDEX "integration_idempotency_records_clientId_operation_createdAt_idx" ON "integration_idempotency_records"("clientId", "operation", "createdAt");
 CREATE INDEX "integration_idempotency_records_expiresAt_idx" ON "integration_idempotency_records"("expiresAt");
 
