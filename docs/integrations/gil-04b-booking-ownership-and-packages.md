@@ -10,7 +10,7 @@ Extend the existing parcel-booking aggregate to support both user-owned customer
 
 ### Booking ownership is not a nullable-column-only change
 
-The current `ParcelBooking` model requires `senderId` and has a required `User` relation. The following source paths depend on sender ownership:
+Before GIL-04B, `ParcelBooking.senderId` was required and the `User` relation was mandatory. GIL-04B makes both ownership paths explicit while preserving the existing user-owned path. The following source paths depend on sender ownership:
 
 - `src/modules/parcels/parcel-bookings.service.js`
   - `createDraft` requires a sender ID and stores it in the booking.
