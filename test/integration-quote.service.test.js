@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createIntegrationQuoteService } from "../src/modules/integrations/integration-quote.service.js";
 
-function mockPrisma() {
+function mockPrisma({ billingModel = "PLATFORM_COLLECTED" } = {}) {
   const state = { idempotency: [], sessions: [], packages: [], options: [], externalRefs: [] };
   const agreement = {
     id: "billing_1", reference: "marketplace-default", version: 1, status: "ACTIVE",
-    currency: "NGN", effectiveFrom: new Date("2026-01-01T00:00:00Z"), effectiveUntil: null,
+    currency: "NGN", billingModel, effectiveFrom: new Date("2026-01-01T00:00:00Z"), effectiveUntil: null,
   };
   const rateCard = {
     id: "card_1", version: 3, agreementId: "partner_agreement_1", status: "ACTIVE", currency: "NGN",
@@ -146,4 +146,13 @@ test("acceptance selects one option and rejects the remaining alternatives", asy
   assert.equal(accepted.body.status, "SELECTED");
   assert.equal(state.sessions[0].status, "SELECTED");
   assert.equal(state.options[0].status, "SELECTED");
+});
+
+test("quote creation refuses billing models whose financial workflows are not implemented", async () => {
+  const { prismaClient } = mockPrisma({ billingModel: "PREPAID_ACCOUNT" });
+  const service = createIntegrationQuoteService({ prismaClient });
+  await assert.rejects(
+    service.createQuote({ client, idempotencyKey: "quote-create-006", input: baseInput }),
+    error => error.code === "INTEGRATION_BILLING_MODEL_UNSUPPORTED",
+  );
 });
