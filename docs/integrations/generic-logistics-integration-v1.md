@@ -1,6 +1,6 @@
 # Generic Logistics Integration API
 
-**Status:** GIL-01 foundation. This document defines a reusable, multi-client integration boundary. It does not claim that quote, booking, or webhook endpoints are implemented yet.
+**Status:** GIL-01 foundation and GIL-02 administration/authentication implementation. Quote, shipment and webhook endpoints are not implemented yet.
 
 ## 1. Objective
 
@@ -37,7 +37,7 @@ Each client has:
 
 Credential secrets must be generated with cryptographic randomness, shown once at creation, stored as a one-way hash, and never logged. Rotation creates a new credential before revoking the old one. Suspended/revoked clients must be denied even if a credential remains active.
 
-The initial registry schema is not an admin UI or credential issuance endpoint. Those are implementation tasks for the next slice.
+The registry is managed through ADMIN-only endpoints under `/api/v1/admin/integrations`. Client creation, status changes, credential issuance/revocation and draft billing-agreement creation are implemented. Every mutation requires a reason and writes an operational audit event in the same database transaction.
 
 ## 4. Generic API contract
 
@@ -102,14 +102,28 @@ The registry stores commercial terms only. It does not activate Paystack, custom
 The existing ParcelBooking is sender-user based and requires parcelSize; the internal quote route creates one ShipmentQuote per booking and its route planner creates the execution plan after quote acceptance. It is not yet a generic external quote-session API, and it cannot safely serve multiple external clients by merely adding a sourceSystem field.
 
 Implementation sequence:
-1. GIL-01 — Client registry foundation: client, credentials, billing agreements, idempotency and external-reference persistence. (This change.)
-2. GIL-02 — Service authentication and admin controls: issue/rotate/revoke credentials, enforce scopes, client status and audit.
+1. GIL-01 — Client registry foundation: client, credentials, billing agreements, idempotency and external-reference persistence. (Implemented in PR #97.)
+2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in this PR.)
 3. GIL-03 — Package assessment contract and quote sessions: multiple priced options, quote acceptance and expiry.
 4. GIL-04 — Generic shipment creation: bridge accepted options into existing execution lifecycle without synthetic customer users or bypassing custody/dispatch rules.
 5. GIL-05 — Tracking and signed webhooks: durable event delivery, deduplication, sequence ordering and replay controls.
 6. GIL-06 — Billing/reconciliation: enforce agreement model only after payment/wallet/invoice capabilities are explicitly implemented and approved.
 
-## 9. Security invariants
+## 9. GIL-02 administration and authentication contract
+
+Admin routes (ADMIN role only):
+- `GET /api/v1/admin/integrations` — bounded client listing/search.
+- `POST /api/v1/admin/integrations` — register a client and its initial scopes.
+- `PATCH /api/v1/admin/integrations/:clientId/status` — activate, suspend or permanently revoke a client. REVOKED is terminal.
+- `POST /api/v1/admin/integrations/:clientId/credentials` — issue a credential; the secret is returned once and never stored or audited in raw form.
+- `POST /api/v1/admin/integrations/credentials/:credentialId/revoke` — revoke a credential; repeated revocation is safe.
+- `POST /api/v1/admin/integrations/:clientId/billing-agreements` — create the next version as DRAFT. Agreement creation does not activate payment collection or settlement.
+
+Integration requests authenticate using `X-Integration-Key-Id` and `X-Integration-Secret`. The server resolves the client from the key ID, verifies the one-way SHA-256 secret hash with a timing-safe comparison, and rejects missing, invalid, expired, revoked or suspended credentials/clients. `requireIntegrationScope(...)` enforces all requested scopes against the authenticated client's registry scopes. The middleware is ready for the GIL-03 external quote routes; no public integration quote/shipment route is mounted in GIL-02.
+
+Admin mutations require a reason and write audit events atomically with the corresponding database mutation. Audit metadata contains credential key IDs and labels only, never the secret or secret hash. Credential `lastUsedAt` is best-effort telemetry and does not block an authenticated request.
+
+## 10. Security invariants
 
 - Never trust client-supplied client identity, billing model, rate, route, legs, quote total or shipment status.
 - Use service credentials scoped to client and operation; no customer JWT reuse.
