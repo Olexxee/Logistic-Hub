@@ -52,7 +52,7 @@ test("client creation is audited and returns no credential material", async () =
   const { state, prismaClient } = makePrisma();
   const service = createIntegrationsAdminService({ prismaClient });
   const client = await service.createClient({
-    code: "market_iq", name: "MarketIQ", scopes: ["quotes:write"], actorUserId: "admin_1",
+    code: "market_iq", name: "MarketIQ", scopes: ["quotes:write"], reason: "Register MarketIQ integration", actorUserId: "admin_1",
   });
   assert.equal(client.code, "market_iq");
   assert.equal(state.audits.length, 1);
@@ -63,7 +63,7 @@ test("client creation is audited and returns no credential material", async () =
 test("credential issuance persists only a hash and returns the secret once", async () => {
   const { state, prismaClient } = makePrisma();
   const service = createIntegrationsAdminService({ prismaClient });
-  const client = await service.createClient({ code: "market_iq", name: "MarketIQ", scopes: [], actorUserId: "admin_1" });
+  const client = await service.createClient({ code: "market_iq", name: "MarketIQ", scopes: [], reason: "Register MarketIQ integration", actorUserId: "admin_1" });
   const issued = await service.issueCredential({
     clientId: client.id, label: "Production key", reason: "Initial service credential", actorUserId: "admin_1",
   });
