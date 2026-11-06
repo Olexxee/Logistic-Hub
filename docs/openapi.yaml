@@ -6037,7 +6037,7 @@ paths:
                     properties:
                       id: { type: string }
                       externalReference: { type: string }
-                      status: { type: string, enum: [QUOTED, SELECTED, EXPIRED, REQUIRES_MEASUREMENT, NO_COVERAGE] }
+                      status: { type: string, enum: [QUOTED, SELECTED, EXPIRED, REQUIRES_MEASUREMENT, REQUIRES_OPERATIONAL_PRICING, NO_COVERAGE] }
                       billingAgreementReference: { type: [string, 'null'] }
                       billingModel: { type: [string, 'null'] }
                       billingAgreementVersion: { type: integer }
