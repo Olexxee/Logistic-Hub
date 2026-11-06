@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { prisma } from "../../db/prisma.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { validate } from "../../shared/http/validate.js";
 import { requireIntegrationAuth, requireIntegrationScope } from "./integration-auth.middleware.js";
@@ -7,7 +8,7 @@ import {
   integrationQuoteCreateSchema, integrationQuoteOptionParamsSchema, integrationQuoteParamsSchema,
 } from "./integration-quote.validators.js";
 
-export function createIntegrationQuoteRouter({ prismaClient, clock, authMiddleware = requireIntegrationAuth } = {}) {
+export function createIntegrationQuoteRouter({ prismaClient = prisma, clock, authMiddleware = requireIntegrationAuth } = {}) {
   const router = Router();
   const controller = createIntegrationQuoteController({ prismaClient, clock });
   router.use(authMiddleware);
