@@ -62,7 +62,7 @@ CREATE TABLE "integration_quote_packages" (
     ("heightMm" IS NULL OR "heightMm" > 0)
   )
 );
-CREATE UNIQUE INDEX "integration_quote_packages_quoteSessionId_externalPackageRef_key" ON "integration_quote_packages"("quoteSessionId","externalPackageRef");
+CREATE UNIQUE INDEX "integration_quote_packages_quoteSessionId_externalPackageRe_key" ON "integration_quote_packages"("quoteSessionId","externalPackageRef");
 CREATE INDEX "integration_quote_packages_quoteSessionId_assessmentStatus_idx" ON "integration_quote_packages"("quoteSessionId","assessmentStatus");
 
 CREATE TABLE "integration_quote_options" (
@@ -95,6 +95,6 @@ CREATE TABLE "integration_quote_options" (
   )
 );
 CREATE UNIQUE INDEX "integration_quote_options_quoteSessionId_optionCode_key" ON "integration_quote_options"("quoteSessionId","optionCode");
-CREATE INDEX "integration_quote_options_quoteSessionId_status_customerChargeMinor_idx" ON "integration_quote_options"("quoteSessionId","status","customerChargeMinor");
+CREATE INDEX "integration_quote_options_quoteSessionId_status_customerCha_idx" ON "integration_quote_options"("quoteSessionId","status","customerChargeMinor");
 CREATE INDEX "integration_quote_options_partnerAgreementId_idx" ON "integration_quote_options"("partnerAgreementId");
 CREATE INDEX "integration_quote_options_partnerRateCardId_idx" ON "integration_quote_options"("partnerRateCardId");
