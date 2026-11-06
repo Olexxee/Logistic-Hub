@@ -20,6 +20,7 @@ const inventoriedAdminRouteFiles = [
   "src/modules/geography/service-zones.routes.js",
   "src/modules/hub-applications/hub-applications.routes.js",
   "src/modules/hub-points/hub-points.routes.js",
+  "src/modules/integrations/integrations-admin.routes.js",
   "src/modules/operational-cases/operational-cases.routes.js",
   "src/modules/operations-control/operations-control.routes.js",
   "src/modules/partner-execution/partner-execution.routes.js",
