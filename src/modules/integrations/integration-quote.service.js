@@ -16,6 +16,7 @@ function sessionView(session) {
   return {
     id: session.id, externalReference: session.externalReference, status: session.status,
     billingAgreementReference: session.billingAgreement?.reference ?? null,
+    billingModel: session.billingAgreement?.billingModel ?? null,
     billingAgreementVersion: session.billingAgreementVersion,
     currency: session.currency, expiresAt: session.expiresAt,
     assessment: session.assessmentSnapshot,
@@ -96,6 +97,9 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       orderBy: [{ version: "desc" }, { createdAt: "desc" }],
     });
     if (!agreement) throw new ConflictError("No active billing agreement exists for this reference.", "INTEGRATION_BILLING_AGREEMENT_INACTIVE");
+    if (agreement.billingModel !== "PLATFORM_COLLECTED") {
+      throw new ConflictError("This quote endpoint currently supports PLATFORM_COLLECTED agreements only. Prepaid, invoice and Logistic Hub collection flows are not enabled.", "INTEGRATION_BILLING_MODEL_UNSUPPORTED");
+    }
     return agreement;
   }
 
@@ -273,7 +277,7 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
           const responseBody = {
             quoteSession: {
               id: session.id, externalReference: session.externalReference, status: session.status,
-              billingAgreementReference: agreement.reference, billingAgreementVersion: agreement.version,
+              billingAgreementReference: agreement.reference, billingAgreementVersion: agreement.version, billingModel: agreement.billingModel,
               currency: agreement.currency, expiresAt: session.expiresAt, assessment: assessment.assessment,
             },
             packages: input.packages.map(pkg => ({
@@ -329,7 +333,7 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       }
       const session = await prismaClient.integrationQuoteSession.findFirst({
         where: { id: quoteSessionId, clientId },
-        include: { billingAgreement: { select: { reference: true } }, packages: { orderBy: { createdAt: "asc" } }, options: { orderBy: [{ customerChargeMinor: "asc" }, { optionCode: "asc" }] } },
+        include: { billingAgreement: { select: { reference: true, billingModel: true } }, packages: { orderBy: { createdAt: "asc" } }, options: { orderBy: [{ customerChargeMinor: "asc" }, { optionCode: "asc" }] } },
       });
       if (!session) throw new NotFoundError("Quote session not found.", "INTEGRATION_QUOTE_NOT_FOUND");
       return sessionView(session);
