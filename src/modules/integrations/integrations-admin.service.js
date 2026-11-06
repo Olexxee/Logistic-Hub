@@ -114,6 +114,9 @@ export function createIntegrationsAdminService({ prismaClient, clock = () => new
           throw new ConflictError("Invalid billing agreement lifecycle transition.", "INTEGRATION_BILLING_AGREEMENT_TRANSITION_INVALID");
         }
         if (agreement.status === status) return { agreement, replay: true };
+        if (status === "ACTIVE" && client.status !== "ACTIVE") {
+          throw new ConflictError("Billing agreements can only be activated for an active integration client.", "INTEGRATION_CLIENT_INACTIVE");
+        }
         if (status === "ACTIVE") {
           const now = clock();
           if (agreement.effectiveFrom > now || (agreement.effectiveUntil && agreement.effectiveUntil <= now)) {
