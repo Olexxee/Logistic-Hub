@@ -49,6 +49,12 @@ function rateFitsPackage(rate, pkg) {
   }
   return true;
 }
+async function serializableTransaction(prismaClient, work) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await prismaClient.$transaction(work, { isolationLevel: "Serializable" }); }
+    catch (error) { if (error?.code !== "P2034" || attempt >= 2) throw error; }
+  }
+}
 function serializeCached(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -216,7 +222,7 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       const payloadHash = hashPayload(input);
       const operation = "integration.quote.create";
       try {
-        return await prismaClient.$transaction(async tx => {
+        return await serializableTransaction(prismaClient, async tx => {
           const replay = await replayOrConflict(tx, client.id, operation, idempotencyKey, payloadHash);
           if (replay) return replay;
           const agreement = await activeAgreement(tx, client.id, input.billingAgreementReference, now);
@@ -283,7 +289,7 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
             responseStatus: 201, responseBody, now,
           });
           return { statusCode: 201, body: responseBody, replay: false };
-        }, { isolationLevel: "Serializable" });
+        });
       } catch (error) {
         if (error?.code === "P2002") {
           const existing = await prismaClient.integrationIdempotencyRecord.findUnique({
