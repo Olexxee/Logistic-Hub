@@ -1,6 +1,6 @@
 # GIL-04 — Integration Booking Bridge
 
-**Status:** GIL-04A implementation is in progress. Quote generation now uses the shared operational route resolver and fails closed when local execution legs do not have a fixed contracted price. Shipment creation is not implemented by this document.
+**Status:** GIL-04A is implemented and merged in PR #100. GIL-04B source audit and implementation contract are documented in [GIL-04B — Integration-Owned Booking and Package Persistence](gil-04b-booking-ownership-and-packages.md). No GIL-04B schema/runtime changes have been applied yet.
 
 ## Objective
 
