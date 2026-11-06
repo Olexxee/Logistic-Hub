@@ -32,10 +32,10 @@ export function createIntegrationsAdminService({ prismaClient, clock = () => new
       };
     },
 
-    async createClient({ code, name, scopes, metadata, actorUserId }) {
+    async createClient({ code, name, scopes, metadata, reason, actorUserId }) {
       return repository.transaction(async tx => {
         const client = await repository.createClient({ code, name, scopes, metadata }, tx);
-        await audit(tx, actorUserId, "INTEGRATION_CLIENT", client.id, "INTEGRATION_CLIENT_CREATED", "Integration client registered", null, {
+        await audit(tx, actorUserId, "INTEGRATION_CLIENT", client.id, "INTEGRATION_CLIENT_CREATED", reason, null, {
           code, name, scopes, status: client.status,
         });
         return safeClient(client);
