@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createIntegrationQuoteService } from "../src/modules/integrations/integration-quote.service.js";
 
-function mockPrisma({ billingModel = "PLATFORM_COLLECTED" } = {}) {
+function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState = false } = {}) {
   const state = { idempotency: [], sessions: [], packages: [], options: [], externalRefs: [] };
   const agreement = {
     id: "billing_1", reference: "marketplace-default", version: 1, status: "ACTIVE",
@@ -37,9 +37,10 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED" } = {}) {
     },
     integrationBillingAgreement: { findFirst: async () => agreement },
     serviceZone: { findMany: async ({ where }) => [
-      { id: "zone_a", code: "A", name: "Zone A", stateId: "state_a" },
-      { id: "zone_b", code: "B", name: "Zone B", stateId: "state_b" },
+      { id: "zone_a", code: "A", name: "Zone A", stateId: "state_a", isActive: true },
+      { id: "zone_b", code: "B", name: "Zone B", stateId: sameState ? "state_a" : "state_b", isActive: true },
     ].filter(z => where.id.in.includes(z.id)) },
+    hubPoint: { findMany: async () => hubs },
     pricingRule: { findMany: async () => [{ id: "pricing_1", serviceZoneId: "zone_a", currency: "NGN", fixedConnectionFeeMinor: 500n }] },
     partnerRate: { findMany: async () => rates },
     integrationQuoteSession: {
@@ -110,8 +111,44 @@ test("quote session prices every package against one contracted rate card", asyn
   assert.equal(result.body.options[0].logisticsCostMinor, "6500");
   assert.equal(result.body.options[0].platformChargeMinor, "500");
   assert.equal(result.body.options[0].customerChargeMinor, "7000");
+  assert.equal(result.body.options[0].routeMode, "END_TO_END");
+  assert.equal(result.body.options[0].route.legs.length, 1);
+  assert.equal(result.body.options[0].route.legs[0].type, "INTERSTATE_TRANSPORT");
   assert.equal(state.packages.length, 2);
   assert.equal(state.options[0].packageRateSnapshot.length, 2);
+});
+
+
+test("hub-assisted routes require fixed local pickup and final-mile pricing before quote options are offered", async () => {
+  const hubs = [
+    { id: "origin_hub", name: "Origin Hub", serviceZoneId: "zone_a", latitude: 6.51, longitude: 3.31,
+      acceptedParcelTypes: ["box", "carton"], capacityConfig: { maxParcels: 10 } },
+    { id: "destination_hub", name: "Destination Hub", serviceZoneId: "zone_b", latitude: 7.41, longitude: 3.91,
+      acceptedParcelTypes: ["box", "carton"], capacityConfig: { maxParcels: 10 } },
+  ];
+  const { prismaClient, state } = mockPrisma({ hubs });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const result = await service.createQuote({ client, idempotencyKey: "quote-hub-pricing-001", input: baseInput });
+
+  assert.equal(result.body.quoteSession.status, "REQUIRES_OPERATIONAL_PRICING");
+  assert.equal(result.body.quoteSession.assessment.routeMode, "HUB_ASSISTED");
+  assert.match(result.body.quoteSession.assessment.reason, /local pickup and final-mile/i);
+  assert.equal(result.body.options.length, 0);
+  assert.equal(state.options.length, 0);
+});
+
+test("local direct routes require fixed driver pricing before quote options are offered", async () => {
+  const { prismaClient, state } = mockPrisma({ sameState: true });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const result = await service.createQuote({
+    client, idempotencyKey: "quote-local-pricing-001",
+    input: { ...baseInput, externalReference: "order-local-1" },
+  });
+
+  assert.equal(result.body.quoteSession.status, "REQUIRES_OPERATIONAL_PRICING");
+  assert.equal(result.body.quoteSession.assessment.routeMode, "LOCAL_DIRECT");
+  assert.equal(result.body.options.length, 0);
+  assert.equal(state.options.length, 0);
 });
 
 test("missing declared weight creates a measurement-required session without price options", async () => {
