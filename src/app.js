@@ -35,6 +35,7 @@ import { auditRouter } from "./modules/audit/audit.routes.js";
 import { discoveryRouter } from "./modules/discovery/discovery.routes.js";
 import { adminUsersRouter } from "./modules/admin-users/admin-users.routes.js";
 import { hubApplicationsRouter } from "./modules/hub-applications/hub-applications.routes.js";
+import { integrationsAdminRouter } from "./modules/integrations/integrations-admin.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { runWithAuditContext } from "./shared/audit/audit-context.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
@@ -49,7 +50,7 @@ const allowedOrigins = env.CORS_ORIGINS
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF", "X-File-Content-Type", "X-File-Name", "X-Document-Type", "X-Vehicle-ID"] }));
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF", "X-File-Content-Type", "X-File-Name", "X-Document-Type", "X-Vehicle-ID", "X-Integration-Key-Id", "X-Integration-Secret"] }));
 app.use(express.json({
   limit: "1mb",
   verify: (req, _res, buffer) => {
@@ -106,6 +107,7 @@ app.get("/", (_req, res) => {
 app.use("/api/v1/health", healthRouter);
 app.use("/api/v1", discoveryRouter);
 app.use("/api/v1/admin/users", adminUsersRouter);
+app.use("/api/v1/admin/integrations", integrationsAdminRouter);
 app.use("/api/v1", hubApplicationsRouter);
 app.use("/api/v1/admin/audit-events", auditRouter);
 app.use("/api/v1/auth", authRouter);
