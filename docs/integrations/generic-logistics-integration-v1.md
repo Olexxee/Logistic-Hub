@@ -69,7 +69,7 @@ A quote request returns zero or more complete delivery options, not one arbitrar
 - currency, billing agreement reference/version and expiry;
 - parcel assessment snapshot and any assumptions requiring confirmation.
 
-A route option is offered only when all required legs have eligible coverage and a valid commercial pricing source. Logistic Hub may return direct local, hub-assisted local, or multi-leg interstate alternatives where the operational and rate-card data supports them. It must not synthesize a price when a leg has no contracted/approved rate.
+A route option is offered only when all required legs have eligible coverage and a valid commercial pricing source. GIL-04A now shares one operational route resolver between integration quoting and delivery-plan creation. Until local-driver pickup/final-mile pricing is fixed before collection, the integration quote engine offers only `END_TO_END` interstate options (one contracted partner leg plus the platform fee). `LOCAL_DIRECT` and `HUB_ASSISTED` routes return `REQUIRES_OPERATIONAL_PRICING` with no selectable options. It must not synthesize a price when a leg has no contracted/approved rate.
 
 The buyer sees whole-shipment options and totals. Per-leg detail is retained for audit and operations; it is not necessary to expose partner cost or internal margin to the buyer.
 
