@@ -85,7 +85,7 @@ The quote flow must support an explicit assessment state:
 
 Every measurement includes units, source, timestamp and confidence/verification state. Quotes based on estimates must say so and define the adjustment/acceptance policy. A measured parcel that materially differs from the accepted estimate must not silently increase the buyer's charge; it must trigger an explicit re-quote/approval or a documented platform subsidy rule.
 
-For importation, support multiple packages per consignment in a later extension. Do not collapse cartons, pallets or consolidated cargo into one parcel record without a packing model.
+GIL-03 implements a consignment-level quote session containing 1–50 package records. Each package is assessed independently against rate-card weight/dimension eligibility, but all packages in one option must be covered by a single partner rate card. This is the first packing model; palletization, volumetric-weight rules, consolidation and multi-carrier package splitting remain future extensions.
 
 ## 7. Billing boundary
 
@@ -140,7 +140,7 @@ Admin routes (ADMIN role only):
 - `POST /api/v1/admin/integrations/credentials/:credentialId/revoke` — revoke a credential; repeated revocation is safe.
 - `POST /api/v1/admin/integrations/:clientId/billing-agreements` — create the next version as DRAFT. Agreement creation does not activate payment collection or settlement.
 
-Integration requests authenticate using `X-Integration-Key-Id` and `X-Integration-Secret`. The server resolves the client from the key ID, verifies the one-way SHA-256 secret hash with a timing-safe comparison, and rejects missing, invalid, expired, revoked or suspended credentials/clients. `requireIntegrationScope(...)` enforces all requested scopes against the authenticated client's registry scopes. The middleware is ready for the GIL-03 external quote routes; no public integration quote/shipment route is mounted in GIL-02.
+Integration requests authenticate using `X-Integration-Key-Id` and `X-Integration-Secret`. The server resolves the client from the key ID, verifies the one-way SHA-256 secret hash with a timing-safe comparison, and rejects missing, invalid, expired, revoked or suspended credentials/clients. `requireIntegrationScope(...)` enforces all requested scopes against the authenticated client's registry scopes. GIL-03 mounts the quote routes at `/api/v1/integrations/quotes`. Billing-agreement status changes are available to ADMIN at `PATCH /api/v1/admin/integrations/:clientId/billing-agreements/:agreementId/status`; only one version per agreement reference can be ACTIVE.
 
 Admin mutations require a reason and write audit events atomically with the corresponding database mutation. Audit metadata contains credential key IDs and labels only, never the secret or secret hash. Credential `lastUsedAt` is best-effort telemetry and does not block an authenticated request.
 
