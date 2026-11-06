@@ -1,6 +1,6 @@
 # Generic Logistics Integration API
 
-**Status:** GIL-01 and GIL-02 are implemented; GIL-03 quote-session/package-assessment endpoints are implemented in this branch. Shipment creation and webhooks remain future work.
+**Status:** GIL-01–GIL-03 are implemented. GIL-04 booking bridge is under architecture/implementation; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for the audited constraints and release gates. Tracking/webhooks and billing/reconciliation remain future work.
 
 ## 1. Objective
 
