@@ -46,3 +46,9 @@ export const integrationAgreementCreateSchema = z.object({
   message: "effectiveUntil must be later than effectiveFrom",
   path: ["effectiveUntil"],
 });
+
+export const integrationBillingAgreementParamsSchema = z.object({ clientId: id, agreementId: id }).strict();
+export const integrationBillingAgreementStatusSchema = z.object({
+  status: z.enum(["ACTIVE", "SUSPENDED", "EXPIRED", "REVOKED"]),
+  reason,
+}).strict();

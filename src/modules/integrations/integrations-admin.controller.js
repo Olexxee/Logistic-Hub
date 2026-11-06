@@ -17,6 +17,10 @@ export function createIntegrationsAdminController({ prismaClient, clock }) {
       success: true,
       data: await service.revokeCredential({ credentialId: req.params.credentialId, ...req.body, actorUserId: req.user.id }),
     }),
+    updateBillingAgreementStatus: async (req, res) => res.status(200).json({
+      success: true,
+      data: await service.updateBillingAgreementStatus({ clientId: req.params.clientId, agreementId: req.params.agreementId, ...req.body, actorUserId: req.user.id }),
+    }),
     createBillingAgreement: async (req, res) => res.status(201).json({
       success: true,
       data: await service.createBillingAgreement({ clientId: req.params.clientId, ...req.body, actorUserId: req.user.id }),

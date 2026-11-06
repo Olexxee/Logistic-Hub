@@ -5932,6 +5932,224 @@ paths:
         '404': { description: Integration client not found. }
         '409': { description: Integration client is inactive. }
 
+
+  /integrations/quotes:
+    post:
+      tags: [Integrations]
+      operationId: createIntegrationQuoteSession
+      summary: Create a multi-package quote session with multiple contracted delivery options
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [billingAgreementReference, externalReference, pickupServiceZoneId, destinationServiceZoneId, pickupAddress, pickup, destinationAddress, destination, recipientName, recipientPhone, packages]
+              properties:
+                billingAgreementReference: { type: string, minLength: 2, maxLength: 80 }
+                externalReference: { type: string, minLength: 1, maxLength: 128 }
+                pickupServiceZoneId: { type: string }
+                destinationServiceZoneId: { type: string }
+                pickupAddress: { type: string, minLength: 3, maxLength: 500 }
+                destinationAddress: { type: string, minLength: 3, maxLength: 500 }
+                pickup:
+                  type: object
+                  required: [latitude, longitude]
+                  properties:
+                    latitude: { type: number, minimum: -90, maximum: 90 }
+                    longitude: { type: number, minimum: -180, maximum: 180 }
+                destination:
+                  type: object
+                  required: [latitude, longitude]
+                  properties:
+                    latitude: { type: number, minimum: -90, maximum: 90 }
+                    longitude: { type: number, minimum: -180, maximum: 180 }
+                recipientName: { type: string, minLength: 1, maxLength: 160 }
+                recipientPhone: { type: string, minLength: 7, maxLength: 32 }
+                expiresInMinutes: { type: integer, minimum: 5, maximum: 1440, default: 60 }
+                packages:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [packageCategory]
+                    properties:
+                      externalPackageRef: { type: string, minLength: 1, maxLength: 100 }
+                      packageCategory: { type: string, minLength: 2, maxLength: 80 }
+                      description: { type: string, maxLength: 500 }
+                      weightGrams: { type: integer, minimum: 1 }
+                      lengthMm: { type: integer, minimum: 1 }
+                      widthMm: { type: integer, minimum: 1 }
+                      heightMm: { type: integer, minimum: 1 }
+                      declaredValueMinor: { type: string, pattern: '^(0|[1-9][0-9]{0,14})$' }
+      responses:
+        '201': { description: Quote session and available delivery options. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration scope is missing. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/quotes/{quoteSessionId}:
+    get:
+      tags: [Integrations]
+      operationId: getIntegrationQuoteSession
+      summary: Retrieve a quote session belonging to the authenticated integration client
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: quoteSessionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Quote session, package assessment and options.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [id, externalReference, status, billingAgreementReference, billingModel, billingAgreementVersion, currency, expiresAt, assessment, selectedOptionId, packages, options, createdAt]
+                    properties:
+                      id: { type: string }
+                      externalReference: { type: string }
+                      status: { type: string, enum: [QUOTED, SELECTED, EXPIRED, REQUIRES_MEASUREMENT, NO_COVERAGE] }
+                      billingAgreementReference: { type: [string, 'null'] }
+                      billingModel: { type: [string, 'null'] }
+                      billingAgreementVersion: { type: integer }
+                      currency: { type: string, minLength: 3, maxLength: 3 }
+                      expiresAt: { type: string, format: date-time }
+                      assessment:
+                        type: object
+                        additionalProperties: true
+                      selectedOptionId: { type: [string, 'null'] }
+                      packages:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, packageCategory, assessmentStatus, assessmentSource]
+                          properties:
+                            id: { type: string }
+                            externalPackageRef: { type: [string, 'null'] }
+                            packageCategory: { type: string }
+                            weightGrams: { type: [integer, 'null'] }
+                            lengthMm: { type: [integer, 'null'] }
+                            widthMm: { type: [integer, 'null'] }
+                            heightMm: { type: [integer, 'null'] }
+                            assessmentStatus: { type: string, enum: [DECLARED, ESTIMATED, MEASURED, REQUIRES_MEASUREMENT] }
+                            assessmentSource: { type: string }
+                      options:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, optionCode, status, currency, logisticsCostMinor, platformChargeMinor, otherChargesMinor, customerChargeMinor, estimatedTransitMinutes, routeMode, route, expiresAt]
+                          properties:
+                            id: { type: string }
+                            optionCode: { type: string }
+                            status: { type: string, enum: [AVAILABLE, SELECTED, REJECTED, EXPIRED] }
+                            currency: { type: string, minLength: 3, maxLength: 3 }
+                            logisticsCostMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            platformChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            otherChargesMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            customerChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            estimatedTransitMinutes: { type: [integer, 'null'] }
+                            routeMode: { type: string }
+                            route: { type: object, additionalProperties: true }
+                            expiresAt: { type: string, format: date-time }
+                      createdAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration scope is missing. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/quotes/{quoteSessionId}/options/{optionId}/accept:
+    post:
+      tags: [Integrations]
+      operationId: acceptIntegrationQuoteOption
+      summary: Select one quote option for a quote session
+      description: This records the accepted option only. It does not create a parcel booking or initiate payment.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - in: path
+          name: quoteSessionId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: optionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Option selected. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration scope is missing. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/integrations/{clientId}/billing-agreements/{agreementId}/status:
+    patch:
+      tags: [Admin]
+      operationId: updateIntegrationBillingAgreementStatus
+      summary: Activate, suspend, expire or revoke a versioned integration billing agreement
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: clientId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: agreementId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [ACTIVE, SUSPENDED, EXPIRED, REVOKED] }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Billing agreement lifecycle status updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth:

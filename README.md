@@ -2,7 +2,7 @@
 
 ## Generic business integrations
 
-- [Generic Logistics Integration API](docs/integrations/generic-logistics-integration-v1.md) — reusable multi-client boundary for commerce, importation and fulfilment platforms. GIL-01 adds the registry foundation; GIL-02 implements ADMIN client management, credential issuance/revocation, scope-aware service-auth middleware and draft billing-agreement administration. Public quote/shipment endpoints remain future GIL-03/GIL-04 work.
+- [Generic Logistics Integration API](docs/integrations/generic-logistics-integration-v1.md) — reusable multi-client boundary for commerce, importation and fulfilment platforms. GIL-01/GIL-02 provide the client registry, ADMIN controls, one-time credentials, scope-aware authentication and versioned billing agreements. GIL-03 now adds multi-package assessment, contracted quote options and option acceptance. Shipment creation and tracking/webhooks remain future work.
 - [MarketIQ integration decisions](docs/integrations/marketIQ-v1.md) — MarketIQ-specific commercial and checkout decisions, treated as one integration client of the generic API.
 
 Logistic Hub is a Nigeria-focused logistics platform for coordinating local parcel delivery and inter-state shipments through verified workers, transport partners and operational hubs.

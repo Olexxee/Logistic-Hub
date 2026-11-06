@@ -1,6 +1,6 @@
 # Generic Logistics Integration API
 
-**Status:** GIL-01 foundation and GIL-02 administration/authentication implementation. Quote, shipment and webhook endpoints are not implemented yet.
+**Status:** GIL-01 and GIL-02 are implemented; GIL-03 quote-session/package-assessment endpoints are implemented in this branch. Shipment creation and webhooks remain future work.
 
 ## 1. Objective
 
@@ -85,7 +85,7 @@ The quote flow must support an explicit assessment state:
 
 Every measurement includes units, source, timestamp and confidence/verification state. Quotes based on estimates must say so and define the adjustment/acceptance policy. A measured parcel that materially differs from the accepted estimate must not silently increase the buyer's charge; it must trigger an explicit re-quote/approval or a documented platform subsidy rule.
 
-For importation, support multiple packages per consignment in a later extension. Do not collapse cartons, pallets or consolidated cargo into one parcel record without a packing model.
+GIL-03 implements a consignment-level quote session containing 1–50 package records. Each package is assessed independently against rate-card weight/dimension eligibility, but all packages in one option must be covered by a single partner rate card. This is the first packing model; palletization, volumetric-weight rules, consolidation and multi-carrier package splitting remain future extensions.
 
 ## 7. Billing boundary
 
@@ -103,11 +103,32 @@ The existing ParcelBooking is sender-user based and requires parcelSize; the int
 
 Implementation sequence:
 1. GIL-01 — Client registry foundation: client, credentials, billing agreements, idempotency and external-reference persistence. (Implemented in PR #97.)
-2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in this PR.)
-3. GIL-03 — Package assessment contract and quote sessions: multiple priced options, quote acceptance and expiry.
-4. GIL-04 — Generic shipment creation: bridge accepted options into existing execution lifecycle without synthetic customer users or bypassing custody/dispatch rules.
+2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in PR #97.)
+3. GIL-03 — Package assessment and quote sessions: multi-package requests, multiple contracted options, expiry and option selection. (Implemented in this branch.)
+4. GIL-04 — Generic shipment creation: bridge selected options into existing execution lifecycle without synthetic customer users or bypassing custody/dispatch rules.
 5. GIL-05 — Tracking and signed webhooks: durable event delivery, deduplication, sequence ordering and replay controls.
 6. GIL-06 — Billing/reconciliation: enforce agreement model only after payment/wallet/invoice capabilities are explicitly implemented and approved.
+
+## GIL-03 quote-session API
+
+The integration quote endpoints are mounted at `/api/v1/integrations` and use the service credential headers plus client scopes:
+- `POST /quotes` — requires `quotes:write` and an `Idempotency-Key`.
+- `GET /quotes/:quoteSessionId` — requires `quotes:read`; client ownership is enforced from authenticated credential context.
+- `POST /quotes/:quoteSessionId/options/:optionId/accept` — requires `quotes:write` and a fresh `Idempotency-Key`.
+
+Quote creation requires an active, effective billing agreement reference owned by the authenticated client. Client-supplied client IDs, agreement IDs, rates, prices, partners, route plans and statuses are not accepted.
+
+### Package assessment and quote rules
+
+- One quote session is a consignment with 1–50 package items. Each item has its own external package reference, category, declared weight and optional dimensions/value.
+- Package measurements submitted by an integration are recorded as `DECLARED`, source `INTEGRATOR_DECLARED`. Logistic Hub does not treat client-declared measurements as physically verified.
+- If any package weight is missing, the session is `REQUIRES_MEASUREMENT`; no quote is generated. No category-based estimation catalog exists yet, so no automatic estimates are fabricated.
+- A package rate must match category, declared weight and every dimension limit configured on the rate. Missing a dimension required by a rate makes that rate ineligible.
+- Quote options are grouped by one active, verified partner rate card and require exactly one matching rate per package. Overlapping rate definitions are treated as ambiguous and excluded rather than choosing arbitrarily.
+- The logistics amount is the sum of contracted partner rates across packages. The platform charge is the active parcel PricingRule fixed connection fee, applied once per consignment. Customer charge is logistics + platform charge + other charges (currently zero).
+- Only options with complete contracted coverage are returned. No fallback or invented rate is used. Up to 10 lowest-charge eligible options are returned.
+- Same-state zones are labeled `LOCAL_DIRECT`; cross-state zones are labeled `INTERSTATE_CONTRACTED`. This is a quote-level pricing route label, not a promise of the actual operational hub/leg plan. Logistic Hub determines execution legs after shipment creation.
+- Option acceptance selects one option and expires/rejects the alternatives. It does not create a booking or trigger payment; GIL-04 handles that bridge.
 
 ## 9. GIL-02 administration and authentication contract
 
@@ -119,7 +140,7 @@ Admin routes (ADMIN role only):
 - `POST /api/v1/admin/integrations/credentials/:credentialId/revoke` — revoke a credential; repeated revocation is safe.
 - `POST /api/v1/admin/integrations/:clientId/billing-agreements` — create the next version as DRAFT. Agreement creation does not activate payment collection or settlement.
 
-Integration requests authenticate using `X-Integration-Key-Id` and `X-Integration-Secret`. The server resolves the client from the key ID, verifies the one-way SHA-256 secret hash with a timing-safe comparison, and rejects missing, invalid, expired, revoked or suspended credentials/clients. `requireIntegrationScope(...)` enforces all requested scopes against the authenticated client's registry scopes. The middleware is ready for the GIL-03 external quote routes; no public integration quote/shipment route is mounted in GIL-02.
+Integration requests authenticate using `X-Integration-Key-Id` and `X-Integration-Secret`. The server resolves the client from the key ID, verifies the one-way SHA-256 secret hash with a timing-safe comparison, and rejects missing, invalid, expired, revoked or suspended credentials/clients. `requireIntegrationScope(...)` enforces all requested scopes against the authenticated client's registry scopes. GIL-03 mounts the quote routes at `/api/v1/integrations/quotes`. Billing-agreement status changes are available to ADMIN at `PATCH /api/v1/admin/integrations/:clientId/billing-agreements/:agreementId/status`; only one version per agreement reference can be ACTIVE.
 
 Admin mutations require a reason and write audit events atomically with the corresponding database mutation. Audit metadata contains credential key IDs and labels only, never the secret or secret hash. Credential `lastUsedAt` is best-effort telemetry and does not block an authenticated request.
 

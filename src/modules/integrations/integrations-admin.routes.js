@@ -5,7 +5,8 @@ import { validate } from "../../shared/http/validate.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { createIntegrationsAdminController } from "./integrations-admin.controller.js";
 import {
-  integrationAgreementCreateSchema, integrationClientCreateSchema, integrationClientListQuerySchema,
+  integrationAgreementCreateSchema, integrationBillingAgreementParamsSchema, integrationBillingAgreementStatusSchema,
+  integrationClientCreateSchema, integrationClientListQuerySchema,
   integrationClientParamsSchema, integrationClientStatusSchema, integrationCredentialCreateSchema,
   integrationCredentialParamsSchema, integrationCredentialRevokeSchema,
 } from "./integrations-admin.validators.js";
@@ -28,6 +29,9 @@ export function createIntegrationsAdminRouter({
   router.post("/credentials/:credentialId/revoke",
     validate(integrationCredentialParamsSchema, "params"), validate(integrationCredentialRevokeSchema),
     asyncWrapper(controller.revokeCredential));
+  router.patch("/:clientId/billing-agreements/:agreementId/status",
+    validate(integrationBillingAgreementParamsSchema, "params"), validate(integrationBillingAgreementStatusSchema),
+    asyncWrapper(controller.updateBillingAgreementStatus));
   router.post("/:clientId/billing-agreements",
     validate(integrationClientParamsSchema, "params"), validate(integrationAgreementCreateSchema),
     asyncWrapper(controller.createBillingAgreement));

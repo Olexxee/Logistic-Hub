@@ -36,6 +36,7 @@ import { discoveryRouter } from "./modules/discovery/discovery.routes.js";
 import { adminUsersRouter } from "./modules/admin-users/admin-users.routes.js";
 import { hubApplicationsRouter } from "./modules/hub-applications/hub-applications.routes.js";
 import { integrationsAdminRouter } from "./modules/integrations/integrations-admin.routes.js";
+import { integrationQuoteRouter } from "./modules/integrations/integration-quote.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { runWithAuditContext } from "./shared/audit/audit-context.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
@@ -74,6 +75,7 @@ app.use(pinoHttp({
     "req.headers.authorization",
     "req.headers.cookie",
     "req.headers.x-api-key",
+    "req.headers.x-integration-secret",
     "res.headers.set-cookie",
   ],
   customLogLevel: (_req, res, error) => {
@@ -108,6 +110,7 @@ app.use("/api/v1/health", healthRouter);
 app.use("/api/v1", discoveryRouter);
 app.use("/api/v1/admin/users", adminUsersRouter);
 app.use("/api/v1/admin/integrations", integrationsAdminRouter);
+app.use("/api/v1/integrations", integrationQuoteRouter);
 app.use("/api/v1", hubApplicationsRouter);
 app.use("/api/v1/admin/audit-events", auditRouter);
 app.use("/api/v1/auth", authRouter);
