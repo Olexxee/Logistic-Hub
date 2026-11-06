@@ -6022,7 +6022,65 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        '200': { description: Quote session, package assessment and options. }
+        '200':
+          description: Quote session, package assessment and options.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [id, externalReference, status, billingAgreementReference, billingModel, billingAgreementVersion, currency, expiresAt, assessment, selectedOptionId, packages, options, createdAt]
+                    properties:
+                      id: { type: string }
+                      externalReference: { type: string }
+                      status: { type: string, enum: [QUOTED, SELECTED, EXPIRED, REQUIRES_MEASUREMENT, NO_COVERAGE] }
+                      billingAgreementReference: { type: [string, 'null'] }
+                      billingModel: { type: [string, 'null'] }
+                      billingAgreementVersion: { type: integer }
+                      currency: { type: string, minLength: 3, maxLength: 3 }
+                      expiresAt: { type: string, format: date-time }
+                      assessment:
+                        type: object
+                        additionalProperties: true
+                      selectedOptionId: { type: [string, 'null'] }
+                      packages:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, packageCategory, assessmentStatus, assessmentSource]
+                          properties:
+                            id: { type: string }
+                            externalPackageRef: { type: [string, 'null'] }
+                            packageCategory: { type: string }
+                            weightGrams: { type: [integer, 'null'] }
+                            lengthMm: { type: [integer, 'null'] }
+                            widthMm: { type: [integer, 'null'] }
+                            heightMm: { type: [integer, 'null'] }
+                            assessmentStatus: { type: string, enum: [DECLARED, ESTIMATED, MEASURED, REQUIRES_MEASUREMENT] }
+                            assessmentSource: { type: string }
+                      options:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, optionCode, status, currency, logisticsCostMinor, platformChargeMinor, otherChargesMinor, customerChargeMinor, estimatedTransitMinutes, routeMode, route, expiresAt]
+                          properties:
+                            id: { type: string }
+                            optionCode: { type: string }
+                            status: { type: string, enum: [AVAILABLE, SELECTED, REJECTED, EXPIRED] }
+                            currency: { type: string, minLength: 3, maxLength: 3 }
+                            logisticsCostMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            platformChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            otherChargesMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            customerChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                            estimatedTransitMinutes: { type: [integer, 'null'] }
+                            routeMode: { type: string }
+                            route: { type: object, additionalProperties: true }
+                            expiresAt: { type: string, format: date-time }
+                      createdAt: { type: string, format: date-time }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Integration scope is missing. }
         '404': { $ref: '#/components/responses/NotFound' }
