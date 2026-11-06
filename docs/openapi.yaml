@@ -5752,6 +5752,186 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+
+  /admin/integrations:
+    get:
+      tags: [Admin]
+      operationId: listIntegrationClients
+      summary: List registered business integration clients
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [ACTIVE, SUSPENDED, REVOKED] }
+        - in: query
+          name: search
+          schema: { type: string, minLength: 2, maxLength: 100 }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200': { description: Integration client directory and pagination metadata. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin]
+      operationId: createIntegrationClient
+      summary: Register an integration client
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code, name, reason]
+              properties:
+                code: { type: string, minLength: 2, maxLength: 64, pattern: '^[a-z0-9][a-z0-9_-]*$' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+                scopes:
+                  type: array
+                  maxItems: 30
+                  items: { type: string, minLength: 3, maxLength: 80 }
+                metadata: { type: object, additionalProperties: true }
+      responses:
+        '201': { description: Client registered. No service credential is created automatically. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Client code already exists. }
+  /admin/integrations/{clientId}/status:
+    patch:
+      tags: [Admin]
+      operationId: updateIntegrationClientStatus
+      summary: Suspend, reactivate or permanently revoke an integration client
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: clientId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [ACTIVE, SUSPENDED, REVOKED] }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Client status updated. Revoked clients are terminal. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Integration client not found. }
+        '409': { description: Invalid client lifecycle transition. }
+  /admin/integrations/{clientId}/credentials:
+    post:
+      tags: [Admin]
+      operationId: issueIntegrationCredential
+      summary: Issue a one-time integration service secret
+      description: The raw secret is returned only in this response. Logistic Hub persists only its SHA-256 hash.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: clientId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [label, reason]
+              properties:
+                label: { type: string, minLength: 2, maxLength: 80 }
+                expiresAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '201': { description: Credential metadata and one-time raw secret. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Integration client not found. }
+        '409': { description: Credentials cannot be issued to an inactive client. }
+  /admin/integrations/credentials/{credentialId}/revoke:
+    post:
+      tags: [Admin]
+      operationId: revokeIntegrationCredential
+      summary: Revoke an integration credential
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: credentialId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Credential revoked; repeated revocation is idempotent. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Integration credential not found. }
+  /admin/integrations/{clientId}/billing-agreements:
+    post:
+      tags: [Admin]
+      operationId: createIntegrationBillingAgreement
+      summary: Create a draft versioned billing agreement
+      description: Creating an agreement does not activate collection, wallet debits, payouts or settlement.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: clientId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reference, billingModel, reason]
+              properties:
+                reference: { type: string, minLength: 2, maxLength: 80 }
+                billingModel: { type: string, enum: [PLATFORM_COLLECTED, LOGISTIC_HUB_COLLECTED, PREPAID_ACCOUNT, INVOICE] }
+                effectiveFrom: { type: string, format: date-time }
+                effectiveUntil: { type: string, format: date-time }
+                terms: { type: object, additionalProperties: true }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '201': { description: Draft agreement created with the next version number. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Integration client not found. }
+        '409': { description: Integration client is inactive. }
+
 components:
   securitySchemes:
     bearerAuth:

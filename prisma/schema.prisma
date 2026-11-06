@@ -15,6 +15,32 @@ datasource db {
 // ENUMS
 // ═════════════════════════════════════════════════════════════════════════════
 
+enum IntegrationClientStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum IntegrationCredentialStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum IntegrationBillingModel {
+  PLATFORM_COLLECTED
+  LOGISTIC_HUB_COLLECTED
+  PREPAID_ACCOUNT
+  INVOICE
+}
+
+enum IntegrationAgreementStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  REVOKED
+}
+
 enum UserRole {
   CUSTOMER
   DRIVER
@@ -1822,6 +1848,104 @@ model PartnerSettlementReconciliation {
   @@map("partner_settlement_reconciliations")
 }
 
+
+
+model IntegrationClient {
+  id                  String                  @id @default(cuid())
+  code                String                  @unique
+  name                String
+  status              IntegrationClientStatus @default(ACTIVE)
+  scopes              String[]                @default([])
+  metadata            Json?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  credentials         IntegrationCredential[]
+  billingAgreements   IntegrationBillingAgreement[]
+  idempotencyRecords  IntegrationIdempotencyRecord[]
+  externalReferences  IntegrationExternalReference[]
+
+  @@index([status, createdAt])
+  @@map("integration_clients")
+}
+
+model IntegrationCredential {
+  id          String                      @id @default(cuid())
+  clientId    String
+  keyId       String                      @unique
+  secretHash  String
+  label       String
+  status      IntegrationCredentialStatus @default(ACTIVE)
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  client IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, status])
+  @@index([expiresAt, status])
+  @@map("integration_credentials")
+}
+
+model IntegrationBillingAgreement {
+  id             String                     @id @default(cuid())
+  clientId       String
+  reference      String
+  version        Int
+  status         IntegrationAgreementStatus @default(DRAFT)
+  billingModel   IntegrationBillingModel
+  currency       String                     @default("NGN")
+  effectiveFrom  DateTime                   @default(now())
+  effectiveUntil DateTime?
+  terms          Json?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  client IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, reference, version])
+  @@index([clientId, status, effectiveFrom, effectiveUntil])
+  @@map("integration_billing_agreements")
+}
+
+model IntegrationIdempotencyRecord {
+  id             String   @id @default(cuid())
+  clientId       String
+  operation      String
+  idempotencyKey String
+  payloadHash    String
+  responseStatus Int?
+  responseBody   Json?
+  completedAt    DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  client IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, operation, idempotencyKey])
+  @@index([clientId, operation, createdAt])
+  @@index([expiresAt])
+  @@map("integration_idempotency_records")
+}
+
+model IntegrationExternalReference {
+  id                   String   @id @default(cuid())
+  clientId             String
+  resourceType         String
+  externalReference    String
+  internalResourceType String
+  internalResourceId   String
+  createdAt            DateTime @default(now())
+
+  client IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, resourceType, externalReference])
+  @@index([internalResourceType, internalResourceId])
+  @@map("integration_external_references")
+}
 
 model OutboxJob {
   id               String    @id @default(cuid())
