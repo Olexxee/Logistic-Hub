@@ -1888,6 +1888,7 @@ model IntegrationClient {
   billingAgreements   IntegrationBillingAgreement[]
   idempotencyRecords  IntegrationIdempotencyRecord[]
   externalReferences  IntegrationExternalReference[]
+  quoteSessions      IntegrationQuoteSession[]
 
   @@index([status, createdAt])
   @@map("integration_clients")
