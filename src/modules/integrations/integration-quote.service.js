@@ -105,6 +105,17 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
   }
 
   async function buildOptions(tx, { packages, input, agreement, now, expiresAt }) {
+    if (packages.some(pkg => pkg.weightGrams == null)) {
+      return {
+        status: "REQUIRES_MEASUREMENT",
+        options: [],
+        assessment: {
+          status: "REQUIRES_MEASUREMENT",
+          reason: "Weight is required for a defensible contracted-rate match. No estimated weight is generated.",
+          packageCount: packages.length,
+        },
+      };
+    }
     const route = await resolveDeliveryRoute({
       tx,
       booking: {
