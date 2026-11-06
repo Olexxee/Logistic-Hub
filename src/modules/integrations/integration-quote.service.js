@@ -104,14 +104,6 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
   }
 
   async function buildOptions(tx, { packages, input, agreement, now, expiresAt }) {
-    if (packages.some(pkg => pkg.weightGrams == null)) {
-      return { status: "REQUIRES_MEASUREMENT", options: [], assessment: {
-        status: "REQUIRES_MEASUREMENT",
-        reason: "Weight is required for a defensible contracted-rate match. No estimated weight is generated.",
-        packageCount: packages.length,
-      } };
-    }
-
     const zones = await tx.serviceZone.findMany({
       where: { id: { in: [input.pickupServiceZoneId, input.destinationServiceZoneId] }, isActive: true },
       select: { id: true, code: true, name: true, stateId: true },
@@ -120,6 +112,14 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       throw new ConflictError("One or both requested service zones are inactive or unavailable.", "SERVICE_ZONE_UNAVAILABLE");
     }
     const zoneById = new Map(zones.map(zone => [zone.id, zone]));
+
+    if (packages.some(pkg => pkg.weightGrams == null)) {
+      return { status: "REQUIRES_MEASUREMENT", options: [], assessment: {
+        status: "REQUIRES_MEASUREMENT",
+        reason: "Weight is required for a defensible contracted-rate match. No estimated weight is generated.",
+        packageCount: packages.length,
+      } };
+    }
     const routeMode = zoneById.get(input.pickupServiceZoneId).stateId === zoneById.get(input.destinationServiceZoneId).stateId
       ? "LOCAL_DIRECT" : "INTERSTATE_CONTRACTED";
     const routeSnapshot = {
