@@ -5806,6 +5806,54 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Client code already exists. }
+  /admin/integrations/{clientId}/scopes:
+    patch:
+      tags: [Admin]
+      operationId: updateIntegrationClientScopes
+      summary: Update an integration client's API scopes
+      description: ADMIN-only. Scope changes are recorded in the operational audit log.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: clientId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [scopes, reason]
+              properties:
+                scopes:
+                  type: array
+                  maxItems: 30
+                  uniqueItems: true
+                  items: { type: string, minLength: 3, maxLength: 80 }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Updated integration client scope set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [client, replay]
+                    properties:
+                      client: { type: object, additionalProperties: true }
+                      replay: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/integrations/{clientId}/status:
     patch:
       tags: [Admin]
