@@ -44,6 +44,7 @@ enum IntegrationAgreementStatus {
 enum IntegrationQuoteSessionStatus {
   QUOTED
   SELECTED
+  BOOKED
   REQUIRES_MEASUREMENT
   REQUIRES_OPERATIONAL_PRICING
   NO_COVERAGE
@@ -130,6 +131,7 @@ enum BookingStatus {
   AWAITING_CUSTOMER_ACCEPTANCE
   AWAITING_PAYMENT
   PAYMENT_PENDING
+  AWAITING_PARTNER_ASSIGNMENT
   DRIVER_ASSIGNED
   PICKUP_VERIFICATION_PENDING
   PICKED_UP
@@ -916,6 +918,7 @@ model ParcelBooking {
   operationalCases       OperationalCase[]
   hubIntakeRecords       HubIntakeRecord[]
   parcelPackages         ParcelBookingPackage[]
+  integrationPaymentAttestation IntegrationPaymentAttestation?
 
   @@index([senderId, createdAt])
   @@index([integrationClientId, createdAt])
@@ -1922,6 +1925,7 @@ model IntegrationClient {
   externalReferences  IntegrationExternalReference[]
   quoteSessions      IntegrationQuoteSession[]
   parcelBookings     ParcelBooking[]
+  paymentAttestations IntegrationPaymentAttestation[]
 
   @@index([status, createdAt])
   @@map("integration_clients")
@@ -1999,6 +2003,7 @@ model IntegrationQuoteSession {
   billingAgreement IntegrationBillingAgreement @relation(fields: [billingAgreementId], references: [id], onDelete: Restrict)
   packages         IntegrationQuotePackage[]
   options          IntegrationQuoteOption[]
+  paymentAttestations IntegrationPaymentAttestation[]
 
   @@unique([clientId, externalReference])
   @@unique([clientId, idempotencyKey])
@@ -2055,6 +2060,7 @@ model IntegrationQuoteOption {
   quoteSession     IntegrationQuoteSession @relation(fields: [quoteSessionId], references: [id], onDelete: Restrict)
   partnerAgreement PartnerAgreement        @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
   partnerRateCard  PartnerRateCard         @relation(fields: [partnerRateCardId], references: [id], onDelete: Restrict)
+  paymentAttestations IntegrationPaymentAttestation[]
 
   @@unique([quoteSessionId, optionCode])
   @@index([quoteSessionId, status, customerChargeMinor])
@@ -2098,6 +2104,31 @@ model IntegrationExternalReference {
   @@unique([clientId, resourceType, externalReference])
   @@index([internalResourceType, internalResourceId])
   @@map("integration_external_references")
+}
+
+model IntegrationPaymentAttestation {
+  id                       String   @id @default(cuid())
+  clientId                 String
+  quoteSessionId           String
+  quoteOptionId            String
+  parcelBookingId          String   @unique
+  paymentProvider          String
+  externalPaymentReference String
+  verifiedAt               DateTime
+  attestedAt               DateTime @default(now())
+  deliveryChargeMinor      BigInt
+  currency                 String
+  orderPaymentAmountMinor  BigInt?
+  createdAt                DateTime @default(now())
+
+  client       IntegrationClient      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  quoteSession IntegrationQuoteSession @relation(fields: [quoteSessionId], references: [id], onDelete: Restrict)
+  quoteOption  IntegrationQuoteOption  @relation(fields: [quoteOptionId], references: [id], onDelete: Restrict)
+  parcelBooking ParcelBooking          @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, paymentProvider, externalPaymentReference])
+  @@index([clientId, verifiedAt])
+  @@map("integration_payment_attestations")
 }
 
 model OutboxJob {
