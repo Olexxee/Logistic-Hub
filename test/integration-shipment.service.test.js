@@ -33,7 +33,8 @@ function fixture({
     bookingEvents: [],
     sessionStatus,
     userCreates: 0,
-    paymentAttemptCreates: 0,\n    transactionAttempts: 0,
+    paymentAttemptCreates: 0,
+    transactionAttempts: 0,
   };
   const pkg = {
     id: "quote_package_1",
@@ -134,8 +135,8 @@ function fixture({
       create: async ({ data }) => { state.idempotency = data; return data; },
     },
     integrationExternalReference: {
-      findFirst: async () => null,
-      create: async ({ data }) => { state.externalReferences.push(data); return data; },
+      findFirst: async () => externalReferenceExists ? { id: "existing-reference" } : null,
+      create: async ({ data }) => { if (failAt === "externalReference") throw new Error("injected external reference failure"); state.externalReferences.push(data); return data; },
     },
     integrationQuoteSession: {
       findFirst: async () => ({ ...session, status: state.sessionStatus }),
@@ -145,13 +146,14 @@ function fixture({
     partnerRateCard: { findFirst: async () => partnerEligible ? ({ id: "rate_card_1", agreementId: partnerAgreement.id, agreement: partnerAgreement }) : null },
     partnerRate: { findMany: async () => rateActive ? [rate] : [] },
     serviceZone: {
-      findMany: async () => [
+      findMany: async () => zonesActive ? [
         { id: "zone_lagos", code: "LAG", name: "Lagos", stateId: "NG-LA" },
         { id: "zone_ogun", code: "OGN", name: "Ogun", stateId: "NG-OG" },
-      ],
+      ] : [],
     },
     parcelBooking: {
       create: async ({ data }) => {
+        if (failAt === "booking") throw new Error("injected booking failure");
         state.booking = { id: "booking_1", ...data };
         state.packages = data.parcelPackages.create.map((item, index) => ({ id: `booking_package_${index + 1}`, ...item }));
         state.booking.parcelPackages = state.packages;
@@ -164,6 +166,7 @@ function fixture({
     },
     deliveryLeg: {
       create: async ({ data }) => {
+        if (failAt === "leg") throw new Error("injected delivery leg failure");
         const leg = { id: `delivery_leg_${state.legs.length + 1}`, ...data };
         state.legs.push(leg);
         return {
@@ -184,15 +187,21 @@ function fixture({
     paymentAttempt: { create: async () => { state.paymentAttemptCreates += 1; } },
   };
   const prismaClient = {
-    $transaction: async work => {\n      state.transactionAttempts += 1;\n      if (state.transactionAttempts <= serializableFailures) { const error = new Error("serialization conflict"); error.code = "P2034"; throw error; }\n      const snapshot = structuredClone(state);\n      try { return await work(tx); }\n      catch (error) { for (const key of Object.keys(state)) delete state[key]; Object.assign(state, snapshot); throw error; }\n    },
+    $transaction: async work => {
+      state.transactionAttempts += 1;
+      if (state.transactionAttempts <= serializableFailures) { const error = new Error("serialization conflict"); error.code = "P2034"; throw error; }
+      const snapshot = structuredClone(state);
+      try { return await work(tx); }
+      catch (error) { for (const key of Object.keys(state)) delete state[key]; Object.assign(state, snapshot); throw error; }
+    },
     integrationIdempotencyRecord: {
       findUnique: async () => state.idempotency,
     },
     integrationPaymentAttestation: {
-      findFirst: async () => null,
+      findFirst: async () => duplicatePaymentReference ? { id: "duplicate-payment" } : null,
     },
     integrationExternalReference: {
-      findFirst: async () => null,
+      findFirst: async () => externalReferenceExists ? { id: "duplicate-shipment" } : null,
     },
   };
   const input = {
