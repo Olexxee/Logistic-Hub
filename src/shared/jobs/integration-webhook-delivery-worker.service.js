@@ -182,18 +182,31 @@ export function createIntegrationWebhookDeliveryWorker({
             },
           },
           endpoint: {
-            select: { id: true, url: true, status: true, currentSecretVersion: true },
+            select: { id: true, url: true, status: true, eventTypes: true, currentSecretVersion: true },
           },
           secretVersionRecord: true,
         },
       });
-      if (!record || record.endpoint.status !== "ACTIVE") {
+      if (!record) {
+        await finish(delivery, { status: "DEAD", lastErrorCode: "WEBHOOK_DELIVERY_RECORD_MISSING", lastHttpStatus: null });
+        return { id: delivery.id, status: "DEAD", errorCode: "WEBHOOK_DELIVERY_RECORD_MISSING" };
+      }
+      if (record.endpoint.status === "SUSPENDED") {
         await finish(delivery, {
-          status: "DEAD",
-          lastErrorCode: "WEBHOOK_ENDPOINT_NOT_ACTIVE",
+          status: "PENDING",
+          availableAt: new Date(clock().getTime() + 30_000),
+          lastErrorCode: "WEBHOOK_ENDPOINT_SUSPENDED",
           lastHttpStatus: null,
         });
+        return { id: delivery.id, status: "PENDING", errorCode: "WEBHOOK_ENDPOINT_SUSPENDED" };
+      }
+      if (record.endpoint.status !== "ACTIVE") {
+        await finish(delivery, { status: "DEAD", lastErrorCode: "WEBHOOK_ENDPOINT_NOT_ACTIVE", lastHttpStatus: null });
         return { id: delivery.id, status: "DEAD", errorCode: "WEBHOOK_ENDPOINT_NOT_ACTIVE" };
+      }
+      if (!record.endpoint.eventTypes.includes(record.event.eventType)) {
+        await finish(delivery, { status: "DEAD", lastErrorCode: "WEBHOOK_EVENT_UNSUBSCRIBED", lastHttpStatus: null });
+        return { id: delivery.id, status: "DEAD", errorCode: "WEBHOOK_EVENT_UNSUBSCRIBED" };
       }
 
       const secretRecord = record.secretVersionRecord;
