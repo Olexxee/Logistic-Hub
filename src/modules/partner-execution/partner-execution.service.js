@@ -296,6 +296,34 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         if (legChanged.count !== 1) {
           throw conflict("DELIVERY_LEG_NOT_STARTABLE", "The delivery leg is no longer assigned and cannot be started.");
         }
+        if (assignment.deliveryLeg?.parcelBookingId) {
+          const booking = await tx.parcelBooking.findUnique({
+            where: { id: assignment.deliveryLeg.parcelBookingId },
+            select: { id: true, integrationClientId: true, status: true, paymentStatus: true },
+          });
+          if (booking?.integrationClientId && booking.status === "DRIVER_ASSIGNED") {
+            const bookingChanged = await tx.parcelBooking.updateMany({
+              where: {
+                id: booking.id,
+                integrationClientId: booking.integrationClientId,
+                status: "DRIVER_ASSIGNED",
+                paymentStatus: "SUCCEEDED",
+              },
+              data: { status: "IN_TRANSIT" },
+            });
+            if (bookingChanged.count !== 1) {
+              throw conflict("INTEGRATION_BOOKING_STATE_CONFLICT", "The integration shipment changed before partner transit could be recorded.");
+            }
+            await tx.bookingEvent.create({ data: {
+              parcelBookingId: booking.id,
+              actorUserId: userId,
+              eventType: "INTEGRATION_PARTNER_LEG_STARTED",
+              fromStatus: "DRIVER_ASSIGNED",
+              toStatus: "IN_TRANSIT",
+              metadata: { partnerAssignmentId: assignmentId, deliveryLegId: assignment.deliveryLegId },
+            } });
+          }
+        }
         const updated = await repository.findAssignment(assignmentId, tx);
         await tx.operationalAuditEvent.create({ data: {
           actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT", entityId: assignmentId,
