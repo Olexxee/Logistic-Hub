@@ -26,12 +26,19 @@ export function createIntegrationWebhookOperationsService({ prismaClient, clock 
     return endpoint;
   }
 
+  async function lockReplayScope(tx, { clientId, endpointId }) {
+    // Lock endpoint and client before checking state or scheduling replay. This
+    // serializes replay against endpoint suspension/revocation and client status changes.
+    const rows = await tx.$queryRaw`SELECT e."id" FROM "integration_webhook_endpoints" e
+      INNER JOIN "integration_clients" c ON c."id" = e."clientId"
+      WHERE e."id" = ${endpointId} AND e."clientId" = ${clientId}
+      FOR UPDATE OF e, c`;
+    if (!rows.length) throw new NotFoundError("Webhook endpoint not found.", "INTEGRATION_WEBHOOK_ENDPOINT_NOT_FOUND");
+  }
+
   async function enforceReplayRateLimit(tx, { clientId, endpointId, now }) {
-    // Serialize replay requests per endpoint before checking the audit window.
-    // This makes the database-backed limit effective across API instances.
-    await tx.$queryRaw`SELECT "id" FROM "integration_webhook_endpoints"
-      WHERE "id" = ${endpointId} AND "clientId" = ${clientId}
-      FOR UPDATE`;
+    // The endpoint row is already locked, making this persisted limit shared
+    // and race-safe across all API instances.
     const count = await tx.integrationWebhookAuditEvent.count({
       where: {
         clientId,
@@ -116,6 +123,7 @@ export function createIntegrationWebhookOperationsService({ prismaClient, clock 
 
       const now = clock();
       return prismaClient.$transaction(async tx => {
+        await lockReplayScope(tx, { clientId, endpointId });
         const endpoint = await findActiveEndpoint(tx, clientId, endpointId);
         await enforceReplayRateLimit(tx, { clientId, endpointId, now });
 
