@@ -5,6 +5,35 @@
 ALTER TYPE "BookingStatus" ADD VALUE 'AWAITING_PARTNER_ASSIGNMENT';
 ALTER TYPE "IntegrationQuoteSessionStatus" ADD VALUE 'BOOKED';
 
+-- Preserve caller package order so the package facts remain aligned with the
+-- immutable package-rate snapshot, including packages without external refs.
+ALTER TABLE "integration_quote_packages" ADD COLUMN "packageSequence" INTEGER;
+WITH ordered_packages AS (
+  SELECT "id", ROW_NUMBER() OVER (PARTITION BY "quoteSessionId" ORDER BY "createdAt", "id") - 1 AS sequence
+  FROM "integration_quote_packages"
+)
+UPDATE "integration_quote_packages" AS packages
+SET "packageSequence" = ordered_packages.sequence
+FROM ordered_packages
+WHERE packages."id" = ordered_packages."id";
+ALTER TABLE "integration_quote_packages" ALTER COLUMN "packageSequence" SET NOT NULL;
+
+ALTER TABLE "parcel_booking_packages" ADD COLUMN "packageSequence" INTEGER;
+WITH ordered_booking_packages AS (
+  SELECT "id", ROW_NUMBER() OVER (PARTITION BY "parcelBookingId" ORDER BY "createdAt", "id") - 1 AS sequence
+  FROM "parcel_booking_packages"
+)
+UPDATE "parcel_booking_packages" AS packages
+SET "packageSequence" = ordered_booking_packages.sequence
+FROM ordered_booking_packages
+WHERE packages."id" = ordered_booking_packages."id";
+ALTER TABLE "parcel_booking_packages" ALTER COLUMN "packageSequence" SET NOT NULL;
+
+CREATE UNIQUE INDEX "integration_quote_packages_quoteSessionId_packageSequence_key"
+  ON "integration_quote_packages" ("quoteSessionId", "packageSequence");
+CREATE UNIQUE INDEX "parcel_booking_packages_parcelBookingId_packageSequence_key"
+  ON "parcel_booking_packages" ("parcelBookingId", "packageSequence");
+
 CREATE TABLE "integration_payment_attestations" (
   "id" TEXT NOT NULL,
   "clientId" TEXT NOT NULL,
