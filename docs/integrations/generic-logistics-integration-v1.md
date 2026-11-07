@@ -1,6 +1,6 @@
 # Generic Logistics Integration API
 
-**Status:** GIL-01–GIL-03, GIL-04A and GIL-04B are merged. GIL-04C atomic shipment creation is implemented in the current branch; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for payment-attestation boundaries, transaction invariants and release gates. Tracking/webhooks and billing/reconciliation remain future work.
+**Status:** GIL-01–GIL-03, GIL-04A and GIL-04B are merged. GIL-04C atomic shipment creation is merged and GIL-04D client-scoped shipment retrieval/recovery is implemented in the current branch; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for payment-attestation boundaries, transaction invariants and release gates. Tracking/webhooks and billing/reconciliation remain future work.
 
 ## 1. Objective
 
