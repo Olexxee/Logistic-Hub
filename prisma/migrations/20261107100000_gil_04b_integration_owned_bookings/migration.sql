@@ -16,7 +16,7 @@ ALTER TABLE "parcel_bookings"
   CHECK ("integrationClientId" IS NULL OR ("parcelCategory" IS NULL AND "parcelSize" IS NULL));
 
 ALTER TABLE "parcel_bookings"
-  ADD CONSTRAINT "parcel_bookings_integration_client_fk"
+  ADD CONSTRAINT "parcel_bookings_integrationClientId_fkey"
   FOREIGN KEY ("integrationClientId") REFERENCES "integration_clients"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -47,14 +47,14 @@ CREATE TABLE "parcel_booking_packages" (
     CHECK ("declaredValueMinor" IS NULL OR "declaredValueMinor" >= 0)
 );
 
-CREATE UNIQUE INDEX "parcel_booking_packages_booking_external_ref_key"
+CREATE UNIQUE INDEX "parcel_booking_packages_parcelBookingId_externalPackageRef_key"
   ON "parcel_booking_packages" ("parcelBookingId", "externalPackageRef");
-CREATE INDEX "parcel_booking_packages_booking_created_idx"
+CREATE INDEX "parcel_booking_packages_parcelBookingId_createdAt_idx"
   ON "parcel_booking_packages" ("parcelBookingId", "createdAt");
-CREATE INDEX "parcel_booking_packages_booking_assessment_idx"
+CREATE INDEX "parcel_booking_packages_parcelBookingId_assessmentStatus_idx"
   ON "parcel_booking_packages" ("parcelBookingId", "assessmentStatus");
 
 ALTER TABLE "parcel_booking_packages"
-  ADD CONSTRAINT "parcel_booking_packages_booking_fk"
+  ADD CONSTRAINT "parcel_booking_packages_parcelBookingId_fkey"
   FOREIGN KEY ("parcelBookingId") REFERENCES "parcel_bookings"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;

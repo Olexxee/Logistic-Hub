@@ -918,6 +918,7 @@ model ParcelBooking {
   parcelPackages         ParcelBookingPackage[]
 
   @@index([senderId, createdAt])
+  @@index([integrationClientId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
   @@index([destinationServiceZoneId, status, createdAt])
   @@index([status, paymentStatus, createdAt])
