@@ -42,7 +42,7 @@ test("webhook URL validation rejects DNS answers containing any non-public addre
   );
   await assert.rejects(
     validateWebhookEndpointUrl("https://unresolved.example.org/hook", { lookup: async () => [] }),
-    /resolve to public IP addresses/,
+    /exclusively to public IP addresses/,
   );
 });
 
