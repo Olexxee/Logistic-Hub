@@ -105,8 +105,8 @@ Implementation sequence:
 1. GIL-01 — Client registry foundation: client, credentials, billing agreements, idempotency and external-reference persistence. (Implemented in PR #97.)
 2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in PR #97.)
 3. GIL-03 — Package assessment and quote sessions: multi-package requests, multiple contracted options, expiry and option selection. (Implemented in this branch.)
-4. GIL-04 — Generic shipment creation: GIL-04C atomic creation and GIL-04D client-scoped retrieval/recovery are merged; GIL-04E regression and contract acceptance is in progress.
-5. GIL-05 — Tracking and signed webhooks: durable event delivery, deduplication, sequence ordering and replay controls.
+4. GIL-04 — Generic shipment creation: GIL-04C atomic creation, GIL-04D client-scoped retrieval/recovery and GIL-04E regression/PostgreSQL acceptance are merged.
+5. GIL-05 — Tracking and signed webhooks: design contract established; GIL-05A event ledger/tracking API is the first implementation slice. See [GIL-05 contract](gil-05-tracking-webhooks.md).
 6. GIL-06 — Billing/reconciliation: enforce agreement model only after payment/wallet/invoice capabilities are explicitly implemented and approved.
 
 ## GIL-03 quote-session API
@@ -168,4 +168,4 @@ The response contains the public shipment reference, current booking/payment sta
 
 ## GIL-04E regression and contract acceptance
 
-The merged service suite verifies shipment creation's rejection boundaries and transactional behavior: expired quote sessions/options, suspended billing and partner agreements, inactive package rates, inactive service zones, external fulfilment-reference mismatch, invalid external-payment verification timestamps, duplicate fulfilment/payment references, idempotency-key payload conflicts, serialization retry behavior, and rollback after late transaction failures. The lifecycle suite verifies integration-owned booking transitions through partner assignment and partner-operator transit start. A PostgreSQL-backed follow-up now tests concurrent uniqueness races for idempotency keys and external shipment references, plus database transaction rollback. GIL-04E is not complete until this follow-up and the full CI/OpenAPI contract checks pass.
+The merged service suite verifies shipment creation's rejection boundaries and transactional behavior: expired quote sessions/options, suspended billing and partner agreements, inactive package rates, inactive service zones, external fulfilment-reference mismatch, invalid external-payment verification timestamps, duplicate fulfilment/payment references, idempotency-key payload conflicts, serialization retry behavior, and rollback after late transaction failures. The lifecycle suite verifies integration-owned booking transitions through partner assignment and partner-operator transit start. A PostgreSQL-backed follow-up now tests concurrent uniqueness races for idempotency keys and external shipment references, plus database transaction rollback. GIL-04E is merged; the full CI workflow passed the PostgreSQL-backed uniqueness-race and rollback tests.
