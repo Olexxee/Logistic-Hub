@@ -20,7 +20,7 @@ CREATE UNIQUE INDEX "integration_shipment_events_sourceBookingEventId_key"
   ON "integration_shipment_events"("sourceBookingEventId");
 CREATE UNIQUE INDEX "integration_shipment_events_parcelBookingId_sequence_key"
   ON "integration_shipment_events"("parcelBookingId", "sequence");
-CREATE INDEX "integration_shipment_events_clientId_parcelBookingId_sequence_idx"
+CREATE INDEX "integration_shipment_events_client_shipment_seq_idx"
   ON "integration_shipment_events"("clientId", "parcelBookingId", "sequence");
 CREATE INDEX "integration_shipment_events_clientId_createdAt_idx"
   ON "integration_shipment_events"("clientId", "createdAt");
