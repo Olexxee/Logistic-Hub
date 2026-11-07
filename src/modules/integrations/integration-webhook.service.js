@@ -98,8 +98,11 @@ export function createIntegrationWebhookService({
     async updateEndpoint({ clientId, credentialId, endpointId, status, description, eventTypes, reason }) {
       return prismaClient.$transaction(async tx => {
         const endpoint = await findEndpoint(tx, clientId, endpointId);
-        if (status && endpoint.status === "REVOKED" && status !== "REVOKED") {
-          throw new ConflictError("A revoked webhook endpoint cannot be reactivated.", "INTEGRATION_WEBHOOK_ENDPOINT_REVOKED");
+        if (
+          endpoint.status === "REVOKED"
+          && (description !== undefined || eventTypes || (status && status !== "REVOKED"))
+        ) {
+          throw new ConflictError("A revoked webhook endpoint cannot be changed or reactivated.", "INTEGRATION_WEBHOOK_ENDPOINT_REVOKED");
         }
         if (status && status !== endpoint.status && !reason) {
           throw new ValidationError("A reason is required when changing webhook endpoint status.");
