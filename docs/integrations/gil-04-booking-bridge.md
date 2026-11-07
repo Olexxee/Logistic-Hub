@@ -1,6 +1,6 @@
 # GIL-04 — Integration Booking Bridge
 
-**Status:** GIL-04A implementation is in progress. Quote generation now uses the shared operational route resolver and fails closed when local execution legs do not have a fixed contracted price. Shipment creation is not implemented by this document.
+**Status:** GIL-04A is merged. GIL-04B schema foundation is implemented in this branch: bookings can be owned by an integration client and packages are persisted as normalized records. GIL-04C atomic shipment creation is not implemented.
 
 ## Objective
 
@@ -27,6 +27,8 @@ The integration client is trusted to attest that it verified the external custom
 **Required direction:** support an integration-owned booking identity explicitly. Do not create one fake Logistic Hub customer per external buyer or fulfilment. Keep user-owned bookings unchanged; integration-owned bookings must be attributable to an active `IntegrationClient` and accessible only through that client's authenticated integration boundary and authorized operational roles.
 
 ### 2. Multi-package consignments
+
+**GIL-04B implementation:** `ParcelBookingPackage` stores each package independently. Integration-owned bookings have `integrationClientId` and no `senderId`; the legacy single-package category/size columns are nullable and must remain null for integration-owned bookings. A database XOR ownership constraint prevents both owner types or ownerless bookings. Existing sender-owned booking records and their legacy fields remain intact.
 
 GIL-03 accepts 1–50 package records and stores individual weights/dimensions/rate snapshots. `ParcelBooking`, however, has singular `parcelCategory` and `parcelSize` fields and no normalized package collection.
 
@@ -109,7 +111,7 @@ A failure at any step must roll back the booking, packages, quote, route plan, e
 | Slice | Scope | Exit criteria |
 |---|---|---|
 | GIL-04A | Quote/execution parity | Shared route resolver; end-to-end routes are priced as one leg; local/hub-assisted routes fail closed with `REQUIRES_OPERATIONAL_PRICING` until local-driver charges are fixed |
-| GIL-04B | Integration-owned booking and package persistence | Nullable sender is constrained to integration-owned records; user-owned booking behavior remains unchanged; packages are normalized |
+| GIL-04B | Integration-owned booking and package persistence | **Schema foundation implemented in this PR:** exclusive sender/integration ownership, nullable legacy single-package fields for integrations, normalized package model, package measurement/value constraints. Service-level booking creation remains GIL-04C. |
 | GIL-04C | Atomic shipment creation | Selected quote, external payment attestation, accepted ShipmentQuote, route plan, booking and idempotency commit atomically |
 | GIL-04D | Shipment retrieval and recovery | Client-scoped ID and external-reference reads; no cross-client disclosure |
 | GIL-04E | Regression and contract acceptance | PostgreSQL concurrency, replay/conflict, rollback, quote expiry, agreement suspension, package and lifecycle tests pass |

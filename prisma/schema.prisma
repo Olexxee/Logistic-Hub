@@ -860,7 +860,8 @@ model ParcelBooking {
   idempotencyPayloadHash        String?
   fareAcceptanceIdempotencyKey  String?       @unique
   fareAcceptancePayloadHash     String?
-  senderId                      String
+  senderId                      String?
+  integrationClientId            String?
   pickupServiceZoneId           String
   destinationServiceZoneId      String
   status                        BookingStatus @default(DRAFT)
@@ -875,9 +876,11 @@ model ParcelBooking {
   destinationLongitude          Decimal       @db.Decimal(10, 7)
   recipientName                 String
   recipientPhone                String
-  parcelCategory                String
+  // Legacy single-parcel fields remain populated for customer-owned bookings.
+  // Integration-owned consignments use parcelPackages and must not be flattened.
+  parcelCategory                String?
   parcelDescription             String?
-  parcelSize                    String
+  parcelSize                    String?
   declaredValueMinor            BigInt?
   handlingInstructions          String?
   driverFareMinor               BigInt?
@@ -894,7 +897,8 @@ model ParcelBooking {
   createdAt                     DateTime      @default(now())
   updatedAt                     DateTime      @updatedAt
 
-  sender                 User              @relation("ParcelSender", fields: [senderId], references: [id], onDelete: Restrict)
+  sender                 User?             @relation("ParcelSender", fields: [senderId], references: [id], onDelete: Restrict)
+  integrationClient      IntegrationClient? @relation(fields: [integrationClientId], references: [id], onDelete: Restrict)
   pickupServiceZone      ServiceZone       @relation("ParcelPickupZone", fields: [pickupServiceZoneId], references: [id], onDelete: Restrict)
   destinationServiceZone ServiceZone       @relation("ParcelDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   offers                 DriverOffer[]
@@ -911,12 +915,37 @@ model ParcelBooking {
   custodyHandovers       CustodyHandover[]
   operationalCases       OperationalCase[]
   hubIntakeRecords       HubIntakeRecord[]
+  parcelPackages         ParcelBookingPackage[]
 
   @@index([senderId, createdAt])
   @@index([pickupServiceZoneId, status, createdAt])
   @@index([destinationServiceZoneId, status, createdAt])
   @@index([status, paymentStatus, createdAt])
   @@map("parcel_bookings")
+}
+
+model ParcelBookingPackage {
+  id                  String                  @id @default(cuid())
+  parcelBookingId     String
+  externalPackageRef  String?
+  packageCategory     String
+  description         String?
+  weightGrams         Int?
+  lengthMm            Int?
+  widthMm             Int?
+  heightMm            Int?
+  declaredValueMinor  BigInt?
+  assessmentStatus    PackageAssessmentStatus @default(DECLARED)
+  assessmentSource    String                  @default("INTEGRATOR_DECLARED")
+  assessedAt          DateTime                @default(now())
+  createdAt           DateTime                @default(now())
+
+  parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+
+  @@unique([parcelBookingId, externalPackageRef])
+  @@index([parcelBookingId, createdAt])
+  @@index([parcelBookingId, assessmentStatus])
+  @@map("parcel_booking_packages")
 }
 
 model RideBooking {
@@ -1890,6 +1919,7 @@ model IntegrationClient {
   idempotencyRecords  IntegrationIdempotencyRecord[]
   externalReferences  IntegrationExternalReference[]
   quoteSessions      IntegrationQuoteSession[]
+  parcelBookings     ParcelBooking[]
 
   @@index([status, createdAt])
   @@map("integration_clients")
