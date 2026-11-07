@@ -931,6 +931,7 @@ model ParcelBooking {
 model ParcelBookingPackage {
   id                  String                  @id @default(cuid())
   parcelBookingId     String
+  packageSequence     Int
   externalPackageRef  String?
   packageCategory     String
   description         String?
@@ -947,6 +948,7 @@ model ParcelBookingPackage {
 
   parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
 
+  @@unique([parcelBookingId, packageSequence])
   @@unique([parcelBookingId, externalPackageRef])
   @@index([parcelBookingId, createdAt])
   @@index([parcelBookingId, assessmentStatus])
@@ -2015,6 +2017,7 @@ model IntegrationQuoteSession {
 model IntegrationQuotePackage {
   id                   String                  @id @default(cuid())
   quoteSessionId        String
+  packageSequence      Int
   externalPackageRef    String?
   packageCategory       String
   description           String?
@@ -2031,6 +2034,7 @@ model IntegrationQuotePackage {
 
   quoteSession IntegrationQuoteSession @relation(fields: [quoteSessionId], references: [id], onDelete: Restrict)
 
+  @@unique([quoteSessionId, packageSequence])
   @@unique([quoteSessionId, externalPackageRef])
   @@index([quoteSessionId, assessmentStatus])
   @@map("integration_quote_packages")
