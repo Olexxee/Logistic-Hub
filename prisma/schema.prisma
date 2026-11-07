@@ -938,6 +938,7 @@ model ParcelBookingPackage {
   declaredValueMinor  BigInt?
   assessmentStatus    PackageAssessmentStatus @default(DECLARED)
   assessmentSource    String                  @default("INTEGRATOR_DECLARED")
+  assessmentConfidence Decimal?                @db.Decimal(5, 4)
   assessedAt          DateTime                @default(now())
   createdAt           DateTime                @default(now())
 

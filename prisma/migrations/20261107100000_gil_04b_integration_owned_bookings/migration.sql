@@ -36,6 +36,7 @@ CREATE TABLE "parcel_booking_packages" (
   "declaredValueMinor" BIGINT,
   "assessmentStatus" "PackageAssessmentStatus" NOT NULL DEFAULT 'DECLARED',
   "assessmentSource" TEXT NOT NULL DEFAULT 'INTEGRATOR_DECLARED',
+  "assessmentConfidence" DECIMAL(5,4),
   "assessedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "parcel_booking_packages_pkey" PRIMARY KEY ("id"),
@@ -44,7 +45,9 @@ CREATE TABLE "parcel_booking_packages" (
   CONSTRAINT "parcel_booking_packages_positive_dimensions"
     CHECK (("lengthMm" IS NULL OR "lengthMm" > 0) AND ("widthMm" IS NULL OR "widthMm" > 0) AND ("heightMm" IS NULL OR "heightMm" > 0)),
   CONSTRAINT "parcel_booking_packages_nonnegative_declared_value"
-    CHECK ("declaredValueMinor" IS NULL OR "declaredValueMinor" >= 0)
+    CHECK ("declaredValueMinor" IS NULL OR "declaredValueMinor" >= 0),
+  CONSTRAINT "parcel_booking_packages_assessment_confidence_range"
+    CHECK ("assessmentConfidence" IS NULL OR "assessmentConfidence" BETWEEN 0 AND 1)
 );
 
 CREATE UNIQUE INDEX "parcel_booking_packages_parcelBookingId_externalPackageRef_key"
