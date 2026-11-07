@@ -6,7 +6,7 @@ This document defines server-enforced lifecycle transitions for the initial parc
 
 ## 1. Parcel booking state machine
 
-The persisted booking lifecycle is separate from payment, dispute and refund lifecycles. A payment can be refunded after a shipment is cancelled without overwriting the historical shipment state.
+The persisted booking lifecycle is separate from payment, dispute and refund lifecycles. A payment can be refunded after a shipment is cancelled without overwriting the historical shipment state. Integration-owned shipments use `AWAITING_PARTNER_ASSIGNMENT` after the external platform attests collection; their `paymentStatus = SUCCEEDED` is not evidence that Logistic Hub received funds and must never create internal payment-ledger entries.
 
 | From | To | Actor | Guard |
 |---|---|---|---|
@@ -15,6 +15,8 @@ The persisted booking lifecycle is separate from payment, dispute and refund lif
 | AWAITING_CUSTOMER_ACCEPTANCE | MATCHING | Sender/server | Sender declines or lets the proposed fare expire; another offer may be considered |
 | AWAITING_CUSTOMER_ACCEPTANCE | AWAITING_PAYMENT | Sender/server | Sender explicitly accepts one driver's fare; the agreed fare and separate fixed connection fee are snapshotted |
 | AWAITING_PAYMENT | PAYMENT_PENDING | Server | Payment attempt created idempotently for the accepted total |
+| External integration quote selected + verified PLATFORM_COLLECTED attestation | AWAITING_PARTNER_ASSIGNMENT | Integration shipment service | Selected, unexpired quote; exact delivery-charge/currency attestation; accepted partner quote and route plan committed atomically |
+| AWAITING_PARTNER_ASSIGNMENT | DRIVER_ASSIGNED | Admin/server | Contracted partner assignment committed for the accepted integration quote |
 | PAYMENT_PENDING | DRIVER_ASSIGNED | Server/provider verification | Provider confirms matching reference, amount, currency and success; reserved assignment becomes active |
 | DRIVER_ASSIGNED | PICKUP_VERIFICATION_PENDING | Driver/server | Assigned driver reports arrival |
 | PICKUP_VERIFICATION_PENDING | PICKED_UP | Server | Correct, unexpired, unused pickup token validated; handover event committed |
@@ -42,7 +44,8 @@ This avoids one status field trying to represent several concurrent facts. A shi
 - Partner rate-card quotations and direct driver fare proposals are alternative fulfilment paths for a parcel booking.
 - A partner quote may be issued and accepted only while the booking is `DRAFT`. Once the sender requests driver matching and the booking enters `MATCHING`, partner quote acceptance is blocked; the sender must choose from driver fare proposals.
 - Accepted partner transport charges remain in the shipment quote and booking pricing snapshot. They must not be written into `driverFareMinor`, which is reserved for a directly negotiated driver fare.
-- Partner quote acceptance records the customer-approved total and moves the booking to `AWAITING_PAYMENT`. Partner-specific assignment and settlement integration must be completed before this path can use the payment flow.
+- Internal customer partner-quote acceptance records the customer-approved total and moves the booking to `AWAITING_PAYMENT`.
+- Integration-owned bookings are created only after the integrating platform attests successful external collection. They enter `AWAITING_PARTNER_ASSIGNMENT`; they do not use the customer payment attempt, Paystack webhook, refund or ledger path. The admin partner-assignment transaction advances them to `DRIVER_ASSIGNED`.
 
 ## 1B. Parcel delivery-leg lifecycle
 
