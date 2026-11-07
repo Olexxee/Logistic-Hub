@@ -105,8 +105,8 @@ Implementation sequence:
 1. GIL-01 — Client registry foundation: client, credentials, billing agreements, idempotency and external-reference persistence. (Implemented in PR #97.)
 2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in PR #97.)
 3. GIL-03 — Package assessment and quote sessions: multi-package requests, multiple contracted options, expiry and option selection. (Implemented in this branch.)
-4. GIL-04 — Generic shipment creation: GIL-04C atomic creation, GIL-04D client-scoped retrieval/recovery and GIL-04E regression/PostgreSQL acceptance are merged.\n5. GIL-05 — Tracking and signed webhooks: design contract established; GIL-05A event ledger/tracking API is next. See [GIL-05 contract](gil-05-tracking-webhooks.md).
-5. GIL-05 — Tracking and signed webhooks: durable event delivery, deduplication, sequence ordering and replay controls.
+4. GIL-04 — Generic shipment creation: GIL-04C atomic creation, GIL-04D client-scoped retrieval/recovery and GIL-04E regression/PostgreSQL acceptance are merged.
+5. GIL-05 — Tracking and signed webhooks: design contract established; GIL-05A event ledger/tracking API is the first implementation slice. See [GIL-05 contract](gil-05-tracking-webhooks.md).
 6. GIL-06 — Billing/reconciliation: enforce agreement model only after payment/wallet/invoice capabilities are explicitly implemented and approved.
 
 ## GIL-03 quote-session API
