@@ -17,6 +17,7 @@ The persisted booking lifecycle is separate from payment, dispute and refund lif
 | AWAITING_PAYMENT | PAYMENT_PENDING | Server | Payment attempt created idempotently for the accepted total |
 | External integration quote selected + verified PLATFORM_COLLECTED attestation | AWAITING_PARTNER_ASSIGNMENT | Integration shipment service | Selected, unexpired quote; exact delivery-charge/currency attestation; accepted partner quote and route plan committed atomically |
 | AWAITING_PARTNER_ASSIGNMENT | DRIVER_ASSIGNED | Admin/server | Contracted partner assignment committed for the accepted integration quote |
+| DRIVER_ASSIGNED | IN_TRANSIT | Partner operator/server | Active contracted partner starts the assigned interstate leg |
 | PAYMENT_PENDING | DRIVER_ASSIGNED | Server/provider verification | Provider confirms matching reference, amount, currency and success; reserved assignment becomes active |
 | DRIVER_ASSIGNED | PICKUP_VERIFICATION_PENDING | Driver/server | Assigned driver reports arrival |
 | PICKUP_VERIFICATION_PENDING | PICKED_UP | Server | Correct, unexpired, unused pickup token validated; handover event committed |
