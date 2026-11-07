@@ -48,6 +48,7 @@ function fixture({ attempts = 1, endpointStatus = "ACTIVE", sendRequest, lookup 
           id: "endpoint-1",
           url: "https://hooks.example.org/events",
           status: endpointStatus,
+          eventTypes: ["shipment.created"],
           currentSecretVersion: 3,
         },
         secretVersionRecord,
@@ -144,15 +145,20 @@ test("worker dead-letters exhausted retries and never sends to non-public DNS an
   assert.equal(rebound.updates[0].data.status, "DEAD");
 });
 
-test("worker refuses delivery when endpoint has been suspended or revoked", async () => {
+test("worker pauses suspended endpoints and dead-letters revoked endpoints", async () => {
   let sent = false;
   const { worker, updates } = fixture({
     endpointStatus: "SUSPENDED",
     sendRequest: async () => { sent = true; return { statusCode: 204 }; },
   });
   assert.deepEqual(await worker.runOnce(), [{
-    id: "delivery-1", status: "DEAD", errorCode: "WEBHOOK_ENDPOINT_NOT_ACTIVE",
+    id: "delivery-1", status: "PENDING", errorCode: "WEBHOOK_ENDPOINT_SUSPENDED",
   }]);
   assert.equal(sent, false);
-  assert.equal(updates[0].data.status, "DEAD");
+  assert.equal(updates[0].data.status, "PENDING");
+
+  const revoked = fixture({ endpointStatus: "REVOKED" });
+  assert.deepEqual(await revoked.worker.runOnce(), [{
+    id: "delivery-1", status: "DEAD", errorCode: "WEBHOOK_ENDPOINT_NOT_ACTIVE",
+  }]);
 });
