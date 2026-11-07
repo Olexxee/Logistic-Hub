@@ -469,22 +469,12 @@ test("a quote state change during shipment creation aborts the complete transact
 
 
 test("shipment creation atomically projects a sanitized first tracking event", async () => {
-  const { service, state } = fixture();
+  const { state, prismaClient, input } = fixture();
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
   const result = await service.createShipment({
     client: { id: "client_1" },
     idempotencyKey: "shipment-create-001",
-    input: {
-      quoteSessionId: "quote_session_1",
-      quoteOptionId: "option_1",
-      externalFulfillmentReference: "MARKETIQ-ORDER-100",
-      paymentAttestation: {
-        paymentProvider: "PAYSTACK",
-        externalPaymentReference: "PAY-100",
-        verifiedAt: "2026-11-07T08:30:00.000Z",
-        currency: "NGN",
-        deliveryChargeMinor: "3000",
-      },
-    },
+    input,
   });
 
   assert.equal(result.statusCode, 201);
