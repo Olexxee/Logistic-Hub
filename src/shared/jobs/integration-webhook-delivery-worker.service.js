@@ -150,6 +150,7 @@ export function createIntegrationWebhookDeliveryWorker({
           "lockedAt" = ${now},
           "lockedBy" = ${workerId},
           "attempts" = deliveries."attempts" + 1,
+          "totalAttempts" = deliveries."totalAttempts" + 1,
           "updatedAt" = ${now}
       FROM candidates
       WHERE deliveries."id" = candidates."id"
