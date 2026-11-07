@@ -42,6 +42,17 @@ export function createIntegrationsAdminService({ prismaClient, clock = () => new
       });
     },
 
+    async updateClientScopes({ clientId, scopes, reason, actorUserId }) {
+      return repository.transaction(async tx => {
+        const client = await repository.findClient(clientId, tx);
+        if (!client) throw new NotFoundError("Integration client not found.", "INTEGRATION_CLIENT_NOT_FOUND");
+        const updated = await repository.updateClient(clientId, { scopes }, tx);
+        await audit(tx, actorUserId, "INTEGRATION_CLIENT", clientId, "INTEGRATION_CLIENT_SCOPES_CHANGED", reason,
+          { scopes: client.scopes }, { scopes: updated.scopes });
+        return { client: safeClient(updated), replay: JSON.stringify(client.scopes) === JSON.stringify(updated.scopes) };
+      });
+    },
+
     async updateClientStatus({ clientId, status, reason, actorUserId }) {
       return repository.transaction(async tx => {
         const client = await repository.findClient(clientId, tx);
