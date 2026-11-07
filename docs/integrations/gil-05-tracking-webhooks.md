@@ -1,6 +1,6 @@
 # GIL-05 — Tracking and Signed Webhooks
 
-**Status:** GIL-04A–GIL-04E are merged. GIL-05A implementation is in progress on `feat/gil-05a-integration-tracking-ledger`; GIL-05B–05D remain unimplemented.
+**Status:** GIL-04A–GIL-04E and GIL-05A are merged. GIL-05B–05D (endpoint management, signed delivery, replay and end-to-end acceptance) remain unimplemented.
 
 ## Objective
 
