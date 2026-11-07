@@ -460,6 +460,7 @@ test("starting an integration partner assignment advances the booking to IN_TRAN
   const bookingUpdates = [];
   const bookingEvents = [];
   let assignmentStatus = "ACCEPTED";
+  let bookingReadCount = 0;
   const tx = {
     partnerDeliveryAssignment: {
       findUnique: async () => ({
@@ -491,7 +492,7 @@ test("starting an integration partner assignment advances the booking to IN_TRAN
         integrationClientId: "client-1",
         senderId: null,
         publicReference: "LH-PCL-INTEGRATION2",
-        status: "IN_TRANSIT",
+        status: ++bookingReadCount === 1 ? "DRIVER_ASSIGNED" : "IN_TRANSIT",
         paymentStatus: "SUCCEEDED",
       }),
       update: async () => ({ integrationEventSequence: 1 }),
