@@ -9,9 +9,7 @@ import { integrationShipmentCreateSchema } from "./integration-shipment.validato
 export function createIntegrationShipmentRouter({ prismaClient = prisma, clock, authMiddleware = requireIntegrationAuth } = {}) {
   const router = Router();
   const controller = createIntegrationShipmentController({ prismaClient, clock });
-  router.use(authMiddleware);
-
-  router.post("/shipments", requireIntegrationScope("shipments:write"),
+  router.post("/shipments", authMiddleware, requireIntegrationScope("shipments:write"),
     validate(integrationShipmentCreateSchema), asyncWrapper(controller.create));
 
   return router;
