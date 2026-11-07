@@ -50,6 +50,7 @@ function fixture({ attempts = 1, endpointStatus = "ACTIVE", sendRequest, lookup 
           status: endpointStatus,
           eventTypes: ["shipment.created"],
           currentSecretVersion: 3,
+          client: { status: "ACTIVE" },
         },
         secretVersionRecord,
       }),
@@ -161,4 +162,49 @@ test("worker pauses suspended endpoints and dead-letters revoked endpoints", asy
   assert.deepEqual(await revoked.worker.runOnce(), [{
     id: "delivery-1", status: "DEAD", errorCode: "WEBHOOK_ENDPOINT_NOT_ACTIVE",
   }]);
+});
+
+test("worker does not send deliveries for suspended integration clients", async () => {
+  let sent = false;
+  const { worker, updates } = fixture({
+    sendRequest: async () => { sent = true; return { statusCode: 204 }; },
+  });
+  const originalFindUnique = worker;
+  void originalFindUnique;
+  // The fixture is intentionally replaced with a client-disabled endpoint record.
+  const disabledClientFixture = fixture();
+  const disabledClientWorker = createIntegrationWebhookDeliveryWorker({
+    prismaClient: {
+      $queryRaw: async () => disabledClientFixture.claimed,
+      integrationWebhookDelivery: {
+        findUnique: async () => ({
+          id: "delivery-1",
+          eventId: event.id,
+          endpointId: "endpoint-1",
+          secretVersion: 2,
+          event,
+          endpoint: {
+            id: "endpoint-1",
+            url: "https://hooks.example.org/events",
+            status: "ACTIVE",
+            eventTypes: ["shipment.created"],
+            currentSecretVersion: 3,
+            client: { status: "SUSPENDED" },
+          },
+          secretVersionRecord,
+        }),
+        updateMany: async args => { disabledClientFixture.updates.push(args); return { count: 1 }; },
+      },
+    },
+    encryptionKey,
+    clock: () => new Date(now),
+    logger: { info() {}, warn() {}, error() {} },
+    sendRequest: async () => { sent = true; return { statusCode: 204 }; },
+    lookup: async () => [address],
+  });
+  assert.deepEqual(await disabledClientWorker.runOnce(), [{
+    id: "delivery-1", status: "DEAD", errorCode: "WEBHOOK_CLIENT_NOT_ACTIVE",
+  }]);
+  assert.equal(sent, false);
+  assert.equal(disabledClientFixture.updates[0].data.status, "DEAD");
 });
