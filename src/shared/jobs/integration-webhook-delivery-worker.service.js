@@ -205,7 +205,7 @@ export function createIntegrationWebhookDeliveryWorker({
       }
       const secret = decryptWebhookSecret(secretRecord, { encryptionKey });
       const url = new URL(record.endpoint.url);
-      if (url.protocol !== "https:" || url.port && url.port !== "443") {
+      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || (url.port && url.port !== "443") || isIP(url.hostname) || url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname.endsWith(".local") || url.hostname.endsWith(".internal")) {
         throw deliveryError("Stored webhook URL violates HTTPS policy.", {
           code: "WEBHOOK_URL_POLICY_VIOLATION",
           retryable: false,
