@@ -105,7 +105,7 @@ Implementation sequence:
 1. GIL-01 — Client registry foundation: client, credentials, billing agreements, idempotency and external-reference persistence. (Implemented in PR #97.)
 2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in PR #97.)
 3. GIL-03 — Package assessment and quote sessions: multi-package requests, multiple contracted options, expiry and option selection. (Implemented in this branch.)
-4. GIL-04 — Generic shipment creation: GIL-04C adds atomic integration-owned shipment creation from a selected quote and external payment attestation, without synthetic customer users or bypassing custody/dispatch rules.
+4. GIL-04 — Generic shipment creation: GIL-04C atomic creation and GIL-04D client-scoped retrieval/recovery are merged; GIL-04E regression and contract acceptance is in progress.
 5. GIL-05 — Tracking and signed webhooks: durable event delivery, deduplication, sequence ordering and replay controls.
 6. GIL-06 — Billing/reconciliation: enforce agreement model only after payment/wallet/invoice capabilities are explicitly implemented and approved.
 
@@ -144,7 +144,7 @@ Integration requests authenticate using `X-Integration-Key-Id` and `X-Integratio
 
 Admin mutations require a reason and write audit events atomically with the corresponding database mutation. Audit metadata contains credential key IDs and labels only, never the secret or secret hash. Credential `lastUsedAt` is best-effort telemetry and does not block an authenticated request.
 
-## GIL-04D shipment retrieval and recovery
+## GIL-04D shipment retrieval and recovery (merged)
 
 The shipment read endpoints are mounted under `/api/v1/integrations` and require the authenticated integration credential plus `shipments:read`:
 - `GET /shipments/:shipmentId` — retrieve a shipment by its Logistic Hub ID.
@@ -164,3 +164,8 @@ The response contains the public shipment reference, current booking/payment sta
 - Enforce quote expiry and exact shipment-snapshot binding at acceptance and booking.
 - Keep customer charge, provider cost and any platform subsidy distinct.
 - No direct customer charging, wallet debit, payout or settlement is activated by this foundation.
+
+
+## GIL-04E regression and contract acceptance
+
+The acceptance suite verifies shipment creation's rejection boundaries and transactional guarantees: expired quote sessions/options, suspended billing and partner agreements, inactive package rates, inactive service zones, external fulfilment-reference mismatch, invalid external-payment verification timestamps, duplicate fulfilment/payment references, idempotency-key payload conflicts, PostgreSQL serialization retries, and rollback after late transaction failures. The lifecycle acceptance also verifies the existing integration-owned booking transitions through partner assignment and partner-operator transit start. GIL-04E is not complete until the full CI workflow and OpenAPI/runtime contract checks pass on the final PR head.
