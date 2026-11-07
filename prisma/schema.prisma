@@ -2129,7 +2129,7 @@ model IntegrationShipmentEvent {
   parcelBooking ParcelBooking     @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
 
   @@unique([parcelBookingId, sequence])
-  @@index([clientId, parcelBookingId, sequence])
+  @@index([clientId, parcelBookingId, sequence], map: "integration_shipment_events_client_shipment_seq_idx")
   @@index([clientId, createdAt])
   @@map("integration_shipment_events")
 }
