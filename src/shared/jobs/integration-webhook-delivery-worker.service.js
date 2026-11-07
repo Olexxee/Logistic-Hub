@@ -134,7 +134,9 @@ export function createIntegrationWebhookDeliveryWorker({
         SELECT d."id"
         FROM "integration_webhook_deliveries" d
         INNER JOIN "integration_webhook_endpoints" e ON e."id" = d."endpointId"
+        INNER JOIN "integration_clients" c ON c."id" = e."clientId"
         WHERE e."status" = 'ACTIVE'
+          AND c."status" = 'ACTIVE'
           AND (
             (d."status" = 'PENDING' AND d."availableAt" <= ${now})
             OR (d."status" = 'PROCESSING' AND d."lockedAt" < ${expiredLease})
@@ -182,7 +184,10 @@ export function createIntegrationWebhookDeliveryWorker({
             },
           },
           endpoint: {
-            select: { id: true, url: true, status: true, eventTypes: true, currentSecretVersion: true },
+            select: {
+              id: true, url: true, status: true, eventTypes: true, currentSecretVersion: true,
+              client: { select: { status: true } },
+            },
           },
           secretVersionRecord: true,
         },
@@ -190,6 +195,10 @@ export function createIntegrationWebhookDeliveryWorker({
       if (!record) {
         await finish(delivery, { status: "DEAD", lastErrorCode: "WEBHOOK_DELIVERY_RECORD_MISSING", lastHttpStatus: null });
         return { id: delivery.id, status: "DEAD", errorCode: "WEBHOOK_DELIVERY_RECORD_MISSING" };
+      }
+      if (record.endpoint.client.status !== "ACTIVE") {
+        await finish(delivery, { status: "DEAD", lastErrorCode: "WEBHOOK_CLIENT_NOT_ACTIVE", lastHttpStatus: null });
+        return { id: delivery.id, status: "DEAD", errorCode: "WEBHOOK_CLIENT_NOT_ACTIVE" };
       }
       if (record.endpoint.status === "SUSPENDED") {
         await finish(delivery, {
@@ -319,9 +328,7 @@ export function createIntegrationWebhookDeliveryWorker({
     workerId,
     async runOnce() {
       const deliveries = await claimDeliveries();
-      const results = [];
-      for (const delivery of deliveries) results.push(await processDelivery(delivery));
-      return results;
+      return Promise.all(deliveries.map(processDelivery));
     },
   });
 }
