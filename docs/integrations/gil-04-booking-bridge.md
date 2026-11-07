@@ -1,6 +1,6 @@
 # GIL-04 — Integration Booking Bridge
 
-**Status:** GIL-04A is merged. GIL-04B schema foundation is implemented in this branch: bookings can be owned by an integration client and packages are persisted as normalized records. GIL-04C atomic shipment creation is not implemented.
+**Status:** GIL-04A and GIL-04B are merged. GIL-04C atomic shipment creation is implemented in the current branch: selected quote + external payment attestation + integration-owned booking + normalized packages + accepted ShipmentQuote + delivery plan + idempotency commit together. The endpoint is not generally available until CI, downstream compatibility and acceptance tests pass.
 
 ## Objective
 
@@ -54,7 +54,7 @@ The partner assignment service requires:
 - `ParcelBooking.paymentStatus = SUCCEEDED`; and
 - an accepted `ShipmentQuote` with a partner agreement.
 
-The existing quote-acceptance route creates the accepted `ShipmentQuote` and route plan in one transaction, then moves the booking to `AWAITING_PAYMENT`. The integration bridge must produce equivalent durable records from the selected integration option, without invoking the internal customer payment flow.
+The existing customer quote-acceptance path moves customer-owned bookings to `AWAITING_PAYMENT`. GIL-04C uses a separate `AWAITING_PARTNER_ASSIGNMENT` state because the integrating platform has already collected and verified the delivery charge before it calls shipment creation. The booking records `paymentStatus = SUCCEEDED` as an external-collection lifecycle fact, backed by `IntegrationPaymentAttestation`; it does not create a Logistic Hub `PaymentAttempt`, provider webhook event, Paystack charge, refund, or ledger entry.
 
 ### 5. Internal booking creation is not reusable unchanged
 
@@ -106,13 +106,26 @@ The shipment creation transaction must:
 
 A failure at any step must roll back the booking, packages, quote, route plan, external mapping and idempotency response together.
 
+
+## GIL-04C implementation contract
+
+Endpoint: `POST /api/v1/integrations/shipments` with `shipments:write` and an `Idempotency-Key`.
+
+The request contains only `quoteSessionId`, `quoteOptionId`, `externalFulfillmentReference` and a `paymentAttestation` (`paymentProvider`, `externalPaymentReference`, `verifiedAt`, `currency`, `deliveryChargeMinor`, optional `orderPaymentAmountMinor`). The fulfilment reference must exactly match the reference already bound to the quote session. The attested delivery charge and currency must exactly equal the selected option's customer charge and currency. The optional overall order amount is retained for audit only.
+
+The transaction revalidates quote expiry/selection, the exact active PLATFORM_COLLECTED agreement version, active verified partner agreement/rate card, every package rate snapshot, current parcel-zone availability and total arithmetic. It creates no synthetic user and accepts no caller-supplied route, hub, partner, driver, rate, price, status or booking owner. The accepted partner agreement/rates and route snapshot are copied into the internal ShipmentQuote; package-rate detail remains in its immutable input snapshot. The operational route planner must return the pinned single END_TO_END interstate leg.
+
+External collection is a trusted integration-client attestation, not independently verified by Logistic Hub. The booking is marked `paymentStatus = SUCCEEDED` only so the existing partner-execution gate can proceed; the attestation is the audit source. No Logistic Hub PaymentAttempt, Paystack call, provider webhook, payment-ledger entry, refund, wallet debit or settlement is created. The booking starts at `AWAITING_PARTNER_ASSIGNMENT`; the existing admin partner-assignment operation transitions an integration-owned booking to `DRIVER_ASSIGNED` atomically with the assignment record. Partner assignment views include normalized package facts.
+
+The quote session transitions from `SELECTED` to `BOOKED` in the same transaction. An identical idempotency key/payload replays the stored response; key reuse with a different payload conflicts. Reuse of a payment reference or fulfilment reference for another shipment conflicts. A failure at any step rolls back all shipment records.
+
 ## Implementation sequence and release gates
 
 | Slice | Scope | Exit criteria |
 |---|---|---|
 | GIL-04A | Quote/execution parity | Shared route resolver; end-to-end routes are priced as one leg; local/hub-assisted routes fail closed with `REQUIRES_OPERATIONAL_PRICING` until local-driver charges are fixed |
-| GIL-04B | Integration-owned booking and package persistence | **Schema foundation implemented in this PR:** exclusive sender/integration ownership, nullable legacy single-package fields for integrations, normalized package model, package measurement/value constraints. Service-level booking creation remains GIL-04C. |
-| GIL-04C | Atomic shipment creation | Selected quote, external payment attestation, accepted ShipmentQuote, route plan, booking and idempotency commit atomically |
+| GIL-04B | Integration-owned booking and package persistence | **Merged:** exclusive sender/integration ownership, nullable legacy single-package fields for integrations, normalized package model, package measurement/value constraints. |
+| GIL-04C | Atomic shipment creation | **Implemented in this branch:** authenticated `shipments:write`; exact quote/fulfilment-reference binding; quote, billing agreement, partner agreement/rate card and package-rate revalidation; exact delivery-charge/currency attestation; integration-owned booking, packages, accepted ShipmentQuote, pinned one-leg plan, external reference, attestation and idempotent response commit atomically. |
 | GIL-04D | Shipment retrieval and recovery | Client-scoped ID and external-reference reads; no cross-client disclosure |
 | GIL-04E | Regression and contract acceptance | PostgreSQL concurrency, replay/conflict, rollback, quote expiry, agreement suspension, package and lifecycle tests pass |
 
