@@ -50,8 +50,8 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 - Implemented: endpoint listing, registration, subscription updates, suspension, reactivation, terminal revocation and secret rotation are scoped to the authenticated integration client and require the dedicated webhooks:manage scope. Every mutation writes a client/credential-attributed webhook audit record.
 - Implemented: registration requires HTTPS on port 443, rejects URL credentials, query strings, fragments, IP literals and local/reserved hostnames, resolves DNS, and rejects the hostname if any A/AAAA result is not globally routable. DNS is checked again and pinned by the GIL-05C delivery worker before connecting; registration-time validation alone is not a DNS-rebinding defence.
 - Implemented: signing secrets are shown once and stored only as AES-256-GCM ciphertext with a unique IV and authentication tag. The encryption key is supplied through WEBHOOK_SECRET_ENCRYPTION_KEY and must be a base64-encoded 32-byte key.
-- Implemented: rotation increments the secret version and retains all prior encrypted versions. GIL-05C delivery records will pin the exact secret version assigned when created.
-- Implemented: endpoint suspension/revocation prevents future deliveries once GIL-05C is active. Revocation is terminal and does not erase event history.
+- Implemented: rotation increments the secret version and retains all prior encrypted versions. GIL-05C delivery records pin the exact secret version assigned when created.
+- Implemented: endpoint suspension pauses pending deliveries; revocation prevents future delivery attempts. Revocation is terminal and does not erase event history.
 - ADMIN can grant or revoke the webhooks:manage scope for an existing client through PATCH /api/v1/admin/integrations/:clientId/scopes; each scope change is audited.
 
 ## GIL-05C — Signed webhook delivery
