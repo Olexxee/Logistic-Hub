@@ -144,12 +144,22 @@ Integration requests authenticate using `X-Integration-Key-Id` and `X-Integratio
 
 Admin mutations require a reason and write audit events atomically with the corresponding database mutation. Audit metadata contains credential key IDs and labels only, never the secret or secret hash. Credential `lastUsedAt` is best-effort telemetry and does not block an authenticated request.
 
+## GIL-04D shipment retrieval and recovery
+
+The shipment read endpoints are mounted under `/api/v1/integrations` and require the authenticated integration credential plus `shipments:read`:
+- `GET /shipments/:shipmentId` — retrieve a shipment by its Logistic Hub ID.
+- `GET /shipments/by-external-reference/:externalFulfillmentReference` — recover a shipment when the create response was interrupted or lost.
+
+Both lookups are client-scoped. Internal-ID reads constrain the booking by both `id` and `integrationClientId`, and require integration ownership (`senderId = null`). External-reference reads first resolve the mapping using `clientId + resourceType + externalReference`, then independently constrain the booking to the same client. Unknown references and references belonging to another client return the same not-found response.
+
+The response contains the public shipment reference, current booking/payment state, customer-facing charge, ordered package measurements and assessment status, ordered delivery-leg milestones, accepted customer charge and external payment-attestation state. It deliberately excludes internal partner/logistics costs, package declared values, recipient contact details and full pickup/destination addresses. This read API is recovery/tracking for the owning integration; it does not grant access to operational mutation endpoints.
+
 ## 10. Security invariants
 
 - Never trust client-supplied client identity, billing model, rate, route, legs, quote total or shipment status.
 - Use service credentials scoped to client and operation; no customer JWT reuse.
 - Store only credential hashes; show raw secret once.
-- Scope idempotency and external-reference uniqueness to the authenticated client.
+- Scope idempotency and external-reference uniqueness to the authenticated client.\n- Scope every shipment read to the authenticated client; never reveal whether another client's shipment ID or external reference exists.
 - Persist canonical request hashes; same key/different payload is a conflict.
 - Enforce quote expiry and exact shipment-snapshot binding at acceptance and booking.
 - Keep customer charge, provider cost and any platform subsidy distinct.
