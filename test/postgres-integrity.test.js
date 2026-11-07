@@ -8,6 +8,7 @@ test("PostgreSQL enforces integration-owned booking identity and normalized pack
   let client;
   let booking;
   let packageRecord;
+  let dualOwnerUser;
 
   const bookingData = (overrides = {}) => ({
     publicReference: `INTEGRATION-${tag}`,
@@ -96,6 +97,7 @@ test("PostgreSQL enforces integration-owned booking identity and normalized pack
     if (booking) await prisma.parcelBookingPackage.deleteMany({ where: { parcelBookingId: booking.id } });
     if (booking) await prisma.parcelBooking.deleteMany({ where: { id: booking.id } });
     if (client) await prisma.integrationClient.deleteMany({ where: { id: client.id } });
+    if (dualOwnerUser) await prisma.user.deleteMany({ where: { id: dualOwnerUser.id } });
     if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
     if (state) await prisma.state.deleteMany({ where: { id: state.id } });
     if (country) await prisma.country.deleteMany({ where: { id: country.id } });
