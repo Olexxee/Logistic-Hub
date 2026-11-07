@@ -1,6 +1,6 @@
 # MarketIQ Marketplace Integration — LI-01 Contract (v1.0 Draft)
 
-**Status:** LI-01 audit and contract draft. No marketplace integration endpoint or schema is claimed to be implemented by this document.
+**Status:** LI-01 decisions remain the MarketIQ-specific commercial contract. The generic Logistic Hub quote, shipment, tracking and signed-webhook APIs are implemented through GIL-03–GIL-05D; MarketIQ's client-side persistence, checkout and webhook receiver are not yet implemented. See the MarketIQ repository's LI-02 audit for source-verified checkout/payment constraints.
 
 ## 1. Context and system boundary
 
@@ -33,11 +33,11 @@ MarketIQ persists the accepted quote and delivery charge, then includes delivery
 ### Booking after verified MarketIQ payment
 After MarketIQ verifies Paystack payment, it submits a booking request using the accepted quote. Logistic Hub verifies client identity, quote ownership/version/expiry, billing agreement and idempotency, then creates/reuses the booking. It must not treat MarketIQ's payment reference as a Logistic Hub Paystack payment.
 
-## 4. Proposed API surface (not implemented)
+## 4. MarketIQ adapter mapping to the implemented generic API
 
-- `POST /api/v1/integrations/marketplace/quotes`
-- `POST /api/v1/integrations/marketplace/shipments`
-- `GET /api/v1/integrations/marketplace/shipments/:shipmentReference`
+- `POST /api/v1/integrations/quotes` (implemented generic quote-session endpoint)
+- `POST /api/v1/integrations/shipments` (implemented generic shipment endpoint)
+- `GET /api/v1/integrations/shipments/:shipmentId` and `GET /api/v1/integrations/shipments/by-external-reference/:externalFulfillmentReference` (implemented client-scoped read/recovery)
 - Authenticated lookup by external fulfilment reference for recovery.
 
 All routes are service-to-service authenticated and scoped to the `MARKETIQ` client. Booking create requires `Idempotency-Key`.
@@ -81,16 +81,16 @@ Quote-time amounts and billing agreement version are immutable snapshots.
 
 ## 6. Webhook contract
 
-Proposed Logistic Hub → MarketIQ:
-`POST /api/v1/integrations/logistic-hub/webhooks`
+Implemented Logistic Hub → integration-client webhook delivery:
+MarketIQ must register its HTTPS receiver URL through the Logistic Hub webhook endpoint-management API; Logistic Hub POSTs to that registered URL.
 
 Required headers:
-- `X-LogisticHub-Key-Id`
-- `X-LogisticHub-Timestamp`
-- `X-LogisticHub-Signature`
-- `X-LogisticHub-Event-Id`
+- `X-Logistic-Hub-Event-Id` and `X-Logistic-Hub-Delivery-Id`
+- `X-Logistic-Hub-Timestamp`
+- `X-Logistic-Hub-Signature`
+- `X-Logistic-Hub-Event-Type` and `X-Logistic-Hub-Event-Sequence`
 
-Signature canonicalization must be identical in both implementations. Draft v1: HMAC-SHA256 over `timestamp + "." + raw request body`. Use timing-safe comparison, timestamp tolerance, key ID and controlled key rotation.
+Signature canonicalization must be identical in both implementations. HMAC-SHA256 over `timestamp + "." + exact raw request body`; header format is `t=<unix-seconds>,v1=<hex-digest>`. The envelope fields are `id`, `type`, `schemaVersion`, `occurredAt`, `sequence` and `data`. Use timing-safe comparison, timestamp tolerance, key ID and controlled key rotation.
 
 Payload includes event ID/type, schema version, occurred-at timestamp, shipment/internal booking reference, external fulfilment reference, per-shipment monotonic sequence and status/milestone details.
 
