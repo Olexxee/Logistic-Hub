@@ -549,3 +549,77 @@ test("PostgreSQL enforces integration-owned booking identity and normalized pack
     if (country) await prisma.country.deleteMany({ where: { id: country.id } });
   }
 });
+
+
+test("PostgreSQL enforces concurrent integration idempotency and external-reference uniqueness and rolls back both atomically", { skip: !enabled }, async () => {
+  const tag = suffix();
+  let client;
+  const operation = "integration.shipment.create";
+  const idempotencyKey = `shipment-${tag}`;
+  const externalReference = `ORDER-${tag}`;
+
+  try {
+    client = await prisma.integrationClient.create({
+      data: { code: `test-${tag.toLowerCase()}`, name: `Integration Test ${tag}`, scopes: ["shipments:write"] },
+    });
+
+    const idempotencyWrites = await Promise.allSettled([
+      prisma.integrationIdempotencyRecord.create({
+        data: { clientId: client.id, operation, idempotencyKey, payloadHash: "hash-a" },
+      }),
+      prisma.integrationIdempotencyRecord.create({
+        data: { clientId: client.id, operation, idempotencyKey, payloadHash: "hash-b" },
+      }),
+    ]);
+    assert.equal(idempotencyWrites.filter(result => result.status === "fulfilled").length, 1);
+    assert.equal(idempotencyWrites.filter(result => result.status === "rejected" && result.reason?.code === "P2002").length, 1);
+
+    const externalReferenceWrites = await Promise.allSettled([
+      prisma.integrationExternalReference.create({
+        data: {
+          clientId: client.id, resourceType: "SHIPMENT", externalReference,
+          internalResourceType: "ParcelBooking", internalResourceId: `booking-a-${tag}`,
+        },
+      }),
+      prisma.integrationExternalReference.create({
+        data: {
+          clientId: client.id, resourceType: "SHIPMENT", externalReference,
+          internalResourceType: "ParcelBooking", internalResourceId: `booking-b-${tag}`,
+        },
+      }),
+    ]);
+    assert.equal(externalReferenceWrites.filter(result => result.status === "fulfilled").length, 1);
+    assert.equal(externalReferenceWrites.filter(result => result.status === "rejected" && result.reason?.code === "P2002").length, 1);
+
+    const rollbackKey = `rollback-${tag}`;
+    const rollbackReference = `ROLLBACK-${tag}`;
+    await assert.rejects(
+      prisma.$transaction(async tx => {
+        await tx.integrationIdempotencyRecord.create({
+          data: { clientId: client.id, operation, idempotencyKey: rollbackKey, payloadHash: "rollback-hash" },
+        });
+        await tx.integrationExternalReference.create({
+          data: {
+            clientId: client.id, resourceType: "SHIPMENT", externalReference: rollbackReference,
+            internalResourceType: "ParcelBooking", internalResourceId: `rollback-booking-${tag}`,
+          },
+        });
+        throw new Error("intentional transaction rollback");
+      }),
+      /intentional transaction rollback/,
+    );
+
+    assert.equal(await prisma.integrationIdempotencyRecord.count({
+      where: { clientId: client.id, operation, idempotencyKey: rollbackKey },
+    }), 0);
+    assert.equal(await prisma.integrationExternalReference.count({
+      where: { clientId: client.id, resourceType: "SHIPMENT", externalReference: rollbackReference },
+    }), 0);
+  } finally {
+    if (client) {
+      await prisma.integrationExternalReference.deleteMany({ where: { clientId: client.id } });
+      await prisma.integrationIdempotencyRecord.deleteMany({ where: { clientId: client.id } });
+      await prisma.integrationClient.deleteMany({ where: { id: client.id } });
+    }
+  }
+});
