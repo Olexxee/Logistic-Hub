@@ -57,7 +57,7 @@ CREATE TABLE "integration_payment_attestations" (
 
 CREATE UNIQUE INDEX "integration_payment_attestations_parcelBookingId_key"
   ON "integration_payment_attestations" ("parcelBookingId");
-CREATE UNIQUE INDEX "integration_payment_attestations_clientId_paymentProvider_externalPaymentReference_key"
+CREATE UNIQUE INDEX "integration_payment_attestations_clientId_paymentProvider_e_key"
   ON "integration_payment_attestations" ("clientId", "paymentProvider", "externalPaymentReference");
 CREATE INDEX "integration_payment_attestations_clientId_verifiedAt_idx"
   ON "integration_payment_attestations" ("clientId", "verifiedAt");
