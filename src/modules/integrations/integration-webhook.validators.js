@@ -12,7 +12,7 @@ const eventType = z.enum([
 export const integrationWebhookEndpointCreateSchema = z.object({
   url: z.string().trim().min(1).max(2048),
   description: z.string().trim().max(160).optional(),
-  eventTypes: z.array(eventType).min(1).max(5),
+  eventTypes: z.array(eventType).min(1).max(5).refine(values => new Set(values).size === values.length, { message: "Event types must be unique." }),
 }).strict();
 
 export const integrationWebhookEndpointParamsSchema = z.object({ endpointId: id }).strict();
@@ -20,7 +20,7 @@ export const integrationWebhookEndpointParamsSchema = z.object({ endpointId: id 
 export const integrationWebhookEndpointUpdateSchema = z.object({
   status: z.enum(["ACTIVE", "SUSPENDED", "REVOKED"]).optional(),
   description: z.string().trim().max(160).nullable().optional(),
-  eventTypes: z.array(eventType).min(1).max(5).optional(),
+  eventTypes: z.array(eventType).min(1).max(5).refine(values => new Set(values).size === values.length, { message: "Event types must be unique." }).optional(),
   reason: z.string().trim().min(5).max(500).optional(),
 }).strict().refine(value => Object.keys(value).length > 0, {
   message: "At least one endpoint field must be supplied.",
