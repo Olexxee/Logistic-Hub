@@ -17,7 +17,7 @@ export async function projectIntegrationShipmentEvent({ tx, parcelBookingId, sou
 
   const existing = await tx.integrationShipmentEvent.findUnique({
     where: { sourceBookingEventId: sourceEvent.id },
-    select: { id: true },
+    select: { id: true, sequence: true },
   });
   if (existing) return existing;
 
@@ -44,7 +44,7 @@ export async function projectIntegrationShipmentEvent({ tx, parcelBookingId, sou
     status: sourceEvent.toStatus ?? booking.status,
   };
 
-  return tx.integrationShipmentEvent.create({
+  const event = await tx.integrationShipmentEvent.create({
     data: {
       clientId: booking.integrationClientId,
       parcelBookingId: booking.id,
@@ -57,4 +57,27 @@ export async function projectIntegrationShipmentEvent({ tx, parcelBookingId, sou
     },
     select: { id: true, sequence: true, eventType: true },
   });
+
+  // Fan-out is part of the operational transaction. A committed event always
+  // has its delivery rows; webhook network failures happen later in the worker.
+  const endpoints = await tx.integrationWebhookEndpoint.findMany({
+    where: {
+      clientId: booking.integrationClientId,
+      status: "ACTIVE",
+      eventTypes: { has: eventType },
+    },
+    select: { id: true, currentSecretVersion: true },
+  });
+  if (endpoints.length) {
+    await tx.integrationWebhookDelivery.createMany({
+      data: endpoints.map(endpoint => ({
+        eventId: event.id,
+        endpointId: endpoint.id,
+        secretVersion: endpoint.currentSecretVersion,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return event;
 }
