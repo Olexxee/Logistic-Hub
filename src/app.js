@@ -38,6 +38,7 @@ import { hubApplicationsRouter } from "./modules/hub-applications/hub-applicatio
 import { integrationsAdminRouter } from "./modules/integrations/integrations-admin.routes.js";
 import { integrationQuoteRouter } from "./modules/integrations/integration-quote.routes.js";
 import { integrationShipmentRouter } from "./modules/integrations/integration-shipment.routes.js";
+import { integrationWebhookRouter } from "./modules/integrations/integration-webhook.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { runWithAuditContext } from "./shared/audit/audit-context.js";
 import { notFoundHandler } from "./shared/http/not-found.js";
@@ -112,6 +113,7 @@ app.use("/api/v1", discoveryRouter);
 app.use("/api/v1/admin/users", adminUsersRouter);
 app.use("/api/v1/admin/integrations", integrationsAdminRouter);
 app.use("/api/v1/integrations", integrationShipmentRouter);
+app.use("/api/v1/integrations", integrationWebhookRouter);
 app.use("/api/v1/integrations", integrationQuoteRouter);
 app.use("/api/v1", hubApplicationsRouter);
 app.use("/api/v1/admin/audit-events", auditRouter);
