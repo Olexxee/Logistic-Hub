@@ -514,7 +514,7 @@ test("PostgreSQL enforces integration-owned booking identity and normalized pack
 
     await prisma.parcelBookingPackage.create({
       data: {
-        parcelBookingId: booking.id, externalPackageRef: "package-A", packageCategory: "carton",
+        parcelBookingId: booking.id, packageSequence: 0, externalPackageRef: "package-A", packageCategory: "carton",
         weightGrams: 1200, lengthMm: 300, widthMm: 200, heightMm: 100,
         declaredValueMinor: 50000n, assessmentStatus: "DECLARED",
         assessmentSource: "INTEGRATOR_DECLARED", assessmentConfidence: 0.92,
