@@ -207,6 +207,30 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           action: "PARTNER_LEG_ASSIGNED",
           after: { deliveryLegId, partnerId, agreementId: agreement.id, agreedTransportChargeMinor: acceptedQuote.transportChargeMinor.toString(), currency: acceptedQuote.currency },
         } });
+
+        if (leg.parcelBooking.integrationClientId
+          && leg.parcelBooking.status === "AWAITING_PARTNER_ASSIGNMENT") {
+          const bookingChanged = await tx.parcelBooking.updateMany({
+            where: {
+              id: leg.parcelBookingId,
+              integrationClientId: leg.parcelBooking.integrationClientId,
+              status: "AWAITING_PARTNER_ASSIGNMENT",
+              paymentStatus: "SUCCEEDED",
+            },
+            data: { status: "DRIVER_ASSIGNED" },
+          });
+          if (bookingChanged.count !== 1) {
+            throw conflict("INTEGRATION_BOOKING_STATE_CONFLICT", "The integration shipment changed before partner assignment could be recorded.");
+          }
+          await tx.bookingEvent.create({ data: {
+            parcelBookingId: leg.parcelBookingId,
+            actorUserId,
+            eventType: "INTEGRATION_PARTNER_ASSIGNMENT_CREATED",
+            fromStatus: "AWAITING_PARTNER_ASSIGNMENT",
+            toStatus: "DRIVER_ASSIGNED",
+            metadata: { partnerAssignmentId: assignment.id, deliveryLegId, partnerId, agreementId: agreement.id },
+          } });
+        }
         return { assignment, replay: false };
       });
     },
