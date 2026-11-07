@@ -7,7 +7,7 @@ import { createIntegrationsAdminController } from "./integrations-admin.controll
 import {
   integrationAgreementCreateSchema, integrationBillingAgreementParamsSchema, integrationBillingAgreementStatusSchema,
   integrationClientCreateSchema, integrationClientListQuerySchema,
-  integrationClientParamsSchema, integrationClientStatusSchema, integrationCredentialCreateSchema,
+  integrationClientParamsSchema, integrationClientStatusSchema, integrationClientScopesSchema, integrationCredentialCreateSchema,
   integrationCredentialParamsSchema, integrationCredentialRevokeSchema,
 } from "./integrations-admin.validators.js";
 
@@ -20,6 +20,8 @@ export function createIntegrationsAdminRouter({
 
   router.get("/", validate(integrationClientListQuerySchema, "query"), asyncWrapper(controller.listClients));
   router.post("/", validate(integrationClientCreateSchema), asyncWrapper(controller.createClient));
+  router.patch("/:clientId/scopes",
+    validate(integrationClientParamsSchema, "params"), validate(integrationClientScopesSchema), asyncWrapper(controller.updateClientScopes));
   router.patch("/:clientId/status",
     validate(integrationClientParamsSchema, "params"), validate(integrationClientStatusSchema),
     asyncWrapper(controller.updateClientStatus));
