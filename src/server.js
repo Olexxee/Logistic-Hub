@@ -4,11 +4,13 @@ import { prisma } from "./db/prisma.js";
 import { emailService } from "./shared/email/email.service.js";
 import { createOutboxWorker } from "./shared/jobs/outbox-worker.service.js";
 import { createDriverAssignmentExpiryWorker } from "./shared/jobs/driver-assignment-expiry.service.js";
+import { createIntegrationWebhookDeliveryWorker } from "./shared/jobs/integration-webhook-delivery-worker.service.js";
 
 const startedAt = Date.now();
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const OUTBOX_POLL_INTERVAL_MS = 1_000;
 const ASSIGNMENT_EXPIRY_POLL_INTERVAL_MS = 30_000;
+const WEBHOOK_DELIVERY_POLL_INTERVAL_MS = 1_000;
 let shutdownPromise;
 let outboxWorker;
 let outboxWorkerTimer;
@@ -20,6 +22,11 @@ let assignmentExpiryTimer;
 let assignmentExpiryPoll;
 let assignmentExpiryStopping = false;
 let assignmentExpiryFailures = 0;
+let webhookDeliveryWorker;
+let webhookDeliveryTimer;
+let webhookDeliveryPoll;
+let webhookDeliveryStopping = false;
+let webhookDeliveryFailures = 0;
 
 function log(level, event, details = {}) {
   const writer = level === "fatal" ? console.error : (console[level] ?? console.log);
@@ -100,6 +107,67 @@ async function stopOutboxWorker(signal) {
   }
 }
 
+
+function startWebhookDeliveryWorker() {
+  if (webhookDeliveryWorker || webhookDeliveryStopping) return;
+  if (!env.WEBHOOK_SECRET_ENCRYPTION_KEY.trim()) {
+    log("warn", "integration.webhook.worker.disabled", {
+      reason: "webhook_secret_encryption_key_not_configured",
+    });
+    return;
+  }
+  webhookDeliveryWorker = createIntegrationWebhookDeliveryWorker({
+    prismaClient: prisma,
+    encryptionKey: env.WEBHOOK_SECRET_ENCRYPTION_KEY,
+  });
+  log("info", "integration.webhook.worker.started", {
+    workerId: webhookDeliveryWorker.workerId,
+    pollIntervalMs: WEBHOOK_DELIVERY_POLL_INTERVAL_MS,
+    mode: "embedded",
+  });
+  void pollWebhookDeliveries();
+}
+
+async function pollWebhookDeliveries() {
+  if (webhookDeliveryStopping || !webhookDeliveryWorker) return;
+  webhookDeliveryPoll = (async () => {
+    try {
+      await webhookDeliveryWorker.runOnce();
+      webhookDeliveryFailures = 0;
+    } catch (error) {
+      webhookDeliveryFailures += 1;
+      log("error", "integration.webhook.poll.failed", {
+        errorName: error?.name,
+        errorCode: error?.code ?? "WEBHOOK_WORKER_ERROR",
+        message: error?.message,
+        consecutiveFailures: webhookDeliveryFailures,
+      });
+    }
+  })();
+  await webhookDeliveryPoll;
+  webhookDeliveryPoll = undefined;
+  if (!webhookDeliveryStopping) {
+    const delayMs = webhookDeliveryFailures
+      ? Math.min(30_000, WEBHOOK_DELIVERY_POLL_INTERVAL_MS * (2 ** Math.min(webhookDeliveryFailures, 5)))
+      : WEBHOOK_DELIVERY_POLL_INTERVAL_MS;
+    webhookDeliveryTimer = setTimeout(() => void pollWebhookDeliveries(), delayMs);
+    webhookDeliveryTimer.unref?.();
+  }
+}
+
+async function stopWebhookDeliveryWorker(signal) {
+  webhookDeliveryStopping = true;
+  if (webhookDeliveryTimer) clearTimeout(webhookDeliveryTimer);
+  webhookDeliveryTimer = undefined;
+  if (webhookDeliveryPoll) await webhookDeliveryPoll;
+  if (webhookDeliveryWorker) {
+    log("info", "integration.webhook.worker.stopped", {
+      workerId: webhookDeliveryWorker.workerId,
+      signal,
+    });
+  }
+}
+
 function startDriverAssignmentExpiryWorker() {
   if (assignmentExpiryWorker || assignmentExpiryStopping) return;
   assignmentExpiryWorker = createDriverAssignmentExpiryWorker({ prismaClient: prisma });
@@ -164,6 +232,7 @@ server.on("listening", () => {
   void checkDatabaseConnection().then(() => {
     startOutboxWorker();
     startDriverAssignmentExpiryWorker();
+    startWebhookDeliveryWorker();
   });
 });
 
@@ -234,6 +303,7 @@ async function shutdown(signal, exitCode = 0) {
 
     await stopOutboxWorker(signal);
     await stopDriverAssignmentExpiryWorker(signal);
+    await stopWebhookDeliveryWorker(signal);
 
     try {
       await new Promise((resolve, reject) => {

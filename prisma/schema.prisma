@@ -2136,6 +2136,7 @@ model IntegrationShipmentEvent {
 
   client        IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
   parcelBooking ParcelBooking     @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
+  webhookDeliveries IntegrationWebhookDelivery[]
 
   @@unique([parcelBookingId, sequence])
   @@index([clientId, parcelBookingId, sequence], map: "integration_shipment_events_client_shipment_seq_idx")
@@ -2158,6 +2159,7 @@ model IntegrationWebhookEndpoint {
   client         IntegrationClient                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
   secretVersions IntegrationWebhookSecretVersion[]
   auditEvents    IntegrationWebhookAuditEvent[]
+  deliveries     IntegrationWebhookDelivery[]
 
   @@unique([clientId, url])
   @@index([clientId, status, createdAt])
@@ -2174,10 +2176,39 @@ model IntegrationWebhookSecretVersion {
   createdAt      DateTime @default(now())
 
   endpoint IntegrationWebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Restrict)
+  deliveries IntegrationWebhookDelivery[]
 
   @@unique([endpointId, version])
   @@index([endpointId, createdAt])
   @@map("integration_webhook_secret_versions")
+}
+
+
+model IntegrationWebhookDelivery {
+  id              String    @id @default(cuid())
+  eventId         String
+  endpointId      String
+  secretVersion   Int
+  status          String    @default("PENDING")
+  attempts        Int       @default(0)
+  availableAt     DateTime  @default(now())
+  lockedAt        DateTime?
+  lockedBy        String?
+  lastHttpStatus  Int?
+  lastErrorCode   String?
+  deliveredAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  event              IntegrationShipmentEvent         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  endpoint           IntegrationWebhookEndpoint       @relation(fields: [endpointId], references: [id], onDelete: Restrict)
+  secretVersionRecord IntegrationWebhookSecretVersion @relation(fields: [endpointId, secretVersion], references: [endpointId, version], onDelete: Restrict)
+
+  @@unique([eventId, endpointId])
+  @@index([status, availableAt, createdAt])
+  @@index([status, lockedAt])
+  @@index([endpointId, status, createdAt])
+  @@map("integration_webhook_deliveries")
 }
 
 model IntegrationWebhookAuditEvent {

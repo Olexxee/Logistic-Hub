@@ -1,6 +1,6 @@
 # GIL-05 — Tracking and Signed Webhooks
 
-**Status:** GIL-04A–GIL-04E, GIL-05A and GIL-05B are merged. GIL-05C–05D remain unimplemented.
+**Status:** GIL-04A–GIL-04E and GIL-05A–GIL-05B are merged. GIL-05C is implemented on the current pull request branch and awaiting CI/review. GIL-05D remains unimplemented.
 
 ## Objective
 
@@ -50,19 +50,20 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 - Implemented: endpoint listing, registration, subscription updates, suspension, reactivation, terminal revocation and secret rotation are scoped to the authenticated integration client and require the dedicated webhooks:manage scope. Every mutation writes a client/credential-attributed webhook audit record.
 - Implemented: registration requires HTTPS on port 443, rejects URL credentials, query strings, fragments, IP literals and local/reserved hostnames, resolves DNS, and rejects the hostname if any A/AAAA result is not globally routable. DNS is checked again and pinned by the GIL-05C delivery worker before connecting; registration-time validation alone is not a DNS-rebinding defence.
 - Implemented: signing secrets are shown once and stored only as AES-256-GCM ciphertext with a unique IV and authentication tag. The encryption key is supplied through WEBHOOK_SECRET_ENCRYPTION_KEY and must be a base64-encoded 32-byte key.
-- Implemented: rotation increments the secret version and retains all prior encrypted versions. GIL-05C delivery records will pin the exact secret version assigned when created.
-- Implemented: endpoint suspension/revocation prevents future deliveries once GIL-05C is active. Revocation is terminal and does not erase event history.
+- Implemented: rotation increments the secret version and retains all prior encrypted versions. GIL-05C delivery records pin the exact secret version assigned when created.
+- Implemented: endpoint suspension pauses pending deliveries; revocation prevents future delivery attempts. Revocation is terminal and does not erase event history.
 - ADMIN can grant or revoke the webhooks:manage scope for an existing client through PATCH /api/v1/admin/integrations/:clientId/scopes; each scope change is audited.
 
 ## GIL-05C — Signed webhook delivery
 
-- Create one delivery row per event/active subscribed endpoint in the same transaction as the event ledger row.
-- Claim work with PostgreSQL FOR UPDATE SKIP LOCKED, a lease owner and expiry, and bounded batches.
-- Send the exact serialized request body with HMAC-SHA256 signature over timestamp + "." + rawBody.
-- Include event ID, delivery ID, event type, sequence, timestamp and signature headers.
-- Disable redirects. Apply strict connection/response timeouts and bounded response-body reads.
-- Treat 2xx as success; retry network errors, timeouts, 408, 429 and 5xx with capped exponential backoff; dead-letter permanent 4xx responses and exhausted retries.
-- Delivery attempts are at-least-once. Receivers must deduplicate by event ID and verify signatures with constant-time comparison.
+- Implemented on the current branch: one durable delivery row per event/active subscribed endpoint is created in the same database transaction as the immutable event projection. The row pins the endpoint's exact signing-secret version and is unique by event/endpoint.
+- Implemented: the embedded Node worker claims bounded batches using PostgreSQL `FOR UPDATE SKIP LOCKED`, a worker owner and expiring lease. Expired leases are reclaimable after a process crash.
+- Implemented: the worker serializes a stable JSON envelope and signs the exact request body using HMAC-SHA256 over `timestamp + "." + rawBody`. The signature header is `X-Logistic-Hub-Signature: t=<unix-seconds>,v1=<hex-digest>`.
+- Implemented headers: `X-Logistic-Hub-Event-Id`, `X-Logistic-Hub-Delivery-Id`, `X-Logistic-Hub-Event-Type`, `X-Logistic-Hub-Event-Sequence`, `X-Logistic-Hub-Timestamp` and `X-Logistic-Hub-Signature`.
+- Implemented: redirects are not followed; the worker applies an 8-second request timeout, a 3-second DNS lookup timeout and a 4 KiB response-body cap. DNS is re-resolved for every attempt; every returned A/AAAA answer must be globally routable. The HTTPS socket connects to the selected validated IP while TLS certificate verification and SNI use the original hostname.
+- Implemented: 2xx succeeds; network errors, timeouts, 408, 429 and 5xx retry with capped exponential backoff. Other 4xx/3xx responses, unsafe DNS answers, missing pinned secret versions and exhausted retries are dead-lettered. Attempts are capped at 8.
+- Implemented: endpoint suspension pauses claimed deliveries; reactivation allows pending work to resume. Revocation and event unsubscription prevent pending work from being sent.
+- Implemented: delivery failures do not alter the already-committed shipment transaction. Delivery is at-least-once; receivers must deduplicate by event ID and verify the timestamp/body HMAC using constant-time comparison.
 
 ## GIL-05D — Replay, operations and acceptance
 
@@ -77,7 +78,7 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 |---|---|---|
 | GIL-05A | Immutable event ledger and client-scoped tracking history | Atomic projection, per-shipment sequence, sanitized event payload and cursor-based tracking API |
 | GIL-05B | Endpoint management and secret lifecycle | Implemented on the current branch: client-scoped endpoint CRUD, HTTPS/SSRF validation, one-time secret display, encrypted versioned rotation and audited scope administration |
-| GIL-05C | Signed webhook worker | Durable per-endpoint deliveries, HMAC signatures, leases, retries and dead-lettering |
+| GIL-05C | Signed webhook worker | Implemented on the current PR branch: durable per-endpoint deliveries, HMAC signatures, DNS pinning, leases, retries and dead-lettering; pending CI/review |
 | GIL-05D | Replay and acceptance | Bounded replay, audit trail, end-to-end contract and PostgreSQL concurrency tests |
 
 GIL-05 does not change booking, payment, custody or partner execution authority. It does not enable Logistic Hub payment collection, refunds, wallet debits, payouts or settlement.
@@ -92,3 +93,10 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
 Losing this key makes existing webhook signing secrets unrecoverable. Back it up using the deployment platform's secret-management facilities before enabling the `webhooks:manage` scope for an integration client.
+
+
+### GIL-05C delivery operations
+
+The delivery worker runs inside the existing API process; no additional Render service, Redis instance or paid worker plan is required. It starts only when `WEBHOOK_SECRET_ENCRYPTION_KEY` is configured. Delivery rows are stored in PostgreSQL and are claimed using row-level leases, so multiple API instances can safely compete for work. The endpoint's active state and event subscription are checked again before sending. Pending deliveries retain their pinned secret version across rotations.
+
+The worker records delivery state, attempt count, last HTTP status, a bounded error code and the next retry time. GIL-05D will expose client-scoped delivery telemetry and replay controls; these are not part of GIL-05C.

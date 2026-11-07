@@ -207,6 +207,8 @@ function fixture({
         return event;
       },
     },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
     hubPoint: { findMany: async () => [] },
     user: { create: async () => { state.userCreates += 1; } },
     paymentAttempt: { create: async () => { state.paymentAttemptCreates += 1; } },

@@ -27,7 +27,11 @@ const roleMiddleware = (...roles) => (req, res, next) => {
 function createAuthorizationApp() {
   const app = express();
   app.use(express.json());
-  const dependencies = { prismaClient: {}, authMiddleware, roleMiddleware };
+  const dependencies = {
+    prismaClient: { supportTicket: { findMany: async () => [] } },
+    authMiddleware,
+    roleMiddleware,
+  };
 
   app.use("/support", createSupportRouter(dependencies));
   app.use("/finance", createFinanceRouter(dependencies));
@@ -104,7 +108,7 @@ test("SUPPORT access is limited to support operations and denied finance oversig
       "/support/admin/tickets",
     ]) {
       const response = await fetch(base + path, { headers: { "x-test-role": "SUPPORT" } });
-      assert.notEqual(response.status, 403, `SUPPORT route grant unexpectedly removed: ${path}`);
+      assert.equal(response.status, 200, `authorized SUPPORT request should complete successfully: ${path}`);
     }
 
     const refundsDenied = await fetch(base + "/finance/admin/refunds", { headers: { "x-test-role": "SUPPORT" } });

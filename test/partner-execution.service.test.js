@@ -430,6 +430,8 @@ test("partner assignment advances a paid integration-owned shipment from awaitin
       updateMany: async args => { bookingUpdates.push(args); return { count: 1 }; },
     },
     integrationShipmentEvent: { findUnique: async () => null, create: async ({ data }) => ({ id: "integration-event-1", ...data }) },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
     bookingEvent: {
       create: async ({ data }) => { bookingEvents.push(data); return { id: "booking-event-assign", createdAt: now, ...data }; },
     },
@@ -499,6 +501,8 @@ test("starting an integration partner assignment advances the booking to IN_TRAN
       updateMany: async args => { bookingUpdates.push(args); return { count: 1 }; },
     },
     integrationShipmentEvent: { findUnique: async () => null, create: async ({ data }) => ({ id: "integration-event-start-1", ...data }) },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
     bookingEvent: {
       create: async ({ data }) => { bookingEvents.push(data); return { id: "booking-event-start", createdAt: now, ...data }; },
     },
