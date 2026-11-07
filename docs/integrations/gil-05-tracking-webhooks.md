@@ -1,6 +1,6 @@
 # GIL-05 — Tracking and Signed Webhooks
 
-**Status:** GIL-04A–GIL-04E and GIL-05A–GIL-05C are merged. GIL-05D replay and operations controls are implemented on the current pull request branch and awaiting CI/review.
+**Status:** GIL-04A–GIL-04E and GIL-05A–GIL-05D are merged. GIL-05 is complete; production use still requires the dedicated Render encryption key and integration-client/endpoint configuration.
 
 ## Objective
 
@@ -67,8 +67,8 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 
 ## GIL-05D — Replay, operations and acceptance
 
-- Implemented on the current PR branch: GET /api/v1/integrations/webhooks/deliveries requires webhooks:read and returns client-scoped delivery telemetry with bounded pagination. It exposes current-cycle attempts, lifetime attempts, replay count, last HTTP status/error code, next attempt time and terminal state; it never returns signing secrets, encrypted secret fields or response bodies.
-- Implemented on the current PR branch: POST /api/v1/integrations/webhooks/:endpointId/replay requires webhooks:manage and accepts either one eventId or a shipmentId plus an inclusive fromSequence/toSequence range.
+- Merged: GET /api/v1/integrations/webhooks/deliveries requires webhooks:read and returns client-scoped delivery telemetry with bounded pagination. It exposes current-cycle attempts, lifetime attempts, replay count, last HTTP status/error code, next attempt time and terminal state; it never returns signing secrets, encrypted secret fields or response bodies.
+- Merged: POST /api/v1/integrations/webhooks/:endpointId/replay requires webhooks:manage and accepts either one eventId or a shipmentId plus an inclusive fromSequence/toSequence range.
 - Replay only requeues existing SUCCEEDED or DEAD delivery rows for an ACTIVE endpoint, an ACTIVE integration client and event types currently subscribed by that endpoint. Other-client events, missing deliveries, pending/processing deliveries and revoked/suspended endpoints are not replayable.
 - Replay never creates an IntegrationShipmentEvent, BookingEvent or new sequence. It resets the current retry-cycle attempt counter, increments replayCount, preserves totalAttempts, clears prior terminal response metadata and schedules the existing delivery row immediately.
 - Sequence replay is shipment-scoped and limited to at most 100 sequence values and 100 existing deliveries per request. Replay is rate-limited to 10 requests per endpoint per rolling minute using a PostgreSQL endpoint-row lock and persisted audit records, so the limit is shared across API instances.
