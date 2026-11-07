@@ -1,6 +1,6 @@
 # GIL-05 — Tracking and Signed Webhooks
 
-**Status:** GIL-04A–GIL-04E and GIL-05A are merged. GIL-05B endpoint management is implemented on the current feature branch; GIL-05C–05D remain unimplemented.
+**Status:** GIL-04A–GIL-04E, GIL-05A and GIL-05B are merged. GIL-05C–05D remain unimplemented.
 
 ## Objective
 
