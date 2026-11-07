@@ -99,3 +99,25 @@ test("event projector ignores unsupported internal audit events and customer-own
   assert.equal(customerOwned, null);
   assert.equal(updates, 0);
 });
+
+
+test("event projector does not allocate a new sequence for an already-projected source event", async () => {
+  let sequenceUpdates = 0;
+  const tx = {
+    integrationShipmentEvent: {
+      findUnique: async () => ({ id: "existing-event", sequence: 4 }),
+      create: async () => { throw new Error("duplicate source event must not be created"); },
+    },
+    parcelBooking: {
+      findUnique: async () => { throw new Error("existing projection should short-circuit"); },
+      update: async () => { sequenceUpdates += 1; },
+    },
+  };
+  const result = await projectIntegrationShipmentEvent({
+    tx,
+    parcelBookingId: "shipment-a",
+    sourceEvent: { id: "booking-event-duplicate", eventType: "INTEGRATION_SHIPMENT_CREATED" },
+  });
+  assert.deepEqual(result, { id: "existing-event", sequence: 4 });
+  assert.equal(sequenceUpdates, 0);
+});
