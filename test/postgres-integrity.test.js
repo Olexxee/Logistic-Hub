@@ -70,7 +70,7 @@ test("PostgreSQL enforces integration-owned booking identity and normalized pack
     );
     await assert.rejects(
       prisma.parcelBooking.create({
-        data: bookingData({ publicReference: `DUAL-OWNER-${tag}`, senderId: (await prisma.user.create({ data: { fullName: `Dual Owner User ${tag}` } })).id }),
+        data: bookingData({ publicReference: `DUAL-OWNER-${tag}`, senderId: (dualOwnerUser = await prisma.user.create({ data: { fullName: `Dual Owner User ${tag}` } })).id }),
       }),
     );
     await assert.rejects(
