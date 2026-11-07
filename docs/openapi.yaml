@@ -6504,6 +6504,150 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { description: Webhook secret encryption key is not configured. }
+  /integrations/webhooks/deliveries:
+    get:
+      tags: [Webhooks]
+      operationId: listIntegrationWebhookDeliveries
+      summary: List delivery telemetry for the authenticated integration client
+      description: Requires webhooks:read. Delivery records and optional endpoint filters are constrained to the authenticated client. Secret material and response bodies are never returned.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: query
+          name: endpointId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING, PROCESSING, SUCCEEDED, DEAD] }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: Client-scoped delivery telemetry and pagination.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items, pagination]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, eventId, endpointId, eventType, sequence, status, attempts, totalAttempts, replayCount, nextAttemptAt, lastHttpStatus, lastErrorCode]
+                          properties:
+                            id: { type: string }
+                            eventId: { type: string }
+                            endpointId: { type: string }
+                            eventType: { type: string }
+                            sequence: { type: integer }
+                            occurredAt: { type: string, format: date-time }
+                            shipmentReference: { type: [string, 'null'] }
+                            status: { type: string, enum: [PENDING, PROCESSING, SUCCEEDED, DEAD] }
+                            attempts: { type: integer }
+                            totalAttempts: { type: integer }
+                            replayCount: { type: integer }
+                            nextAttemptAt: { type: [string, 'null'], format: date-time }
+                            lastHttpStatus: { type: [integer, 'null'] }
+                            lastErrorCode: { type: [string, 'null'] }
+                            deliveredAt: { type: [string, 'null'], format: date-time }
+                            createdAt: { type: string, format: date-time }
+                            updatedAt: { type: string, format: date-time }
+                      pagination:
+                        type: object
+                        required: [page, limit, total, totalPages]
+                        properties:
+                          page: { type: integer }
+                          limit: { type: integer }
+                          total: { type: integer }
+                          totalPages: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks webhooks:read. }
+  /integrations/webhooks/{endpointId}/replay:
+    post:
+      tags: [Webhooks]
+      operationId: replayIntegrationWebhookDeliveries
+      summary: Requeue existing webhook deliveries for replay
+      description: |
+        Requires webhooks:manage. Supply either eventId or shipmentId with an inclusive
+        fromSequence/toSequence range. Replays only existing SUCCEEDED or DEAD deliveries
+        for an active endpoint and current event subscriptions. Sequence ranges and delivery
+        count are limited to 100; each endpoint is limited to 10 replay requests per minute.
+        Replay does not create shipment events or change shipment event sequence numbers.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: endpointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [eventId]
+                  properties:
+                    eventId: { type: string, minLength: 1, maxLength: 128 }
+                - type: object
+                  additionalProperties: false
+                  required: [shipmentId, fromSequence, toSequence]
+                  properties:
+                    shipmentId: { type: string, minLength: 1, maxLength: 128 }
+                    fromSequence: { type: integer, minimum: 1 }
+                    toSequence: { type: integer, minimum: 1 }
+      responses:
+        '202':
+          description: Existing delivery rows requeued for asynchronous delivery.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [endpointId, requeuedCount, deliveryIds, scheduledAt]
+                    properties:
+                      endpointId: { type: string }
+                      requeuedCount: { type: integer }
+                      deliveryIds:
+                        type: array
+                        items: { type: string }
+                      scheduledAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks webhooks:manage. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { description: Endpoint replay rate limit exceeded. }
   /integrations/shipments/{shipmentId}/events:
     get:
       tags: [Integrations]
