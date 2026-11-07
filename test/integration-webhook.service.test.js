@@ -131,10 +131,18 @@ test("creating a webhook endpoint returns its secret once and stores only authen
 
 test("webhook endpoint listing is client-scoped and never exposes encrypted secret fields", async () => {
   const { prismaClient } = createPrismaFixture();
-  const service = createIntegrationWebhookService({ prismaClient, encryptionKey });
-  const result = await service.listEndpoints({ clientId: "client-1", page: 1, limit: 10 });
-  assert.deepEqual(result.items, []);
-  assert.deepEqual(result.pagination, { page: 1, limit: 10, hasMore: false, nextPage: null });
+  const service = createIntegrationWebhookService({ prismaClient, lookup: publicLookup, encryptionKey });
+  await service.createEndpoint({
+    clientId: "client-1", credentialId: "credential-1",
+    url: "https://hooks.example.org/notify", eventTypes: ["shipment.created"],
+  });
+  const owned = await service.listEndpoints({ clientId: "client-1", page: 1, limit: 10 });
+  const foreign = await service.listEndpoints({ clientId: "client-2", page: 1, limit: 10 });
+  assert.equal(owned.items.length, 1);
+  assert.equal(owned.items[0].url, "https://hooks.example.org/notify");
+  assert.equal("encryptedValue" in owned.items[0], false);
+  assert.deepEqual(foreign.items, []);
+  assert.deepEqual(foreign.pagination, { page: 1, limit: 10, hasMore: false, nextPage: null });
 });
 
 test("webhook endpoint updates enforce client isolation and terminal revocation", async () => {
