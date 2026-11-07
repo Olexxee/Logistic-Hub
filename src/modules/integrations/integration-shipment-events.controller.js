@@ -7,8 +7,8 @@ export function createIntegrationShipmentEventsController({ prismaClient } = {})
       const result = await service.listEvents({
         clientId: req.integrationClient.id,
         shipmentId: req.params.shipmentId,
-        afterSequence: req.query.afterSequence,
-        limit: req.query.limit,
+        afterSequence: req.validated.query.afterSequence,
+        limit: req.validated.query.limit,
       });
       return res.status(200).json({ success: true, data: result });
     },
