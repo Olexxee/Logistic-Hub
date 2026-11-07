@@ -1,6 +1,6 @@
 # GIL-05 — Tracking and Signed Webhooks
 
-**Status:** GIL-04A–GIL-04E and GIL-05A are merged. GIL-05B–05D (endpoint management, signed delivery, replay and end-to-end acceptance) remain unimplemented.
+**Status:** GIL-04A–GIL-04E and GIL-05A are merged. GIL-05B endpoint management is implemented on the current feature branch; GIL-05C–05D remain unimplemented.
 
 ## Objective
 
@@ -47,11 +47,12 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 
 ## GIL-05B — Webhook endpoint and signing-secret management
 
-- Endpoint registration is scoped to the authenticated client and requires a dedicated webhooks:manage scope.
-- Require HTTPS, reject credentials in URLs, fragments, local/private/link-local/multicast targets and redirects. DNS resolution must be revalidated at delivery time and pinned to validated public addresses to mitigate DNS rebinding and SSRF.
-- Display a signing secret once. Store only authenticated encryption of the secret using the configured server-side encryption key.
-- Rotation creates a new version; pending deliveries retain access to the exact secret version assigned when the delivery was created.
-- Endpoint suspension/revocation prevents new deliveries. It does not erase event history.
+- Implemented: endpoint listing, registration, subscription updates, suspension, reactivation, terminal revocation and secret rotation are scoped to the authenticated integration client and require the dedicated webhooks:manage scope. Every mutation writes a client/credential-attributed webhook audit record.
+- Implemented: registration requires HTTPS on port 443, rejects URL credentials, query strings, fragments, IP literals and local/reserved hostnames, resolves DNS, and rejects the hostname if any A/AAAA result is not globally routable. DNS is checked again and pinned by the GIL-05C delivery worker before connecting; registration-time validation alone is not a DNS-rebinding defence.
+- Implemented: signing secrets are shown once and stored only as AES-256-GCM ciphertext with a unique IV and authentication tag. The encryption key is supplied through WEBHOOK_SECRET_ENCRYPTION_KEY and must be a base64-encoded 32-byte key.
+- Implemented: rotation increments the secret version and retains all prior encrypted versions. GIL-05C delivery records will pin the exact secret version assigned when created.
+- Implemented: endpoint suspension/revocation prevents future deliveries once GIL-05C is active. Revocation is terminal and does not erase event history.
+- ADMIN can grant or revoke the webhooks:manage scope for an existing client through PATCH /api/v1/admin/integrations/:clientId/scopes; each scope change is audited.
 
 ## GIL-05C — Signed webhook delivery
 
@@ -75,8 +76,19 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 | Slice | Scope | Exit criteria |
 |---|---|---|
 | GIL-05A | Immutable event ledger and client-scoped tracking history | Atomic projection, per-shipment sequence, sanitized event payload and cursor-based tracking API |
-| GIL-05B | Endpoint management and secret lifecycle | Client-scoped endpoint CRUD, HTTPS/SSRF controls, one-time secret display and versioned rotation |
+| GIL-05B | Endpoint management and secret lifecycle | Implemented on the current branch: client-scoped endpoint CRUD, HTTPS/SSRF validation, one-time secret display, encrypted versioned rotation and audited scope administration |
 | GIL-05C | Signed webhook worker | Durable per-endpoint deliveries, HMAC signatures, leases, retries and dead-lettering |
 | GIL-05D | Replay and acceptance | Bounded replay, audit trail, end-to-end contract and PostgreSQL concurrency tests |
 
 GIL-05 does not change booking, payment, custody or partner execution authority. It does not enable Logistic Hub payment collection, refunds, wallet debits, payouts or settlement.
+
+
+### GIL-05B deployment configuration
+
+Generate a dedicated 32-byte encryption key and store it as the backend environment variable `WEBHOOK_SECRET_ENCRYPTION_KEY`. Do not reuse the email outbox key, commit the value, or expose it to the frontend. Example using Node.js:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+Losing this key makes existing webhook signing secrets unrecoverable. Back it up using the deployment platform's secret-management facilities before enabling the `webhooks:manage` scope for an integration client.

@@ -52,3 +52,10 @@ export const integrationBillingAgreementStatusSchema = z.object({
   status: z.enum(["ACTIVE", "SUSPENDED", "EXPIRED", "REVOKED"]),
   reason,
 }).strict();
+
+export const integrationClientScopesSchema = z.object({
+  scopes: z.array(z.string().trim().min(3).max(80)).max(30).refine(values => new Set(values).size === values.length, {
+    message: "Scopes must be unique.",
+  }),
+  reason,
+}).strict();

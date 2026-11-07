@@ -26,6 +26,12 @@ enum IntegrationCredentialStatus {
   REVOKED
 }
 
+enum IntegrationWebhookEndpointStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
 enum IntegrationBillingModel {
   PLATFORM_COLLECTED
   LOGISTIC_HUB_COLLECTED
@@ -1931,6 +1937,8 @@ model IntegrationClient {
   parcelBookings     ParcelBooking[]
   paymentAttestations IntegrationPaymentAttestation[]
   shipmentEvents      IntegrationShipmentEvent[]
+  webhookEndpoints   IntegrationWebhookEndpoint[]
+  webhookAuditEvents IntegrationWebhookAuditEvent[]
 
   @@index([status, createdAt])
   @@map("integration_clients")
@@ -1950,6 +1958,7 @@ model IntegrationCredential {
   updatedAt   DateTime                    @updatedAt
 
   client IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  webhookAuditEvents IntegrationWebhookAuditEvent[]
 
   @@index([clientId, status])
   @@index([expiresAt, status])
@@ -2132,6 +2141,61 @@ model IntegrationShipmentEvent {
   @@index([clientId, parcelBookingId, sequence], map: "integration_shipment_events_client_shipment_seq_idx")
   @@index([clientId, createdAt])
   @@map("integration_shipment_events")
+}
+
+model IntegrationWebhookEndpoint {
+  id                   String                          @id @default(cuid())
+  clientId             String
+  url                  String
+  description          String?
+  eventTypes           String[]
+  status               IntegrationWebhookEndpointStatus @default(ACTIVE)
+  currentSecretVersion Int                             @default(1)
+  revokedAt            DateTime?
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+
+  client         IntegrationClient                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  secretVersions IntegrationWebhookSecretVersion[]
+  auditEvents    IntegrationWebhookAuditEvent[]
+
+  @@unique([clientId, url])
+  @@index([clientId, status, createdAt])
+  @@map("integration_webhook_endpoints")
+}
+
+model IntegrationWebhookSecretVersion {
+  id             String   @id @default(cuid())
+  endpointId     String
+  version        Int
+  encryptedValue String
+  iv             String
+  authTag        String
+  createdAt      DateTime @default(now())
+
+  endpoint IntegrationWebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Restrict)
+
+  @@unique([endpointId, version])
+  @@index([endpointId, createdAt])
+  @@map("integration_webhook_secret_versions")
+}
+
+model IntegrationWebhookAuditEvent {
+  id                String   @id @default(cuid())
+  clientId          String
+  endpointId        String?
+  actorCredentialId String?
+  action            String
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  client     IntegrationClient             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  endpoint   IntegrationWebhookEndpoint?   @relation(fields: [endpointId], references: [id], onDelete: SetNull)
+  credential IntegrationCredential?        @relation(fields: [actorCredentialId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([endpointId, createdAt])
+  @@map("integration_webhook_audit_events")
 }
 
 model IntegrationPaymentAttestation {

@@ -5,6 +5,10 @@ export function createIntegrationsAdminController({ prismaClient, clock }) {
   return {
     listClients: async (req, res) => res.status(200).json({ success: true, data: await service.listClients(req.validated.query) }),
     createClient: async (req, res) => res.status(201).json({ success: true, data: await service.createClient({ ...req.body, actorUserId: req.user.id }) }),
+    updateClientScopes: async (req, res) => res.status(200).json({
+      success: true,
+      data: await service.updateClientScopes({ clientId: req.params.clientId, ...req.body, actorUserId: req.user.id }),
+    }),
     updateClientStatus: async (req, res) => res.status(200).json({
       success: true,
       data: await service.updateClientStatus({ clientId: req.params.clientId, ...req.body, actorUserId: req.user.id }),
