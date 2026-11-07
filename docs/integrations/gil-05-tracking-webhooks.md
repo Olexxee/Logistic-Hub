@@ -1,6 +1,6 @@
 # GIL-05 — Tracking and Signed Webhooks
 
-**Status:** GIL-04A–GIL-04E are merged. GIL-05 design is underway; GIL-05A is the first implementation slice.
+**Status:** GIL-04A–GIL-04E are merged. GIL-05A implementation is in progress on `feat/gil-05a-integration-tracking-ledger`; GIL-05B–05D remain unimplemented.
 
 ## Objective
 
@@ -18,10 +18,10 @@ Expose a reliable, client-scoped shipment event history and deliver signed, retr
 
 ### Contract
 
-- Every supported integration shipment milestone is projected into a durable IntegrationShipmentEvent in the same database transaction as its source operational mutation.
+- Supported integration shipment milestones are projected into a durable IntegrationShipmentEvent in the same database transaction as their source operational mutation. The implementation explicitly projects shipment creation, partner assignment, partner leg start and the three mapped custody milestones.
 - Event sequence is monotonic per shipment, starts at 1 and has no gaps for successfully committed integration events.
 - The source BookingEvent ID is unique in the integration event ledger, preventing duplicate projection.
-- Each event contains a stable event ID, schema version, event type, shipment ID/public reference, per-shipment sequence, occurrence timestamp and a sanitized shipment/leg snapshot.
+- Each event contains a stable event ID, schema version, external event type, per-shipment sequence, occurrence timestamp and a minimal sanitized payload containing shipment public reference and resulting status. Internal shipment IDs and leg/partner identifiers are not exposed in the payload.
 - Payloads must not contain recipient phone/name, full pickup or destination addresses, package declared values, payment references, partner internal costs, credentials or secrets.
 - Event history is scoped by authenticated integrationClientId and integration-owned booking identity. Unknown and other-client shipment IDs return the same not-found response.
 - Tracking reads use sequence greater than afterSequence, ascending sequence order and a bounded page size. Clients persist the highest contiguous sequence they have processed.
@@ -43,7 +43,7 @@ Only events with an explicit mapping are externally visible. Internal audit even
 
 GET /api/v1/integrations/shipments/:shipmentId/events?afterSequence=0&limit=50
 
-Requires shipments:read. Response contains ordered events, hasMore and nextAfterSequence. The endpoint is read-only and does not expose internal BookingEvent metadata.
+Requires shipments:read. Response contains ordered events, hasMore and nextAfterSequence. The endpoint is read-only, requires shipments:read, scopes both booking and event queries to the authenticated client, and does not expose internal BookingEvent metadata.
 
 ## GIL-05B — Webhook endpoint and signing-secret management
 
