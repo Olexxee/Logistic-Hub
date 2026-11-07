@@ -4,7 +4,24 @@ import { createIntegrationShipmentService } from "../src/modules/integrations/in
 
 const now = new Date("2026-11-07T09:00:00.000Z");
 
-function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatus = "SELECTED" } = {}) {
+function fixture({
+  amountMinor = "3000",
+  sessionStatus = "SELECTED",
+  optionStatus = "SELECTED",
+  sessionExpiresAt = new Date("2026-11-07T10:00:00.000Z"),
+  optionExpiresAt = new Date("2026-11-07T10:00:00.000Z"),
+  billingAgreementStatus = "ACTIVE",
+  partnerEligible = true,
+  rateActive = true,
+  zonesActive = true,
+  paymentVerifiedAt = "2026-11-07T08:30:00.000Z",
+  externalReference = "MARKETIQ-ORDER-100",
+  externalReferenceExists = false,
+  duplicatePaymentReference = false,
+  sessionUpdateCount = 1,
+  serializableFailures = 0,
+  failAt = null,
+} = {}) {
   const state = {
     idempotency: null,
     booking: null,
@@ -16,7 +33,7 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
     bookingEvents: [],
     sessionStatus,
     userCreates: 0,
-    paymentAttemptCreates: 0,
+    paymentAttemptCreates: 0,\n    transactionAttempts: 0,
   };
   const pkg = {
     id: "quote_package_1",
@@ -45,7 +62,7 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
     maxWidthMm: null,
     maxHeightMm: null,
     transportChargeMinor: 2500n,
-    isActive: true,
+    isActive: rateActive,
   };
   const billingAgreement = {
     id: "billing_1",
@@ -64,7 +81,7 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
     currency: "NGN",
     effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
     effectiveUntil: null,
-    partner: { id: "partner_1", status: "ACTIVE", verificationStatus: "VERIFIED" },
+    partner: { id: "partner_1", status: partnerEligible ? "ACTIVE" : "SUSPENDED", verificationStatus: partnerEligible ? "VERIFIED" : "PENDING" },
   };
   const option = {
     id: "option_1",
@@ -84,14 +101,14 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
       rateId: rate.id,
       transportChargeMinor: "2500",
     }],
-    expiresAt: new Date("2026-11-07T10:00:00.000Z"),
+    expiresAt: optionExpiresAt,
   };
   const session = {
     id: "quote_session_1",
     clientId: "client_1",
     billingAgreementId: billingAgreement.id,
     billingAgreementVersion: 2,
-    externalReference: "MARKETIQ-ORDER-100",
+    externalReference,
     status: sessionStatus,
     selectedOptionId: option.id,
     currency: "NGN",
@@ -106,7 +123,7 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
     recipientName: "Recipient",
     recipientPhone: "+2348000000000",
     createdAt: new Date("2026-11-07T07:00:00.000Z"),
-    expiresAt: new Date("2026-11-07T10:00:00.000Z"),
+    expiresAt: sessionExpiresAt,
     billingAgreement,
     packages: [pkg],
     options: [option],
@@ -122,11 +139,11 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
     },
     integrationQuoteSession: {
       findFirst: async () => ({ ...session, status: state.sessionStatus }),
-      updateMany: async ({ data }) => { state.sessionStatus = data.status; return { count: 1 }; },
+      updateMany: async ({ data }) => { state.sessionStatus = data.status; return { count: sessionUpdateCount }; },
     },
-    integrationBillingAgreement: { findFirst: async () => billingAgreement },
-    partnerRateCard: { findFirst: async () => ({ id: "rate_card_1", agreementId: partnerAgreement.id, agreement: partnerAgreement }) },
-    partnerRate: { findMany: async () => [rate] },
+    integrationBillingAgreement: { findFirst: async () => billingAgreementStatus === "ACTIVE" ? billingAgreement : null },
+    partnerRateCard: { findFirst: async () => partnerEligible ? ({ id: "rate_card_1", agreementId: partnerAgreement.id, agreement: partnerAgreement }) : null },
+    partnerRate: { findMany: async () => rateActive ? [rate] : [] },
     serviceZone: {
       findMany: async () => [
         { id: "zone_lagos", code: "LAG", name: "Lagos", stateId: "NG-LA" },
@@ -143,7 +160,7 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
       updateMany: async () => ({ count: 1 }),
     },
     shipmentQuote: {
-      create: async ({ data }) => { state.quote = { id: "shipment_quote_1", ...data }; return state.quote; },
+      create: async ({ data }) => { if (failAt === "quote") throw new Error("injected quote failure"); state.quote = { id: "shipment_quote_1", ...data }; return state.quote; },
     },
     deliveryLeg: {
       create: async ({ data }) => {
@@ -157,17 +174,17 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
       },
     },
     integrationPaymentAttestation: {
-      create: async ({ data }) => { state.attestation = data; return data; },
+      create: async ({ data }) => { if (failAt === "attestation") throw new Error("injected attestation failure"); state.attestation = data; return data; },
     },
     bookingEvent: {
-      create: async ({ data }) => { state.bookingEvents.push(data); return data; },
+      create: async ({ data }) => { if (failAt === "bookingEvent") throw new Error("injected booking event failure"); state.bookingEvents.push(data); return data; },
     },
     hubPoint: { findMany: async () => [] },
     user: { create: async () => { state.userCreates += 1; } },
     paymentAttempt: { create: async () => { state.paymentAttemptCreates += 1; } },
   };
   const prismaClient = {
-    $transaction: async work => work(tx),
+    $transaction: async work => {\n      state.transactionAttempts += 1;\n      if (state.transactionAttempts <= serializableFailures) { const error = new Error("serialization conflict"); error.code = "P2034"; throw error; }\n      const snapshot = structuredClone(state);\n      try { return await work(tx); }\n      catch (error) { for (const key of Object.keys(state)) delete state[key]; Object.assign(state, snapshot); throw error; }\n    },
     integrationIdempotencyRecord: {
       findUnique: async () => state.idempotency,
     },
@@ -185,7 +202,7 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
     paymentAttestation: {
       paymentProvider: "paystack",
       externalPaymentReference: "PAYSTACK-REF-100",
-      verifiedAt: "2026-11-07T08:30:00.000Z",
+      verifiedAt: paymentVerifiedAt,
       currency: "NGN",
       deliveryChargeMinor: amountMinor,
       orderPaymentAmountMinor: "125000",
@@ -264,4 +281,154 @@ test("integration shipment cannot be created from a quote that is not selected",
     error => error.code === "INTEGRATION_QUOTE_NOT_SELECTED",
   );
   assert.equal(state.booking, null);
+});
+
+
+test("shipment creation rejects an expired quote session and an expired selected option", async t => {
+  await t.test("expired session", async () => {
+    const { state, prismaClient, input } = fixture({ sessionExpiresAt: new Date("2026-11-07T08:59:59.999Z") });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "expired-session", input }),
+      error => error.code === "INTEGRATION_QUOTE_EXPIRED");
+    assert.equal(state.booking, null);
+  });
+  await t.test("expired selected option", async () => {
+    const { state, prismaClient, input } = fixture({ optionExpiresAt: new Date("2026-11-07T08:59:59.999Z") });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "expired-option", input }),
+      error => error.code === "INTEGRATION_QUOTE_OPTION_UNAVAILABLE");
+    assert.equal(state.booking, null);
+  });
+});
+
+test("shipment creation fails closed when billing or partner commercial eligibility is suspended", async t => {
+  await t.test("billing agreement suspended", async () => {
+    const { state, prismaClient, input } = fixture({ billingAgreementStatus: "SUSPENDED" });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "billing-suspended", input }),
+      error => error.code === "INTEGRATION_BILLING_AGREEMENT_INACTIVE");
+    assert.equal(state.booking, null);
+  });
+  await t.test("partner agreement suspended", async () => {
+    const { state, prismaClient, input } = fixture({ partnerEligible: false });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "partner-suspended", input }),
+      error => error.code === "INTEGRATION_PARTNER_AGREEMENT_INACTIVE");
+    assert.equal(state.booking, null);
+  });
+  await t.test("partner rate inactive", async () => {
+    const { state, prismaClient, input } = fixture({ rateActive: false });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "rate-inactive", input }),
+      error => error.code === "INTEGRATION_PARTNER_RATE_INACTIVE");
+    assert.equal(state.booking, null);
+  });
+});
+
+test("shipment creation rejects unavailable zones, mismatched fulfilment references and invalid payment timestamps", async t => {
+  await t.test("service zone unavailable", async () => {
+    const { state, prismaClient, input } = fixture({ zonesActive: false });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "zone-inactive", input }),
+      error => error.code === "SERVICE_ZONE_UNAVAILABLE");
+    assert.equal(state.booking, null);
+  });
+  await t.test("fulfilment reference mismatch", async () => {
+    const { state, prismaClient, input } = fixture();
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "reference-mismatch",
+      input: { ...input, externalFulfillmentReference: "ANOTHER-ORDER" } }),
+      error => error.code === "INTEGRATION_FULFILLMENT_REFERENCE_MISMATCH");
+    assert.equal(state.booking, null);
+  });
+  await t.test("payment verified in the future", async () => {
+    const { state, prismaClient, input } = fixture({ paymentVerifiedAt: "2026-11-07T09:00:00.001Z" });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "future-payment", input }),
+      error => error.code === "INTEGRATION_PAYMENT_ATTESTATION_INVALID");
+    assert.equal(state.booking, null);
+  });
+  await t.test("payment verified before quote creation", async () => {
+    const { state, prismaClient, input } = fixture({ paymentVerifiedAt: "2026-11-07T06:59:59.999Z" });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "early-payment", input }),
+      error => error.code === "INTEGRATION_PAYMENT_ATTESTATION_INVALID");
+    assert.equal(state.booking, null);
+  });
+});
+
+test("shipment creation rejects duplicate fulfilment and payment references", async t => {
+  await t.test("fulfilment reference already mapped", async () => {
+    const { state, prismaClient, input } = fixture({ externalReferenceExists: true });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "duplicate-fulfilment", input }),
+      error => error.code === "INTEGRATION_SHIPMENT_ALREADY_CREATED");
+    assert.equal(state.booking, null);
+  });
+  await t.test("payment reference already attested after a uniqueness race", async () => {
+    const { state, prismaClient, input } = fixture({ duplicatePaymentReference: true, failAt: "attestation" });
+    const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+    const originalCreate = prismaClient.$transaction;
+    prismaClient.$transaction = async work => {
+      try { return await originalCreate(work); }
+      catch (error) { error.code = "P2002"; throw error; }
+    };
+    await assert.rejects(service.createShipment({ client: { id: "client_1" }, idempotencyKey: "duplicate-payment", input }),
+      error => error.code === "INTEGRATION_PAYMENT_REFERENCE_REUSED");
+  });
+});
+
+test("shipment creation rejects idempotency-key reuse with a different payload", async () => {
+  const { state, prismaClient, input } = fixture();
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  await service.createShipment({ client: { id: "client_1" }, idempotencyKey: "same-key", input });
+  await assert.rejects(
+    service.createShipment({ client: { id: "client_1" }, idempotencyKey: "same-key",
+      input: { ...input, paymentAttestation: { ...input.paymentAttestation, orderPaymentAmountMinor: "125001" } } }),
+    error => error.code === "IDEMPOTENCY_CONFLICT",
+  );
+  assert.equal(state.legs.length, 1);
+});
+
+test("shipment creation retries a PostgreSQL serialization failure without duplicating records", async () => {
+  const { state, prismaClient, input } = fixture({ serializableFailures: 1 });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.createShipment({ client: { id: "client_1" }, idempotencyKey: "serialization-retry", input });
+  assert.equal(result.statusCode, 201);
+  assert.equal(state.transactionAttempts, 2);
+  assert.equal(state.legs.length, 1);
+  assert.equal(state.bookingEvents.length, 1);
+});
+
+test("a late transaction failure rolls back booking, packages, quote, legs, attestation, mapping, events and idempotency", async () => {
+  const { state, prismaClient, input } = fixture({ failAt: "bookingEvent" });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  await assert.rejects(
+    service.createShipment({ client: { id: "client_1" }, idempotencyKey: "rollback-late-failure", input }),
+    /injected booking event failure/,
+  );
+  assert.equal(state.booking, null);
+  assert.equal(state.packages.length, 0);
+  assert.equal(state.quote, null);
+  assert.equal(state.legs.length, 0);
+  assert.equal(state.attestation, null);
+  assert.equal(state.externalReferences.length, 0);
+  assert.equal(state.bookingEvents.length, 0);
+  assert.equal(state.idempotency, null);
+  assert.equal(state.sessionStatus, "SELECTED");
+});
+
+test("a quote state change during shipment creation aborts the complete transaction", async () => {
+  const { state, prismaClient, input } = fixture({ sessionUpdateCount: 0 });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  await assert.rejects(
+    service.createShipment({ client: { id: "client_1" }, idempotencyKey: "quote-race", input }),
+    error => error.code === "INTEGRATION_QUOTE_NOT_BOOKABLE",
+  );
+  assert.equal(state.booking, null);
+  assert.equal(state.quote, null);
+  assert.equal(state.legs.length, 0);
+  assert.equal(state.attestation, null);
+  assert.equal(state.externalReferences.length, 0);
+  assert.equal(state.idempotency, null);
 });
