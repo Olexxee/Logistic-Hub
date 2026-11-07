@@ -389,3 +389,126 @@ test("reactivating a non-owner is blocked when an active partner has no eligible
   assert.equal(result.blocker, "LAST_ACTIVE_OWNER");
   assert.equal(updateAttempts, 0);
 });
+
+
+test("partner assignment advances a paid integration-owned shipment from awaiting assignment to driver assigned", async () => {
+  const bookingUpdates = [];
+  const bookingEvents = [];
+  const tx = {
+    partnerDeliveryAssignment: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+      create: async ({ data }) => ({ id: "integration-assignment-1", ...data }),
+    },
+    deliveryLeg: {
+      findUnique: async () => ({
+        id: "integration-leg-1", type: "INTERSTATE_TRANSPORT", status: "READY_FOR_ASSIGNMENT",
+        parcelBookingId: "integration-booking-1",
+        parcelBooking: {
+          id: "integration-booking-1", paymentStatus: "SUCCEEDED",
+          status: "AWAITING_PARTNER_ASSIGNMENT", integrationClientId: "client-1",
+        },
+      }),
+      updateMany: async () => ({ count: 1 }),
+    },
+    shipmentQuote: {
+      findFirst: async () => ({
+        id: "integration-quote-1", partnerAgreementId: "agreement-1",
+        transportChargeMinor: 450000n, currency: "NGN",
+      }),
+    },
+    partnerAgreement: {
+      findUnique: async () => ({
+        id: "agreement-1", partnerId: "partner-1", status: "ACTIVE", currency: "NGN",
+        effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), effectiveUntil: null,
+        partner: { id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" },
+      }),
+    },
+    parcelBooking: {
+      updateMany: async args => { bookingUpdates.push(args); return { count: 1 }; },
+    },
+    bookingEvent: {
+      create: async ({ data }) => { bookingEvents.push(data); return data; },
+    },
+    operationalAuditEvent: { create: async () => ({ id: "audit-integration-1" }) },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.assignLeg({
+    deliveryLegId: "integration-leg-1", partnerId: "partner-1",
+    idempotencyKey: "assign-integration-leg-01", actorUserId: "admin-1",
+  });
+
+  assert.equal(result.replay, false);
+  assert.equal(bookingUpdates.length, 1);
+  assert.deepEqual(bookingUpdates[0].where, {
+    id: "integration-booking-1",
+    integrationClientId: "client-1",
+    status: "AWAITING_PARTNER_ASSIGNMENT",
+    paymentStatus: "SUCCEEDED",
+  });
+  assert.deepEqual(bookingUpdates[0].data, { status: "DRIVER_ASSIGNED" });
+  assert.equal(bookingEvents[0].eventType, "INTEGRATION_PARTNER_ASSIGNMENT_CREATED");
+  assert.equal(bookingEvents[0].fromStatus, "AWAITING_PARTNER_ASSIGNMENT");
+  assert.equal(bookingEvents[0].toStatus, "DRIVER_ASSIGNED");
+});
+
+
+test("starting an integration partner assignment advances the booking to IN_TRANSIT atomically", async () => {
+  const bookingUpdates = [];
+  const bookingEvents = [];
+  let assignmentStatus = "ACCEPTED";
+  const tx = {
+    partnerDeliveryAssignment: {
+      findUnique: async () => ({
+        id: "integration-assignment-2",
+        partnerId: "partner-1",
+        deliveryLegId: "integration-leg-2",
+        status: assignmentStatus,
+        partner: { id: "partner-1" },
+        deliveryLeg: { id: "integration-leg-2", parcelBookingId: "integration-booking-2" },
+      }),
+      updateMany: async ({ where, data }) => {
+        if (assignmentStatus !== where.status) return { count: 0 };
+        assignmentStatus = data.status;
+        return { count: 1 };
+      },
+    },
+    transportPartnerMember: {
+      findUnique: async () => ({ partnerId: "partner-1", userId: "partner-operator-1", isActive: true }),
+    },
+    transportPartner: {
+      findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }),
+    },
+    deliveryLeg: {
+      updateMany: async () => ({ count: 1 }),
+    },
+    parcelBooking: {
+      findUnique: async () => ({
+        id: "integration-booking-2",
+        integrationClientId: "client-1",
+        status: "DRIVER_ASSIGNED",
+        paymentStatus: "SUCCEEDED",
+      }),
+      updateMany: async args => { bookingUpdates.push(args); return { count: 1 }; },
+    },
+    bookingEvent: {
+      create: async ({ data }) => { bookingEvents.push(data); return data; },
+    },
+    operationalAuditEvent: { create: async () => ({ id: "audit-integration-start-1" }) },
+  };
+  const service = createPartnerExecutionService({ prismaClient: transaction(tx), clock: () => now });
+  const result = await service.startAssignment({ assignmentId: "integration-assignment-2", userId: "partner-operator-1" });
+
+  assert.equal(result.assignment.status, "IN_TRANSIT");
+  assert.equal(result.replay, false);
+  assert.equal(bookingUpdates.length, 1);
+  assert.deepEqual(bookingUpdates[0].where, {
+    id: "integration-booking-2",
+    integrationClientId: "client-1",
+    status: "DRIVER_ASSIGNED",
+    paymentStatus: "SUCCEEDED",
+  });
+  assert.deepEqual(bookingUpdates[0].data, { status: "IN_TRANSIT" });
+  assert.equal(bookingEvents[0].eventType, "INTEGRATION_PARTNER_LEG_STARTED");
+  assert.equal(bookingEvents[0].toStatus, "IN_TRANSIT");
+});

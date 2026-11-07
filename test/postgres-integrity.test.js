@@ -514,7 +514,7 @@ test("PostgreSQL enforces integration-owned booking identity and normalized pack
 
     await prisma.parcelBookingPackage.create({
       data: {
-        parcelBookingId: booking.id, externalPackageRef: "package-A", packageCategory: "carton",
+        parcelBookingId: booking.id, packageSequence: 0, externalPackageRef: "package-A", packageCategory: "carton",
         weightGrams: 1200, lengthMm: 300, widthMm: 200, heightMm: 100,
         declaredValueMinor: 50000n, assessmentStatus: "DECLARED",
         assessmentSource: "INTEGRATOR_DECLARED", assessmentConfidence: 0.92,
@@ -531,13 +531,13 @@ test("PostgreSQL enforces integration-owned booking identity and normalized pack
       }),
     }));
     await assert.rejects(prisma.parcelBookingPackage.create({
-      data: { parcelBookingId: booking.id, externalPackageRef: "bad-weight", packageCategory: "carton", weightGrams: 0 },
+      data: { parcelBookingId: booking.id, packageSequence: 1, externalPackageRef: "bad-weight", packageCategory: "carton", weightGrams: 0 },
     }));
     await assert.rejects(prisma.parcelBookingPackage.create({
-      data: { parcelBookingId: booking.id, externalPackageRef: "bad-value", packageCategory: "carton", declaredValueMinor: -1n },
+      data: { parcelBookingId: booking.id, packageSequence: 2, externalPackageRef: "bad-value", packageCategory: "carton", declaredValueMinor: -1n },
     }));
     await assert.rejects(prisma.parcelBookingPackage.create({
-      data: { parcelBookingId: booking.id, externalPackageRef: "bad-confidence", packageCategory: "carton", assessmentConfidence: 1.01 },
+      data: { parcelBookingId: booking.id, packageSequence: 3, externalPackageRef: "bad-confidence", packageCategory: "carton", assessmentConfidence: 1.01 },
     }));
   } finally {
     if (booking) await prisma.parcelBookingPackage.deleteMany({ where: { parcelBookingId: booking.id } });

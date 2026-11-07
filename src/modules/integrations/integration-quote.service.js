@@ -23,7 +23,7 @@ function sessionView(session) {
     assessment: session.assessmentSnapshot,
     selectedOptionId: session.selectedOptionId ?? null,
     packages: (session.packages ?? []).map(p => ({
-      id: p.id, externalPackageRef: p.externalPackageRef, packageCategory: p.packageCategory,
+      id: p.id, packageSequence: p.packageSequence, externalPackageRef: p.externalPackageRef, packageCategory: p.packageCategory,
       weightGrams: p.weightGrams, lengthMm: p.lengthMm, widthMm: p.widthMm, heightMm: p.heightMm,
       assessmentStatus: p.assessmentStatus, assessmentSource: p.assessmentSource,
     })),
@@ -296,7 +296,8 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
               destinationAddress: input.destinationAddress, destinationLatitude: input.destination.latitude, destinationLongitude: input.destination.longitude,
               recipientName: input.recipientName, recipientPhone: input.recipientPhone,
               expiresAt, assessmentSnapshot: assessment.assessment,
-              packages: { create: input.packages.map(pkg => ({
+              packages: { create: input.packages.map((pkg, packageSequence) => ({
+                packageSequence,
                 externalPackageRef: pkg.externalPackageRef, packageCategory: pkg.packageCategory,
                 description: pkg.description, weightGrams: pkg.weightGrams,
                 lengthMm: pkg.lengthMm, widthMm: pkg.widthMm, heightMm: pkg.heightMm,
@@ -334,7 +335,8 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
               billingAgreementReference: agreement.reference, billingAgreementVersion: agreement.version, billingModel: agreement.billingModel,
               currency: agreement.currency, expiresAt: session.expiresAt, assessment: assessment.assessment,
             },
-            packages: input.packages.map(pkg => ({
+            packages: input.packages.map((pkg, packageSequence) => ({
+              packageSequence,
               externalPackageRef: pkg.externalPackageRef ?? null, packageCategory: pkg.packageCategory,
               weightGrams: pkg.weightGrams ?? null, lengthMm: pkg.lengthMm ?? null,
               widthMm: pkg.widthMm ?? null, heightMm: pkg.heightMm ?? null,
@@ -387,7 +389,7 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       }
       const session = await prismaClient.integrationQuoteSession.findFirst({
         where: { id: quoteSessionId, clientId },
-        include: { billingAgreement: { select: { reference: true, billingModel: true } }, packages: { orderBy: { createdAt: "asc" } }, options: { orderBy: [{ customerChargeMinor: "asc" }, { optionCode: "asc" }] } },
+        include: { billingAgreement: { select: { reference: true, billingModel: true } }, packages: { orderBy: { packageSequence: "asc" } }, options: { orderBy: [{ customerChargeMinor: "asc" }, { optionCode: "asc" }] } },
       });
       if (!session) throw new NotFoundError("Quote session not found.", "INTEGRATION_QUOTE_NOT_FOUND");
       return sessionView(session);

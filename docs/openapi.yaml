@@ -1608,7 +1608,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
+            enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, AWAITING_PARTNER_ASSIGNMENT, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
         - in: query
           name: paymentStatus
           schema: { type: string, enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED] }
@@ -6037,7 +6037,7 @@ paths:
                     properties:
                       id: { type: string }
                       externalReference: { type: string }
-                      status: { type: string, enum: [QUOTED, SELECTED, EXPIRED, REQUIRES_MEASUREMENT, REQUIRES_OPERATIONAL_PRICING, NO_COVERAGE] }
+                      status: { type: string, enum: [QUOTED, SELECTED, BOOKED, EXPIRED, REQUIRES_MEASUREMENT, REQUIRES_OPERATIONAL_PRICING, NO_COVERAGE] }
                       billingAgreementReference: { type: [string, 'null'] }
                       billingModel: { type: [string, 'null'] }
                       billingAgreementVersion: { type: integer }
@@ -6054,6 +6054,7 @@ paths:
                           required: [id, packageCategory, assessmentStatus, assessmentSource]
                           properties:
                             id: { type: string }
+                            packageSequence: { type: integer, minimum: 0 }
                             externalPackageRef: { type: [string, 'null'] }
                             packageCategory: { type: string }
                             weightGrams: { type: [integer, 'null'] }
@@ -6113,6 +6114,84 @@ paths:
         '200': { description: Option selected. }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Integration scope is missing. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/shipments:
+    post:
+      tags: [Integrations]
+      operationId: createIntegrationShipment
+      summary: Create an integration-owned shipment from a selected quote and external payment attestation
+      description: |
+        The external fulfilment reference must match the quote session. The integration attests that it verified customer payment; Logistic Hub checks the delivery charge and currency against the selected option but does not independently verify or collect that payment. This operation creates no Logistic Hub PaymentAttempt, Paystack transaction, payment-ledger entry or refund.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [quoteSessionId, quoteOptionId, externalFulfillmentReference, paymentAttestation]
+              properties:
+                quoteSessionId: { type: string, minLength: 1, maxLength: 128 }
+                quoteOptionId: { type: string, minLength: 1, maxLength: 128 }
+                externalFulfillmentReference: { type: string, minLength: 1, maxLength: 128 }
+                paymentAttestation:
+                  type: object
+                  additionalProperties: false
+                  required: [paymentProvider, externalPaymentReference, verifiedAt, currency, deliveryChargeMinor]
+                  properties:
+                    paymentProvider: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Za-z0-9._-]{2,40}' }
+                    externalPaymentReference: { type: string, minLength: 1, maxLength: 128 }
+                    verifiedAt: { type: string, format: date-time }
+                    currency: { type: string, pattern: '^[A-Z]{3}' }
+                    deliveryChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                    orderPaymentAmountMinor: { $ref: '#/components/schemas/MinorAmount' }
+      responses:
+        '201':
+          description: Integration-owned shipment, accepted quote, delivery plan and payment-attestation record created atomically.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [shipment, paymentAttestation, replay]
+                    properties:
+                      replay: { type: boolean }
+                      shipment:
+                        type: object
+                        required: [id, reference, externalFulfillmentReference, status, paymentStatus, currency, customerChargeMinor, routeMode, deliveryLegs, packages]
+                        properties:
+                          id: { type: string }
+                          reference: { type: string }
+                          externalFulfillmentReference: { type: string }
+                          status: { type: string, const: AWAITING_PARTNER_ASSIGNMENT }
+                          paymentStatus: { type: string, const: SUCCEEDED }
+                          currency: { type: string }
+                          customerChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                          routeMode: { type: string, const: END_TO_END }
+                          deliveryLegs: { type: array, items: { type: object, additionalProperties: true } }
+                          packages: { type: array, items: { type: object, additionalProperties: true } }
+                      paymentAttestation:
+                        type: object
+                        additionalProperties: true
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:write. }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /admin/integrations/{clientId}/billing-agreements/{agreementId}/status:
@@ -6806,7 +6885,7 @@ components:
           type: string
         status:
           type: string
-          enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
+          enum: [DRAFT, MATCHING, AWAITING_CUSTOMER_ACCEPTANCE, AWAITING_PAYMENT, PAYMENT_PENDING, AWAITING_PARTNER_ASSIGNMENT, DRIVER_ASSIGNED, PICKUP_VERIFICATION_PENDING, PICKED_UP, IN_TRANSIT, DELIVERY_VERIFICATION_PENDING, COMPLETED, CANCELLATION_PENDING, CANCELLED, FAILED]
         paymentStatus:
           type: string
           enum: [INITIALIZED, PENDING, SUCCEEDED, FAILED, ABANDONED, REVERSED]

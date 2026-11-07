@@ -1,6 +1,6 @@
 # Generic Logistics Integration API
 
-**Status:** GIL-01–GIL-03 and GIL-04A are merged. GIL-04B schema foundation is implemented in the current branch (integration booking ownership + normalized package persistence). GIL-04C booking creation remains in progress; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for the remaining constraints and release gates. Tracking/webhooks and billing/reconciliation remain future work.
+**Status:** GIL-01–GIL-03, GIL-04A and GIL-04B are merged. GIL-04C atomic shipment creation is implemented in the current branch; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for payment-attestation boundaries, transaction invariants and release gates. Tracking/webhooks and billing/reconciliation remain future work.
 
 ## 1. Objective
 
@@ -105,7 +105,7 @@ Implementation sequence:
 1. GIL-01 — Client registry foundation: client, credentials, billing agreements, idempotency and external-reference persistence. (Implemented in PR #97.)
 2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in PR #97.)
 3. GIL-03 — Package assessment and quote sessions: multi-package requests, multiple contracted options, expiry and option selection. (Implemented in this branch.)
-4. GIL-04 — Generic shipment creation: bridge selected options into existing execution lifecycle without synthetic customer users or bypassing custody/dispatch rules.
+4. GIL-04 — Generic shipment creation: GIL-04C adds atomic integration-owned shipment creation from a selected quote and external payment attestation, without synthetic customer users or bypassing custody/dispatch rules.
 5. GIL-05 — Tracking and signed webhooks: durable event delivery, deduplication, sequence ordering and replay controls.
 6. GIL-06 — Billing/reconciliation: enforce agreement model only after payment/wallet/invoice capabilities are explicitly implemented and approved.
 
@@ -140,7 +140,7 @@ Admin routes (ADMIN role only):
 - `POST /api/v1/admin/integrations/credentials/:credentialId/revoke` — revoke a credential; repeated revocation is safe.
 - `POST /api/v1/admin/integrations/:clientId/billing-agreements` — create the next version as DRAFT. Agreement creation does not activate payment collection or settlement.
 
-Integration requests authenticate using `X-Integration-Key-Id` and `X-Integration-Secret`. The server resolves the client from the key ID, verifies the one-way SHA-256 secret hash with a timing-safe comparison, and rejects missing, invalid, expired, revoked or suspended credentials/clients. `requireIntegrationScope(...)` enforces all requested scopes against the authenticated client's registry scopes. GIL-03 mounts the quote routes at `/api/v1/integrations/quotes`. Billing-agreement status changes are available to ADMIN at `PATCH /api/v1/admin/integrations/:clientId/billing-agreements/:agreementId/status`; only one version per agreement reference can be ACTIVE.
+Integration requests authenticate using `X-Integration-Key-Id` and `X-Integration-Secret`. The server resolves the client from the key ID, verifies the one-way SHA-256 secret hash with a timing-safe comparison, and rejects missing, invalid, expired, revoked or suspended credentials/clients. `requireIntegrationScope(...)` enforces all requested scopes against the authenticated client's registry scopes. GIL-03 mounts quote routes at `/api/v1/integrations/quotes`; GIL-04C adds `POST /api/v1/integrations/shipments` under the `shipments:write` scope. Billing-agreement status changes are available to ADMIN at `PATCH /api/v1/admin/integrations/:clientId/billing-agreements/:agreementId/status`; only one version per agreement reference can be ACTIVE.
 
 Admin mutations require a reason and write audit events atomically with the corresponding database mutation. Audit metadata contains credential key IDs and labels only, never the secret or secret hash. Credential `lastUsedAt` is best-effort telemetry and does not block an authenticated request.
 

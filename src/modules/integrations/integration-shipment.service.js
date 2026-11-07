@@ -1,0 +1,504 @@
+import { createHash, randomBytes } from "node:crypto";
+import { createMultiLegPlan } from "../delivery-legs/delivery-plan.service.js";
+import { ConflictError, NotFoundError } from "../../shared/http/app-error.js";
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+  }
+  return value;
+}
+function hashPayload(value) {
+  return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+}
+function serializeCached(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+function publicReference() {
+  return `LH-PCL-${randomBytes(6).toString("hex").toUpperCase()}`;
+}
+function activeAt(now) {
+  return {
+    effectiveFrom: { lte: now },
+    AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
+  };
+}
+function packageRateFits(rate, pkg) {
+  if (rate.parcelCategory !== pkg.packageCategory || pkg.weightGrams == null
+    || pkg.weightGrams < rate.minWeightGrams
+    || (rate.maxWeightGrams != null && pkg.weightGrams > rate.maxWeightGrams)) return false;
+  for (const [field, limit] of [
+    ["lengthMm", rate.maxLengthMm], ["widthMm", rate.maxWidthMm], ["heightMm", rate.maxHeightMm],
+  ]) {
+    if (limit != null && (pkg[field] == null || pkg[field] > limit)) return false;
+  }
+  return true;
+}
+async function serializableTransaction(prismaClient, work) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prismaClient.$transaction(work, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt >= 2) throw error;
+    }
+  }
+}
+
+export function createIntegrationShipmentService({ prismaClient, clock = () => new Date() }) {
+  if (!prismaClient) throw new Error("A Prisma client is required.");
+
+  async function replayOrConflict(tx, clientId, operation, key, payloadHash) {
+    const existing = await tx.integrationIdempotencyRecord.findUnique({
+      where: { clientId_operation_idempotencyKey: { clientId, operation, idempotencyKey: key } },
+    });
+    if (!existing) return null;
+    if (existing.payloadHash !== payloadHash) {
+      throw new ConflictError("The Idempotency-Key was reused with a different request payload.", "IDEMPOTENCY_CONFLICT");
+    }
+    if (existing.responseBody == null || existing.responseStatus == null) {
+      throw new ConflictError("This idempotent request is still being processed. Retry shortly.", "IDEMPOTENCY_IN_PROGRESS");
+    }
+    return { statusCode: existing.responseStatus, body: existing.responseBody, replay: true };
+  }
+
+  async function storeIdempotency(tx, { clientId, operation, key, payloadHash, responseStatus, responseBody, now }) {
+    await tx.integrationIdempotencyRecord.create({
+      data: {
+        clientId, operation, idempotencyKey: key, payloadHash,
+        responseStatus, responseBody: serializeCached(responseBody), completedAt: now,
+        expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      },
+    });
+  }
+
+  async function revalidateSelectedQuote(tx, { clientId, quoteSessionId, quoteOptionId, externalFulfillmentReference, now }) {
+    const session = await tx.integrationQuoteSession.findFirst({
+      where: { id: quoteSessionId, clientId },
+      include: {
+        billingAgreement: true,
+        packages: { orderBy: { packageSequence: "asc" } },
+        options: { where: { id: quoteOptionId }, take: 1 },
+      },
+    });
+    if (!session) throw new NotFoundError("Quote session not found.", "INTEGRATION_QUOTE_NOT_FOUND");
+    if (session.externalReference !== externalFulfillmentReference) {
+      throw new ConflictError("The external fulfilment reference does not match the reference bound to this quote.", "INTEGRATION_FULFILLMENT_REFERENCE_MISMATCH");
+    }
+    if (session.status !== "SELECTED" || session.selectedOptionId !== quoteOptionId) {
+      throw new ConflictError("Only the selected option on an unbooked quote can create a shipment.", "INTEGRATION_QUOTE_NOT_SELECTED");
+    }
+    if (session.expiresAt <= now) {
+      throw new ConflictError("The selected quote session has expired.", "INTEGRATION_QUOTE_EXPIRED");
+    }
+
+    const option = session.options[0];
+    if (!option || option.status !== "SELECTED" || option.expiresAt <= now) {
+      throw new ConflictError("The selected quote option is no longer valid.", "INTEGRATION_QUOTE_OPTION_UNAVAILABLE");
+    }
+    if (option.routeMode !== "END_TO_END" || option.routeSnapshot?.routeMode !== "END_TO_END") {
+      throw new ConflictError("This quote route is not enabled for integration shipment creation.", "INTEGRATION_ROUTE_NOT_SUPPORTED");
+    }
+
+    const billingAgreement = await tx.integrationBillingAgreement.findFirst({
+      where: {
+        id: session.billingAgreementId,
+        clientId,
+        reference: session.billingAgreement.reference,
+        version: session.billingAgreementVersion,
+        status: "ACTIVE",
+        billingModel: "PLATFORM_COLLECTED",
+        ...activeAt(now),
+      },
+    });
+    if (!billingAgreement) {
+      throw new ConflictError("The billing agreement is no longer active for shipment creation.", "INTEGRATION_BILLING_AGREEMENT_INACTIVE");
+    }
+
+    const rateCard = await tx.partnerRateCard.findFirst({
+      where: {
+        id: option.partnerRateCardId,
+        agreementId: option.partnerAgreementId,
+        status: "ACTIVE",
+        currency: option.currency,
+        ...activeAt(now),
+        agreement: {
+          status: "ACTIVE",
+          currency: option.currency,
+          ...activeAt(now),
+          partner: { status: "ACTIVE", verificationStatus: "VERIFIED" },
+        },
+      },
+      include: { agreement: { include: { partner: true } } },
+    });
+    if (!rateCard || rateCard.agreementId !== option.partnerAgreementId) {
+      throw new ConflictError("The contracted partner rate card or agreement is no longer eligible.", "INTEGRATION_PARTNER_AGREEMENT_INACTIVE");
+    }
+
+    const packageRates = Array.isArray(option.packageRateSnapshot) ? option.packageRateSnapshot : [];
+    if (!session.packages.length || packageRates.length !== session.packages.length) {
+      throw new ConflictError("The quote package-rate snapshot is incomplete.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
+    }
+    const rateIds = [...new Set(packageRates.map(item => item?.rateId).filter(value => typeof value === "string"))];
+    if (!rateIds.length || rateIds.length !== new Set(packageRates.map(item => item?.rateId)).size) {
+      throw new ConflictError("The quote package-rate snapshot contains invalid rate references.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
+    }
+    const rates = await tx.partnerRate.findMany({
+      where: { id: { in: rateIds }, rateCardId: rateCard.id, isActive: true },
+    });
+    const ratesById = new Map(rates.map(rate => [rate.id, rate]));
+    if (ratesById.size !== rateIds.length) {
+      throw new ConflictError("One or more contracted package rates are no longer active.", "INTEGRATION_PARTNER_RATE_INACTIVE");
+    }
+
+    let logisticsTotal = 0n;
+    for (let index = 0; index < session.packages.length; index += 1) {
+      const pkg = session.packages[index];
+      const snapshot = packageRates[index];
+      const expectedRef = pkg.externalPackageRef ?? `package-${pkg.packageSequence + 1}`;
+      if (snapshot.packageRef !== expectedRef
+        || (snapshot.externalPackageRef ?? null) !== (pkg.externalPackageRef ?? null)) {
+        throw new ConflictError("The quote package-rate snapshot no longer matches its package records.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
+      }
+      const rate = ratesById.get(snapshot.rateId);
+      if (!rate || !packageRateFits(rate, pkg)
+        || rate.transportChargeMinor.toString() !== snapshot.transportChargeMinor) {
+        throw new ConflictError("A quoted package rate no longer matches the accepted package snapshot.", "INTEGRATION_PARTNER_RATE_INACTIVE");
+      }
+      logisticsTotal += rate.transportChargeMinor;
+    }
+    if (logisticsTotal !== option.logisticsCostMinor
+      || option.logisticsCostMinor + option.platformChargeMinor + option.otherChargesMinor !== option.customerChargeMinor) {
+      throw new ConflictError("The selected quote totals do not reconcile with their immutable rate snapshots.", "INTEGRATION_QUOTE_TOTAL_MISMATCH");
+    }
+
+    const zoneIds = [...new Set([session.pickupServiceZoneId, session.destinationServiceZoneId])];
+    const activeZones = await tx.serviceZone.findMany({
+      where: {
+        id: { in: zoneIds },
+        isActive: true,
+        state: { isActive: true, country: { isActive: true } },
+        availability: {
+          some: {
+            serviceType: "PARCEL_DELIVERY",
+            isEnabled: true,
+            AND: [
+              { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+              { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+            ],
+          },
+        },
+      },
+      select: { id: true },
+    });
+    if (activeZones.length !== zoneIds.length) {
+      throw new ConflictError("One or both shipment zones are no longer active for parcel delivery.", "SERVICE_ZONE_UNAVAILABLE");
+    }
+
+    return { session, option, billingAgreement, rateCard, packageRates, ratesById };
+  }
+
+  return {
+    async createShipment({ client, idempotencyKey, input }) {
+      const now = clock();
+      const payloadHash = hashPayload(input);
+      const operation = "integration.shipment.create";
+      try {
+        return await serializableTransaction(prismaClient, async tx => {
+          const replay = await replayOrConflict(tx, client.id, operation, idempotencyKey, payloadHash);
+          if (replay) return replay;
+
+          const existingShipment = await tx.integrationExternalReference.findFirst({
+            where: {
+              clientId: client.id,
+              resourceType: "SHIPMENT",
+              externalReference: input.externalFulfillmentReference,
+            },
+          });
+          if (existingShipment) {
+            throw new ConflictError("This external fulfilment reference already has a shipment. Use the original idempotency key for replay.", "INTEGRATION_SHIPMENT_ALREADY_CREATED");
+          }
+
+          const { session, option, billingAgreement, packageRates, ratesById } = await revalidateSelectedQuote(tx, {
+            clientId: client.id,
+            quoteSessionId: input.quoteSessionId,
+            quoteOptionId: input.quoteOptionId,
+            externalFulfillmentReference: input.externalFulfillmentReference,
+            now,
+          });
+
+          const attestation = input.paymentAttestation;
+          const verifiedAt = new Date(attestation.verifiedAt);
+          if (!Number.isFinite(verifiedAt.getTime()) || verifiedAt > now || verifiedAt < session.createdAt) {
+            throw new ConflictError("The external payment verification timestamp is invalid for this quote.", "INTEGRATION_PAYMENT_ATTESTATION_INVALID");
+          }
+          if (attestation.currency !== option.currency
+            || BigInt(attestation.deliveryChargeMinor) !== option.customerChargeMinor) {
+            throw new ConflictError("The attested delivery charge and currency must exactly match the selected quote option.", "INTEGRATION_PAYMENT_AMOUNT_MISMATCH");
+          }
+          const orderPaymentAmountMinor = attestation.orderPaymentAmountMinor == null
+            ? null : BigInt(attestation.orderPaymentAmountMinor);
+
+          const bookingPackages = session.packages.map(pkg => ({
+            externalPackageRef: pkg.externalPackageRef,
+            packageSequence: pkg.packageSequence,
+            packageCategory: pkg.packageCategory,
+            description: pkg.description,
+            weightGrams: pkg.weightGrams,
+            lengthMm: pkg.lengthMm,
+            widthMm: pkg.widthMm,
+            heightMm: pkg.heightMm,
+            declaredValueMinor: pkg.declaredValueMinor,
+            assessmentStatus: pkg.assessmentStatus,
+            assessmentSource: pkg.assessmentSource,
+            assessmentConfidence: pkg.assessmentConfidence,
+            assessedAt: pkg.assessedAt,
+          }));
+
+          const booking = await tx.parcelBooking.create({
+            data: {
+              publicReference: publicReference(),
+              senderId: null,
+              integrationClientId: client.id,
+              pickupServiceZoneId: session.pickupServiceZoneId,
+              destinationServiceZoneId: session.destinationServiceZoneId,
+              status: "AWAITING_PARTNER_ASSIGNMENT",
+              paymentStatus: "SUCCEEDED",
+              currency: option.currency,
+              pickupAddress: session.pickupAddress,
+              pickupLatitude: session.pickupLatitude,
+              pickupLongitude: session.pickupLongitude,
+              destinationAddress: session.destinationAddress,
+              destinationLatitude: session.destinationLatitude,
+              destinationLongitude: session.destinationLongitude,
+              recipientName: session.recipientName,
+              recipientPhone: session.recipientPhone,
+              parcelCategory: null,
+              parcelDescription: null,
+              parcelSize: null,
+              declaredValueMinor: null,
+              driverFareMinor: null,
+              connectionFeeMinor: option.platformChargeMinor,
+              otherChargesMinor: option.otherChargesMinor,
+              customerPayableMinor: option.customerChargeMinor,
+              pricingRuleId: null,
+              pricingSnapshot: {
+                source: "INTEGRATION_QUOTE",
+                quoteSessionId: session.id,
+                quoteOptionId: option.id,
+                billingAgreementReference: billingAgreement.reference,
+                billingAgreementVersion: billingAgreement.version,
+                billingModel: billingAgreement.billingModel,
+                currency: option.currency,
+                logisticsCostMinor: option.logisticsCostMinor.toString(),
+                platformChargeMinor: option.platformChargeMinor.toString(),
+                otherChargesMinor: option.otherChargesMinor.toString(),
+                customerChargeMinor: option.customerChargeMinor.toString(),
+                paymentCollection: "EXTERNAL_PLATFORM",
+                routeSnapshot: option.routeSnapshot,
+                packageRateSnapshot: option.packageRateSnapshot,
+              },
+              paidAt: now,
+              parcelPackages: { create: bookingPackages },
+            },
+            include: { parcelPackages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+          });
+
+          const rateIds = [...new Set(packageRates.map(item => item.rateId))];
+          const quote = await tx.shipmentQuote.create({
+            data: {
+              parcelBookingId: booking.id,
+              version: 1,
+              status: "ACCEPTED",
+              partnerAgreementId: option.partnerAgreementId,
+              partnerRateId: rateIds.length === 1 ? rateIds[0] : null,
+              currency: option.currency,
+              transportChargeMinor: option.logisticsCostMinor,
+              platformChargeMinor: option.platformChargeMinor,
+              otherChargesMinor: option.otherChargesMinor,
+              totalCustomerChargeMinor: option.customerChargeMinor,
+              chargeBreakdown: {
+                transportChargeMinor: option.logisticsCostMinor.toString(),
+                platformChargeMinor: option.platformChargeMinor.toString(),
+                otherChargesMinor: option.otherChargesMinor.toString(),
+                totalCustomerChargeMinor: option.customerChargeMinor.toString(),
+                currency: option.currency,
+                collectionModel: "PLATFORM_COLLECTED",
+              },
+              inputSnapshot: {
+                source: "INTEGRATION_QUOTE",
+                quoteSessionId: session.id,
+                quoteOptionId: option.id,
+                externalFulfillmentReference: session.externalReference,
+                billingAgreementReference: billingAgreement.reference,
+                billingAgreementVersion: billingAgreement.version,
+                billingModel: billingAgreement.billingModel,
+                routeSnapshot: option.routeSnapshot,
+                packageRateSnapshot: option.packageRateSnapshot,
+                packages: session.packages.map(pkg => ({
+                  externalPackageRef: pkg.externalPackageRef,
+                  packageCategory: pkg.packageCategory,
+                  weightGrams: pkg.weightGrams,
+                  lengthMm: pkg.lengthMm,
+                  widthMm: pkg.widthMm,
+                  heightMm: pkg.heightMm,
+                  declaredValueMinor: pkg.declaredValueMinor?.toString() ?? null,
+                  assessmentStatus: pkg.assessmentStatus,
+                  assessmentSource: pkg.assessmentSource,
+                })),
+              },
+              expiresAt: option.expiresAt,
+              acceptedAt: now,
+              acceptedByUserId: null,
+            },
+          });
+
+          const plan = await createMultiLegPlan({
+            tx,
+            booking: { ...booking, packages: booking.parcelPackages },
+            quote,
+            now,
+          });
+          if (plan.routeMode !== "END_TO_END" || plan.legs.length !== 1
+            || plan.legs[0].type !== "INTERSTATE_TRANSPORT"
+            || plan.legs[0].status !== "READY_FOR_ASSIGNMENT") {
+            throw new ConflictError("The operational delivery plan does not match the accepted end-to-end quote.", "INTEGRATION_ROUTE_PLAN_MISMATCH");
+          }
+
+          await tx.integrationPaymentAttestation.create({
+            data: {
+              clientId: client.id,
+              quoteSessionId: session.id,
+              quoteOptionId: option.id,
+              parcelBookingId: booking.id,
+              paymentProvider: attestation.paymentProvider.toUpperCase(),
+              externalPaymentReference: attestation.externalPaymentReference,
+              verifiedAt,
+              attestedAt: now,
+              deliveryChargeMinor: BigInt(attestation.deliveryChargeMinor),
+              currency: attestation.currency,
+              orderPaymentAmountMinor,
+            },
+          });
+          await tx.integrationExternalReference.create({
+            data: {
+              clientId: client.id,
+              resourceType: "SHIPMENT",
+              externalReference: input.externalFulfillmentReference,
+              internalResourceType: "ParcelBooking",
+              internalResourceId: booking.id,
+            },
+          });
+
+          const changed = await tx.integrationQuoteSession.updateMany({
+            where: {
+              id: session.id,
+              clientId: client.id,
+              status: "SELECTED",
+              selectedOptionId: option.id,
+              expiresAt: { gt: now },
+            },
+            data: { status: "BOOKED" },
+          });
+          if (changed.count !== 1) {
+            throw new ConflictError("The selected quote changed while shipment creation was processing.", "INTEGRATION_QUOTE_NOT_BOOKABLE");
+          }
+
+          await tx.bookingEvent.create({
+            data: {
+              parcelBookingId: booking.id,
+              eventType: "INTEGRATION_SHIPMENT_CREATED",
+              fromStatus: null,
+              toStatus: "AWAITING_PARTNER_ASSIGNMENT",
+              metadata: {
+                integrationClientId: client.id,
+                quoteSessionId: session.id,
+                quoteOptionId: option.id,
+                externalFulfillmentReference: input.externalFulfillmentReference,
+                externalPaymentProvider: attestation.paymentProvider.toUpperCase(),
+                externalPaymentReference: attestation.externalPaymentReference,
+                externalPaymentVerifiedAt: verifiedAt.toISOString(),
+                deliveryChargeMinor: option.customerChargeMinor.toString(),
+                currency: option.currency,
+                deliveryLegIds: plan.legs.map(leg => leg.id),
+              },
+            },
+          });
+
+          const responseBody = {
+            shipment: {
+              id: booking.id,
+              reference: booking.publicReference,
+              externalFulfillmentReference: input.externalFulfillmentReference,
+              status: booking.status,
+              paymentStatus: booking.paymentStatus,
+              currency: booking.currency,
+              customerChargeMinor: option.customerChargeMinor.toString(),
+              routeMode: plan.routeMode,
+              deliveryLegs: plan.legs.map(leg => ({
+                id: leg.id, sequence: leg.sequence, type: leg.type, status: leg.status,
+              })),
+              packages: booking.parcelPackages.map(pkg => ({
+                externalPackageRef: pkg.externalPackageRef,
+                packageCategory: pkg.packageCategory,
+                weightGrams: pkg.weightGrams,
+                lengthMm: pkg.lengthMm,
+                widthMm: pkg.widthMm,
+                heightMm: pkg.heightMm,
+              })),
+            },
+            paymentAttestation: {
+              paymentProvider: attestation.paymentProvider.toUpperCase(),
+              externalPaymentReference: attestation.externalPaymentReference,
+              verifiedAt,
+              deliveryChargeMinor: option.customerChargeMinor.toString(),
+              currency: option.currency,
+            },
+          };
+          await storeIdempotency(tx, {
+            clientId: client.id, operation, key: idempotencyKey, payloadHash,
+            responseStatus: 201, responseBody, now,
+          });
+          return { statusCode: 201, body: responseBody, replay: false };
+        });
+      } catch (error) {
+        if (error?.code === "P2002") {
+          const existing = await prismaClient.integrationIdempotencyRecord.findUnique({
+            where: { clientId_operation_idempotencyKey: { clientId: client.id, operation, idempotencyKey } },
+          });
+          if (existing) {
+            if (existing.payloadHash !== payloadHash) {
+              throw new ConflictError("The Idempotency-Key was reused with a different request payload.", "IDEMPOTENCY_CONFLICT");
+            }
+            if (existing.responseBody) {
+              return { statusCode: existing.responseStatus ?? 201, body: existing.responseBody, replay: true };
+            }
+          }
+          const duplicatePayment = await prismaClient.integrationPaymentAttestation.findFirst({
+            where: {
+              clientId: client.id,
+              paymentProvider: input.paymentAttestation.paymentProvider.toUpperCase(),
+              externalPaymentReference: input.paymentAttestation.externalPaymentReference,
+            },
+            select: { id: true },
+          });
+          if (duplicatePayment) {
+            throw new ConflictError("This external payment reference has already been attested for another shipment.", "INTEGRATION_PAYMENT_REFERENCE_REUSED");
+          }
+          const duplicateShipment = await prismaClient.integrationExternalReference.findFirst({
+            where: {
+              clientId: client.id,
+              resourceType: "SHIPMENT",
+              externalReference: input.externalFulfillmentReference,
+            },
+            select: { id: true },
+          });
+          if (duplicateShipment) {
+            throw new ConflictError("This external fulfilment reference already has a shipment. Use the original idempotency key for replay.", "INTEGRATION_SHIPMENT_ALREADY_CREATED");
+          }
+        }
+        throw error;
+      }
+    },
+  };
+}
