@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { createDriverAssignmentExpiryWorker } from "../src/shared/jobs/driver-assignment-expiry.service.js";
 import { createPaymentsRepository } from "../src/modules/payments/payments.repository.js";
+import { createIntegrationWebhookOperationsService } from "../src/modules/integrations/integration-webhook-operations.service.js";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRITY_TESTS === "true";
 const prisma = new PrismaClient();
@@ -621,5 +622,137 @@ test("PostgreSQL enforces concurrent integration idempotency and external-refere
       await prisma.integrationIdempotencyRecord.deleteMany({ where: { clientId: client.id } });
       await prisma.integrationClient.deleteMany({ where: { id: client.id } });
     }
+  }
+});
+
+
+test("PostgreSQL serializes webhook replay requests, rate-limits them, and preserves immutable event sequence", { skip: !enabled }, async () => {
+  const tag = suffix();
+  const now = new Date();
+  let country;
+  let state;
+  let zone;
+  let client;
+  let booking;
+  let endpoint;
+  let event;
+  let secretVersion;
+  let delivery;
+
+  try {
+    country = await prisma.country.create({ data: { code: `T${tag}`, name: `Webhook Replay Country ${tag}` } });
+    state = await prisma.state.create({ data: { countryId: country.id, code: `S${tag}`, name: `Webhook Replay State ${tag}` } });
+    zone = await prisma.serviceZone.create({ data: { stateId: state.id, code: `Z${tag}`, name: `Webhook Replay Zone ${tag}` } });
+    client = await prisma.integrationClient.create({
+      data: { code: `webhook-replay-${tag.toLowerCase()}`, name: `Webhook Replay Client ${tag}`, scopes: ["webhooks:manage", "webhooks:read"] },
+    });
+    booking = await prisma.parcelBooking.create({
+      data: {
+        publicReference: `WEBHOOK-REPLAY-${tag}`,
+        integrationClientId: client.id,
+        pickupServiceZoneId: zone.id,
+        destinationServiceZoneId: zone.id,
+        pickupAddress: "Webhook replay pickup",
+        pickupLatitude: 6.5,
+        pickupLongitude: 3.4,
+        destinationAddress: "Webhook replay destination",
+        destinationLatitude: 6.6,
+        destinationLongitude: 3.5,
+        recipientName: "Webhook Replay Recipient",
+        recipientPhone: "+2348000000000",
+        parcelCategory: null,
+        parcelSize: null,
+        connectionFeeMinor: 0n,
+        pricingSnapshot: { source: "webhook-replay-integrity-test" },
+      },
+    });
+    endpoint = await prisma.integrationWebhookEndpoint.create({
+      data: {
+        clientId: client.id,
+        url: `https://hooks-${tag.toLowerCase()}.example.org/events`,
+        eventTypes: ["shipment.created"],
+      },
+    });
+    secretVersion = await prisma.integrationWebhookSecretVersion.create({
+      data: {
+        endpointId: endpoint.id,
+        version: 1,
+        encryptedValue: "dGVzdA==",
+        iv: "MDEyMzQ1Njc4OWFi",
+        authTag: "MDEyMzQ1Njc4OWFiY2RlZg==",
+      },
+    });
+    event = await prisma.integrationShipmentEvent.create({
+      data: {
+        clientId: client.id,
+        parcelBookingId: booking.id,
+        sourceBookingEventId: `source-event-${tag}`,
+        sequence: 1,
+        eventType: "shipment.created",
+        schemaVersion: 1,
+        occurredAt: now,
+        payload: { shipmentReference: booking.publicReference, status: "AWAITING_PARTNER_ASSIGNMENT" },
+      },
+    });
+    delivery = await prisma.integrationWebhookDelivery.create({
+      data: {
+        eventId: event.id,
+        endpointId: endpoint.id,
+        secretVersion: secretVersion.version,
+        status: "DEAD",
+        attempts: 8,
+        totalAttempts: 8,
+        lastHttpStatus: 500,
+        lastErrorCode: "WEBHOOK_HTTP_500",
+      },
+    });
+
+    await prisma.integrationWebhookAuditEvent.createMany({
+      data: Array.from({ length: 9 }, (_, index) => ({
+        clientId: client.id,
+        endpointId: endpoint.id,
+        action: "WEBHOOK_DELIVERY_REPLAY_REQUESTED",
+        metadata: { seed: index },
+        createdAt: now,
+      })),
+    });
+
+    const service = createIntegrationWebhookOperationsService({ prismaClient: prisma, clock: () => now });
+    const requests = await Promise.allSettled([
+      service.replayDeliveries({ clientId: client.id, credentialId: null, endpointId: endpoint.id, eventId: event.id }),
+      service.replayDeliveries({ clientId: client.id, credentialId: null, endpointId: endpoint.id, eventId: event.id }),
+    ]);
+
+    assert.equal(requests.filter(result => result.status === "fulfilled").length, 1);
+    const rejected = requests.filter(result => result.status === "rejected");
+    assert.equal(rejected.length, 1);
+    assert.equal(rejected[0].reason.statusCode, 429);
+
+    const [persistedDelivery, persistedEvent, replayAudits] = await Promise.all([
+      prisma.integrationWebhookDelivery.findUnique({ where: { id: delivery.id } }),
+      prisma.integrationShipmentEvent.findUnique({ where: { id: event.id } }),
+      prisma.integrationWebhookAuditEvent.count({
+        where: { endpointId: endpoint.id, action: "WEBHOOK_DELIVERY_REPLAY_REQUESTED" },
+      }),
+    ]);
+    assert.equal(persistedDelivery.status, "PENDING");
+    assert.equal(persistedDelivery.attempts, 0);
+    assert.equal(persistedDelivery.totalAttempts, 8);
+    assert.equal(persistedDelivery.replayCount, 1);
+    assert.equal(persistedEvent.sequence, 1);
+    assert.equal(replayAudits, 10);
+  } finally {
+    if (delivery) await prisma.integrationWebhookDelivery.deleteMany({ where: { id: delivery.id } });
+    if (event) await prisma.integrationShipmentEvent.deleteMany({ where: { id: event.id } });
+    if (endpoint) {
+      await prisma.integrationWebhookAuditEvent.deleteMany({ where: { endpointId: endpoint.id } });
+      if (secretVersion) await prisma.integrationWebhookSecretVersion.deleteMany({ where: { id: secretVersion.id } });
+      await prisma.integrationWebhookEndpoint.deleteMany({ where: { id: endpoint.id } });
+    }
+    if (booking) await prisma.parcelBooking.deleteMany({ where: { id: booking.id } });
+    if (client) await prisma.integrationClient.deleteMany({ where: { id: client.id } });
+    if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
+    if (state) await prisma.state.deleteMany({ where: { id: state.id } });
+    if (country) await prisma.country.deleteMany({ where: { id: country.id } });
   }
 });
