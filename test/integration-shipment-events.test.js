@@ -52,6 +52,8 @@ test("event projector assigns a monotonic sequence and persists only sanitized p
       findUnique: async () => null,
       create: async ({ data }) => { const event = { id: "event-1", ...data }; state.created.push(event); return event; },
     },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
     parcelBooking: {
       findUnique: async () => ({
         id: "shipment-a", integrationClientId: "client-a", senderId: null,
@@ -76,6 +78,59 @@ test("event projector assigns a monotonic sequence and persists only sanitized p
   assert.equal(event.eventType, "shipment.partner_assigned");
   assert.deepEqual(state.created[0].payload, { shipmentReference: "LH-PCL-ABC", status: "DRIVER_ASSIGNED" });
   assert.equal("metadata" in state.created[0], false);
+});
+
+
+test("event projection atomically fans out only to active subscribed endpoints and pins secret versions", async () => {
+  const created = [];
+  const endpointQuery = [];
+  const tx = {
+    integrationShipmentEvent: {
+      findUnique: async () => null,
+      create: async ({ data }) => ({ id: "event-fanout", ...data }),
+    },
+    parcelBooking: {
+      findUnique: async () => ({
+        id: "shipment-a", integrationClientId: "client-a", senderId: null,
+        publicReference: "LH-PCL-XYZ", status: "AWAITING_PARTNER_ASSIGNMENT",
+      }),
+      update: async () => ({ integrationEventSequence: 7 }),
+    },
+    integrationWebhookEndpoint: {
+      findMany: async args => {
+        endpointQuery.push(args);
+        return [
+          { id: "endpoint-a", currentSecretVersion: 4 },
+          { id: "endpoint-b", currentSecretVersion: 2 },
+        ];
+      },
+    },
+    integrationWebhookDelivery: {
+      createMany: async args => { created.push(...args.data); return { count: args.data.length }; },
+    },
+  };
+
+  const event = await projectIntegrationShipmentEvent({
+    tx,
+    parcelBookingId: "shipment-a",
+    sourceEvent: {
+      id: "booking-event-fanout",
+      eventType: "INTEGRATION_SHIPMENT_CREATED",
+      toStatus: "AWAITING_PARTNER_ASSIGNMENT",
+      createdAt: new Date("2026-11-07T10:00:00.000Z"),
+    },
+  });
+
+  assert.equal(event.id, "event-fanout");
+  assert.deepEqual(endpointQuery[0].where, {
+    clientId: "client-a",
+    status: "ACTIVE",
+    eventTypes: { has: "shipment.created" },
+  });
+  assert.deepEqual(created, [
+    { eventId: "event-fanout", endpointId: "endpoint-a", secretVersion: 4 },
+    { eventId: "event-fanout", endpointId: "endpoint-b", secretVersion: 2 },
+  ]);
 });
 
 test("event projector ignores unsupported internal audit events and customer-owned bookings", async () => {
