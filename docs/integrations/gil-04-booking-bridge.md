@@ -1,6 +1,6 @@
 # GIL-04 — Integration Booking Bridge
 
-**Status:** GIL-04A and GIL-04B are merged. GIL-04C atomic shipment creation is implemented in the current branch: selected quote + external payment attestation + integration-owned booking + normalized packages + accepted ShipmentQuote + delivery plan + idempotency commit together. The endpoint is not generally available until CI, downstream compatibility and acceptance tests pass.
+**Status:** GIL-04A–GIL-04C are merged. GIL-04D client-scoped shipment retrieval and recovery is implemented in the current branch; the read boundary scopes both internal IDs and external fulfilment references to the authenticated integration client.
 
 ## Objective
 
@@ -126,7 +126,7 @@ The quote session transitions from `SELECTED` to `BOOKED` in the same transactio
 | GIL-04A | Quote/execution parity | Shared route resolver; end-to-end routes are priced as one leg; local/hub-assisted routes fail closed with `REQUIRES_OPERATIONAL_PRICING` until local-driver charges are fixed |
 | GIL-04B | Integration-owned booking and package persistence | **Merged:** exclusive sender/integration ownership, nullable legacy single-package fields for integrations, normalized package model, package measurement/value constraints. |
 | GIL-04C | Atomic shipment creation | **Implemented in this branch:** authenticated `shipments:write`; exact quote/fulfilment-reference binding; quote, billing agreement, partner agreement/rate card and package-rate revalidation; exact delivery-charge/currency attestation; integration-owned booking, packages, accepted ShipmentQuote, pinned one-leg plan, external reference, attestation and idempotent response commit atomically. |
-| GIL-04D | Shipment retrieval and recovery | Client-scoped ID and external-reference reads; no cross-client disclosure |
+| GIL-04D | Shipment retrieval and recovery | **Implemented in this branch:** client-scoped ID and external-reference reads; consistent not-found behavior for unknown and other-client references; response omits partner cost and package declared values. |
 | GIL-04E | Regression and contract acceptance | PostgreSQL concurrency, replay/conflict, rollback, quote expiry, agreement suspension, package and lifecycle tests pass |
 
 **Release gate:** do not expose shipment creation as generally available until GIL-04A and the booking/dispatch compatibility work are complete. GIL-04 does not enable Logistic Hub payment collection, refunds, wallet debits, payouts or settlement.
