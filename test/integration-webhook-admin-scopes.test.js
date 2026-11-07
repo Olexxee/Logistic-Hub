@@ -20,12 +20,13 @@ test("ADMIN scope updates are audited and can grant webhook management to an exi
   const service = createIntegrationsAdminService({ prismaClient });
   const result = await service.updateClientScopes({
     clientId: "client-1",
-    scopes: [...state.client.scopes, "webhooks:manage"],
+    scopes: [...state.client.scopes, "webhooks:manage", "webhooks:read"],
     reason: "Enable signed shipment event subscriptions",
     actorUserId: "admin-1",
   });
 
   assert.equal(result.client.scopes.includes("webhooks:manage"), true);
+  assert.equal(result.client.scopes.includes("webhooks:read"), true);
   assert.equal(state.audit.length, 1);
   assert.equal(state.audit[0].action, "INTEGRATION_CLIENT_SCOPES_CHANGED");
   assert.deepEqual(state.audit[0].before.scopes, ["quotes:read", "quotes:write", "shipments:read", "shipments:write"]);
