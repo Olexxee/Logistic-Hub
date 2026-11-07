@@ -1,6 +1,6 @@
 # Generic Logistics Integration API
 
-**Status:** GIL-01–GIL-03 are implemented. GIL-04A shares operational route planning with integration quoting and blocks local/hub-assisted quote options until their driver charges are fixed. GIL-04 booking creation remains in progress; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for the remaining constraints and release gates. Tracking/webhooks and billing/reconciliation remain future work.
+**Status:** GIL-01–GIL-03 and GIL-04A are merged. GIL-04B schema foundation is implemented in the current branch (integration booking ownership + normalized package persistence). GIL-04C booking creation remains in progress; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for the remaining constraints and release gates. Tracking/webhooks and billing/reconciliation remain future work.
 
 ## 1. Objective
 
