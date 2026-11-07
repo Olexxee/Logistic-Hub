@@ -15,6 +15,7 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional().default(""),
   RESEND_FROM_EMAIL: z.string().optional().default(""),
   OUTBOX_ENCRYPTION_KEY: z.string().optional().default(""),
+  WEBHOOK_SECRET_ENCRYPTION_KEY: z.string().optional().default(""),
   APP_BASE_URL: z.string().url().optional().default("http://localhost:3000"),
   JWT_ACCESS_SECRET: z.string().optional().default(""),
   PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
@@ -60,6 +61,16 @@ if (parsed.data.NODE_ENV === "production") {
     || outboxKey.toString("base64").replace(/=+$/, "") !== parsed.data.OUTBOX_ENCRYPTION_KEY.trim().replace(/=+$/, "")
   ) {
     throw new Error("OUTBOX_ENCRYPTION_KEY must be a base64-encoded 32-byte key in production.");
+  }
+}
+
+if (parsed.data.WEBHOOK_SECRET_ENCRYPTION_KEY.trim()) {
+  const webhookKey = Buffer.from(parsed.data.WEBHOOK_SECRET_ENCRYPTION_KEY, "base64");
+  if (
+    webhookKey.length !== 32
+    || webhookKey.toString("base64").replace(/=+$/, "") !== parsed.data.WEBHOOK_SECRET_ENCRYPTION_KEY.trim().replace(/=+$/, "")
+  ) {
+    throw new Error("WEBHOOK_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
   }
 }
 
