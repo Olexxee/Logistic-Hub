@@ -864,6 +864,7 @@ model ParcelBooking {
   fareAcceptancePayloadHash     String?
   senderId                      String?
   integrationClientId            String?
+  integrationEventSequence      Int           @default(0)
   pickupServiceZoneId           String
   destinationServiceZoneId      String
   status                        BookingStatus @default(DRAFT)
@@ -919,6 +920,7 @@ model ParcelBooking {
   hubIntakeRecords       HubIntakeRecord[]
   parcelPackages         ParcelBookingPackage[]
   integrationPaymentAttestation IntegrationPaymentAttestation?
+  integrationEvents              IntegrationShipmentEvent[]
 
   @@index([senderId, createdAt])
   @@index([integrationClientId, createdAt])
@@ -1928,6 +1930,7 @@ model IntegrationClient {
   quoteSessions      IntegrationQuoteSession[]
   parcelBookings     ParcelBooking[]
   paymentAttestations IntegrationPaymentAttestation[]
+  shipmentEvents      IntegrationShipmentEvent[]
 
   @@index([status, createdAt])
   @@map("integration_clients")
@@ -2108,6 +2111,27 @@ model IntegrationExternalReference {
   @@unique([clientId, resourceType, externalReference])
   @@index([internalResourceType, internalResourceId])
   @@map("integration_external_references")
+}
+
+model IntegrationShipmentEvent {
+  id                  String   @id @default(cuid())
+  clientId            String
+  parcelBookingId     String
+  sourceBookingEventId String  @unique
+  sequence            Int
+  eventType           String
+  schemaVersion       Int      @default(1)
+  occurredAt          DateTime
+  payload             Json
+  createdAt           DateTime @default(now())
+
+  client        IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  parcelBooking ParcelBooking     @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelBookingId, sequence])
+  @@index([clientId, parcelBookingId, sequence])
+  @@index([clientId, createdAt])
+  @@map("integration_shipment_events")
 }
 
 model IntegrationPaymentAttestation {
