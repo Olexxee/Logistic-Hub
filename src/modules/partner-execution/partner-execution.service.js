@@ -1,3 +1,4 @@
+import { projectIntegrationShipmentEvent } from "../integrations/integration-shipment-events.projector.js";
 import { createPartnerExecutionRepository } from "./partner-execution.repository.js";
 
 function conflict(code, message) {
@@ -222,7 +223,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           if (bookingChanged.count !== 1) {
             throw conflict("INTEGRATION_BOOKING_STATE_CONFLICT", "The integration shipment changed before partner assignment could be recorded.");
           }
-          await tx.bookingEvent.create({ data: {
+          const sourceEvent_INTEGRATION_PARTNER_ASSIGNMENT_CREATED = await tx.bookingEvent.create({ data: {
             parcelBookingId: leg.parcelBookingId,
             actorUserId,
             eventType: "INTEGRATION_PARTNER_ASSIGNMENT_CREATED",
@@ -230,6 +231,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
             toStatus: "DRIVER_ASSIGNED",
             metadata: { partnerAssignmentId: assignment.id, deliveryLegId, partnerId, agreementId: agreement.id },
           } });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: leg.parcelBookingId, sourceEvent: sourceEvent_INTEGRATION_PARTNER_ASSIGNMENT_CREATED });
         }
         return { assignment, replay: false };
       });
@@ -314,7 +316,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
             if (bookingChanged.count !== 1) {
               throw conflict("INTEGRATION_BOOKING_STATE_CONFLICT", "The integration shipment changed before partner transit could be recorded.");
             }
-            await tx.bookingEvent.create({ data: {
+            const sourceEvent_INTEGRATION_PARTNER_LEG_STARTED = await tx.bookingEvent.create({ data: {
               parcelBookingId: booking.id,
               actorUserId: userId,
               eventType: "INTEGRATION_PARTNER_LEG_STARTED",
@@ -322,6 +324,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
               toStatus: "IN_TRANSIT",
               metadata: { partnerAssignmentId: assignmentId, deliveryLegId: assignment.deliveryLegId },
             } });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: booking.id, sourceEvent: sourceEvent_INTEGRATION_PARTNER_LEG_STARTED });
           }
         }
         const updated = await repository.findAssignment(assignmentId, tx);
