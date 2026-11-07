@@ -33,7 +33,7 @@ ALTER TABLE "integration_webhook_deliveries"
   FOREIGN KEY ("endpointId") REFERENCES "integration_webhook_endpoints"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE "integration_webhook_deliveries"
-  ADD CONSTRAINT "integration_webhook_deliveries_endpoint_secret_version_fkey"
+  ADD CONSTRAINT "integration_webhook_deliveries_endpointId_secretVersion_fkey"
   FOREIGN KEY ("endpointId", "secretVersion")
   REFERENCES "integration_webhook_secret_versions"("endpointId", "version")
   ON DELETE RESTRICT ON UPDATE CASCADE;
