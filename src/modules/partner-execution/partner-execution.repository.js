@@ -8,7 +8,7 @@ export function createPartnerExecutionRepository({ prismaClient }) {
     findLegForAssignment(deliveryLegId, tx = prismaClient) {
       return tx.deliveryLeg.findUnique({
         where: { id: deliveryLegId },
-        include: { parcelBooking: { select: { id: true, paymentStatus: true, status: true } } },
+        include: { parcelBooking: { select: { id: true, paymentStatus: true, status: true, integrationClientId: true } } },
       });
     },
     findPartner(partnerId, tx = prismaClient) {
@@ -54,6 +54,7 @@ export function createPartnerExecutionRepository({ prismaClient }) {
                 parcelBooking: { select: {
                   id: true, publicReference: true, parcelCategory: true, parcelSize: true,
                   handlingInstructions: true, status: true,
+                  parcelPackages: { select: { externalPackageRef: true, packageCategory: true, description: true, weightGrams: true, lengthMm: true, widthMm: true, heightMm: true, declaredValueMinor: true } },
                 } },
                 originServiceZone: { select: { id: true, name: true, state: { select: { code: true, name: true } } } },
                 destinationServiceZone: { select: { id: true, name: true, state: { select: { code: true, name: true } } } },
