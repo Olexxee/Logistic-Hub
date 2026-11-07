@@ -1,6 +1,6 @@
 # Generic Logistics Integration API
 
-**Status:** GIL-01–GIL-03, GIL-04A and GIL-04B are merged. GIL-04C atomic shipment creation is merged and GIL-04D client-scoped shipment retrieval/recovery is implemented in the current branch; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for payment-attestation boundaries, transaction invariants and release gates. GIL-05A tracking and GIL-05B endpoint/secret management are implemented; signed delivery and replay remain in GIL-05C/GIL-05D. Billing/reconciliation remain future work.
+**Status:** GIL-01–GIL-05C are merged. GIL-04C atomic shipment creation, GIL-04D client-scoped retrieval/recovery and GIL-04E PostgreSQL acceptance are merged; see [GIL-04 Booking Bridge](gil-04-booking-bridge.md) for payment-attestation boundaries and transaction invariants. GIL-05A event tracking, GIL-05B endpoint/secret management and GIL-05C signed delivery are merged. GIL-05D replay and operations are implemented on the current PR branch and awaiting CI/review. Billing/reconciliation remain future work.
 
 ## 1. Objective
 
@@ -52,7 +52,7 @@ Proposed operations:
 - POST /marketplace/shipments — create/recover a shipment using the accepted option and an idempotency key.
 - GET /marketplace/shipments/:shipmentReference — read shipment state.
 - GET /marketplace/shipments/by-external-reference/:externalReference — recover a booking after a lost response.
-- Webhook subscriptions and signed event delivery are a later slice.
+- Webhook subscriptions, signed delivery, delivery telemetry and audited replay are implemented in GIL-05A–GIL-05D; see [GIL-05 contract](gil-05-tracking-webhooks.md).
 
 The word marketplace in this proposed path is a compatibility label only; the data model and authorization are not marketplace-specific. A later version may expose a neutral /shipments/quotes path without changing the domain.
 
@@ -106,7 +106,7 @@ Implementation sequence:
 2. GIL-02 — Service authentication and admin controls: ADMIN-only client administration, credential issue/revocation, one-time secret display, hash-only persistence, scope middleware and audited billing-agreement drafts. (Implemented in PR #97.)
 3. GIL-03 — Package assessment and quote sessions: multi-package requests, multiple contracted options, expiry and option selection. (Implemented in this branch.)
 4. GIL-04 — Generic shipment creation: GIL-04C atomic creation, GIL-04D client-scoped retrieval/recovery and GIL-04E regression/PostgreSQL acceptance are merged.
-5. GIL-05 — Tracking and signed webhooks: GIL-05A event ledger/tracking API and GIL-05B endpoint/secret management are implemented; GIL-05C delivery worker and GIL-05D replay/acceptance remain. See [GIL-05 contract](gil-05-tracking-webhooks.md).
+5. GIL-05 — Tracking and signed webhooks: GIL-05A event ledger/tracking API, GIL-05B endpoint/secret management and GIL-05C signed delivery are merged. GIL-05D delivery telemetry and bounded replay are implemented on the current PR branch, pending CI. See [GIL-05 contract](gil-05-tracking-webhooks.md).
 6. GIL-06 — Billing/reconciliation: enforce agreement model only after payment/wallet/invoice capabilities are explicitly implemented and approved.
 
 ## GIL-03 quote-session API

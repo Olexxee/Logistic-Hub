@@ -29,3 +29,22 @@ export const integrationWebhookEndpointUpdateSchema = z.object({
 export const integrationWebhookSecretRotateSchema = z.object({
   reason: z.string().trim().min(5).max(500),
 }).strict();
+
+
+const deliveryStatus = z.enum(["PENDING", "PROCESSING", "SUCCEEDED", "DEAD"]);
+
+export const integrationWebhookDeliveryListQuerySchema = z.object({
+  endpointId: id.optional(),
+  status: deliveryStatus.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
+
+export const integrationWebhookReplaySchema = z.union([
+  z.object({ eventId: id }).strict(),
+  z.object({
+    shipmentId: id,
+    fromSequence: z.number().int().min(1).max(2147483646),
+    toSequence: z.number().int().min(1).max(2147483646),
+  }).strict(),
+]);

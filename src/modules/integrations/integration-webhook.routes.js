@@ -5,17 +5,15 @@ import { validate } from "../../shared/http/validate.js";
 import { requireIntegrationAuth, requireIntegrationScope } from "./integration-auth.middleware.js";
 import { createIntegrationWebhookController } from "./integration-webhook.controller.js";
 import {
+  integrationWebhookDeliveryListQuerySchema,
   integrationWebhookEndpointCreateSchema,
   integrationWebhookEndpointParamsSchema,
   integrationWebhookEndpointUpdateSchema,
+  integrationWebhookReplaySchema,
   integrationWebhookSecretRotateSchema,
 } from "./integration-webhook.validators.js";
-import { z } from "zod";
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
-}).strict();
+const listQuerySchema = integrationWebhookDeliveryListQuerySchema.pick({ page: true, limit: true });
 
 export function createIntegrationWebhookRouter({
   prismaClient = prisma,
@@ -26,17 +24,25 @@ export function createIntegrationWebhookRouter({
 } = {}) {
   const router = Router();
   const controller = createIntegrationWebhookController({ prismaClient, clock, lookup, encryptionKey });
-  router.use(authMiddleware, requireIntegrationScope("webhooks:manage"));
-  router.get("/webhooks", validate(listQuerySchema, "query"), asyncWrapper(controller.list));
-  router.post("/webhooks", validate(integrationWebhookEndpointCreateSchema), asyncWrapper(controller.create));
-  router.patch("/webhooks/:endpointId",
+  router.use(authMiddleware);
+
+  router.get("/webhooks", requireIntegrationScope("webhooks:manage"),
+    validate(listQuerySchema, "query"), asyncWrapper(controller.list));
+  router.post("/webhooks", requireIntegrationScope("webhooks:manage"),
+    validate(integrationWebhookEndpointCreateSchema), asyncWrapper(controller.create));
+  router.patch("/webhooks/:endpointId", requireIntegrationScope("webhooks:manage"),
     validate(integrationWebhookEndpointParamsSchema, "params"),
-    validate(integrationWebhookEndpointUpdateSchema),
-    asyncWrapper(controller.update));
-  router.post("/webhooks/:endpointId/rotate-secret",
+    validate(integrationWebhookEndpointUpdateSchema), asyncWrapper(controller.update));
+  router.post("/webhooks/:endpointId/rotate-secret", requireIntegrationScope("webhooks:manage"),
     validate(integrationWebhookEndpointParamsSchema, "params"),
-    validate(integrationWebhookSecretRotateSchema),
-    asyncWrapper(controller.rotateSecret));
+    validate(integrationWebhookSecretRotateSchema), asyncWrapper(controller.rotateSecret));
+
+  router.get("/webhooks/deliveries", requireIntegrationScope("webhooks:read"),
+    validate(integrationWebhookDeliveryListQuerySchema, "query"), asyncWrapper(controller.listDeliveries));
+  router.post("/webhooks/:endpointId/replay", requireIntegrationScope("webhooks:manage"),
+    validate(integrationWebhookEndpointParamsSchema, "params"),
+    validate(integrationWebhookReplaySchema), asyncWrapper(controller.replay));
+
   return router;
 }
 

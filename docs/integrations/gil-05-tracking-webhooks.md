@@ -1,6 +1,6 @@
 # GIL-05 — Tracking and Signed Webhooks
 
-**Status:** GIL-04A–GIL-04E and GIL-05A–GIL-05B are merged. GIL-05C is implemented on the current pull request branch and awaiting CI/review. GIL-05D remains unimplemented.
+**Status:** GIL-04A–GIL-04E and GIL-05A–GIL-05C are merged. GIL-05D replay and operations controls are implemented on the current pull request branch and awaiting CI/review.
 
 ## Objective
 
@@ -56,21 +56,24 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 
 ## GIL-05C — Signed webhook delivery
 
-- Implemented on the current branch: one durable delivery row per event/active subscribed endpoint is created in the same database transaction as the immutable event projection. The row pins the endpoint's exact signing-secret version and is unique by event/endpoint.
-- Implemented: the embedded Node worker claims bounded batches using PostgreSQL `FOR UPDATE SKIP LOCKED`, a worker owner and expiring lease. Expired leases are reclaimable after a process crash.
-- Implemented: the worker serializes a stable JSON envelope and signs the exact request body using HMAC-SHA256 over `timestamp + "." + rawBody`. The signature header is `X-Logistic-Hub-Signature: t=<unix-seconds>,v1=<hex-digest>`.
-- Implemented headers: `X-Logistic-Hub-Event-Id`, `X-Logistic-Hub-Delivery-Id`, `X-Logistic-Hub-Event-Type`, `X-Logistic-Hub-Event-Sequence`, `X-Logistic-Hub-Timestamp` and `X-Logistic-Hub-Signature`.
-- Implemented: redirects are not followed; the worker applies an 8-second request timeout, a 3-second DNS lookup timeout and a 4 KiB response-body cap. DNS is re-resolved for every attempt; every returned A/AAAA answer must be globally routable. The HTTPS socket connects to the selected validated IP while TLS certificate verification and SNI use the original hostname.
-- Implemented: 2xx succeeds; network errors, timeouts, 408, 429 and 5xx retry with capped exponential backoff. Other 4xx/3xx responses, unsafe DNS answers, missing pinned secret versions and exhausted retries are dead-lettered. Attempts are capped at 8.
-- Implemented: endpoint suspension pauses claimed deliveries; reactivation allows pending work to resume. Revocation and event unsubscription prevent pending work from being sent.
-- Implemented: delivery failures do not alter the already-committed shipment transaction. Delivery is at-least-once; receivers must deduplicate by event ID and verify the timestamp/body HMAC using constant-time comparison.
+- Merged: one durable delivery row per event/active subscribed endpoint is created in the same database transaction as the immutable event projection. The row pins the endpoint's exact signing-secret version and is unique by event/endpoint.
+- Merged: the embedded Node worker claims bounded batches using PostgreSQL `FOR UPDATE SKIP LOCKED`, a worker owner and expiring lease. Expired leases are reclaimable after a process crash.
+- Merged: the worker serializes a stable JSON envelope and signs the exact request body using HMAC-SHA256 over `timestamp + "." + rawBody`. The signature header is `X-Logistic-Hub-Signature: t=<unix-seconds>,v1=<hex-digest>`.
+- Merged headers: `X-Logistic-Hub-Event-Id`, `X-Logistic-Hub-Delivery-Id`, `X-Logistic-Hub-Event-Type`, `X-Logistic-Hub-Event-Sequence`, `X-Logistic-Hub-Timestamp` and `X-Logistic-Hub-Signature`.
+- Merged: redirects are not followed; the worker applies an 8-second request timeout, a 3-second DNS lookup timeout and a 4 KiB response-body cap. DNS is re-resolved for every attempt; every returned A/AAAA answer must be globally routable. The HTTPS socket connects to the selected validated IP while TLS certificate verification and SNI use the original hostname.
+- Merged: 2xx succeeds; network errors, timeouts, 408, 429 and 5xx retry with capped exponential backoff. Other 4xx/3xx responses, unsafe DNS answers, missing pinned secret versions and exhausted retries are dead-lettered. Attempts are capped at 8.
+- Merged: endpoint suspension pauses claimed deliveries; reactivation allows pending work to resume. Revocation and event unsubscription prevent pending work from being sent.
+- Merged: delivery failures do not alter the already-committed shipment transaction. Delivery is at-least-once; receivers must deduplicate by event ID and verify the timestamp/body HMAC using constant-time comparison.
 
 ## GIL-05D — Replay, operations and acceptance
 
-- Client-scoped replay accepts an event ID or sequence range and requeues only deliveries for an active endpoint; replay does not create a new shipment event or sequence.
-- Enforce bounded replay ranges and rate limits; every replay request is audited.
-- Provide delivery status, attempt count, last HTTP status/error code, next attempt and terminal state without exposing secret material.
-- Acceptance covers event projection atomicity, sequence ordering under concurrent updates, duplicate source-event suppression, cross-client isolation, signature correctness, secret rotation, endpoint SSRF controls, retry classification, lease recovery, dead-lettering, replay bounds and webhook/operational transaction independence.
+- Implemented on the current PR branch: GET /api/v1/integrations/webhooks/deliveries requires webhooks:read and returns client-scoped delivery telemetry with bounded pagination. It exposes current-cycle attempts, lifetime attempts, replay count, last HTTP status/error code, next attempt time and terminal state; it never returns signing secrets, encrypted secret fields or response bodies.
+- Implemented on the current PR branch: POST /api/v1/integrations/webhooks/:endpointId/replay requires webhooks:manage and accepts either one eventId or a shipmentId plus an inclusive fromSequence/toSequence range.
+- Replay only requeues existing SUCCEEDED or DEAD delivery rows for an ACTIVE endpoint, an ACTIVE integration client and event types currently subscribed by that endpoint. Other-client events, missing deliveries, pending/processing deliveries and revoked/suspended endpoints are not replayable.
+- Replay never creates an IntegrationShipmentEvent, BookingEvent or new sequence. It resets the current retry-cycle attempt counter, increments replayCount, preserves totalAttempts, clears prior terminal response metadata and schedules the existing delivery row immediately.
+- Sequence replay is shipment-scoped and limited to at most 100 sequence values and 100 existing deliveries per request. Replay is rate-limited to 10 requests per endpoint per rolling minute using a PostgreSQL endpoint-row lock and persisted audit records, so the limit is shared across API instances.
+- Every accepted replay writes WEBHOOK_DELIVERY_REPLAY_REQUESTED with the authenticated client, credential, endpoint, selector and delivery IDs. Delivery telemetry is read-only and does not expose payload bodies or signing material.
+- Acceptance covers event projection atomicity, sequence ordering under concurrent updates, duplicate source-event suppression, cross-client isolation, signature correctness, secret rotation, endpoint SSRF controls, retry classification, lease recovery, dead-lettering, replay bounds/rate limits, telemetry privacy and webhook/operational transaction independence.
 
 ## Implementation order
 
@@ -78,8 +81,8 @@ Requires shipments:read. Response contains ordered events, hasMore and nextAfter
 |---|---|---|
 | GIL-05A | Immutable event ledger and client-scoped tracking history | Atomic projection, per-shipment sequence, sanitized event payload and cursor-based tracking API |
 | GIL-05B | Endpoint management and secret lifecycle | Implemented on the current branch: client-scoped endpoint CRUD, HTTPS/SSRF validation, one-time secret display, encrypted versioned rotation and audited scope administration |
-| GIL-05C | Signed webhook worker | Implemented on the current PR branch: durable per-endpoint deliveries, HMAC signatures, DNS pinning, leases, retries and dead-lettering; pending CI/review |
-| GIL-05D | Replay and acceptance | Bounded replay, audit trail, end-to-end contract and PostgreSQL concurrency tests |
+| GIL-05C | Signed webhook worker | Merged: durable per-endpoint deliveries, HMAC signatures, DNS pinning, leases, retries and dead-lettering |
+| GIL-05D | Replay and acceptance | Implemented on the current PR branch: client-scoped telemetry, bounded/rate-limited replay, audit trail and PostgreSQL acceptance |
 
 GIL-05 does not change booking, payment, custody or partner execution authority. It does not enable Logistic Hub payment collection, refunds, wallet debits, payouts or settlement.
 

@@ -70,3 +70,54 @@ test("webhook management routes return only the authenticated client's endpoint 
     assert.equal("encryptedValue" in body.data.items[0], false);
   });
 });
+
+
+test("delivery telemetry requires webhooks:read independently of endpoint management", async () => {
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1/integrations", createIntegrationWebhookRouter({
+    prismaClient: {
+      integrationWebhookDelivery: {
+        findMany: async ({ where }) => {
+          assert.equal(where.endpoint.clientId, "client-1");
+          return [];
+        },
+        count: async () => 0,
+      },
+    },
+    authMiddleware: (req, _res, next) => {
+      req.integrationClient = { id: "client-1", credentialId: "credential-1", scopes: ["webhooks:read"] };
+      next();
+    },
+  }));
+
+  await withServer(app, async baseUrl => {
+    const telemetry = await fetch(`${baseUrl}/api/v1/integrations/webhooks/deliveries`);
+    assert.equal(telemetry.status, 200);
+    const body = await telemetry.json();
+    assert.deepEqual(body.data.items, []);
+
+    const management = await fetch(`${baseUrl}/api/v1/integrations/webhooks`);
+    assert.equal(management.status, 403);
+  });
+});
+
+test("replay route requires webhooks:manage and validates bounded selectors", async () => {
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1/integrations", createIntegrationWebhookRouter({
+    prismaClient: {},
+    authMiddleware: (req, _res, next) => {
+      req.integrationClient = { id: "client-1", credentialId: "credential-1", scopes: ["webhooks:read"] };
+      next();
+    },
+  }));
+
+  await withServer(app, async baseUrl => {
+    const denied = await fetch(`${baseUrl}/api/v1/integrations/webhooks/endpoint-1/replay`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ eventId: "event-1" }),
+    });
+    assert.equal(denied.status, 403);
+  });
+});
