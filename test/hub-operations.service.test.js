@@ -49,8 +49,9 @@ function setup(overrides = {}) {
     },
     operationalCase: { findFirst: async () => null, create: async ({ data }) => { const item = { id: "case-1", ...data }; calls.cases.push(item); return item; } },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
-    parcelBooking: { update: async () => ({}) },
-    bookingEvent: { create: async ({ data }) => { calls.events.push(data); return data; } },
+    parcelBooking: { findUnique: async () => ({ id: "booking-1", integrationClientId: null, senderId: "sender-1" }), update: async () => ({}) },
+    integrationShipmentEvent: { findUnique: async () => null },
+    bookingEvent: { create: async ({ data }) => { calls.events.push(data); return { id: "booking-event-hub", createdAt: now, ...data }; } },
     driverAssignment: {
       findFirst: async () => ({ id: "driver-assignment-1", status: "ARRIVED_AT_PICKUP", driverProfileId: "driver-1", agreedFareMinor: 25000n, currency: "NGN" }),
       updateMany: async ({ where, data }) => { calls.assignmentUpdates.push({ where, data }); return { count: 1 }; },
