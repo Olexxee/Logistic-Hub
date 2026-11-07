@@ -6054,6 +6054,7 @@ paths:
                           required: [id, packageCategory, assessmentStatus, assessmentSource]
                           properties:
                             id: { type: string }
+                            packageSequence: { type: integer, minimum: 0 }
                             externalPackageRef: { type: [string, 'null'] }
                             packageCategory: { type: string }
                             weightGrams: { type: [integer, 'null'] }
