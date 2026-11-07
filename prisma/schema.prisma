@@ -2191,6 +2191,8 @@ model IntegrationWebhookDelivery {
   secretVersion   Int
   status          String    @default("PENDING")
   attempts        Int       @default(0)
+  totalAttempts   Int       @default(0)
+  replayCount     Int       @default(0)
   availableAt     DateTime  @default(now())
   lockedAt        DateTime?
   lockedBy        String?
