@@ -6234,6 +6234,228 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Integration client lacks shipments:read. }
         '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/webhooks:
+    get:
+      tags: [Webhooks]
+      operationId: listIntegrationWebhookEndpoints
+      summary: List webhook endpoints owned by the authenticated integration client
+      description: Requires the webhooks:manage scope. Secret material is never returned.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: Client-scoped endpoint metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items, pagination]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/IntegrationWebhookEndpoint' }
+                      pagination:
+                        type: object
+                        required: [page, limit, hasMore, nextPage]
+                        properties:
+                          page: { type: integer }
+                          limit: { type: integer }
+                          hasMore: { type: boolean }
+                          nextPage: { type: [integer, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks webhooks:manage. }
+    post:
+      tags: [Webhooks]
+      operationId: createIntegrationWebhookEndpoint
+      summary: Register a webhook endpoint and issue its first signing secret
+      description: |
+        Requires webhooks:manage. HTTPS on port 443 only. URL credentials, query strings,
+        fragments, IP literals and hostnames resolving to any non-public address are rejected.
+        The signing secret is returned once and is never returned by list or update operations.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url, eventTypes]
+              properties:
+                url: { type: string, format: uri, maxLength: 2048 }
+                description: { type: string, maxLength: 160 }
+                eventTypes:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: string
+                    enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed]
+      responses:
+        '201':
+          description: Endpoint metadata and one-time signing secret.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [endpoint, secret, warning]
+                    properties:
+                      endpoint: { $ref: '#/components/schemas/IntegrationWebhookEndpoint' }
+                      secret: { type: string }
+                      warning: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks webhooks:manage. }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { description: Webhook secret encryption key is not configured. }
+  /integrations/webhooks/{endpointId}:
+    patch:
+      tags: [Webhooks]
+      operationId: updateIntegrationWebhookEndpoint
+      summary: Update endpoint subscriptions or lifecycle status
+      description: Requires webhooks:manage. REVOKED is terminal; SUSPENDED endpoints may be reactivated while their integration client is active. A reason is required for status changes.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: endpointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                status: { type: string, enum: [ACTIVE, SUSPENDED, REVOKED] }
+                description: { type: [string, 'null'], maxLength: 160 }
+                eventTypes:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: string
+                    enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed]
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Updated endpoint metadata; no secret material is returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [endpoint, replay]
+                    properties:
+                      endpoint: { $ref: '#/components/schemas/IntegrationWebhookEndpoint' }
+                      replay: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks webhooks:manage. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/webhooks/{endpointId}/rotate-secret:
+    post:
+      tags: [Webhooks]
+      operationId: rotateIntegrationWebhookSecret
+      summary: Rotate a webhook signing secret
+      description: |
+        Requires webhooks:manage and a reason. The new secret is returned once. Previous
+        encrypted secret versions are retained so pending deliveries can use the exact version
+        assigned when they were created.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: endpointId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: New secret version and one-time secret value.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [endpoint, secret, warning]
+                    properties:
+                      endpoint: { $ref: '#/components/schemas/IntegrationWebhookEndpoint' }
+                      secret: { type: string }
+                      warning: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks webhooks:manage. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { description: Webhook secret encryption key is not configured. }
   /integrations/shipments/{shipmentId}/events:
     get:
       tags: [Integrations]
@@ -7082,6 +7304,22 @@ components:
         updatedAt:
           type: string
           format: date-time
+    IntegrationWebhookEndpoint:
+      type: object
+      additionalProperties: false
+      required: [id, url, eventTypes, status, secretVersion, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        url: { type: string, format: uri }
+        description: { type: [string, 'null'] }
+        eventTypes:
+          type: array
+          items: { type: string }
+        status: { type: string, enum: [ACTIVE, SUSPENDED, REVOKED] }
+        secretVersion: { type: integer, minimum: 1 }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     IntegrationShipmentResource:
       type: object
       required: [id, reference, externalFulfillmentReference, status, paymentStatus, currency, customerChargeMinor, packages, deliveryLegs, paymentAttestation]
