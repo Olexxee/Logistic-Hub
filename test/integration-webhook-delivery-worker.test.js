@@ -166,11 +166,6 @@ test("worker pauses suspended endpoints and dead-letters revoked endpoints", asy
 
 test("worker does not send deliveries for suspended integration clients", async () => {
   let sent = false;
-  const { worker, updates } = fixture({
-    sendRequest: async () => { sent = true; return { statusCode: 204 }; },
-  });
-  const originalFindUnique = worker;
-  void originalFindUnique;
   // The fixture is intentionally replaced with a client-disabled endpoint record.
   const disabledClientFixture = fixture();
   const disabledClientWorker = createIntegrationWebhookDeliveryWorker({
