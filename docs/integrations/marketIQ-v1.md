@@ -1,4 +1,4 @@
-# MarketIQ Marketplace Integration — LI-01 Contract (v1.0 Draft)
+> **Historical contract notice (2026-11-07):** This v1 document records the original MarketIQ integration decisions and source audit. The current MarketIQ-specific boundary is [MarketIQ Integration Contract v2](marketIQ-v2.md). Where v1 describes creating/mapping MarketIQ customer or seller users, transmitting customer email, Hub-side payment verification, or other conflicting behavior, v2 supersedes it. The generic multi-client integration API remains the reusable implementation boundary.\n\n# MarketIQ Marketplace Integration — LI-01 Contract (v1.0 Draft)
 
 **Status:** LI-01 decisions remain the MarketIQ-specific commercial contract. The generic Logistic Hub quote, shipment, tracking and signed-webhook APIs are implemented through GIL-03–GIL-05D; MarketIQ's client-side persistence, checkout and webhook receiver are not yet implemented. See the MarketIQ repository's LI-02 audit for source-verified checkout/payment constraints.
 
