@@ -6194,6 +6194,86 @@ paths:
         '403': { description: Integration client lacks shipments:write. }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/shipments/by-external-reference/{externalFulfillmentReference}:
+    get:
+      tags: [Integrations]
+      operationId: getIntegrationShipmentByExternalReference
+      summary: Recover a shipment by the integrating platform's fulfilment reference
+      description: |
+        Requires the shipments:read scope. Both the external-reference mapping and underlying booking are constrained to the authenticated integration client. Unknown and other-client references return the same not-found response.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Shipment state and safe commercial/operational summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [shipment]
+                    properties:
+                      shipment:
+                        $ref: '#/components/schemas/IntegrationShipmentResource'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:read. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/shipments/{shipmentId}:
+    get:
+      tags: [Integrations]
+      operationId: getIntegrationShipmentById
+      summary: Retrieve an integration-owned shipment by Logistic Hub shipment ID
+      description: |
+        Requires the shipments:read scope. The booking query is constrained to the authenticated integration client and integration-owned records. A shipment belonging to another client returns the same not-found response as an unknown ID.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: shipmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Shipment state and safe commercial/operational summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [shipment]
+                    properties:
+                      shipment:
+                        $ref: '#/components/schemas/IntegrationShipmentResource'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:read. }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/integrations/{clientId}/billing-agreements/{agreementId}/status:
     patch:
       tags: [Admin]
@@ -6934,6 +7014,86 @@ components:
         updatedAt:
           type: string
           format: date-time
+    IntegrationShipmentResource:
+      type: object
+      required: [id, reference, externalFulfillmentReference, status, paymentStatus, currency, customerChargeMinor, packages, deliveryLegs, paymentAttestation]
+      properties:
+        id: { type: string }
+        reference: { type: string }
+        externalFulfillmentReference: { type: string }
+        status: { type: string }
+        paymentStatus: { type: string }
+        currency: { type: string }
+        customerChargeMinor:
+          oneOf:
+            - $ref: '#/components/schemas/MinorAmount'
+            - type: 'null'
+        routeMode: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        packages:
+          type: array
+          items:
+            type: object
+            required: [sequence, category, dimensionsMm]
+            properties:
+              sequence: { type: integer, minimum: 0 }
+              externalPackageReference: { type: [string, 'null'] }
+              category: { type: string }
+              description: { type: [string, 'null'] }
+              weightGrams: { type: [integer, 'null'] }
+              dimensionsMm:
+                type: object
+                required: [length, width, height]
+                properties:
+                  length: { type: [integer, 'null'] }
+                  width: { type: [integer, 'null'] }
+                  height: { type: [integer, 'null'] }
+              assessmentStatus: { type: string }
+              assessmentSource: { type: string }
+              assessedAt: { type: string, format: date-time }
+        deliveryLegs:
+          type: array
+          items:
+            type: object
+            required: [id, sequence, type, status]
+            properties:
+              id: { type: string }
+              sequence: { type: integer, minimum: 1 }
+              type: { type: string }
+              status: { type: string }
+              origin: { type: [object, 'null'], additionalProperties: true }
+              destination: { type: [object, 'null'], additionalProperties: true }
+              plannedAt: { type: [string, 'null'], format: date-time }
+              assignedAt: { type: [string, 'null'], format: date-time }
+              pickedUpAt: { type: [string, 'null'], format: date-time }
+              startedAt: { type: [string, 'null'], format: date-time }
+              completedAt: { type: [string, 'null'], format: date-time }
+              failureReason: { type: [string, 'null'] }
+        acceptedQuote:
+          oneOf:
+            - type: object
+              required: [version, status, currency, customerChargeMinor]
+              properties:
+                version: { type: integer }
+                status: { type: string, const: ACCEPTED }
+                currency: { type: string }
+                customerChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                acceptedAt: { type: [string, 'null'], format: date-time }
+            - type: 'null'
+        paymentAttestation:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [ATTESTED, NOT_RECORDED] }
+            provider: { type: string }
+            verifiedAt: { type: string, format: date-time }
+            attestedAt: { type: string, format: date-time }
+            deliveryChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+            currency: { type: string }
+      description: |
+        Client-scoped shipment view. Intentionally excludes internal partner/logistics costs,
+        package declared values, recipient contact details and full pickup/destination addresses.
     DeliveryLegResource:
       type: object
       required: [id, sequence, type, status, origin, destination, assignment]
