@@ -6151,7 +6151,7 @@ paths:
                   additionalProperties: false
                   required: [paymentProvider, externalPaymentReference, verifiedAt, currency, deliveryChargeMinor]
                   properties:
-                    paymentProvider: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Za-z0-9._-]+
+                    paymentProvider: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Za-z0-9._-]{2,40}
     patch:
       tags: [Admin]
       operationId: updateIntegrationBillingAgreementStatus
@@ -8238,7 +8238,6 @@ components:
         '403': { description: Integration client lacks shipments:write. }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
-
   /admin/integrations/{clientId}/billing-agreements/{agreementId}/status:
     patch:
       tags: [Admin]
