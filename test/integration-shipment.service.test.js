@@ -20,6 +20,7 @@ function fixture({ amountMinor = "3000", sessionStatus = "SELECTED", optionStatu
   };
   const pkg = {
     id: "quote_package_1",
+    packageSequence: 0,
     externalPackageRef: "pkg-1",
     packageCategory: "carton",
     description: "Books",
