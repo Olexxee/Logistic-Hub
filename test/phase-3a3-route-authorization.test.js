@@ -108,7 +108,7 @@ test("SUPPORT access is limited to support operations and denied finance oversig
       "/support/admin/tickets",
     ]) {
       const response = await fetch(base + path, { headers: { "x-test-role": "SUPPORT" } });
-      assert.notEqual(response.status, 403, `SUPPORT route grant unexpectedly removed: ${path}`);
+      assert.equal(response.status, 200, `authorized SUPPORT request should complete successfully: ${path}`);
     }
 
     const refundsDenied = await fetch(base + "/finance/admin/refunds", { headers: { "x-test-role": "SUPPORT" } });
