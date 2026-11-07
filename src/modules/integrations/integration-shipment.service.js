@@ -77,7 +77,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
       where: { id: quoteSessionId, clientId },
       include: {
         billingAgreement: true,
-        packages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+        packages: { orderBy: { packageSequence: "asc" } },
         options: { where: { id: quoteOptionId }, take: 1 },
       },
     });
@@ -155,7 +155,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
     for (let index = 0; index < session.packages.length; index += 1) {
       const pkg = session.packages[index];
       const snapshot = packageRates[index];
-      const expectedRef = pkg.externalPackageRef ?? `package-${index + 1}`;
+      const expectedRef = pkg.externalPackageRef ?? `package-${pkg.packageSequence + 1}`;
       if (snapshot.packageRef !== expectedRef
         || (snapshot.externalPackageRef ?? null) !== (pkg.externalPackageRef ?? null)) {
         throw new ConflictError("The quote package-rate snapshot no longer matches its package records.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
@@ -241,6 +241,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
 
           const bookingPackages = session.packages.map(pkg => ({
             externalPackageRef: pkg.externalPackageRef,
+            packageSequence: pkg.packageSequence,
             packageCategory: pkg.packageCategory,
             description: pkg.description,
             weightGrams: pkg.weightGrams,
