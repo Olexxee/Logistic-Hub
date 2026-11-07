@@ -27,7 +27,11 @@ const roleMiddleware = (...roles) => (req, res, next) => {
 function createAuthorizationApp() {
   const app = express();
   app.use(express.json());
-  const dependencies = { prismaClient: {}, authMiddleware, roleMiddleware };
+  const dependencies = {
+    prismaClient: { supportTicket: { findMany: async () => [] } },
+    authMiddleware,
+    roleMiddleware,
+  };
 
   app.use("/support", createSupportRouter(dependencies));
   app.use("/finance", createFinanceRouter(dependencies));
