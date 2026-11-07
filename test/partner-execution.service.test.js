@@ -425,10 +425,13 @@ test("partner assignment advances a paid integration-owned shipment from awaitin
       }),
     },
     parcelBooking: {
+      findUnique: async () => ({ id: "integration-booking-1", integrationClientId: "client-1", senderId: null, publicReference: "LH-PCL-INTEGRATION1", status: "DRIVER_ASSIGNED" }),
+      update: async () => ({ integrationEventSequence: 1 }),
       updateMany: async args => { bookingUpdates.push(args); return { count: 1 }; },
     },
+    integrationShipmentEvent: { findUnique: async () => null, create: async ({ data }) => ({ id: "integration-event-1", ...data }) },
     bookingEvent: {
-      create: async ({ data }) => { bookingEvents.push(data); return data; },
+      create: async ({ data }) => { bookingEvents.push(data); return { id: "booking-event-assign", createdAt: now, ...data }; },
     },
     operationalAuditEvent: { create: async () => ({ id: "audit-integration-1" }) },
   };
@@ -457,6 +460,7 @@ test("starting an integration partner assignment advances the booking to IN_TRAN
   const bookingUpdates = [];
   const bookingEvents = [];
   let assignmentStatus = "ACCEPTED";
+  let bookingReadCount = 0;
   const tx = {
     partnerDeliveryAssignment: {
       findUnique: async () => ({
@@ -486,13 +490,17 @@ test("starting an integration partner assignment advances the booking to IN_TRAN
       findUnique: async () => ({
         id: "integration-booking-2",
         integrationClientId: "client-1",
-        status: "DRIVER_ASSIGNED",
+        senderId: null,
+        publicReference: "LH-PCL-INTEGRATION2",
+        status: ++bookingReadCount === 1 ? "DRIVER_ASSIGNED" : "IN_TRANSIT",
         paymentStatus: "SUCCEEDED",
       }),
+      update: async () => ({ integrationEventSequence: 1 }),
       updateMany: async args => { bookingUpdates.push(args); return { count: 1 }; },
     },
+    integrationShipmentEvent: { findUnique: async () => null, create: async ({ data }) => ({ id: "integration-event-start-1", ...data }) },
     bookingEvent: {
-      create: async ({ data }) => { bookingEvents.push(data); return data; },
+      create: async ({ data }) => { bookingEvents.push(data); return { id: "booking-event-start", createdAt: now, ...data }; },
     },
     operationalAuditEvent: { create: async () => ({ id: "audit-integration-start-1" }) },
   };

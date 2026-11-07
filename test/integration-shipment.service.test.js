@@ -31,6 +31,8 @@ function fixture({
     attestation: null,
     externalReferences: [],
     bookingEvents: [],
+    integrationEvents: [],
+    integrationEventSequence: 0,
     sessionStatus,
     userCreates: 0,
     paymentAttemptCreates: 0,
@@ -152,6 +154,17 @@ function fixture({
       ] : [],
     },
     parcelBooking: {
+      findUnique: async () => state.booking ? {
+        id: state.booking.id,
+        integrationClientId: state.booking.integrationClientId,
+        senderId: state.booking.senderId,
+        publicReference: state.booking.publicReference,
+        status: state.booking.status,
+      } : null,
+      update: async () => {
+        state.integrationEventSequence += 1;
+        return { integrationEventSequence: state.integrationEventSequence };
+      },
       create: async ({ data }) => {
         if (failAt === "booking") throw new Error("injected booking failure");
         state.booking = { id: "booking_1", ...data };
@@ -180,7 +193,19 @@ function fixture({
       create: async ({ data }) => { if (failAt === "attestation") throw new Error("injected attestation failure"); state.attestation = data; return data; },
     },
     bookingEvent: {
-      create: async ({ data }) => { if (failAt === "bookingEvent") throw new Error("injected booking event failure"); state.bookingEvents.push(data); return data; },
+      create: async ({ data }) => {
+        if (failAt === "bookingEvent") throw new Error("injected booking event failure");
+        state.bookingEvents.push(data);
+        return { id: "booking_event_1", createdAt: now, ...data };
+      },
+    },
+    integrationShipmentEvent: {
+      findUnique: async () => null,
+      create: async ({ data }) => {
+        const event = { id: "integration_event_1", ...data };
+        state.integrationEvents.push(event);
+        return event;
+      },
     },
     hubPoint: { findMany: async () => [] },
     user: { create: async () => { state.userCreates += 1; } },
@@ -440,4 +465,26 @@ test("a quote state change during shipment creation aborts the complete transact
   assert.equal(state.attestation, null);
   assert.equal(state.externalReferences.length, 0);
   assert.equal(state.idempotency, null);
+});
+
+
+test("shipment creation atomically projects a sanitized first tracking event", async () => {
+  const { state, prismaClient, input } = fixture();
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.createShipment({
+    client: { id: "client_1" },
+    idempotencyKey: "shipment-create-001",
+    input,
+  });
+
+  assert.equal(result.statusCode, 201);
+  assert.equal(state.integrationEvents.length, 1);
+  assert.equal(state.integrationEvents[0].sequence, 1);
+  assert.equal(state.integrationEvents[0].eventType, "shipment.created");
+  assert.deepEqual(state.integrationEvents[0].payload, {
+    shipmentReference: state.booking.publicReference,
+    status: "AWAITING_PARTNER_ASSIGNMENT",
+  });
+  assert.equal("externalPaymentReference" in state.integrationEvents[0].payload, false);
+  assert.equal("recipientPhone" in state.integrationEvents[0].payload, false);
 });

@@ -1,3 +1,4 @@
+import { projectIntegrationShipmentEvent } from "../integrations/integration-shipment-events.projector.js";
 import { randomUUID } from "node:crypto";
 import { createCustodyRepository } from "./custody.repository.js";
 
@@ -504,7 +505,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             data: { status: "PICKUP_CONFIRMED", pickupAt: clock() },
           });
           if (changed.count !== 1) throw fail(409, "DRIVER_PICKUP_STATE_CONFLICT", "The driver pickup state changed before custody was confirmed.");
-          await tx.bookingEvent.create({
+          const sourceEvent_HUB_PICKUP_CUSTODY_CONFIRMED = await tx.bookingEvent.create({
             data: {
               parcelBookingId: handover.parcelBookingId,
               actorUserId: userId,
@@ -514,6 +515,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
               metadata: { assignmentId: assignment.id, deliveryLegId: handover.deliveryLegId, handoverId },
             },
           });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: handover.parcelBookingId, sourceEvent: sourceEvent_HUB_PICKUP_CUSTODY_CONFIRMED });
           await repo.createAudit({
             actorUserId: userId, entityType: "DRIVER_ASSIGNMENT", entityId: assignment.id,
             action: "HUB_CUSTODY_RELEASE_CONFIRMED",
@@ -574,7 +576,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             where: { id: handover.parcelBookingId },
             data: { status: "IN_TRANSIT" },
           });
-          await tx.bookingEvent.create({
+          const sourceEvent_HUB_DESTINATION_CUSTODY_CONFIRMED = await tx.bookingEvent.create({
             data: {
               parcelBookingId: handover.parcelBookingId,
               actorUserId: userId,
@@ -584,6 +586,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
               metadata: { assignmentId: assignment.id, deliveryLegId: handover.deliveryLegId, nextDeliveryLegId: nextLeg?.id ?? null, handoverId },
             },
           });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: handover.parcelBookingId, sourceEvent: sourceEvent_HUB_DESTINATION_CUSTODY_CONFIRMED });
         }
 
         // A partner interstate leg is complete only when its destination hub confirms custody.
@@ -637,7 +640,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
                 where: { id: handover.parcelBookingId },
                 data: { status: "IN_TRANSIT" },
               });
-              await tx.bookingEvent.create({
+              const sourceEvent_PARTNER_HUB_CUSTODY_CONFIRMED = await tx.bookingEvent.create({
                 data: {
                   parcelBookingId: handover.parcelBookingId,
                   actorUserId: userId,
@@ -647,6 +650,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
                   metadata: { partnerAssignmentId: assignment.id, deliveryLegId: handover.deliveryLegId, nextDeliveryLegId: nextLeg?.id ?? null, handoverId },
                 },
               });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: handover.parcelBookingId, sourceEvent: sourceEvent_PARTNER_HUB_CUSTODY_CONFIRMED });
               await repo.createAudit({
                 actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT",
                 entityId: assignment.id, action: "PARTNER_EXECUTION_COMPLETED_AND_PAYABLE_CREATED",

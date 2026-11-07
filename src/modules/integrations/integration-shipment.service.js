@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createMultiLegPlan } from "../delivery-legs/delivery-plan.service.js";
 import { ConflictError, NotFoundError } from "../../shared/http/app-error.js";
+import { projectIntegrationShipmentEvent } from "./integration-shipment-events.projector.js";
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -404,7 +405,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
             throw new ConflictError("The selected quote changed while shipment creation was processing.", "INTEGRATION_QUOTE_NOT_BOOKABLE");
           }
 
-          await tx.bookingEvent.create({
+          const sourceEvent = await tx.bookingEvent.create({
             data: {
               parcelBookingId: booking.id,
               eventType: "INTEGRATION_SHIPMENT_CREATED",
@@ -424,6 +425,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
               },
             },
           });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: booking.id, sourceEvent });
 
           const responseBody = {
             shipment: {
