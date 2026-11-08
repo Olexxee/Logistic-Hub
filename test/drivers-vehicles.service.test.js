@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createDriverVehiclesService } from "../src/modules/drivers/drivers.vehicles.service.js";
 
-function fixture({ vehicle = null, activeAssignment = null, anotherVehicle = null } = {}) {
+function fixture({ vehicle = null, activeAssignment = null, anotherVehicle = null, existingEvidence = null } = {}) {
   const state = { created: null, updated: null, profileUpdate: null, audit: [] };
   const tx = {
     driverProfile: {
@@ -19,6 +19,7 @@ function fixture({ vehicle = null, activeAssignment = null, anotherVehicle = nul
       update: async ({ data }) => { state.updated = data; return { id: "vehicle-1", ...vehicle, ...data }; },
     },
     driverAssignment: { findFirst: async () => activeAssignment },
+    driverVerificationDocument: { findFirst: async () => existingEvidence },
     operationalAuditEvent: { create: async ({ data }) => { state.audit.push(data); return data; } },
   };
   const prismaClient = { $transaction: callback => callback(tx) };
@@ -42,6 +43,17 @@ test("verified vehicle metadata is immutable; driver must register a replacement
   await assert.rejects(
     service.updateVehicle({ userId: "driver-user", vehicleId: "vehicle-1", input: { make: "Different" } }),
     error => error.code === "VERIFIED_VEHICLE_IMMUTABLE",
+  );
+});
+
+test("vehicle identity cannot be changed while pending or approved evidence is attached", async () => {
+  const { service } = fixture({
+    vehicle: { id: "vehicle-1", type: "MOTORCYCLE", registrationPlate: "AB123CD", verificationStatus: "PENDING", isActive: false },
+    existingEvidence: { id: "document-1" },
+  });
+  await assert.rejects(
+    service.updateVehicle({ userId: "driver-user", vehicleId: "vehicle-1", input: { registrationPlate: "XY987ZT" } }),
+    error => error.code === "VEHICLE_EVIDENCE_EXISTS",
   );
 });
 
