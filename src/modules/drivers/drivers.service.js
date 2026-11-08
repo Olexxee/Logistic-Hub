@@ -229,8 +229,9 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
         }
 
         const approved = verificationStatus === "VERIFIED";
+        const now = clock();
         if (approved && kycMode === "STRICT") {
-          const identityDocument = await tx.driverVerificationDocument.findFirst({ where: { driverProfileId: profile.id, vehicleId: null, documentType: "IDENTITY", reviewStatus: "APPROVED" }, select: { id: true } });
+          const identityDocument = await tx.driverVerificationDocument.findFirst({ where: { driverProfileId: profile.id, vehicleId: null, documentType: "IDENTITY", reviewStatus: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, select: { id: true } });
           if (!identityDocument) throw conflict("DRIVER_IDENTITY_DOCUMENT_REQUIRED", "An approved identity document is required before strict-mode driver verification.");
         }
         const nextKycTier = kycMode === "TEST" ? "TEST_LIMITED" : "FULL";
@@ -251,11 +252,11 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
           });
           const [license, registrationDocuments] = await Promise.all([
             tx.driverVerificationDocument.findFirst({
-              where: { driverProfileId: profile.id, vehicleId: null, documentType: "DRIVER_LICENSE", reviewStatus: "APPROVED" },
+              where: { driverProfileId: profile.id, vehicleId: null, documentType: "DRIVER_LICENSE", reviewStatus: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
               select: { id: true },
             }),
             tx.driverVerificationDocument.findMany({
-              where: { vehicleId: { in: verifiedVehicles.map(vehicle => vehicle.id) }, documentType: "VEHICLE_REGISTRATION", reviewStatus: "APPROVED" },
+              where: { vehicleId: { in: verifiedVehicles.map(vehicle => vehicle.id) }, documentType: "VEHICLE_REGISTRATION", reviewStatus: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
               select: { vehicleId: true },
             }),
           ]);
@@ -339,8 +340,8 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
         const approved = verificationStatus === "VERIFIED";
         if (approved && kycMode === "STRICT" && vehicle.type !== "BICYCLE") {
           const [registration, license] = await Promise.all([
-            tx.driverVerificationDocument.findFirst({ where: { vehicleId: vehicle.id, documentType: "VEHICLE_REGISTRATION", reviewStatus: "APPROVED" }, select: { id: true } }),
-            tx.driverVerificationDocument.findFirst({ where: { driverProfileId: vehicle.driverProfile.id, vehicleId: null, documentType: "DRIVER_LICENSE", reviewStatus: "APPROVED" }, select: { id: true } }),
+            tx.driverVerificationDocument.findFirst({ where: { vehicleId: vehicle.id, documentType: "VEHICLE_REGISTRATION", reviewStatus: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, select: { id: true } }),
+            tx.driverVerificationDocument.findFirst({ where: { driverProfileId: vehicle.driverProfile.id, vehicleId: null, documentType: "DRIVER_LICENSE", reviewStatus: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, select: { id: true } }),
           ]);
           if (!registration || !license) throw conflict("VEHICLE_DOCUMENTS_REQUIRED", "Approved vehicle registration and driver-license documents are required in strict mode.");
         }
