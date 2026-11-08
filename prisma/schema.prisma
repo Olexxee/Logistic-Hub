@@ -927,6 +927,7 @@ model ParcelBooking {
   parcelPackages         ParcelBookingPackage[]
   integrationPaymentAttestation IntegrationPaymentAttestation?
   integrationEvents              IntegrationShipmentEvent[]
+  integrationPackingEvidence      IntegrationPackingEvidence[]
 
   @@index([senderId, createdAt])
   @@index([integrationClientId, createdAt])
@@ -1939,6 +1940,7 @@ model IntegrationClient {
   shipmentEvents      IntegrationShipmentEvent[]
   webhookEndpoints   IntegrationWebhookEndpoint[]
   webhookAuditEvents IntegrationWebhookAuditEvent[]
+  packingEvidence IntegrationPackingEvidence[]
 
   @@index([status, createdAt])
   @@map("integration_clients")
@@ -2274,4 +2276,33 @@ model OutboxJob {
   @@index([status, availableAt, createdAt])
   @@index([status, lockedAt])
   @@map("outbox_jobs")
+}
+
+
+model IntegrationPackingEvidence {
+  id                       String   @id @default(cuid())
+  clientId                 String
+  parcelBookingId          String
+  slot                     String
+  version                  Int
+  idempotencyKey           String
+  payloadHash              String
+  actorReference           String
+  originalName             String
+  mimeType                 String
+  sizeBytes                BigInt
+  sha256                   String
+  storageProvider          String   @default("CLOUDINARY")
+  bucket                   String
+  objectPath               String   @unique
+  uploadedAt               DateTime @default(now())
+  createdAt                DateTime @default(now())
+
+  client        IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  parcelBooking ParcelBooking     @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, idempotencyKey])
+  @@unique([parcelBookingId, slot, version])
+  @@index([clientId, parcelBookingId, slot, version])
+  @@map("integration_packing_evidence")
 }
