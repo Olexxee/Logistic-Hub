@@ -872,6 +872,8 @@ model ParcelBooking {
   integrationClientId            String?
   // Integration-owned shipments remain unassignable until the client releases the packing-review hold.
   integrationDispatchAuthorizedAt DateTime?
+  // Evidence versions become immutable once all four required slots are accepted.
+  integrationPackingEvidenceFrozenAt DateTime?
   integrationEventSequence      Int           @default(0)
   pickupServiceZoneId           String
   destinationServiceZoneId      String
