@@ -16,3 +16,7 @@ export const integrationShipmentCreateSchema = z.object({
     orderPaymentAmountMinor: minorAmount.optional(),
   }).strict(),
 }).strict();
+
+export const integrationShipmentDispatchAuthorizationSchema = z.object({
+  reason: z.enum(["BUYER_APPROVED", "REVIEW_TIMEOUT"]),
+}).strict();
