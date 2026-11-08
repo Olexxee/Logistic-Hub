@@ -232,6 +232,14 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         if (booking.paymentStatus !== "SUCCEEDED" || booking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
           throw new ConflictError("Packing evidence can only be frozen before partner assignment on a paid shipment.", "INTEGRATION_SHIPMENT_NOT_FREEZABLE");
         }
+        await tx.$queryRaw`SELECT "id" FROM "parcel_bookings" WHERE "id" = ${booking.id} FOR UPDATE`;
+        const lockedBooking = await tx.parcelBooking.findUnique({
+          where: { id: booking.id },
+          select: { integrationPackingEvidenceFrozenAt: true, status: true, paymentStatus: true },
+        });
+        if (lockedBooking?.status !== "AWAITING_PARTNER_ASSIGNMENT" || lockedBooking.paymentStatus !== "SUCCEEDED") {
+          throw new ConflictError("The shipment changed before packing evidence could be frozen.", "INTEGRATION_PACKING_EVIDENCE_FREEZE_CONFLICT");
+        }
 
         const evidence = await tx.integrationPackingEvidence.findMany({
           where: { clientId: client.id, parcelBookingId: booking.id },
