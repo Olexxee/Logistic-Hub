@@ -338,6 +338,7 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
           throw conflict("VEHICLE_NOT_REVIEWABLE", "Only pending or previously rejected vehicles can be reviewed.");
         }
         const approved = verificationStatus === "VERIFIED";
+        const now = clock();
         if (approved && kycMode === "STRICT" && vehicle.type !== "BICYCLE") {
           const [registration, license] = await Promise.all([
             tx.driverVerificationDocument.findFirst({ where: { vehicleId: vehicle.id, documentType: "VEHICLE_REGISTRATION", reviewStatus: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, select: { id: true } }),
