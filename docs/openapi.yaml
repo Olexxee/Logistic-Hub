@@ -7655,10 +7655,21 @@ components:
         totalPages: { type: integer }
     DriverAssignmentResource:
       type: object
-      required: [id, status, agreedFareMinor, currency, booking]
+      required: [id, status, agreedFareMinor, currency, vehicle, booking]
       properties:
         id: { type: string }
         status: { type: string, enum: [ACCEPTED, ARRIVED_AT_PICKUP, PICKUP_CONFIRMED, IN_PROGRESS, ARRIVED_AT_DESTINATION] }
+        vehicle:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [id, type, make, model, registrationPlate]
+              properties:
+                id: { type: string }
+                type: { type: string, enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK] }
+                make: { type: [string, 'null'] }
+                model: { type: [string, 'null'] }
+                registrationPlate: { type: [string, 'null'] }
         agreedFareMinor: { type: string, pattern: '^[0-9]+$' }
         currency: { type: string, minLength: 3, maxLength: 3 }
         acceptedAt: { type: [string, 'null'], format: date-time }
@@ -8435,9 +8446,10 @@ components:
         maxVolumeCm3: { type: integer, minimum: 1, maximum: 1000000000 }
     FareProposalResult:
       type: object
-      required: [offerId, proposedFareMinor, currency, status]
+      required: [offerId, vehicleId, proposedFareMinor, currency, status]
       properties:
         offerId: { type: string }
+        vehicleId: { type: string }
         proposedFareMinor:
           $ref: '#/components/schemas/PositiveMinorAmount'
         currency: { type: string, const: NGN }
