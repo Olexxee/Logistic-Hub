@@ -7675,6 +7675,8 @@ components:
         sizeBytes: { type: string, pattern: "^[1-9][0-9]*$" }
         sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
         uploadedAt: { type: string, format: date-time }
+        replay: { type: boolean }
+        shipmentReference: { type: string }
     IntegrationWebhookEndpoint:
       type: object
       additionalProperties: false
