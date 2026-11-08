@@ -67,6 +67,7 @@ function serializeCustomerOffer(offer) {
       averageRating: offer.driverProfile.averageRating?.toString() ?? null,
       completedJobs: offer.driverProfile.completedJobs,
     },
+    vehicle: offer.vehicle ? { type: offer.vehicle.type, make: offer.vehicle.make, model: offer.vehicle.model } : null,
   };
 }
 
@@ -136,10 +137,10 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
       return (await db.findDriverOffers(profile.id, clock())).map(serializeDriverOffer);
     },
 
-    async proposeFare({ offerId, userId, proposedFareMinor, idempotencyKey }) {
+    async proposeFare({ offerId, userId, vehicleId, proposedFareMinor, idempotencyKey }) {
       const now = clock();
       const fare = BigInt(proposedFareMinor);
-      const proposalHash = hash({ offerId, proposedFareMinor });
+      const proposalHash = hash({ offerId, vehicleId, proposedFareMinor });
       try {
         return await db.transaction(async (tx) => {
           const profile = await tx.driverProfile.findUnique({
@@ -162,10 +163,16 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             || offer.expiresAt <= now || offer.deliveryLeg.status !== "READY_FOR_ASSIGNMENT") {
             throw conflict("OFFER_NO_LONGER_AVAILABLE", "This delivery-leg offer is no longer available for a fare proposal.");
           }
+          const vehicle = await tx.vehicle.findFirst({
+            where: { id: vehicleId, driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" },
+            select: { id: true },
+          });
+          if (!vehicle) throw conflict("VEHICLE_NOT_ELIGIBLE", "Select one of your active, verified vehicles before proposing a fare.");
           const updated = await db.updateOffer(tx, {
             id: offer.id, driverProfileId: profile.id, status: "OFFERED",
             proposedFareMinor: null, expiresAt: { gt: now },
           }, {
+            vehicleId: vehicle.id,
             proposedFareMinor: fare,
             respondedAt: now,
             proposalIdempotencyKey: idempotencyKey,
@@ -178,9 +185,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             eventType: "DELIVERY_LEG_FARE_PROPOSED",
             fromStatus: offer.deliveryLeg.status,
             toStatus: offer.deliveryLeg.status,
-            metadata: { deliveryLegId: offer.deliveryLegId, offerId, proposedFareMinor: fare.toString(), currency: offer.currency },
+            metadata: { deliveryLegId: offer.deliveryLegId, offerId, vehicleId: vehicle.id, proposedFareMinor: fare.toString(), currency: offer.currency },
           });
-          return { offerId, proposedFareMinor: fare.toString(), currency: offer.currency, status: "OFFERED" };
+          return { offerId, vehicleId: vehicle.id, proposedFareMinor: fare.toString(), currency: offer.currency, status: "OFFERED" };
         });
       } catch (error) {
         if (error.code !== "P2002") throw error;
@@ -188,7 +195,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         if (!existing || existing.id !== offerId || existing.proposalPayloadHash !== proposalHash) {
           throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
         }
-        return { offerId, proposedFareMinor: existing.proposedFareMinor.toString(), currency: existing.currency, status: existing.status, replay: true };
+        return { offerId, vehicleId: existing.vehicleId, proposedFareMinor: existing.proposedFareMinor.toString(), currency: existing.currency, status: existing.status, replay: true };
       }
     },
 
@@ -243,6 +250,12 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             || offer.proposedFareMinor == null || offer.expiresAt <= now) {
             throw conflict("OFFER_NO_LONGER_AVAILABLE", "The selected driver fare is invalid or expired.");
           }
+          if (!offer.vehicleId) throw conflict("VEHICLE_NOT_SELECTED", "The driver has not selected a vehicle for this offer.");
+          const selectedVehicle = await tx.vehicle.findFirst({
+            where: { id: offer.vehicleId, driverProfileId: offer.driverProfileId, isActive: true, verificationStatus: "VERIFIED" },
+            select: { id: true },
+          });
+          if (!selectedVehicle) throw conflict("VEHICLE_NO_LONGER_ELIGIBLE", "The selected vehicle is no longer active and verified.");
           if (offer.acceptanceIdempotencyKey === idempotencyKey) {
             if (offer.acceptancePayloadHash !== acceptanceHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare acceptance.");
             const assignment = await tx.driverAssignment.findFirst({
@@ -284,7 +297,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               verificationStatus: "VERIFIED", kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] }, suspendedAt: null, isOnline: true, isAvailable: true,
               lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
               user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
-              vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
+              vehicles: { some: { id: offer.vehicleId, isActive: true, verificationStatus: "VERIFIED" } },
               AND: [
                 { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
                 { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
@@ -317,6 +330,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               parcelBookingId: booking.id,
               deliveryLegId: leg.id,
               driverProfileId: offer.driverProfileId,
+              vehicleId: offer.vehicleId,
               assignedByUserId: user.id,
               status: "AWAITING_PAYMENT",
               agreedFareMinor: offer.proposedFareMinor,
@@ -334,7 +348,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               fromStatus: "READY_FOR_ASSIGNMENT",
               toStatus: "AWAITING_PAYMENT",
               metadata: {
-                deliveryLegId: leg.id, assignmentId: assignment.id, offerId,
+                deliveryLegId: leg.id, assignmentId: assignment.id, offerId, vehicleId: offer.vehicleId,
                 agreedFareMinor: offer.proposedFareMinor.toString(),
                 currency: offer.currency,
                 paymentRequired: true,
