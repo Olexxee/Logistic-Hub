@@ -1,6 +1,6 @@
 # MarketIQ Integration Contract v2 — Generic Logistic Hub Boundary
 
-**Status:** Cross-system architecture decision baseline for the MarketIQ client. This describes the intended contract; it does not claim that packing evidence, buyer review, cancellation instructions or new event types are implemented.
+**Status:** Cross-system contract v2. LI-02G-A private packing evidence is implemented on the current cross-repository PR branches and awaits CI/review/merge. LI-02G-B buyer review, cancellation instructions and dispatch authorization remain unimplemented pending explicit policy decisions.
 
 **Relationship:** This document specializes the [Generic Logistics Integration API](generic-logistics-integration-v1.md). It supersedes conflicting MarketIQ-specific v1 assumptions about external customer/seller user creation, customer email collection and Hub-side Paystack verification. It does not create MarketIQ-only business logic in the generic API.
 
@@ -71,13 +71,13 @@ MarketIQ supplies a structured manifest for the seller fulfilment: external line
 
 The photographs are packing evidence, not proof of delivery. Each evidence record needs external fulfilment/shipment reference, evidence slot/type, capture timestamp, actor reference, checksum, content type, byte size, upload/verification status and version. Replacements must be versioned and audited; originals must not be silently overwritten.
 
-The media transport mechanism is not yet implemented or specified as an existing endpoint. Do not send base64 image blobs in shipment JSON and do not expose permanent public object URLs. Before implementation, choose private authenticated server-to-server transfer or narrowly scoped short-lived signed retrieval. Validate actual downloaded bytes and content, constrain expiry, avoid logging signed URLs, and preserve a durable Hub evidence copy/reference for the defined retention period. Buyer access remains mediated by MarketIQ.
+LI-02G-A implements private server-to-server binary transfer; no image bytes are embedded in shipment JSON and no permanent public object URL is exposed. MarketIQ seller upload is `POST /api/seller/fulfillments/:fulfillmentId/packing-evidence` (one multipart `image`, one `slot`, and an `Idempotency-Key`). MarketIQ verifies active seller ownership, paid order, pre-dispatch fulfilment and booked Hub shipment. Hub ingestion is `POST /api/v1/integrations/shipments/by-external-reference/:externalFulfillmentReference/packing-evidence`, requires `shipments:write`, and receives `application/octet-stream` plus explicit evidence metadata headers. Hub accepts JPEG/PNG/WebP up to 5 MiB, validates file signatures, calculates SHA-256 and stores an authenticated/private Cloudinary asset. The four slots are `CONTENTS_OVERVIEW`, `PRODUCT_DETAILS`, `QUANTITY_CHECK` and `SEALED_PARCEL`; replacements increment a slot version and preserve prior objects. Buyer listing returns the latest version per slot. Hub list/download endpoints require `shipments:read`, and downloads are scoped to both client and external fulfilment reference. MarketIQ buyer endpoints authorize ownership and proxy the image; no Cloudinary URL is sent to the browser. Hub records an internal BookingEvent for each accepted evidence version. No Hub webhook event for evidence is currently emitted; buyer reads use the authenticated MarketIQ proxy.
 
 ## 5. Buyer review and cancellation instructions
 
 MarketIQ owns the buyer-facing review window, buyer communications and cancellation/refund decision. Logistic Hub owns physical execution.
 
-After packing evidence is accepted and recorded, Logistic Hub emits a signed event referencing the external fulfilment and evidence version. MarketIQ displays the evidence to the buyer. If the buyer raises an issue or requests cancellation, MarketIQ sends an authenticated, idempotent operational instruction (for example, hold/cancel/return request); the exact action vocabulary and endpoint must be designed and versioned before implementation.
+After packing evidence is accepted and recorded, the buyer retrieves the latest evidence through MarketIQ's authenticated proxy. LI-02G-A does not emit a new Hub webhook event or create a buyer review timer. If the buyer raises an issue or requests cancellation, MarketIQ will send an authenticated, idempotent operational instruction (for example, hold/cancel/return request); the exact action vocabulary and endpoint must be designed and versioned in LI-02G-B.
 
 The review duration, expiry behavior and automatic-approval rule are not yet approved. The Hub must not invent a timeout or independently decide that buyer review has expired. The Hub must not proceed to a gated dispatch milestone until it has the required MarketIQ authorization defined by the contract.
 
@@ -130,8 +130,8 @@ Examples of Hub-owned events include shipment accepted, rider assigned, pickup, 
 2. Hub booking authorization alignment: ensure existing shipment creation validates MarketIQ payment authorization and accepted quote without Paystack verification or synthetic sender identity.
 3. MarketIQ LI-02E / Hub: idempotent worker delivery, shipment creation/recovery, dispatch activation and failure recovery.
 4. LI-02F: signed packing-evidence, shipment and cancellation coordination events; MarketIQ projection and monotonic event application.
-5. Media/evidence slice: private media transfer, max-four enforcement, checksum/version validation, retention and buyer-view authorization.
-6. Cancellation/return slice: approved review-window policy, cancellation command contract, custody-aware stop/hold/return actions and refund coordination.
-7. LI-02G: staging end-to-end, privacy review, seller accountability policy, reconciliation and operational runbooks.
+5. LI-02G-A: private media transfer, four typed evidence slots, checksum/version validation, durable private storage and buyer-view authorization (current PR branches; CI and merge pending).
+6. LI-02G-B: approved review-window policy, cancellation command contract, custody-aware stop/hold/return actions and refund coordination.
+7. LI-02G-C: staging end-to-end, privacy review, seller accountability policy, reconciliation and operational runbooks.
 
 Do not claim any new API route, database model, media transfer, buyer screen, review timer or cancellation behavior is implemented until code, tests and both sides of the contract exist. The generic integration API must remain reusable for other clients; MarketIQ-specific semantics belong in a client contract/configuration, not hard-coded generic domain logic.
