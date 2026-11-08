@@ -113,6 +113,7 @@ test("driver fare proposals are idempotent and scoped to the driver's own leg of
   const repository = {
     transaction: (callback) => callback({
       driverProfile: { findUnique: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
+      vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
     }),
     findOfferForDriver: async () => offer,
     updateOffer: async (_tx, where, data) => { offerUpdate = { where, data }; return { count: 1 }; },
@@ -121,7 +122,7 @@ test("driver fare proposals are idempotent and scoped to the driver's own leg of
   const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
   const result = await service.proposeFare({
     offerId: "offer_1", userId: "driver_user_1",
-    proposedFareMinor: "2500", idempotencyKey: "leg-fare-proposal-0001",
+    vehicleId: "vehicle_1", proposedFareMinor: "2500", idempotencyKey: "leg-fare-proposal-0001",
   });
   assert.equal(result.proposedFareMinor, "2500");
   assert.equal(offerUpdate.data.proposalIdempotencyKey, "leg-fare-proposal-0001");
@@ -133,7 +134,7 @@ test("customer acceptance reserves one driver and creates an awaiting-payment le
   let legUpdate;
   const offer = {
     id: "offer_1", deliveryLegId: leg.id, driverProfileId: "profile_1",
-    status: "OFFERED", proposedFareMinor: 2500n, currency: "NGN",
+    status: "OFFERED", vehicleId: "vehicle_1", proposedFareMinor: 2500n, currency: "NGN",
     expiresAt: new Date(now.getTime() + 60_000),
   };
   const tx = {
@@ -146,6 +147,7 @@ test("customer acceptance reserves one driver and creates an awaiting-payment le
       findUnique: async () => offer,
       updateMany: async () => ({ count: 1 }),
     },
+    vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
     driverProfile: {
       findFirst: async () => validDriver("profile_1"),
       updateMany: async () => ({ count: 1 }),
@@ -175,6 +177,7 @@ test("customer acceptance reserves one driver and creates an awaiting-payment le
   assert.equal(result.paymentEnabled, false);
   assert.equal(result.agreedFareMinor, "2500");
   assert.equal(assignment.data.deliveryLegId, leg.id);
+  assert.equal(assignment.data.vehicleId, "vehicle_1");
   assert.equal(assignment.data.status, "AWAITING_PAYMENT");
   assert.equal(assignment.data.agreedFareMinor, 2500n);
   assert.deepEqual(legUpdate.where, { id: leg.id, status: "READY_FOR_ASSIGNMENT" });
@@ -308,6 +311,7 @@ test("a repeated fare proposal replays after the driver becomes unavailable", as
     offerId,
     userId: "driver_user_1",
     proposedFareMinor,
+    vehicleId,
     idempotencyKey,
   });
 
