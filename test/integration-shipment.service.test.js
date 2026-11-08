@@ -701,7 +701,9 @@ test("a return request is not duplicated when a client retries with a different 
     client: { id: "client_1" }, idempotencyKey: "return-shipment-003",
     externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer repeats return request",
   });
+  assert.equal(second.statusCode, 202);
   assert.equal(second.body.alreadyRequested, true);
+  assert.equal(second.body.physicalReturnConfirmed, false);
   assert.equal(state.bookingEvents.length, 1);
   assert.equal(state.integrationEvents.length, 1);
 });
