@@ -485,6 +485,13 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
 
         const confirmedLeg = await repo.findBookingLeg(handover.deliveryLegId, tx);
 
+        if (handover.fromPartyType === "TRANSPORT_PARTNER" && handover.toPartyType === "RECIPIENT"
+          && !(confirmedLeg?.type === "INTERSTATE_TRANSPORT"
+            && confirmedLeg?.destinationHubPointId == null
+            && Boolean(handover.parcelBooking?.integrationClientId))) {
+          throw fail(409, "PARTNER_RECIPIENT_HANDOVER_NOT_SUPPORTED", "Direct partner-to-recipient completion is reserved for integration end-to-end shipments without a destination hub.");
+        }
+
         if (handover.fromPartyType === "HUB" && ["DRIVER", "TRANSPORT_PARTNER"].includes(handover.toPartyType)) {
           const blockingCase = await repo.findBlockingHubOperationalCase(handover.deliveryLegId, tx);
           if (blockingCase) throw fail(409, "HUB_OPERATIONAL_CASE_OPEN", "This parcel has an unresolved operational exception. Resolve or close the case before releasing custody.");
