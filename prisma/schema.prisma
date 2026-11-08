@@ -2303,6 +2303,6 @@ model IntegrationPackingEvidence {
 
   @@unique([clientId, idempotencyKey])
   @@unique([parcelBookingId, slot, version])
-  @@index([clientId, parcelBookingId, slot, version])
+  @@index([clientId, parcelBookingId, slot, version], map: "integration_packing_evidence_client_booking_slot_version_idx")
   @@map("integration_packing_evidence")
 }
