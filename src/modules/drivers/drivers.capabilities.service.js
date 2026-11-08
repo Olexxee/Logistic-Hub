@@ -1,4 +1,5 @@
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
+import { env } from "../../config/env.js";
 
 const CAPABILITIES = ["LOCAL_DISPATCH", "PICKUP_COLLECTION", "FINAL_MILE_DELIVERY"];
 const REQUESTABLE_AGAIN = ["REJECTED", "REVOKED"];
@@ -25,7 +26,7 @@ function assertTransition(currentStatus, nextStatus) {
   }
 }
 
-export function createDriverCapabilitiesService({ prismaClient, clock = () => new Date() }) {
+export function createDriverCapabilitiesService({ prismaClient, clock = () => new Date(), kycMode = env.DRIVER_KYC_MODE }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
 
   async function requestRecord({ tx, delegate, uniqueWhere, createData, entityType, entityLabel, auditEntityId, actorUserId }) {
@@ -178,10 +179,15 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
         eligibility: async current => {
           const profile = await tx.driverProfile.findUnique({
             where: { id: current.driverProfileId },
-            select: { verificationStatus: true, suspendedAt: true },
+            select: { verificationStatus: true, suspendedAt: true, kycTier: true },
           });
           if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt) {
             return { ok: false, code: "DRIVER_PROFILE_NOT_APPROVED", message: "A driver capability can only be approved for a verified, active driver profile." };
+          }
+          const kycAllowed = profile.kycTier === "FULL"
+            || (kycMode === "TEST" && profile.kycTier === "TEST_LIMITED" && capability === "LOCAL_DISPATCH");
+          if (!kycAllowed) {
+            return { ok: false, code: "DRIVER_KYC_CAPABILITY_RESTRICTED", message: "This driver's KYC tier does not permit approval for the requested service capability." };
           }
           return { ok: true };
         },
@@ -215,7 +221,7 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
             select: {
               isActive: true,
               verificationStatus: true,
-              driverProfile: { select: { verificationStatus: true, suspendedAt: true } },
+              driverProfile: { select: { verificationStatus: true, suspendedAt: true, kycTier: true } },
             },
           });
           if (!vehicle || !vehicle.isActive || vehicle.verificationStatus !== "VERIFIED") {
@@ -223,6 +229,11 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
           }
           if (vehicle.driverProfile.verificationStatus !== "VERIFIED" || vehicle.driverProfile.suspendedAt) {
             return { ok: false, code: "DRIVER_PROFILE_NOT_APPROVED", message: "Vehicle suitability requires a verified, active driver profile." };
+          }
+          const kycAllowed = vehicle.driverProfile.kycTier === "FULL"
+            || (kycMode === "TEST" && vehicle.driverProfile.kycTier === "TEST_LIMITED" && capability === "LOCAL_DISPATCH");
+          if (!kycAllowed) {
+            return { ok: false, code: "DRIVER_KYC_CAPABILITY_RESTRICTED", message: "This driver's KYC tier does not permit approval for the requested vehicle service capability." };
           }
           return { ok: true };
         },
