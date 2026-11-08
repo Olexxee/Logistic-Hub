@@ -168,6 +168,9 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         if (leg.type !== "INTERSTATE_TRANSPORT") return { blocker: "LEG_NOT_PARTNER_EXECUTED" };
         if (leg.status !== "READY_FOR_ASSIGNMENT") return { blocker: "LEG_NOT_READY" };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
+        if (leg.parcelBooking.integrationClientId && !leg.parcelBooking.integrationDispatchAuthorizedAt) {
+          return { blocker: "INTEGRATION_DISPATCH_REVIEW_PENDING" };
+        }
 
         const acceptedQuote = await tx.shipmentQuote.findFirst({
           where: { parcelBookingId: leg.parcelBookingId, status: "ACCEPTED" },

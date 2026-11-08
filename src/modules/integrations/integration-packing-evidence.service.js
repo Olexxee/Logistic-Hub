@@ -39,7 +39,7 @@ export function createIntegrationPackingEvidenceService({ prismaClient, storage 
     if (!mapping) throw new NotFoundError("Shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
     const booking = await prismaClient.parcelBooking.findFirst({
       where: { id: mapping.internalResourceId, integrationClientId: clientId, senderId: null },
-      select: { id: true, publicReference: true },
+      select: { id: true, publicReference: true, integrationPackingEvidenceFrozenAt: true },
     });
     if (!booking) throw new NotFoundError("Shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
     return booking;
@@ -63,6 +63,13 @@ export function createIntegrationPackingEvidenceService({ prismaClient, storage 
       try {
         const result = await serializableTransaction(prismaClient, async tx => {
           await tx.$queryRaw`SELECT "id" FROM "parcel_bookings" WHERE "id" = ${booking.id} FOR UPDATE`;
+          const lockedBooking = await tx.parcelBooking.findUnique({
+            where: { id: booking.id },
+            select: { integrationPackingEvidenceFrozenAt: true },
+          });
+          if (lockedBooking?.integrationPackingEvidenceFrozenAt) {
+            throw new ConflictError("Packing evidence is frozen and can no longer be replaced.", "PACKING_EVIDENCE_FROZEN");
+          }
           const replay = await tx.integrationPackingEvidence.findUnique({
             where: { clientId_idempotencyKey: { clientId: client.id, idempotencyKey: metadata.idempotencyKey } },
           });
@@ -113,7 +120,7 @@ export function createIntegrationPackingEvidenceService({ prismaClient, storage 
       });
       const latestBySlot = new Map();
       for (const row of rows) if (!latestBySlot.has(row.slot)) latestBySlot.set(row.slot, row);
-      return { shipmentReference: booking.publicReference, evidence: [...latestBySlot.values()].map(present) };
+      return { shipmentReference: booking.publicReference, frozenAt: booking.integrationPackingEvidenceFrozenAt, evidence: [...latestBySlot.values()].map(present) };
     },
 
     async download({ client, externalFulfillmentReference, evidenceId }) {

@@ -6242,6 +6242,99 @@ paths:
         '403': { description: Integration client lacks shipments:write. }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/shipments/by-external-reference/{externalFulfillmentReference}/packing-evidence/freeze:
+    post:
+      tags: [Integrations]
+      operationId: freezeIntegrationPackingEvidence
+      summary: Freeze all four accepted packing evidence slots
+      description: Requires shipments:write and all four evidence slots. Once frozen, Hub rejects every later upload or replacement for this shipment.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: Evidence versions are frozen for buyer review.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:write. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/shipments/by-external-reference/{externalFulfillmentReference}/dispatch-authorization:
+    post:
+      tags: [Integrations]
+      operationId: authorizeIntegrationShipmentDispatch
+      summary: Release the integration shipment's partner-assignment hold
+      description: Requires shipments:write. The command is idempotent and can only release a paid integration shipment before partner assignment or pickup. The reason is either buyer approval or expiry of the configured buyer review window.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  enum: [BUYER_APPROVED, REVIEW_TIMEOUT]
+      responses:
+        '200':
+          description: Dispatch hold released; partner assignment may now proceed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [shipmentId, externalFulfillmentReference, dispatchAuthorizedAt, reason, replay]
+                    properties:
+                      shipmentId: { type: string }
+                      externalFulfillmentReference: { type: string }
+                      dispatchAuthorizedAt: { type: string, format: date-time }
+                      reason: { type: string }
+                      replay: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:write. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /integrations/shipments/by-external-reference/{externalFulfillmentReference}:
     get:
       tags: [Integrations]
@@ -7702,6 +7795,8 @@ components:
         externalFulfillmentReference: { type: string }
         status: { type: string }
         paymentStatus: { type: string }
+        dispatchAuthorizedAt: { type: [string, 'null'], format: date-time }
+        packingEvidenceFrozenAt: { type: [string, 'null'], format: date-time }
         currency: { type: string }
         customerChargeMinor:
           oneOf:

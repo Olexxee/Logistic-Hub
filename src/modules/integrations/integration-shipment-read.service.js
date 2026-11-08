@@ -14,6 +14,8 @@ function serializeShipment(booking) {
     externalFulfillmentReference: booking.externalFulfillmentReference,
     status: booking.status,
     paymentStatus: booking.paymentStatus,
+    dispatchAuthorizedAt: booking.integrationDispatchAuthorizedAt ?? null,
+    packingEvidenceFrozenAt: booking.integrationPackingEvidenceFrozenAt ?? null,
     currency: booking.currency,
     customerChargeMinor: minor(booking.customerPayableMinor),
     routeMode: booking.pricingSnapshot?.routeSnapshot?.routeMode ?? null,
