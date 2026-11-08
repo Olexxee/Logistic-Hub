@@ -223,6 +223,7 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
       updateMany: async (args) => { writes.push(["offer", args]); return { count: 1 }; },
     },
     driverProfile: {
+      findFirst: async () => driver("driver_profile_2"),
       updateMany: async (args) => { writes.push(["driver", args]); return { count: 1 }; },
     },
     vehicle: { findFirst: async () => ({ id: "vehicle_2" }) },
