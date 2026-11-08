@@ -6282,6 +6282,167 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Integration client lacks shipments:read. }
         '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/shipments/by-external-reference/{externalFulfillmentReference}/packing-evidence:
+    post:
+      tags: [Integrations]
+      operationId: uploadIntegrationPackingEvidence
+      summary: Upload one private packing evidence image for an integration shipment
+      description: Requires shipments:write. Accepts one JPEG, PNG or WebP binary image up to 5 MiB. Repeated slot uploads create immutable versions; reuse an Idempotency-Key only for the same payload.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+            pattern: "^[A-Za-z0-9._:-]+$"
+        - in: header
+          name: X-Evidence-Slot
+          required: true
+          schema:
+            type: string
+            enum: [CONTENTS_OVERVIEW, PRODUCT_DETAILS, QUANTITY_CHECK, SEALED_PARCEL]
+        - in: header
+          name: X-Evidence-Actor-Reference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: X-File-Content-Type
+          required: true
+          schema:
+            type: string
+            enum: [image/jpeg, image/png, image/webp]
+        - in: header
+          name: X-File-Name
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 160 }
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: Private evidence stored and versioned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/IntegrationPackingEvidence' }
+        '200':
+          description: Idempotent replay of an existing evidence upload.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data: { $ref: '#/components/schemas/IntegrationPackingEvidence' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:write. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Idempotency key conflict or evidence persistence conflict. }
+        '413': { description: Image exceeds 5 MiB. }
+        '415': { description: Unsupported media type or invalid image signature. }
+        '503': { description: Private evidence storage is unavailable. }
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationPackingEvidence
+      summary: List the latest packing evidence version for each slot
+      description: Requires shipments:read. The shipment and evidence are scoped to the authenticated integration client. Earlier versions are retained but not returned by this current-evidence listing.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Current evidence metadata; no storage URLs are returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [shipmentReference, evidence]
+                    properties:
+                      shipmentReference: { type: string }
+                      evidence:
+                        type: array
+                        maxItems: 4
+                        items: { $ref: '#/components/schemas/IntegrationPackingEvidence' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:read. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/shipments/by-external-reference/{externalFulfillmentReference}/packing-evidence/{evidenceId}/download:
+    get:
+      tags: [Integrations]
+      operationId: downloadIntegrationPackingEvidence
+      summary: Download private packing evidence for its owning shipment
+      description: Requires shipments:read. Both evidence ID and external fulfilment reference are checked against the authenticated client and the same shipment.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: path
+          name: evidenceId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Original image bytes with private, no-store response headers.
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:read. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Stored evidence failed checksum verification. }
   /integrations/webhooks:
     get:
       tags: [Webhooks]
@@ -7496,6 +7657,26 @@ components:
         updatedAt:
           type: string
           format: date-time
+    IntegrationPackingEvidence:
+      type: object
+      additionalProperties: false
+      required: [id, slot, version, actorReference, originalName, mimeType, sizeBytes, sha256, uploadedAt]
+      properties:
+        id: { type: string }
+        slot:
+          type: string
+          enum: [CONTENTS_OVERVIEW, PRODUCT_DETAILS, QUANTITY_CHECK, SEALED_PARCEL]
+        version: { type: integer, minimum: 1 }
+        actorReference: { type: string }
+        originalName: { type: string }
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+        sizeBytes: { type: string, pattern: "^[1-9][0-9]*$" }
+        sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        uploadedAt: { type: string, format: date-time }
+        replay: { type: boolean }
+        shipmentReference: { type: string }
     IntegrationWebhookEndpoint:
       type: object
       additionalProperties: false
