@@ -34,7 +34,12 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
     let record;
     let before = null;
     if (!existing) {
-      record = await delegate.create({ data: createData });
+      try {
+        record = await delegate.create({ data: createData });
+      } catch (error) {
+        if (error?.code === "P2002") throw conflict("CAPABILITY_REQUEST_CONFLICT", "A request for this capability already exists.");
+        throw error;
+      }
     } else {
       if (!REQUESTABLE_AGAIN.includes(existing.status)) {
         throw conflict("CAPABILITY_REQUEST_EXISTS", `This ${entityLabel} capability is already ${existing.status.toLowerCase()}.`);
