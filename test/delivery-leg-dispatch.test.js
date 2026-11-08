@@ -328,17 +328,14 @@ test("a repeated fare proposal replays after the driver becomes unavailable", as
   assert.equal(result.proposedFareMinor, proposedFareMinor);
 });
 
-test("TEST_LIMITED driver can receive parcel delivery offers in TEST mode",async()=>{
-  let offers=[];
-  const testDriver={...validDriver("test-limited-driver"),kycTier:"TEST_LIMITED"};
+test("TEST_LIMITED drivers cannot receive pickup-leg offers without an approvable pickup capability",async()=>{
   const repository={
     transaction:callback=>callback({}),findLeg:async()=>leg,findActiveServiceZones:async()=>[{id:"zone_ikeja"}],listActiveOffers:async()=>[],
-    findEligibleDrivers:async()=>[testDriver],
-    createOffers:async(_tx,data)=>{offers=data;return{count:data.length};},
-    recordEvent:async()=>{},
+    findEligibleDrivers:async()=>[],
   };
   const service=createDeliveryLegDispatchService({prismaClient:{},repository,clock:()=>now});
-  const result=await service.requestOffers({legId:leg.id,user:{id:"sender_1",role:"CUSTOMER"}});
-  assert.equal(result.offersCreated,1);
-  assert.equal(offers[0].driverProfileId,"test-limited-driver");
+  await assert.rejects(
+    service.requestOffers({legId:leg.id,user:{id:"sender_1",role:"CUSTOMER"}}),
+    error=>error.code==="NO_ELIGIBLE_DRIVERS"&&error.statusCode===409,
+  );
 });
