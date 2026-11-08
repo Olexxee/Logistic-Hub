@@ -284,7 +284,7 @@ test("driver fare proposal requires an owned active verified vehicle and stores 
     driverProfile: { findUnique: async () => ({ id: "driver_profile_vehicle_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
     driverOffer: {
       findUnique: async () => offer,
-      updateMany: async (_where, args) => { offerUpdate = args; return { count: 1 }; },
+      updateMany: async ({ data }) => { offerUpdate = data; return { count: 1 }; },
     },
     vehicle: { findFirst: async ({ where }) => where.id === "vehicle-verified" ? { id: "vehicle-verified" } : null },
     bookingEvent: { create: async ({ data }) => { event = data; return data; } },
