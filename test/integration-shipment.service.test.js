@@ -705,3 +705,38 @@ test("a return request is not duplicated when a client retries with a different 
   assert.equal(state.bookingEvents.length, 1);
   assert.equal(state.integrationEvents.length, 1);
 });
+
+
+test("integration stop replays an identical command and rejects idempotency-key payload reuse", async () => {
+  const { state, prismaClient } = actionFixture();
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const input = {
+    client: { id: "client_1" }, idempotencyKey: "stop-shipment-replay",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer cancelled before dispatch",
+  };
+  const first = await service.stopShipment(input);
+  const replay = await service.stopShipment(input);
+  assert.equal(first.body.status, "STOPPED");
+  assert.equal(replay.replay, true);
+  assert.equal(state.bookingEvents.length, 1);
+  await assert.rejects(
+    service.stopShipment({ ...input, reason: "Different cancellation reason" }),
+    error => error.code === "IDEMPOTENCY_CONFLICT",
+  );
+});
+
+test("an in-transit partner assignment is sufficient evidence for a return request", async () => {
+  const { state, prismaClient } = actionFixture({
+    bookingStatus: "DRIVER_ASSIGNED",
+    legStatus: "IN_TRANSIT",
+    assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "IN_TRANSIT" }],
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.requestShipmentReturn({
+    client: { id: "client_1" }, idempotencyKey: "return-shipment-assignment-only",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer requests return to seller",
+  });
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.body.status, "RETURN_REQUESTED");
+  assert.equal(state.booking.status, "DRIVER_ASSIGNED");
+});
