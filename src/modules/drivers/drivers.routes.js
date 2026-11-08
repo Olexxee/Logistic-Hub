@@ -15,6 +15,7 @@ import { createDriversService } from "./drivers.service.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { createDriversAdminRouter } from "./drivers.admin.routes.js";
 import { createDriverDocumentsRouter } from "./driver-documents.routes.js";
+import { createDriverCapabilitiesRouter } from "./drivers.capabilities.routes.js";
 
 const idSchema = z.string().trim().min(1).max(128);
 
@@ -42,6 +43,7 @@ export function createDriversRouter({ prismaClient = prisma, email = emailServic
   const requireDriver = roleMiddleware("DRIVER");
   router.use("/admin", createDriversAdminRouter({ prismaClient, authMiddleware, roleMiddleware }));
   router.use("/", createDriverDocumentsRouter({ prismaClient, authMiddleware, roleMiddleware }));
+  router.use("/", createDriverCapabilitiesRouter({ prismaClient, authMiddleware, roleMiddleware }));
 
   router.get("/me", authMiddleware, async (req, res, next) => {
     try {
