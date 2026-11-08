@@ -97,6 +97,8 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
   assert.deepEqual(zoneQuery.select, { id: true, stateId: true });
   assert.deepEqual(driverQuery.where.kycTier.in, ["FULL", "TEST_LIMITED"]);
   assert.equal(driverQuery.where.suspendedAt, null);
+  assert.deepEqual(driverQuery.where.capabilities.some, { capability: "LOCAL_DISPATCH", status: "APPROVED" });
+  assert.deepEqual(driverQuery.where.vehicles.some.serviceCapabilities.some, { capability: "LOCAL_DISPATCH", status: "APPROVED" });
   assert.equal(zoneQuery.where.availability.some.serviceType, "PARCEL_DELIVERY");
   assert.equal(zoneQuery.where.availability.some.isEnabled, true);
   assert.deepEqual(driverQuery.where.lastLocationAt, {
