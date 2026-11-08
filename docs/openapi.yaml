@@ -2198,9 +2198,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [vehicleId, proposedFareMinor]
+              required: [proposedFareMinor]
               properties:
-                vehicleId: { type: string, minLength: 1, maxLength: 128 }
+                vehicleId: { type: string, minLength: 1, maxLength: 128, description: Optional only when the driver has exactly one active verified vehicle; required when multiple are eligible. }
                 proposedFareMinor:
                   $ref: '#/components/schemas/PositiveMinorAmount'
       responses:
