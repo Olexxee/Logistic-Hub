@@ -162,7 +162,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             if (offer.proposalPayloadHash !== proposalHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
             return { offerId, proposedFareMinor: offer.proposedFareMinor.toString(), currency: offer.currency, status: offer.status, replay: true };
           }
-          if (profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) {
+          if (profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED")) || !profile.isOnline || !profile.isAvailable) {
             throw new ForbiddenError("A verified, online and available driver profile is required.");
           }
           if (offer.status !== "OFFERED" || offer.proposedFareMinor != null
