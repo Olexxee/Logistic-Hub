@@ -7,7 +7,7 @@ import { createIntegrationShipmentController } from "./integration-shipment.cont
 import { createIntegrationShipmentReadController } from "./integration-shipment-read.controller.js";
 import { createIntegrationShipmentEventsController } from "./integration-shipment-events.controller.js";
 import { integrationShipmentEventsQuerySchema } from "./integration-shipment-events.validators.js";
-import { integrationShipmentCreateSchema, integrationShipmentDispatchAuthorizationSchema, integrationShipmentPackingEvidenceFreezeSchema } from "./integration-shipment.validators.js";
+import { integrationShipmentCreateSchema, integrationShipmentDispatchAuthorizationSchema, integrationShipmentPackingEvidenceFreezeSchema, integrationShipmentStopSchema, integrationShipmentReturnSchema } from "./integration-shipment.validators.js";
 import {
   integrationShipmentExternalReferenceParamsSchema,
   integrationShipmentIdParamsSchema,
@@ -30,6 +30,16 @@ export function createIntegrationShipmentRouter({ prismaClient = prisma, clock, 
     validate(integrationShipmentExternalReferenceParamsSchema, "params"),
     validate(integrationShipmentDispatchAuthorizationSchema),
     asyncWrapper(createController.authorizeDispatch));
+  router.post("/shipments/by-external-reference/:externalFulfillmentReference/stop",
+    requireIntegrationScope("shipments:write"),
+    validate(integrationShipmentExternalReferenceParamsSchema, "params"),
+    validate(integrationShipmentStopSchema),
+    asyncWrapper(createController.stopShipment));
+  router.post("/shipments/by-external-reference/:externalFulfillmentReference/return-request",
+    requireIntegrationScope("shipments:write"),
+    validate(integrationShipmentExternalReferenceParamsSchema, "params"),
+    validate(integrationShipmentReturnSchema),
+    asyncWrapper(createController.requestShipmentReturn));
   router.post("/shipments", requireIntegrationScope("shipments:write"),
     validate(integrationShipmentCreateSchema), asyncWrapper(createController.create));
   router.get("/shipments/by-external-reference/:externalFulfillmentReference", requireIntegrationScope("shipments:read"),
