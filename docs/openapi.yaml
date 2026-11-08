@@ -668,7 +668,7 @@ paths:
       tags: [Drivers]
       operationId: updateMyVehicle
       summary: Update an unverified vehicle's submitted details
-      description: Verified vehicle records are immutable. Changing details on an unverified vehicle resets it to PENDING and inactive.
+      description: Verified vehicle records are immutable. Unverified vehicle identity cannot be changed while pending or approved evidence is attached; register a replacement vehicle. Other permitted edits reset it to PENDING and inactive.
       x-implementation-status: implemented
       security: [{ bearerAuth: [] }]
       requestBody:
