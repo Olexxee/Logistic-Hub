@@ -209,7 +209,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [x] Add normalized `DriverCapabilityGrant` records with REQUESTED, APPROVED, REJECTED, SUSPENDED and REVOKED lifecycle states.
 - [x] Add normalized `VehicleServiceCapability` records using the same parcel capability catalogue and independent approval lifecycle.
 - [x] Preserve the existing one-to-many vehicle relation; allow one driver to request multiple capabilities and each owned vehicle to request capabilities independently.
-- [ ] Preserve existing driver/vehicle records through additive migrations and explicit backfill; never silently grant capabilities to existing profiles.
+- [x] Preserve all existing driver/vehicle records through an additive migration; do not backfill or silently grant capabilities to existing profiles.
 - [x] Add Admin review, rejection, suspension and revocation endpoints with required reason and transactional operational audit events.
 - [x] Add owner-scoped driver capability and per-vehicle suitability read/request endpoints; clients cannot submit decision fields.
 - [ ] Define eligibility response/reason codes for dispatch and assignment consumers.
@@ -228,7 +228,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - `VehicleServiceCapability`: one record per vehicle/capability pair.
 - Rejected/revoked requests may be resubmitted; requested/approved/suspended requests cannot be duplicated.
 - Admin decisions require a 10–500 character reason and are written to `OperationalAuditEvent` in the same transaction as the state change.
-- Driver capability approval requires a verified, non-suspended driver profile. Vehicle suitability approval additionally requires the selected vehicle itself to be active and verified.
+- Driver capability approval requires a verified, non-suspended driver profile with FULL KYC, or TEST_LIMITED only for LOCAL_DISPATCH in TEST mode. Vehicle suitability approval additionally requires the selected vehicle itself to be active and verified.
 - No existing driver or vehicle is backfilled as approved. Existing records begin with no capability grants.
 - These records do not yet affect dispatch matching. DRV-05 will consume both the driver grant and exact vehicle suitability; assignment vehicle binding is a separate DRV-02/DRV-05 gate.
 
