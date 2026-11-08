@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { env } from "../../config/env.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 import { createDeliveryLegDispatchRepository } from "./delivery-leg-dispatch.repository.js";
-import { activeDriverCapabilityWhere, activeDriverDocumentWhere, eligibleVehicleWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
+import { activeDriverCapabilityWhere, activeDriverDocumentWhere, activeServiceZoneWhere, eligibleVehicleWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = [
   "AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED",
@@ -324,8 +324,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               ...activeDriverDocumentWhere(now, env.DRIVER_KYC_MODE === "STRICT"),
               vehicles: { some: { id: offer.vehicleId, ...eligibleVehicleWhere({ capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) } },
               AND: [
-                { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
-                { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+                { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
+                { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
               ],
               assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
             },
