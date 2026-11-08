@@ -1,6 +1,6 @@
 # DRV-05A — Parcel Dispatch Eligibility Enforcement
 
-**Status:** Implemented on branch `feat/drv-05-dispatch-eligibility`; PR/CI and staging acceptance pending. This is the first implementation slice of DRV-05, not completion of the entire phase.
+**Status:** Implemented in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124); CI passed on head `990fd9ede467d746b9c945f8265c7d8728107fc1`. Staging acceptance pending. This is the first implementation slice of DRV-05, not completion of the entire phase.
 
 ## Source baseline
 
