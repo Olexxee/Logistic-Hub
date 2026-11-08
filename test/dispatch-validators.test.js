@@ -37,9 +37,10 @@ test("parcel dispatch validators accept valid params, fare bodies and idempotenc
   assert.equal(run(validateDispatchOfferId, offerReq), null);
   assert.equal(offerReq.validated.params.offerId, "offer_1");
 
-  const fareReq = request({ body: { proposedFareMinor: "2500" } });
+  const fareReq = request({ body: { vehicleId: "vehicle_1", proposedFareMinor: "2500" } });
   assert.equal(run(validateProposeParcelFare, fareReq), null);
   assert.equal(fareReq.validated.body.proposedFareMinor, "2500");
+  assert.equal(fareReq.validated.body.vehicleId, "vehicle_1");
 
   const acceptReq = request({ body: { offerId: "offer_1" } });
   assert.equal(run(validateAcceptParcelFare, acceptReq), null);
