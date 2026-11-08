@@ -215,7 +215,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [x] Define initial stable eligibility/conflict codes for dispatch and fare-reservation consumers; assignment-execution reason coverage remains in DRV-05.
 - [x] Update OpenAPI and add route-level authorization/request validation tests; no seed/backfill is required because existing drivers receive no implicit capability.
 
-**Acceptance:** route tests prove that driver requests are created only as REQUESTED, caller-supplied decision fields are rejected, and driver accounts cannot call Admin review routes. Admin approval additionally requires a verified, non-suspended driver with FULL KYC (or TEST_LIMITED only for LOCAL_DISPATCH in TEST mode); vehicle suitability approval also requires that exact vehicle to be active and verified. Capability approval remains separate from matching eligibility until DRV-05.
+**Acceptance:** route tests prove that driver requests are created only as REQUESTED, caller-supplied decision fields are rejected, and driver accounts cannot call Admin review routes. Admin approval additionally requires a verified, non-suspended driver with FULL KYC (or TEST_LIMITED only for LOCAL_DISPATCH in TEST mode); vehicle suitability approval also requires that exact vehicle to be active and verified. Capability approval remains separate from profile verification and is consumed by DRV-05A matching/proposal/reservation checks; assignment execution revalidation remains open.
 
 
 #### DRV-01 implementation contract
