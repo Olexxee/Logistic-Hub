@@ -466,6 +466,29 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         const customerPayable = fare + booking.connectionFeeMinor + booking.otherChargesMinor;
         const paymentExpiresAt = new Date(now.getTime() + 15 * 60 * 1000);
 
+        const driverSnapshot = await tx.driverProfile.findFirst({
+          where: {
+            id: offer.driverProfileId,
+            lastLocationAt: { gte: new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MS), lte: now },
+          },
+          select: {
+            id: true,
+            serviceRadiusMeters: true,
+            lastLocationAt: true,
+            locations: {
+              orderBy: { recordedAt: "desc" },
+              take: 1,
+              select: { latitude: true, longitude: true, recordedAt: true },
+            },
+          },
+        });
+        if (!isDriverWithinPickupRadius(driverSnapshot, {
+          latitude: booking.pickupLatitude,
+          longitude: booking.pickupLongitude,
+        }, now)) {
+          throw conflict("DRIVER_NO_LONGER_AVAILABLE", "The selected driver location is stale or outside the pickup radius.");
+        }
+
         const driverReserved = await tx.driverProfile.updateMany({
           where: {
             id: offer.driverProfileId,
