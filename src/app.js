@@ -38,6 +38,7 @@ import { hubApplicationsRouter } from "./modules/hub-applications/hub-applicatio
 import { integrationsAdminRouter } from "./modules/integrations/integrations-admin.routes.js";
 import { integrationQuoteRouter } from "./modules/integrations/integration-quote.routes.js";
 import { integrationShipmentRouter } from "./modules/integrations/integration-shipment.routes.js";
+import { integrationPackingEvidenceRouter } from "./modules/integrations/integration-packing-evidence.routes.js";
 import { integrationWebhookRouter } from "./modules/integrations/integration-webhook.routes.js";
 import { errorHandler } from "./shared/http/error-handler.js";
 import { runWithAuditContext } from "./shared/audit/audit-context.js";
@@ -53,7 +54,7 @@ const allowedOrigins = env.CORS_ORIGINS
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF", "X-File-Content-Type", "X-File-Name", "X-Document-Type", "X-Vehicle-ID", "X-Integration-Key-Id", "X-Integration-Secret"] }));
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Auth-CSRF", "X-File-Content-Type", "X-File-Name", "X-Document-Type", "X-Vehicle-ID", "X-Integration-Key-Id", "X-Integration-Secret", "X-Evidence-Slot", "X-Evidence-Actor-Reference"] }));
 app.use(express.json({
   limit: "1mb",
   verify: (req, _res, buffer) => {
@@ -113,6 +114,7 @@ app.use("/api/v1", discoveryRouter);
 app.use("/api/v1/admin/users", adminUsersRouter);
 app.use("/api/v1/admin/integrations", integrationsAdminRouter);
 app.use("/api/v1/integrations", integrationShipmentRouter);
+app.use("/api/v1/integrations", integrationPackingEvidenceRouter);
 app.use("/api/v1/integrations", integrationWebhookRouter);
 app.use("/api/v1/integrations", integrationQuoteRouter);
 app.use("/api/v1", hubApplicationsRouter);
