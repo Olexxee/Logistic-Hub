@@ -262,6 +262,50 @@ test("partner-to-recipient custody is rejected for non-integration bookings", as
   );
 });
 
+test("integration recipient handover is rejected when a later delivery leg exists", async () => {
+  const integrationBooking = { ...booking, integrationClientId: "market-iq-client-1" };
+  const handover = {
+    id: "handover-partner-recipient-later-leg",
+    parcelBookingId: "booking-1",
+    deliveryLegId: "leg-1",
+    initiatedByUserId: "partner-user-1",
+    fromPartyType: "TRANSPORT_PARTNER",
+    fromPartyId: "partner-1",
+    toPartyType: "RECIPIENT",
+    toPartyId: "recipient-1",
+    status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"),
+    parcelBooking: integrationBooking,
+  };
+  const partnerLeg = {
+    ...leg,
+    type: "INTERSTATE_TRANSPORT",
+    destinationHubPointId: null,
+    parcelBooking: integrationBooking,
+    partnerAssignments: [{ partnerId: "partner-1", status: "IN_TRANSIT" }],
+  };
+  const { db } = tx({
+    user: {
+      findUnique: async ({ where }) => where.id === "recipient-1"
+        ? { id: "recipient-1", status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now, phone: "08000000000", phoneVerifiedAt: now }
+        : { id: where.id, status: "ACTIVE", role: "PARTNER_OPERATOR", emailVerifiedAt: now },
+    },
+    custodyHandover: {
+      findUnique: async () => handover,
+      update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }),
+    },
+    deliveryLeg: {
+      findUnique: async () => partnerLeg,
+      findFirst: async () => ({ id: "leg-2", status: "PLANNED" }),
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "recipient-1" }),
+    error => error.code === "RECIPIENT_HANDOVER_NOT_TERMINAL",
+  );
+});
+
 test("confirmed partner-to-recipient handover completes an integration end-to-end shipment", async () => {
   const integrationBooking = { ...booking, integrationClientId: "market-iq-client-1" };
   const handover = {
