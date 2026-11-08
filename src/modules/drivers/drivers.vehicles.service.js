@@ -121,7 +121,14 @@ export function createDriverVehiclesService({ prismaClient, clock = () => new Da
         if (!current) throw new NotFoundError("Vehicle not found.");
         if (!current.isActive) return { id: current.id, isActive: false, alreadyInactive: true };
         const activeAssignment = await tx.driverAssignment.findFirst({
-          where: { vehicleId, status: { in: ACTIVE_ASSIGNMENT_STATUSES } },
+          where: {
+            driverProfileId: profile.id,
+            status: { in: ACTIVE_ASSIGNMENT_STATUSES },
+            OR: [
+              { vehicleId },
+              { vehicleId: null, parcelBookingId: { not: null } },
+            ],
+          },
           select: { id: true },
         });
         if (activeAssignment) {
