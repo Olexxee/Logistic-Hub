@@ -619,6 +619,9 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           const assignment = await tx.partnerDeliveryAssignment.findFirst({
             where: { deliveryLegId: handover.deliveryLegId, partnerId: handover.fromPartyId, status: "IN_TRANSIT" },
           });
+          if (!assignment) {
+            throw fail(409, "PARTNER_ASSIGNMENT_NOT_IN_TRANSIT", "The partner assignment is no longer in transit and recipient delivery cannot be completed.");
+          }
           if (assignment) {
             const completedAt = clock();
             const changed = await tx.partnerDeliveryAssignment.updateMany({
@@ -696,6 +699,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
                 before: { status: assignment.status },
                 after: { status: "COMPLETED", payableId: payable.id, amountMinor: payable.amountMinor.toString(), currency: payable.currency },
               }, tx);
+            } else {
+              throw fail(409, "PARTNER_ASSIGNMENT_COMPLETION_CONFLICT", "The partner assignment changed before delivery completion could be recorded.");
             }
           }
         }
