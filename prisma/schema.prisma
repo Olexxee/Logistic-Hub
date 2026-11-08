@@ -93,6 +93,20 @@ enum DriverKycTier {
   FULL
 }
 
+enum DriverServiceCapability {
+  LOCAL_DISPATCH
+  PICKUP_COLLECTION
+  FINAL_MILE_DELIVERY
+}
+
+enum CapabilityApprovalStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  REVOKED
+}
+
 enum DriverDocumentType {
   IDENTITY
   DRIVER_LICENSE
@@ -543,6 +557,7 @@ model DriverProfile {
 
   user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicles           Vehicle[]
+  capabilities       DriverCapabilityGrant[]
   verificationDocuments DriverVerificationDocument[]
   locations          DriverLocation[]
   coverage           DriverCoverage[]
@@ -592,9 +607,46 @@ model Vehicle {
 
   driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
   verificationDocuments DriverVerificationDocument[]
+  serviceCapabilities   VehicleServiceCapability[]
 
   @@index([driverProfileId, isActive, verificationStatus])
   @@map("vehicles")
+}
+
+model DriverCapabilityGrant {
+  id              String                   @id @default(cuid())
+  driverProfileId String
+  capability      DriverServiceCapability
+  status          CapabilityApprovalStatus  @default(REQUESTED)
+  requestedAt     DateTime                  @default(now())
+  reviewedAt      DateTime?
+  reviewReason    String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([driverProfileId, capability])
+  @@index([status, requestedAt])
+  @@map("driver_capability_grants")
+}
+
+model VehicleServiceCapability {
+  id           String                  @id @default(cuid())
+  vehicleId    String
+  capability   DriverServiceCapability
+  status       CapabilityApprovalStatus @default(REQUESTED)
+  requestedAt  DateTime                 @default(now())
+  reviewedAt   DateTime?
+  reviewReason String?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, capability])
+  @@index([status, requestedAt])
+  @@map("vehicle_service_capabilities")
 }
 
 model DriverVerificationDocument {
