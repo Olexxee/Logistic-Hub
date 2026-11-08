@@ -11,6 +11,16 @@ const MIME = {
 };
 const safeName = value => basename(String(value).replace(/[\u0000-\u001f\u007f]/g, "")).trim().slice(0,160) || "packing-evidence";
 const hash = value => createHash("sha256").update(value).digest("hex");
+async function serializableTransaction(prismaClient, work) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prismaClient.$transaction(work, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt >= 2) throw error;
+    }
+  }
+}
+
 const present = row => ({
   id: row.id, slot: row.slot, version: row.version, actorReference: row.actorReference,
   originalName: row.originalName, mimeType: row.mimeType, sizeBytes: row.sizeBytes.toString(),
@@ -51,7 +61,7 @@ export function createIntegrationPackingEvidenceService({ prismaClient, storage 
       const objectPath = `integration-packing-evidence/${client.id}/${booking.id}/${metadata.slot.toLowerCase()}/${randomUUID()}${type.extension}`;
       const storedPath = await storage.upload({ objectPath, buffer, mimeType: metadata.mimeType }) ?? objectPath;
       try {
-        const result = await prismaClient.$transaction(async tx => {
+        const result = await serializableTransaction(prismaClient, async tx => {
           await tx.$queryRaw`SELECT "id" FROM "parcel_bookings" WHERE "id" = ${booking.id} FOR UPDATE`;
           const replay = await tx.integrationPackingEvidence.findUnique({
             where: { clientId_idempotencyKey: { clientId: client.id, idempotencyKey: metadata.idempotencyKey } },
@@ -86,7 +96,7 @@ export function createIntegrationPackingEvidenceService({ prismaClient, storage 
             },
           });
           return { evidence, replay: false };
-        }, { isolationLevel: "Serializable" });
+        });
         if (result.replay) await storage.delete({ objectPath: storedPath, mimeType: metadata.mimeType }).catch(() => {});
         return { ...present(result.evidence), replay: result.replay, shipmentReference: booking.publicReference };
       } catch (error) {
