@@ -427,12 +427,14 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           select: { id: true, deliveryLegId: true, status: true },
         }) : [];
         const physicallyTransferred = booking.custodyHandovers.length > 0
+          || ["PICKED_UP", "IN_TRANSIT", "DELIVERY_VERIFICATION_PENDING"].includes(booking.status)
           || assignments.some(item => item.status === "IN_TRANSIT");
         if (physicallyTransferred) {
           throw new ConflictError("The parcel has entered partner or hub custody. A stop cannot be confirmed; submit a return request.", "INTEGRATION_SHIPMENT_IN_CUSTODY_USE_RETURN");
         }
-        if (assignments.some(item => !["ASSIGNED", "ACCEPTED", "CANCELLED", "FAILED", "COMPLETED"].includes(item.status))) {
-          throw new ConflictError("The shipment has an unsupported assignment state and requires operational review.", "INTEGRATION_SHIPMENT_STOP_STATE_UNSUPPORTED");
+        if (booking.deliveryLegs.some(leg => ["IN_TRANSIT", "DELIVERY_VERIFICATION_PENDING", "COMPLETED", "FAILED"].includes(leg.status))
+          || assignments.some(item => !["ASSIGNED", "ACCEPTED", "CANCELLED"].includes(item.status))) {
+          throw new ConflictError("The shipment has an unsupported or terminal execution state and requires operational review.", "INTEGRATION_SHIPMENT_STOP_STATE_UNSUPPORTED");
         }
 
         if (legIds.length) {
