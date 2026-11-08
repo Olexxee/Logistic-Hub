@@ -208,6 +208,7 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
     id: "offer_2",
     parcelBookingId: booking.id,
     driverProfileId: "driver_profile_2",
+    vehicleId: "vehicle_2",
     status: "OFFERED",
     proposedFareMinor: 2500n,
     expiresAt: new Date(now.getTime() + 60_000),
@@ -224,6 +225,7 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
     driverProfile: {
       updateMany: async (args) => { writes.push(["driver", args]); return { count: 1 }; },
     },
+    vehicle: { findFirst: async () => ({ id: "vehicle_2" }) },
     deliveryLeg: {
       create: async (args) => { writes.push(["deliveryLeg", args]); return { id: "delivery_leg_2" }; },
     },
@@ -258,6 +260,7 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
   assert.equal(writes.find(([kind]) => kind === "deliveryLeg")[1].data.type, "DIRECT");
   assert.equal(writes.find(([kind]) => kind === "deliveryLeg")[1].data.status, "AWAITING_PAYMENT");
   assert.equal(writes.find(([kind]) => kind === "assignment")[1].data.deliveryLegId, "delivery_leg_2");
+  assert.equal(writes.find(([kind]) => kind === "assignment")[1].data.vehicleId, "vehicle_2");
   assert.equal(result.deliveryLegId, "delivery_leg_2");
   assert.equal(writes.find(([kind]) => kind === "assignment")[1].data.agreedFareMinor, 2500n);
   assert.equal(writes.find(([kind]) => kind === "assignment")[1].data.status, "AWAITING_PAYMENT");
@@ -268,7 +271,8 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
 test("fare proposal idempotency collisions across offers return a conflict instead of a database error", async () => {
   const key = "shared-fare-key-0001";
   const proposedFareMinor = "2500";
-  const hash = createHash("sha256").update(JSON.stringify({ offerId: "another_offer", proposedFareMinor })).digest("hex");
+  const vehicleId = "vehicle_1";
+  const hash = createHash("sha256").update(JSON.stringify({ offerId: "another_offer", vehicleId, proposedFareMinor })).digest("hex");
   const prismaClient = {
     $transaction: async () => { throw Object.assign(new Error("Unique constraint"), { code: "P2002" }); },
     driverOffer: {
@@ -286,6 +290,7 @@ test("fare proposal idempotency collisions across offers return a conflict inste
     service.proposeParcelFare({
       offerId: "offer_requested",
       userId: "driver_user",
+      vehicleId,
       proposedFareMinor,
       idempotencyKey: key,
     }),
