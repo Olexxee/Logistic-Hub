@@ -45,14 +45,16 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
           }),
           lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
           AND: [
-            { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
-            { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+            { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
+            { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
           ],
           assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
         },
         select: {
           id: true,
           verificationStatus: true,
+          kycTier: true,
+          suspendedAt: true,
           isOnline: true,
           isAvailable: true,
           serviceRadiusMeters: true,
