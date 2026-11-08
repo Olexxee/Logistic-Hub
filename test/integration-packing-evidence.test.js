@@ -18,6 +18,11 @@ function harness() {
   const prismaClient = {
     integrationExternalReference: { findFirst: async () => ({ internalResourceId: booking.id }) },
     parcelBooking: { findFirst: async () => booking },
+    integrationPackingEvidence: {
+      findMany: async ({ where }) => rows.filter(row => row.clientId === where.clientId && row.parcelBookingId === where.parcelBookingId)
+        .sort((a,b) => a.slot.localeCompare(b.slot) || b.version - a.version),
+      findFirst: async ({ where }) => rows.find(row => row.id === where.id && row.clientId === where.clientId && row.parcelBookingId === where.parcelBookingId) ?? null,
+    },
     $transaction: async work => work({
       $queryRaw: async () => [],
       integrationPackingEvidence: {
