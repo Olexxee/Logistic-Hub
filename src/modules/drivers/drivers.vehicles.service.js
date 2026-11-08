@@ -81,6 +81,20 @@ export function createDriverVehiclesService({ prismaClient, clock = () => new Da
         if (current.verificationStatus === "VERIFIED") {
           throw new ConflictError("A verified vehicle's identity and specifications cannot be edited. Register a replacement vehicle instead.", "VERIFIED_VEHICLE_IMMUTABLE");
         }
+        const identityChanged = ["type", "make", "model", "registrationPlate"].some(field =>
+          input[field] !== undefined && (field === "registrationPlate"
+            ? normalizePlate(input[field]) !== current.registrationPlate
+            : input[field] !== current[field])
+        );
+        if (identityChanged) {
+          const existingEvidence = await tx.driverVerificationDocument.findFirst({
+            where: { vehicleId, reviewStatus: { in: ["PENDING", "APPROVED"] } },
+            select: { id: true },
+          });
+          if (existingEvidence) {
+            throw new ConflictError("Vehicle identity cannot be changed while verification evidence is attached. Register a replacement vehicle so the evidence remains bound to the correct vehicle.", "VEHICLE_EVIDENCE_EXISTS");
+          }
+        }
         const data = {
           ...(input.type !== undefined ? { type: input.type } : {}),
           ...(input.make !== undefined ? { make: input.make } : {}),
