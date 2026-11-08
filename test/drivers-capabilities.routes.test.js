@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import express from "express";
 import { createServer } from "node:http";
 import { createDriversRouter } from "../src/modules/drivers/drivers.routes.js";
+import { errorHandler } from "../src/shared/http/error-handler.js";
 
 async function withServer(role, prismaClient, run) {
   const authMiddleware = (req, _res, next) => { req.user = { id: "user-1", role }; next(); };
@@ -13,6 +14,7 @@ async function withServer(role, prismaClient, run) {
   const app = express();
   app.use(express.json());
   app.use("/drivers", createDriversRouter({ prismaClient, authMiddleware, roleMiddleware, email: { configured: false } }));
+  app.use(errorHandler);
   const server = createServer(app);
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
