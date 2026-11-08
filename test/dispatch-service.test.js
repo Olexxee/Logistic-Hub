@@ -286,6 +286,7 @@ test("driver fare proposal requires an owned active verified vehicle and stores 
       findUnique: async () => offer,
       updateMany: async ({ data }) => { offerUpdate = data; return { count: 1 }; },
     },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
     vehicle: { findMany: async () => [{ id: "vehicle-verified" }] },
     bookingEvent: { create: async ({ data }) => { event = data; return data; } },
   };
@@ -315,6 +316,7 @@ test("legacy fare proposal without vehicleId is rejected when multiple verified 
   const tx = {
     driverProfile: { findUnique: async () => ({ id: "driver_profile_multi", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
     driverOffer: { findUnique: async () => offer, updateMany: async () => { offerWasUpdated = true; return { count: 1 }; } },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
     vehicle: { findMany: async () => [{ id: "vehicle-1" }, { id: "vehicle-2" }] },
   };
   const service = createDispatchService({ prismaClient: { $transaction: callback => callback(tx) }, clock: () => now });
