@@ -260,9 +260,23 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - `POST /drivers/me/vehicles`
 - `PATCH /drivers/me/vehicles/:vehicleId`
 - `POST /drivers/me/vehicles/:vehicleId/deactivate`
-- Fare proposal requests now require `vehicleId`; the assignment records the chosen vehicle.
+- Fare proposal requests accept an optional `vehicleId` only when exactly one active verified vehicle exists; multi-vehicle drivers must choose explicitly. The assignment records the chosen vehicle.
 
 **Acceptance:** a driver can own multiple vehicles; each vehicle has independent verification and each new parcel assignment records the exact active, verified vehicle chosen by its driver. Existing assignments remain readable with `vehicle: null` until naturally completed; they are not backfilled with guessed vehicle IDs.
+
+
+#### DRV-02 implementation contract
+
+**Implemented on branch `feat/drv-02-multi-vehicle-lifecycle` (PR #123).**
+
+- Additive migration `20261108193000_drv_02_vehicle_assignment_binding` adds nullable vehicle references to direct parcel offers, delivery-leg offers and assignments.
+- Drivers can list, register, update eligible unverified records and retire vehicles through owner-scoped APIs. New records are PENDING/inactive; verified vehicle identity is immutable; evidence-linked identity changes require a replacement record.
+- Vehicle retirement is blocked while active parcel work is using the vehicle. Legacy active parcel assignments without a historical vehicle ID also block retirement. Retiring the last active verified vehicle forces the driver offline.
+- A driver selects the vehicle when proposing a parcel or delivery-leg fare. For compatibility with the existing single-vehicle frontend, `vehicleId` may be omitted only when exactly one active verified vehicle exists; multiple active verified vehicles require explicit selection.
+- Customer fare acceptance revalidates ownership, active state and verification for the exact selected vehicle, then persists it on the assignment.
+- Existing assignments are not backfilled; their `vehicleId` remains null. Passenger rides retain their existing fare flow and do not inherit this parcel-specific vehicle requirement.
+- Optional document expiry is captured through `X-Document-Expires-At`; past uploads and Admin approval of expired evidence are rejected. Runtime expiry blocking across dispatch and in-progress execution remains a DRV-05 gate.
+- No production migration or deployment was performed.
 
 ### DRV-03 — Unified Admin Driver & Vehicle Operations workspace
 
