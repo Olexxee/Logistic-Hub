@@ -53,3 +53,7 @@ export function validatePackingEvidenceHeaders(headers) {
   }
   return { slot, actorReference, mimeType, originalName, idempotencyKey };
 }
+
+export const integrationPackingEvidenceDownloadParamsSchema = integrationPackingEvidenceParamsSchema.extend({
+  evidenceId: z.string().trim().min(1).max(128),
+}).strict();
