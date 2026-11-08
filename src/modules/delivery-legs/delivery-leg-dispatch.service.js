@@ -163,11 +163,12 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             || offer.expiresAt <= now || offer.deliveryLeg.status !== "READY_FOR_ASSIGNMENT") {
             throw conflict("OFFER_NO_LONGER_AVAILABLE", "This delivery-leg offer is no longer available for a fare proposal.");
           }
-          const vehicle = await tx.vehicle.findFirst({
-            where: { id: vehicleId, driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" },
-            select: { id: true },
-          });
-          if (!vehicle) throw conflict("VEHICLE_NOT_ELIGIBLE", "Select one of your active, verified vehicles before proposing a fare.");
+          const eligibleVehicles = vehicleId
+            ? await tx.vehicle.findMany({ where: { id: vehicleId, driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 })
+            : await tx.vehicle.findMany({ where: { driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 });
+          if (!eligibleVehicles.length) throw conflict("VEHICLE_NOT_ELIGIBLE", "Select one of your active, verified vehicles before proposing a fare.");
+          if (eligibleVehicles.length > 1) throw conflict("VEHICLE_SELECTION_REQUIRED", "Select the vehicle you will use for this delivery.");
+          const vehicle = eligibleVehicles[0];
           const updated = await db.updateOffer(tx, {
             id: offer.id, driverProfileId: profile.id, status: "OFFERED",
             proposedFareMinor: null, expiresAt: { gt: now },
