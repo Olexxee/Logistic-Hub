@@ -113,7 +113,7 @@ test("driver fare proposals are idempotent and scoped to the driver's own leg of
   const repository = {
     transaction: (callback) => callback({
       driverProfile: { findUnique: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
-      vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
+      vehicle: { findMany: async () => [{ id: "vehicle_1" }] },
     }),
     findOfferForDriver: async () => offer,
     updateOffer: async (_tx, where, data) => { offerUpdate = { where, data }; return { count: 1 }; },
