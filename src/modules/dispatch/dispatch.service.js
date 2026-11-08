@@ -497,6 +497,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             suspendedAt: null,
             isOnline: true,
             isAvailable: true,
+            lastLocationAt: { gte: new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MS), lte: now },
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
             ...activeDriverCapabilityWhere("LOCAL_DISPATCH"),
             ...activeDriverDocumentWhere(now, env.DRIVER_KYC_MODE === "STRICT"),
