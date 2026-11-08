@@ -583,6 +583,183 @@ paths:
       responses:
         '200': { description: "Driver profile, or null if onboarding has not started." }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /drivers/me/capabilities:
+    get:
+      tags: [Drivers]
+      operationId: listMyDriverCapabilities
+      summary: List the authenticated driver's requested and approved parcel-service capabilities
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Driver capability status list. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Drivers]
+      operationId: requestMyDriverCapability
+      summary: Request one parcel-service capability; approval is Admin-only
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [capability]
+              properties:
+                capability: { $ref: '#/components/schemas/DriverServiceCapability' }
+      responses:
+        '201': { description: Capability request created or resubmitted in REQUESTED state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Capability is already requested, approved or suspended. }
+  /drivers/me/vehicles/{vehicleId}/capabilities:
+    parameters:
+      - in: path
+        name: vehicleId
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 128 }
+    get:
+      tags: [Drivers]
+      operationId: listMyVehicleCapabilities
+      summary: List service suitability requests for one vehicle owned by the authenticated driver
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Vehicle service suitability list. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Drivers]
+      operationId: requestMyVehicleCapability
+      summary: Request service suitability approval for one owned vehicle
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [capability]
+              properties:
+                capability: { $ref: '#/components/schemas/DriverServiceCapability' }
+      responses:
+        '201': { description: Vehicle suitability request created or resubmitted in REQUESTED state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Suitability is already requested, approved or suspended. }
+  /drivers/admin/drivers/{driverProfileId}/capabilities:
+    parameters:
+      - in: path
+        name: driverProfileId
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 128 }
+    get:
+      tags: [Admin]
+      operationId: listAdminDriverCapabilities
+      summary: List capability requests and decisions for one driver
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Driver capability review list. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/drivers/{driverProfileId}/capabilities/{capability}:
+    parameters:
+      - in: path
+        name: driverProfileId
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 128 }
+      - in: path
+        name: capability
+        required: true
+        schema: { $ref: '#/components/schemas/DriverServiceCapability' }
+    patch:
+      tags: [Admin]
+      operationId: reviewAdminDriverCapability
+      summary: Approve, reject, suspend or revoke one driver capability
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED, SUSPENDED, REVOKED] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { description: Driver capability decision saved and audited. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Invalid capability transition or driver is not eligible for approval. }
+  /drivers/admin/vehicles/{vehicleId}/capabilities:
+    parameters:
+      - in: path
+        name: vehicleId
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 128 }
+    get:
+      tags: [Admin]
+      operationId: listAdminVehicleCapabilities
+      summary: List service suitability requests and decisions for one vehicle
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Vehicle service suitability review list. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /drivers/admin/vehicles/{vehicleId}/capabilities/{capability}:
+    parameters:
+      - in: path
+        name: vehicleId
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 128 }
+      - in: path
+        name: capability
+        required: true
+        schema: { $ref: '#/components/schemas/DriverServiceCapability' }
+    patch:
+      tags: [Admin]
+      operationId: reviewAdminVehicleCapability
+      summary: Approve, reject, suspend or revoke one vehicle's service suitability
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED, SUSPENDED, REVOKED] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { description: Vehicle suitability decision saved and audited. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Invalid capability transition or vehicle/driver is not eligible for approval. }
   /drivers/onboarding:
     post:
       tags: [Drivers]
@@ -7685,6 +7862,13 @@ components:
           type: number
           minimum: -180
           maximum: 180
+    DriverServiceCapability:
+      type: string
+      enum: [LOCAL_DISPATCH, PICKUP_COLLECTION, FINAL_MILE_DELIVERY]
+      description: Parcel-logistics capability only; passenger rides, hub transfers and interstate partner execution are excluded.
+    CapabilityApprovalStatus:
+      type: string
+      enum: [REQUESTED, APPROVED, REJECTED, SUSPENDED, REVOKED]
     ServiceType:
       type: string
       enum: [PARCEL_DELIVERY, PASSENGER_RIDE, HUB_POINT, BUSINESS_LOGISTICS]
