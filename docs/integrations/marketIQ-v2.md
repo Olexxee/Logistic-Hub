@@ -1,6 +1,6 @@
 # MarketIQ Integration Contract v2 — Generic Logistic Hub Boundary
 
-**Status:** Cross-system contract v2. LI-02G-A private packing evidence is implemented on the current cross-repository PR branches and awaits CI/review/merge. LI-02G-B buyer review, cancellation instructions and dispatch authorization remain unimplemented pending explicit policy decisions.
+**Status:** Cross-system contract v2. LI-02G-A private packing evidence, LI-02G-B four-photo buyer review/dispatch authorization, and LI-02G-C1A end-to-end delivery closure are merged. LI-02G-C2 adds authenticated, idempotent Hub stop and return-request commands; the return request is a durable operational signal only. Physical reverse-route execution, MarketIQ cancellation/return projection, admin refund review and staging acceptance remain subsequent work.
 
 **Relationship:** This document specializes the [Generic Logistics Integration API](generic-logistics-integration-v1.md). It supersedes conflicting MarketIQ-specific v1 assumptions about external customer/seller user creation, customer email collection and Hub-side Paystack verification. It does not create MarketIQ-only business logic in the generic API.
 
@@ -77,11 +77,11 @@ LI-02G-A implements private server-to-server binary transfer; no image bytes are
 
 MarketIQ owns the buyer-facing review window, buyer communications and cancellation/refund decision. Logistic Hub owns physical execution.
 
-After packing evidence is accepted and recorded, the buyer retrieves the latest evidence through MarketIQ's authenticated proxy. LI-02G-A does not emit a new Hub webhook event or create a buyer review timer. If the buyer raises an issue or requests cancellation, MarketIQ will send an authenticated, idempotent operational instruction (for example, hold/cancel/return request); the exact action vocabulary and endpoint must be designed and versioned in LI-02G-B.
+After all four packing evidence slots are accepted and frozen, MarketIQ starts the four-hour buyer review window. The buyer may approve early; if there is no buyer action before expiry, MarketIQ records REVIEW_TIMEOUT and sends the existing dispatch-authorization command. The timeout is a logistics release rule, not a waiver of statutory consumer rights, warranties or post-delivery remedies. If the buyer requests cancellation before custody transfer, MarketIQ sends POST /api/v1/integrations/shipments/by-external-reference/{externalFulfillmentReference}/stop with an Idempotency-Key and reason. Hub may confirm STOPPED only while the booking is AWAITING_PARTNER_ASSIGNMENT or DRIVER_ASSIGNED and no confirmed custody transfer/in-transit assignment exists.
 
-The review duration, expiry behavior and automatic-approval rule are not yet approved. The Hub must not invent a timeout or independently decide that buyer review has expired. The Hub must not proceed to a gated dispatch milestone until it has the required MarketIQ authorization defined by the contract.
+The Hub does not own or calculate the buyer review timer. It must not independently decide that review has expired. Partner assignment remains blocked until MarketIQ sends the required dispatch authorization.
 
-A cancellation request is not proof that a shipment has been cancelled. If a rider has collected the parcel or it is in transit, the Hub reports actual custody and performs only feasible actions such as stop, hold, return to seller or return to hub. MarketIQ alone decides customer refund and order cancellation state.
+A cancellation request is not proof that a shipment has been cancelled. If the parcel has entered custody or transit, MarketIQ sends POST /api/v1/integrations/shipments/by-external-reference/{externalFulfillmentReference}/return-request. Hub acknowledges with HTTP 202 and emits shipment.return_requested, while preserving the actual booking status and explicitly reporting physicalReturnConfirmed=false. This command does not create a reverse leg or prove that the parcel has been stopped or returned; operational reverse-route planning, partner instructions, custody updates and terminal return confirmation remain follow-up work. MarketIQ alone decides customer order cancellation and refund state; Hub never calls Paystack or approves a refund.
 
 ## 6. Cross-system event references
 
@@ -130,8 +130,8 @@ Examples of Hub-owned events include shipment accepted, rider assigned, pickup, 
 2. Hub booking authorization alignment: ensure existing shipment creation validates MarketIQ payment authorization and accepted quote without Paystack verification or synthetic sender identity.
 3. MarketIQ LI-02E / Hub: idempotent worker delivery, shipment creation/recovery, dispatch activation and failure recovery.
 4. LI-02F: signed packing-evidence, shipment and cancellation coordination events; MarketIQ projection and monotonic event application.
-5. LI-02G-A: private media transfer, four typed evidence slots, checksum/version validation, durable private storage and buyer-view authorization (current PR branches; CI and merge pending).
-6. LI-02G-B: approved review-window policy, cancellation command contract, custody-aware stop/hold/return actions and refund coordination.
-7. LI-02G-C: staging end-to-end, privacy review, seller accountability policy, reconciliation and operational runbooks.
+5. LI-02G-A: private media transfer, four typed evidence slots, checksum/version validation, durable private storage and buyer-view authorization (merged).
+6. LI-02G-B: four-hour buyer review policy, frozen evidence, timeout-based dispatch authorization and buyer-facing packing-review workflow (merged). LI-02G-C1A: end-to-end partner-to-recipient delivery closure (merged). LI-02G-C2: Hub stop and return-request commands (under review); physical return execution and MarketIQ-side cancellation/return projection remain outstanding.
+7. Remaining LI-02G-C: physical return execution, MarketIQ cancellation/return state machine and signed outcome projection, admin refund-review workflow, staging end-to-end acceptance, privacy review, seller accountability policy, reconciliation and operational runbooks.
 
 Do not claim any new API route, database model, media transfer, buyer screen, review timer or cancellation behavior is implemented until code, tests and both sides of the contract exist. The generic integration API must remain reusable for other clients; MarketIQ-specific semantics belong in a client contract/configuration, not hard-coded generic domain logic.
