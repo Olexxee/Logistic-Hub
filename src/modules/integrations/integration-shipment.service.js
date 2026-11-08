@@ -251,7 +251,8 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           throw new ConflictError("All four required packing evidence slots must be accepted before the evidence can be frozen.", "INTEGRATION_PACKING_EVIDENCE_INCOMPLETE");
         }
 
-        if (!booking.integrationPackingEvidenceFrozenAt) {
+        let frozenAt = lockedBooking.integrationPackingEvidenceFrozenAt;
+        if (!frozenAt) {
           const changed = await tx.parcelBooking.updateMany({
             where: {
               id: booking.id,
@@ -265,6 +266,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           if (changed.count !== 1) {
             throw new ConflictError("The shipment changed before packing evidence could be frozen.", "INTEGRATION_PACKING_EVIDENCE_FREEZE_CONFLICT");
           }
+          frozenAt = now;
           await tx.bookingEvent.create({
             data: {
               parcelBookingId: booking.id,
@@ -282,7 +284,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         const responseBody = {
           shipmentId: booking.id,
           externalFulfillmentReference,
-          frozenAt: booking.integrationPackingEvidenceFrozenAt ?? now,
+          frozenAt,
           requiredSlots: required,
         };
         await storeIdempotency(tx, {
