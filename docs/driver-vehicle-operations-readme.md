@@ -244,17 +244,25 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 **Goal:** Complete the multi-vehicle lifecycle, including motorcycles and bicycles.
 
-- [ ] Register another vehicle for an existing driver.
-- [ ] Edit permitted vehicle metadata without overwriting reviewed evidence.
-- [ ] Replace, deactivate or retire a vehicle with assignment-safety checks.
-- [ ] Capture class-specific registration identifiers and document requirements.
-- [ ] Support vehicle-specific documents, review decisions, expiry metadata and renewal status.
-- [ ] Persist the selected vehicle on each eligible assignment; do not treat the presence of any verified vehicle as proof that a particular job's vehicle is eligible.
-- [ ] Enforce class-aware rules: bicycle registration/license requirements must not be copied from motorized vehicles; motorized vehicle requirements must follow approved compliance policy.
-- [ ] Prevent unverified, suspended, expired or retired vehicles from new assignments.
-- [ ] Preserve historical assignment and audit references when a vehicle is deactivated or replaced.
+- [x] Register additional vehicles for an existing driver; every new vehicle starts PENDING and inactive.
+- [x] Edit unverified vehicle metadata; verified vehicle identity/specifications are immutable and require a replacement vehicle.
+- [x] Deactivate/retire vehicles with active parcel-assignment safety checks; force the driver offline if no other verified active vehicle remains.
+- [x] Reuse the existing class-aware KYC gate: bicycles are exempt from the motor-vehicle registration/license pair; motorized vehicles require approved vehicle-registration and driver-license evidence in STRICT mode.
+- [x] Accept optional document expiry timestamps, reject past expiry on upload, and prevent Admin approval of already expired evidence.
+- [x] Persist the selected vehicle on direct parcel and delivery-leg fare offers and copy it to the resulting assignment.
+- [x] Revalidate that the exact selected vehicle remains owned by the driver, active and verified at customer fare acceptance.
+- [x] Preserve historical assignment references with nullable vehicle foreign keys and RESTRICT deletion semantics; vehicle retirement never deletes the record.
+- [ ] Enforce expiry dynamically in all dispatch/matching and in-progress execution checks; DRV-05 owns the unified eligibility gate.
+- [ ] Consume approved driver and vehicle capability grants during matching and fare proposal; DRV-05 owns this gate.
 
-**Acceptance:** a driver can own multiple vehicles; each vehicle has independent verification and only eligible vehicles appear for matching/assignment.
+**API**
+- `GET /drivers/me/vehicles`
+- `POST /drivers/me/vehicles`
+- `PATCH /drivers/me/vehicles/:vehicleId`
+- `POST /drivers/me/vehicles/:vehicleId/deactivate`
+- Fare proposal requests now require `vehicleId`; the assignment records the chosen vehicle.
+
+**Acceptance:** a driver can own multiple vehicles; each vehicle has independent verification and each new parcel assignment records the exact active, verified vehicle chosen by its driver. Existing assignments remain readable with `vehicle: null` until naturally completed; they are not backfilled with guessed vehicle IDs.
 
 ### DRV-03 — Unified Admin Driver & Vehicle Operations workspace
 
