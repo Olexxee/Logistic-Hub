@@ -30,6 +30,7 @@ export function createDriverDocumentsController({ prismaClient, service }) {
         user:req.user, buffer:req.body, mimeType:req.headers["x-file-content-type"],
         originalName:req.headers["x-file-name"], documentType:req.headers["x-document-type"],
         vehicleId:req.headers["x-vehicle-id"] || undefined,
+        expiresAt:req.headers["x-document-expires-at"] || undefined,
       });
       return res.status(201).json({ success:true, data:result });
     }),
