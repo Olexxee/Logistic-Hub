@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** Planning and source-reconciliation baseline. This document does not claim the new unified Admin workspace or multi-role vehicle management is implemented.
+**Status:** DRV-00 source audit complete; DRV-01 backend capability contracts are under review in [PR #122](https://github.com/Olexxee/Logistic-Hub/pull/122). The unified Admin workspace, driver self-service vehicle lifecycle and dispatch enforcement remain planned.
 
 ## 1. Objective
 
