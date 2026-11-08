@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 source audit complete; DRV-01 backend capability contracts are under review in [PR #122](https://github.com/Olexxee/Logistic-Hub/pull/122). The unified Admin workspace, driver self-service vehicle lifecycle and dispatch enforcement remain planned.
+**Status:** DRV-00 source audit complete; DRV-01 capability contracts are under review in [PR #122](https://github.com/Olexxee/Logistic-Hub/pull/122) with its latest CI passing. DRV-02 multi-vehicle lifecycle is under review in [PR #123](https://github.com/Olexxee/Logistic-Hub/pull/123), stacked on PR #122; unified Admin workspace and complete capability/expiry dispatch enforcement remain planned.
 
 ## 1. Objective
 
@@ -244,17 +244,39 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 **Goal:** Complete the multi-vehicle lifecycle, including motorcycles and bicycles.
 
-- [ ] Register another vehicle for an existing driver.
-- [ ] Edit permitted vehicle metadata without overwriting reviewed evidence.
-- [ ] Replace, deactivate or retire a vehicle with assignment-safety checks.
-- [ ] Capture class-specific registration identifiers and document requirements.
-- [ ] Support vehicle-specific documents, review decisions, expiry metadata and renewal status.
-- [ ] Persist the selected vehicle on each eligible assignment; do not treat the presence of any verified vehicle as proof that a particular job's vehicle is eligible.
-- [ ] Enforce class-aware rules: bicycle registration/license requirements must not be copied from motorized vehicles; motorized vehicle requirements must follow approved compliance policy.
-- [ ] Prevent unverified, suspended, expired or retired vehicles from new assignments.
-- [ ] Preserve historical assignment and audit references when a vehicle is deactivated or replaced.
+- [x] Register additional vehicles for an existing driver; every new vehicle starts PENDING and inactive.
+- [x] Edit unverified vehicle metadata; verified vehicle identity/specifications are immutable and require a replacement vehicle.
+- [x] Deactivate/retire vehicles with active parcel-assignment safety checks; force the driver offline if no other verified active vehicle remains.
+- [x] Reuse the existing class-aware KYC gate: bicycles are exempt from the motor-vehicle registration/license pair; motorized vehicles require approved vehicle-registration and driver-license evidence in STRICT mode.
+- [x] Accept optional document expiry timestamps, reject past expiry on upload, and prevent Admin approval of already expired evidence.
+- [x] Persist the selected vehicle on direct parcel and delivery-leg fare offers and copy it to the resulting assignment.
+- [x] Revalidate that the exact selected vehicle remains owned by the driver, active and verified at customer fare acceptance.
+- [x] Preserve historical assignment references with nullable vehicle foreign keys and RESTRICT deletion semantics; vehicle retirement never deletes the record.
+- [ ] Enforce expiry dynamically in all dispatch/matching and in-progress execution checks; DRV-05 owns the unified eligibility gate.
+- [ ] Consume approved driver and vehicle capability grants during matching and fare proposal; DRV-05 owns this gate.
 
-**Acceptance:** a driver can own multiple vehicles; each vehicle has independent verification and only eligible vehicles appear for matching/assignment.
+**API**
+- `GET /drivers/me/vehicles`
+- `POST /drivers/me/vehicles`
+- `PATCH /drivers/me/vehicles/:vehicleId`
+- `POST /drivers/me/vehicles/:vehicleId/deactivate`
+- Fare proposal requests accept an optional `vehicleId` only when exactly one active verified vehicle exists; multi-vehicle drivers must choose explicitly. The assignment records the chosen vehicle.
+
+**Acceptance:** a driver can own multiple vehicles; each vehicle has independent verification and each new parcel assignment records the exact active, verified vehicle chosen by its driver. Existing assignments remain readable with `vehicle: null` until naturally completed; they are not backfilled with guessed vehicle IDs.
+
+
+#### DRV-02 implementation contract
+
+**Implemented on branch `feat/drv-02-multi-vehicle-lifecycle` (PR #123).**
+
+- Additive migration `20261108193000_drv_02_vehicle_assignment_binding` adds nullable vehicle references to direct parcel offers, delivery-leg offers and assignments.
+- Drivers can list, register, update eligible unverified records and retire vehicles through owner-scoped APIs. New records are PENDING/inactive; verified vehicle identity is immutable; evidence-linked identity changes require a replacement record.
+- Vehicle retirement is blocked while active parcel work is using the vehicle. Legacy active parcel assignments without a historical vehicle ID also block retirement. Retiring the last active verified vehicle forces the driver offline.
+- A driver selects the vehicle when proposing a parcel or delivery-leg fare. For compatibility with the existing single-vehicle frontend, `vehicleId` may be omitted only when exactly one active verified vehicle exists; multiple active verified vehicles require explicit selection.
+- Customer fare acceptance revalidates ownership, active state and verification for the exact selected vehicle, then persists it on the assignment.
+- Existing assignments are not backfilled; their `vehicleId` remains null. Passenger rides retain their existing fare flow and do not inherit this parcel-specific vehicle requirement.
+- Optional document expiry is captured through `X-Document-Expires-At`; past uploads and Admin approval of expired evidence are rejected. Runtime expiry blocking across dispatch and in-progress execution remains a DRV-05 gate.
+- No production migration or deployment was performed.
 
 ### DRV-03 — Unified Admin Driver & Vehicle Operations workspace
 

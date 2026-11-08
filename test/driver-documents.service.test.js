@@ -4,7 +4,8 @@ import { createDriverDocumentsService } from "../src/modules/drivers/driver-docu
 
 const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00]);
 function fixture() {
-  const state = { uploads: [], deletes: [], docs: [], audit: [], downloads: 0, asset: null };
+  let now = new Date("2026-11-08T12:00:00Z");
+  const state = { uploads: [], deletes: [], docs: [], audit: [], downloads: 0, asset: null, setNow: value => { now = value; } };
   const tx = {
     mediaAsset: { create: async ({data}) => { state.asset = {id:"asset-1",...data}; return state.asset; } },
     driverVerificationDocument: {
@@ -32,7 +33,7 @@ function fixture() {
     delete: async input => state.deletes.push(input),
     download: async () => {state.downloads+=1;return png;},
   };
-  return {state,service:createDriverDocumentsService({prismaClient,storage,legacyStorage:storage})};
+  return {state,service:createDriverDocumentsService({prismaClient,storage,legacyStorage:storage,clock:()=>now})};
 }
 
 test("driver can upload a signature-validated identity document and audit metadata is recorded",async()=>{
@@ -43,6 +44,27 @@ test("driver can upload a signature-validated identity document and audit metada
   assert.equal(result.originalName,"identity.png");
   assert.equal(state.uploads.length,1);
   assert.equal(state.audit[0].action,"DRIVER_VERIFICATION_DOCUMENT_UPLOADED");
+});
+
+test("document expiry metadata is persisted and expired documents cannot be approved",async()=>{
+  const {state,service}=fixture();
+  const expiresAt = "2026-12-01T00:00:00.000Z";
+  await service.uploadMine({user:{id:"user-1"},buffer:png,mimeType:"image/png",originalName:"registration.png",documentType:"VEHICLE_REGISTRATION",vehicleId:"vehicle-1",expiresAt});
+  assert.equal(state.docs[0].expiresAt.toISOString(),expiresAt);
+  state.setNow(new Date("2026-12-02T00:00:00.000Z"));
+  await assert.rejects(
+    service.reviewDocument({documentId:"doc-1",reviewStatus:"APPROVED",reason:"Document was reviewed after its expiry date.",actorUserId:"admin-1"}),
+    error=>error.code==="DRIVER_DOCUMENT_EXPIRED",
+  );
+});
+
+test("an already expired document cannot be uploaded",async()=>{
+  const {state,service}=fixture();
+  await assert.rejects(
+    service.uploadMine({user:{id:"user-1"},buffer:png,mimeType:"image/png",originalName:"expired.png",documentType:"VEHICLE_REGISTRATION",vehicleId:"vehicle-1",expiresAt:"2020-01-01T00:00:00.000Z"}),
+    error=>error.statusCode===400,
+  );
+  assert.equal(state.uploads.length,0);
 });
 
 test("vehicle documents must reference a vehicle owned by the driver",async()=>{

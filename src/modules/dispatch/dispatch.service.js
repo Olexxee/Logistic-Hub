@@ -64,6 +64,7 @@ function serializeOffer(offer) {
       averageRating: driver.averageRating == null ? null : driver.averageRating.toString(),
       completedJobs: driver.completedJobs,
     } : undefined,
+    vehicle: offer.vehicle ? { type: offer.vehicle.type, make: offer.vehicle.make, model: offer.vehicle.model } : null,
   };
 }
 
@@ -231,6 +232,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
               user: { select: { fullName: true } },
             },
           },
+          vehicle: { select: { type: true, make: true, model: true } },
         },
         orderBy: [{ proposedFareMinor: "asc" }, { createdAt: "asc" }],
       });
@@ -279,7 +281,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
       }));
     },
 
-    async proposeParcelFare({ offerId, userId, proposedFareMinor, idempotencyKey }) {
+    async proposeParcelFare({ offerId, userId, vehicleId, proposedFareMinor, idempotencyKey }) {
       const now = clock();
       const fare = BigInt(proposedFareMinor);
       try {
@@ -302,13 +304,14 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           error.code = "NOT_FOUND";
           throw error;
         }
-        const proposalHash = payloadHash({ offerId, proposedFareMinor });
+        const proposalHash = payloadHash({ offerId, vehicleId, proposedFareMinor });
         if (offer.fareProposalIdempotencyKey === idempotencyKey) {
           if (offer.fareProposalPayloadHash !== proposalHash) {
             throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
           }
           return {
             offerId: offer.id,
+            vehicleId: offer.vehicleId,
             proposedFareMinor: offer.proposedFareMinor?.toString() ?? proposedFareMinor,
             currency: offer.currency,
             status: offer.status,
@@ -318,6 +321,12 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         if (offer.proposedFareMinor != null) {
           throw conflict("OFFER_ALREADY_PROPOSED", "A fare proposal has already been submitted for this offer.");
         }
+        const eligibleVehicles = vehicleId
+          ? await tx.vehicle.findMany({ where: { id: vehicleId, driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 })
+          : await tx.vehicle.findMany({ where: { driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 });
+        if (!eligibleVehicles.length) throw conflict("VEHICLE_NOT_ELIGIBLE", "Select one of your active, verified vehicles before proposing a fare.");
+        if (eligibleVehicles.length > 1) throw conflict("VEHICLE_SELECTION_REQUIRED", "Select the vehicle you will use for this delivery.");
+        const vehicle = eligibleVehicles[0];
         if (offer.status !== "OFFERED" || offer.expiresAt <= now || offer.parcelBooking.status !== "MATCHING") {
           throw conflict("OFFER_NO_LONGER_AVAILABLE", "This offer is no longer available for a fare proposal.");
         }
@@ -340,6 +349,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             expiresAt: { gt: now },
           },
           data: {
+            vehicleId: vehicle.id,
             proposedFareMinor: fare,
             respondedAt: now,
             fareProposalIdempotencyKey: idempotencyKey,
@@ -354,10 +364,10 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             eventType: "DRIVER_FARE_PROPOSED",
             fromStatus: "MATCHING",
             toStatus: "MATCHING",
-            metadata: { offerId: offer.id, proposedFareMinor: fare.toString(), currency: offer.currency },
+            metadata: { offerId: offer.id, vehicleId: vehicle.id, proposedFareMinor: fare.toString(), currency: offer.currency },
           },
         });
-        return { offerId: offer.id, proposedFareMinor: fare.toString(), currency: offer.currency, status: "OFFERED" };
+        return { offerId: offer.id, vehicleId: vehicle.id, proposedFareMinor: fare.toString(), currency: offer.currency, status: "OFFERED" };
         });
       } catch (error) {
         if (error.code !== "P2002") throw error;
@@ -365,12 +375,13 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           where: { fareProposalIdempotencyKey: idempotencyKey },
         });
         if (!existing) throw error;
-        const expectedHash = payloadHash({ offerId, proposedFareMinor });
+        const expectedHash = payloadHash({ offerId, vehicleId, proposedFareMinor });
         if (existing.id !== offerId || existing.fareProposalPayloadHash !== expectedHash) {
           throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
         }
         return {
           offerId: existing.id,
+          vehicleId: existing.vehicleId,
           proposedFareMinor: existing.proposedFareMinor?.toString() ?? proposedFareMinor,
           currency: existing.currency,
           status: existing.status,
@@ -421,6 +432,12 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         }
         const fare = offer.proposedFareMinor;
         const minimum = BigInt(booking.pricingSnapshot?.minimumDriverFareMinor ?? "0");
+        if (!offer.vehicleId) throw conflict("VEHICLE_NOT_SELECTED", "The driver has not selected a vehicle for this offer.");
+        const selectedVehicle = await tx.vehicle.findFirst({
+          where: { id: offer.vehicleId, driverProfileId: offer.driverProfileId, isActive: true, verificationStatus: "VERIFIED" },
+          select: { id: true },
+        });
+        if (!selectedVehicle) throw conflict("VEHICLE_NO_LONGER_ELIGIBLE", "The selected vehicle is no longer active and verified.");
         if (fare <= 0n || fare < minimum) {
           throw conflict("INVALID_FARE", "The selected driver fare is invalid or below the configured minimum.");
         }
@@ -436,7 +453,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             isOnline: true,
             isAvailable: true,
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
-            vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
+            vehicles: { some: { id: offer.vehicleId, isActive: true, verificationStatus: "VERIFIED" } },
             AND: [
               { coverage: { some: { serviceZoneId: booking.pickupServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
               { coverage: { some: { serviceZoneId: booking.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
@@ -494,6 +511,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             parcelBookingId: booking.id,
             deliveryLegId: deliveryLeg.id,
             driverProfileId: offer.driverProfileId,
+            vehicleId: offer.vehicleId,
             assignedByUserId: user.id,
             status: "AWAITING_PAYMENT",
             agreedFareMinor: fare,
@@ -512,6 +530,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             toStatus: "AWAITING_PAYMENT",
             metadata: {
               offerId: offer.id,
+              vehicleId: offer.vehicleId,
               assignmentId: assignment.id,
               deliveryLegId: deliveryLeg.id,
               driverFareMinor: fare.toString(),

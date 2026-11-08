@@ -10,7 +10,7 @@ const schemas = {
     bookingLeg: z.object({ bookingId: id, legId: id }),
     hubDispatch: z.object({ hubPointId: id, legId: id }),
   },
-  proposeFare: z.object({ proposedFareMinor: z.string().regex(/^[1-9][0-9]{0,14}$/) }).strict(),
+  proposeFare: z.object({ vehicleId: id.optional(), proposedFareMinor: z.string().regex(/^[1-9][0-9]{0,14}$/) }).strict(),
   acceptFare: z.object({ offerId: id }).strict(),
 };
 

@@ -47,6 +47,8 @@ These are the platform's initial strict-mode evidence gates, not a claim that ev
 - Drivers can list and download only their own documents. Admins can list, review and download documents.
 - Downloads, uploads and review decisions emit operational audit events.
 - Reviewed evidence is immutable through this workflow; a correction is uploaded as a new document. No public storage URL is exposed.
+- Uploads may include an optional `X-Document-Expires-At` ISO 8601 timestamp. Past timestamps are rejected, and Admin cannot approve a document that has expired.
+- Expiry is not yet a continuous runtime eligibility gate across dispatch and in-progress assignments; that enforcement is a DRV-05 release requirement.
 
 ## Reapplication
 

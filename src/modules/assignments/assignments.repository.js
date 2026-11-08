@@ -27,6 +27,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
      where,orderBy:[{createdAt:"desc"},{id:"desc"}],skip,take,
      include:{
       parcelBooking:true,
+      vehicle:{select:{id:true,type:true,make:true,model:true,registrationPlate:true}},
       deliveryLeg:{
        include:{
         originServiceZone:{select:{id:true,name:true}},
@@ -41,7 +42,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    ]);
    return {items,total};
   },
-  findAssignment(id) { return prismaClient.driverAssignment.findUnique({where:{id},include:{driverProfile:{select:{id:true,userId:true,verificationStatus:true,kycTier:true,suspendedAt:true}},parcelBooking:true,rideBooking:true}}); },
+  findAssignment(id) { return prismaClient.driverAssignment.findUnique({where:{id},include:{driverProfile:{select:{id:true,userId:true,verificationStatus:true,kycTier:true,suspendedAt:true}},vehicle:{select:{id:true,type:true,make:true,model:true,registrationPlate:true}},parcelBooking:true,rideBooking:true}}); },
   findOwnerLocation({assignment,now}) {
    const booking=assignment.parcelBooking||assignment.rideBooking;
    return prismaClient.driverLocation.findFirst({where:{driverProfileId:assignment.driverProfileId,recordedAt:{gte:new Date(now.getTime()-2*60*1000)}},orderBy:{recordedAt:"desc"},select:{latitude:true,longitude:true,accuracyMeters:true,recordedAt:true}});

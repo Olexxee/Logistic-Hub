@@ -17,6 +17,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
      startedAt:assignment.startedAt,
      completedAt:assignment.completedAt,
      failureReason:assignment.failureReason,
+     vehicle:assignment.vehicle?{id:assignment.vehicle.id,type:assignment.vehicle.type,make:assignment.vehicle.make,model:assignment.vehicle.model,registrationPlate:assignment.vehicle.registrationPlate}:null,
      createdAt:assignment.createdAt,
      updatedAt:assignment.updatedAt,
      booking:{

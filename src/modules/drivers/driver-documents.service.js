@@ -15,7 +15,7 @@ const ALLOWED_TYPES = new Map([
 const DOCUMENT_TYPES = new Set(["IDENTITY","DRIVER_LICENSE","VEHICLE_REGISTRATION","VEHICLE_INSURANCE","ROADWORTHINESS"]);
 function safeName(value) { return (basename(String(value ?? "driver-document").replace(/\\/g,"/").replace(/[\u0000-\u001f\u007f]/g,"")).trim() || "driver-document").slice(0,160); }
 
-export function createDriverDocumentsService({ prismaClient, storage = createCloudinaryStorage(), legacyStorage = createFirebaseStorage() }) {
+export function createDriverDocumentsService({ prismaClient, storage = createCloudinaryStorage(), legacyStorage = createFirebaseStorage(), clock = () => new Date() }) {
   async function ownProfile(userId) {
     const profile = await prismaClient.driverProfile.findUnique({ where: { userId }, select: { id: true, userId: true } });
     if (!profile) throw new NotFoundError("Driver profile not found. Complete onboarding first.");
@@ -59,7 +59,7 @@ export function createDriverDocumentsService({ prismaClient, storage = createClo
       });
       return items.map(serialize);
     },
-    async uploadMine({ user, buffer, mimeType, originalName, documentType, vehicleId }) {
+    async uploadMine({ user, buffer, mimeType, originalName, documentType, vehicleId, expiresAt }) {
       const profile = await ownProfile(user.id);
       if (!DOCUMENT_TYPES.has(documentType)) throw new ValidationError("Unsupported driver verification document type.");
       if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new ValidationError("A non-empty document file is required.");
@@ -73,6 +73,10 @@ export function createDriverDocumentsService({ prismaClient, storage = createClo
       if (vehicleId && !await prismaClient.vehicle.findFirst({ where: { id: vehicleId, driverProfileId: profile.id }, select: { id: true } })) {
         throw new NotFoundError("Vehicle not found for this driver profile.");
       }
+      const expiryDate = expiresAt == null || expiresAt === "" ? null : new Date(expiresAt);
+      if (expiryDate && (!Number.isFinite(expiryDate.getTime()) || expiryDate <= clock())) {
+        throw new ValidationError("Document expiry must be a valid future date.");
+      }
       const objectPath = `driver-verification/${profile.id}/${randomUUID()}${fileType.extension}`;
       const sha256 = createHash("sha256").update(buffer).digest("hex");
       const storedPath = await storage.upload({ objectPath, buffer, mimeType: normalizedMime }) ?? objectPath;
@@ -84,7 +88,7 @@ export function createDriverDocumentsService({ prismaClient, storage = createClo
             sha256, uploadedById: user.id,
           } });
           const document = await tx.driverVerificationDocument.create({
-            data: { driverProfileId: profile.id, vehicleId: vehicleId ?? null, mediaAssetId: asset.id, documentType, reviewStatus: "PENDING" },
+            data: { driverProfileId: profile.id, vehicleId: vehicleId ?? null, mediaAssetId: asset.id, documentType, reviewStatus: "PENDING", expiresAt: expiryDate },
             include: { mediaAsset: { select: { originalName: true, mimeType: true, sizeBytes: true } }, vehicle: { select: { id: true, type: true, registrationPlate: true } } },
           });
           await writeOperationalAuditEvent(tx, {
@@ -117,9 +121,12 @@ export function createDriverDocumentsService({ prismaClient, storage = createClo
     },
     async reviewDocument({ documentId, reviewStatus, reason, actorUserId }) {
       return prismaClient.$transaction(async tx => {
-        const current = await tx.driverVerificationDocument.findUnique({ where: { id: documentId }, select: { id: true, driverProfileId: true, vehicleId: true, documentType: true, reviewStatus: true, reviewReason: true } });
+        const current = await tx.driverVerificationDocument.findUnique({ where: { id: documentId }, select: { id: true, driverProfileId: true, vehicleId: true, documentType: true, reviewStatus: true, reviewReason: true, expiresAt: true } });
         if (!current) return null;
         if (current.reviewStatus !== "PENDING") throw new ConflictError("Only pending documents can be reviewed.", "DRIVER_DOCUMENT_NOT_REVIEWABLE");
+        if (reviewStatus === "APPROVED" && current.expiresAt && current.expiresAt <= clock()) {
+          throw new ConflictError("An expired document cannot be approved. Request a current document from the driver.", "DRIVER_DOCUMENT_EXPIRED");
+        }
         const updated = await tx.driverVerificationDocument.update({
           where: { id: documentId },
           data: { reviewStatus, reviewReason: reason, reviewedAt: new Date(), reviewedById: actorUserId },
