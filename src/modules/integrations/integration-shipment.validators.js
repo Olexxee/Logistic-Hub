@@ -22,3 +22,11 @@ export const integrationShipmentDispatchAuthorizationSchema = z.object({
 }).strict();
 
 export const integrationShipmentPackingEvidenceFreezeSchema = z.object({}).strict();
+
+export const integrationShipmentStopSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+}).strict();
+
+export const integrationShipmentReturnSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+}).strict();
