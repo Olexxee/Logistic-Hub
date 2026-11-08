@@ -154,6 +154,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
                     serviceZoneId: booking.destinationServiceZoneId,
                     serviceType: "PARCEL_DELIVERY",
                     isEnabled: true,
+                    serviceZone: { is: activeServiceZoneWhere(now) },
                   },
                 },
               },
@@ -504,8 +505,8 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             ...activeDriverDocumentWhere(now, env.DRIVER_KYC_MODE === "STRICT"),
             vehicles: { some: { id: offer.vehicleId, ...eligibleVehicleWhere({ capability: "LOCAL_DISPATCH", now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) } },
             AND: [
-              { coverage: { some: { serviceZoneId: booking.pickupServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
-              { coverage: { some: { serviceZoneId: booking.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+              { coverage: { some: { serviceZoneId: booking.pickupServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
+              { coverage: { some: { serviceZoneId: booking.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
             ],
             assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
           },
