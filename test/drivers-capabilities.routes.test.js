@@ -95,7 +95,7 @@ test("Admin capability approval is transactional and records the decision in dri
     vehicle: { findFirst: async () => ({ id: "vehicle-1" }) },
     vehicleServiceCapability: { findMany: async () => [] },
     $transaction: async callback => callback({
-      driverProfile: { findUnique: async () => ({ verificationStatus: "VERIFIED", suspendedAt: null }) },
+      driverProfile: { findUnique: async () => ({ verificationStatus: "VERIFIED", suspendedAt: null, kycTier: "FULL" }) },
       driverCapabilityGrant: {
         findUnique: async () => ({ id: "grant-1", driverProfileId: "driver-1", capability: "LOCAL_DISPATCH", status, reviewReason: null }),
         updateMany: async ({ data }) => { status = data.status; return { count: 1 }; },
@@ -128,7 +128,7 @@ test("Admin cannot approve a capability for an unverified driver", async () => {
     vehicle: { findFirst: async () => ({ id: "vehicle-1" }) },
     vehicleServiceCapability: { findMany: async () => [] },
     $transaction: async callback => callback({
-      driverProfile: { findUnique: async () => ({ verificationStatus: "PENDING", suspendedAt: null }) },
+      driverProfile: { findUnique: async () => ({ verificationStatus: "PENDING", suspendedAt: null, kycTier: "FULL" }) },
       driverCapabilityGrant: {
         findUnique: async () => ({ id: "grant-1", driverProfileId: "driver-1", capability: "LOCAL_DISPATCH", status, reviewReason: null }),
         updateMany: async ({ data }) => { status = data.status; return { count: 1 }; },
