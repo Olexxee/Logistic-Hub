@@ -221,6 +221,95 @@ test("confirmed destination hub handover completes partner assignment and create
 });
 
 
+
+test("confirmed partner-to-recipient handover completes an integration end-to-end shipment", async () => {
+  const integrationBooking = { ...booking, integrationClientId: "market-iq-client-1" };
+  const handover = {
+    id: "handover-partner-recipient-1",
+    parcelBookingId: "booking-1",
+    deliveryLegId: "leg-1",
+    initiatedByUserId: "partner-user-1",
+    fromPartyType: "TRANSPORT_PARTNER",
+    fromPartyId: "partner-1",
+    toPartyType: "RECIPIENT",
+    toPartyId: "recipient-1",
+    status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"),
+    parcelBooking: integrationBooking,
+  };
+  const calls = { assignmentUpdates: [], legUpdates: [], payables: [], bookingUpdates: [], bookingEvents: [], integrationEvents: [], audits: [] };
+  const partnerLeg = {
+    ...leg,
+    type: "INTERSTATE_TRANSPORT",
+    destinationHubPointId: null,
+    parcelBooking: integrationBooking,
+    partnerAssignments: [{ partnerId: "partner-1", status: "IN_TRANSIT" }],
+  };
+  const { db } = tx({
+    user: {
+      findUnique: async ({ where }) => where.id === "recipient-1"
+        ? { id: "recipient-1", status: "ACTIVE", role: "CUSTOMER", emailVerifiedAt: now, phone: "08000000000", phoneVerifiedAt: now }
+        : { id: where.id, status: "ACTIVE", role: "PARTNER_OPERATOR", emailVerifiedAt: now },
+    },
+    custodyHandover: {
+      findUnique: async () => handover,
+      update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }),
+    },
+    deliveryLeg: {
+      findUnique: async () => partnerLeg,
+      findFirst: async () => null,
+      updateMany: async ({ where, data }) => { calls.legUpdates.push({ where, data }); return { count: 1 }; },
+    },
+    transportPartner: { findUnique: async () => ({ id: "partner-1", status: "ACTIVE", verificationStatus: "VERIFIED" }) },
+    transportPartnerMember: { findUnique: async () => ({ partnerId: "partner-1", userId: "partner-user-1", isActive: true }) },
+    partnerDeliveryAssignment: {
+      findFirst: async () => ({
+        id: "partner-assignment-1", partnerId: "partner-1", agreementId: "agreement-1",
+        deliveryLegId: "leg-1", status: "IN_TRANSIT",
+        agreedTransportChargeMinor: 450000n, currency: "NGN",
+      }),
+      updateMany: async ({ where, data }) => { calls.assignmentUpdates.push({ where, data }); return { count: 1 }; },
+    },
+    partnerPayable: {
+      upsert: async ({ where, create }) => {
+        calls.payables.push({ where, create });
+        return { id: "payable-1", amountMinor: create.amountMinor, currency: create.currency };
+      },
+    },
+    parcelBooking: {
+      findUnique: async () => ({ id: "booking-1", integrationClientId: "market-iq-client-1", senderId: null, publicReference: "LH-123", status: "IN_TRANSIT" }),
+      update: async ({ where, data }) => { calls.bookingUpdates.push({ where, data }); return { id: where.id, ...data }; },
+    },
+    bookingEvent: {
+      create: async ({ data }) => {
+        const event = { id: "booking-event-recipient", createdAt: now, ...data };
+        calls.bookingEvents.push(event);
+        return event;
+      },
+    },
+    integrationShipmentEvent: {
+      findUnique: async () => null,
+      create: async ({ data }) => { calls.integrationEvents.push(data); return { id: "integration-event-1", sequence: data.sequence, eventType: data.eventType }; },
+    },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.confirmHandover({
+    handoverId: handover.id,
+    userId: "recipient-1",
+    conditionAtReceipt: "Parcel received sealed and intact",
+  });
+  assert.equal(result.handover.status, "CONFIRMED");
+  assert.equal(calls.assignmentUpdates[0].data.status, "COMPLETED");
+  assert.equal(calls.legUpdates[0].data.status, "COMPLETED");
+  assert.equal(calls.bookingUpdates[0].data.status, "COMPLETED");
+  assert.equal(calls.payables.length, 1);
+  assert.equal(calls.bookingEvents[0].eventType, "PARTNER_RECIPIENT_CUSTODY_CONFIRMED");
+  assert.equal(calls.integrationEvents[0].eventType, "shipment.delivery_leg_completed");
+  assert.equal(calls.audits.some(item => item.action === "PARTNER_EXECUTION_COMPLETED_AND_PAYABLE_CREATED"), true);
+});
+
 test("admin can record an off-platform verified recipient phone with an audit trail", async () => {
   const calls = { audits: [], updates: [] };
   const { db } = tx({
