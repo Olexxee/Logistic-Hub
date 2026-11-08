@@ -6335,6 +6335,120 @@ paths:
         '403': { description: Integration client lacks shipments:write. }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/shipments/by-external-reference/{externalFulfillmentReference}/stop:
+    post:
+      tags: [Integrations]
+      operationId: stopIntegrationShipment
+      summary: Stop an integration shipment before confirmed custody transfer
+      description: Requires shipments:write. This command only confirms a stop while the booking is awaiting partner assignment or assigned, with no confirmed custody handover or in-transit partner assignment. It atomically cancels eligible assignments, pending handovers and cancellable legs. Shipments already in custody or transit must use the return-request command. No refund is initiated.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Shipment stopped before custody transfer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [shipmentId, externalFulfillmentReference, status, replay]
+                    properties:
+                      shipmentId: { type: string }
+                      externalFulfillmentReference: { type: string }
+                      status: { const: STOPPED }
+                      stoppedAt: { type: string, format: date-time }
+                      alreadyStopped: { type: boolean }
+                      replay: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:write. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/shipments/by-external-reference/{externalFulfillmentReference}/return-request:
+    post:
+      tags: [Integrations]
+      operationId: requestIntegrationShipmentReturn
+      summary: Record a return request after custody transfer
+      description: Requires shipments:write. Returns HTTP 202 when a return request is durably recorded. This is not proof that the parcel has been stopped or physically returned; the booking status remains unchanged and physicalReturnConfirmed is false. No refund is initiated.
+      x-implementation-status: implemented
+      parameters:
+        - in: header
+          name: X-Integration-Key-Id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Integration-Secret
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - in: path
+          name: externalFulfillmentReference
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '202':
+          description: Return request durably recorded; physical return not confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [shipmentId, externalFulfillmentReference, status, shipmentStatus, requestedAt, physicalReturnConfirmed, replay]
+                    properties:
+                      shipmentId: { type: string }
+                      externalFulfillmentReference: { type: string }
+                      status: { const: RETURN_REQUESTED }
+                      shipmentStatus: { type: string }
+                      requestedAt: { type: string, format: date-time }
+                      physicalReturnConfirmed: { const: false }
+                      alreadyRequested: { type: boolean }
+                      replay: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Integration client lacks shipments:write. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /integrations/shipments/by-external-reference/{externalFulfillmentReference}:
     get:
       tags: [Integrations]
