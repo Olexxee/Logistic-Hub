@@ -205,17 +205,40 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 **Goal:** Represent driver capabilities and vehicle service suitability without conflating them with platform roles.
 
-- [ ] Decide whether existing fields/tables already model service capabilities; reuse them if semantically correct.
-- [ ] If absent, define normalized, auditable driver-capability records with statuses such as REQUESTED, APPROVED, REJECTED, SUSPENDED and REVOKED.
-- [ ] Define vehicle class and per-vehicle approved service suitability.
-- [ ] Support one driver with multiple vehicles and multiple approved capabilities.
+- [x] Confirm `DriverCoverage` is broad zone/service availability, not a granular operational capability; retain it unchanged.
+- [x] Add normalized `DriverCapabilityGrant` records with REQUESTED, APPROVED, REJECTED, SUSPENDED and REVOKED lifecycle states.
+- [x] Add normalized `VehicleServiceCapability` records using the same parcel capability catalogue and independent approval lifecycle.
+- [x] Preserve the existing one-to-many vehicle relation; allow one driver to request multiple capabilities and each owned vehicle to request capabilities independently.
 - [ ] Preserve existing driver/vehicle records through additive migrations and explicit backfill; never silently grant capabilities to existing profiles.
-- [ ] Add Admin review/revocation endpoints with reason, actor and audit event.
-- [ ] Add owner-scoped driver self-service read/request/update endpoints as appropriate.
+- [x] Add Admin review, rejection, suspension and revocation endpoints with required reason and transactional operational audit events.
+- [x] Add owner-scoped driver capability and per-vehicle suitability read/request endpoints; clients cannot submit decision fields.
 - [ ] Define eligibility response/reason codes for dispatch and assignment consumers.
-- [ ] Update OpenAPI, API readiness documentation and seed/test fixtures.
+- [x] Update OpenAPI and add route-level authorization/request validation tests; no seed/backfill is required because existing drivers receive no implicit capability.
 
-**Acceptance:** API tests prove that requesting or approving one capability does not grant others, and no client-supplied field can self-approve a driver or vehicle.
+**Acceptance:** route tests prove that driver requests are created only as REQUESTED, caller-supplied decision fields are rejected, and driver accounts cannot call Admin review routes. Admin approval additionally requires a verified, non-suspended driver; vehicle suitability approval also requires that exact vehicle to be active and verified. Capability approval remains separate from matching eligibility until DRV-05.
+
+
+#### DRV-01 implementation contract
+
+**Implemented on branch `feat/drv-01-capability-contracts` (PR pending).**
+
+- `DriverServiceCapability`: `LOCAL_DISPATCH`, `PICKUP_COLLECTION`, `FINAL_MILE_DELIVERY`.
+- `CapabilityApprovalStatus`: `REQUESTED`, `APPROVED`, `REJECTED`, `SUSPENDED`, `REVOKED`.
+- `DriverCapabilityGrant`: one record per driver/capability pair.
+- `VehicleServiceCapability`: one record per vehicle/capability pair.
+- Rejected/revoked requests may be resubmitted; requested/approved/suspended requests cannot be duplicated.
+- Admin decisions require a 10–500 character reason and are written to `OperationalAuditEvent` in the same transaction as the state change.
+- Driver capability approval requires a verified, non-suspended driver profile. Vehicle suitability approval additionally requires the selected vehicle itself to be active and verified.
+- No existing driver or vehicle is backfilled as approved. Existing records begin with no capability grants.
+- These records do not yet affect dispatch matching. DRV-05 will consume both the driver grant and exact vehicle suitability; assignment vehicle binding is a separate DRV-02/DRV-05 gate.
+
+**API**
+- `GET/POST /drivers/me/capabilities`
+- `GET/POST /drivers/me/vehicles/:vehicleId/capabilities`
+- `GET /drivers/admin/drivers/:driverProfileId/capabilities`
+- `PATCH /drivers/admin/drivers/:driverProfileId/capabilities/:capability`
+- `GET /drivers/admin/vehicles/:vehicleId/capabilities`
+- `PATCH /drivers/admin/vehicles/:vehicleId/capabilities/:capability`
 
 ### DRV-02 — Vehicle registration and verification lifecycle
 
