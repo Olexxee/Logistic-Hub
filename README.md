@@ -28,7 +28,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 ## Driver assignment lifecycle
 
-DRV-03 availability/location hardening, DRV-04A assignment lifecycle hardening and DRV-04B PostgreSQL reservation-concurrency coverage are merged. DRV-04C unpaid-reservation expiry/release is implemented in PR #96; its CI passed and it is awaiting merge. See [Current Implementation Stopping Point](docs/current-implementation-status.md) for the exact completed/remaining work and [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md) for lifecycle invariants.
+DRV-03 availability/location hardening, DRV-04A assignment lifecycle hardening, DRV-04B PostgreSQL reservation-concurrency coverage and DRV-04C unpaid-reservation expiry/release are merged. PR #96 merged on November 5, 2026 (merge commit `cc20e50aee924218095d1f6d70bcfff560adcbdf`); its README statement that it was awaiting merge was stale. See [Current Implementation Stopping Point](docs/current-implementation-status.md) for the exact completed/remaining work and [Driver Assignment Lifecycle Policy](docs/driver-assignment-lifecycle-policy.md) for lifecycle invariants.
 
 ## Driver verification and staged KYC
 
