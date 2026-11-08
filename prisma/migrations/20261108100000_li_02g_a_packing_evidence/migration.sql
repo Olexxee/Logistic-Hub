@@ -22,7 +22,7 @@ CREATE TABLE "integration_packing_evidence" (
 CREATE UNIQUE INDEX "integration_packing_evidence_objectPath_key" ON "integration_packing_evidence"("objectPath");
 CREATE UNIQUE INDEX "integration_packing_evidence_clientId_idempotencyKey_key" ON "integration_packing_evidence"("clientId", "idempotencyKey");
 CREATE UNIQUE INDEX "integration_packing_evidence_parcelBookingId_slot_version_key" ON "integration_packing_evidence"("parcelBookingId", "slot", "version");
-CREATE INDEX "integration_packing_evidence_clientId_parcelBookingId_slot_version_idx" ON "integration_packing_evidence"("clientId", "parcelBookingId", "slot", "version");
+CREATE INDEX "integration_packing_evidence_client_booking_slot_version_idx" ON "integration_packing_evidence"("clientId", "parcelBookingId", "slot", "version");
 
 ALTER TABLE "integration_packing_evidence" ADD CONSTRAINT "integration_packing_evidence_clientId_fkey"
 FOREIGN KEY ("clientId") REFERENCES "integration_clients"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
