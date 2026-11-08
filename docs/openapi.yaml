@@ -7796,6 +7796,7 @@ components:
         status: { type: string }
         paymentStatus: { type: string }
         dispatchAuthorizedAt: { type: [string, 'null'], format: date-time }
+        packingEvidenceFrozenAt: { type: [string, 'null'], format: date-time }
         currency: { type: string }
         customerChargeMinor:
           oneOf:
