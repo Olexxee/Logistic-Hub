@@ -27,8 +27,7 @@ Initial parcel-logistics capabilities:
 - **LOCAL_DISPATCH** — short-distance, same-city parcel delivery.
 - **PICKUP_COLLECTION** — collect parcels from senders and move them to the next approved point.
 - **FINAL_MILE_DELIVERY** — deliver parcels from a hub/receiving point to the recipient.
-- **INTER_STATE_TRANSPORT** — carry parcels on an approved inter-state route/corridor.
-- **HUB_TRANSFER** — move parcels between approved hubs or transfer points.
+**Not in the initial driver capability set:** hub transfers and inter-state transport. The current delivery-leg dispatch service explicitly reserves `HUB_TRANSFER` and `INTERSTATE_TRANSPORT` legs for transport-partner execution. Do not make them driver capabilities unless the operating model is deliberately changed and separately approved.
 
 These are operational capabilities, not global authentication roles. Backend authorization continues to use the existing user role and ownership model. An Admin selecting a capability does not turn a user into an Admin, partner or hub operator.
 
@@ -44,7 +43,7 @@ Initial vehicle classes:
 - **MOTORCYCLE** — motorbike / dispatch motorcycle.
 - **CAR** — eligible car.
 - **VAN** — delivery van.
-- **PICKUP_TRUCK** — pickup truck.
+- **PICKUP** — pickup truck (the existing Prisma enum value is `PICKUP`).
 - **TRUCK** — eligible goods vehicle.
 
 The vehicle type catalogue must be configurable or safely extensible; do not scatter hard-coded vehicle lists across unrelated screens.
@@ -68,7 +67,7 @@ A driver capability must not override vehicle restrictions; vehicle approval mus
 
 ### 2.4 Central Admin workspace, not duplicated screens
 
-Create one Admin entry point, provisionally **/admin/driver-operations**, with a shared directory and linked detail views.
+Extend the existing Admin driver verification workspace at **/admin/driver-verification** into the unified Driver & Vehicle Operations workspace. It already has driver and vehicle queues with linked detail panels; do not create a duplicate Admin route unless the source audit proves that extension is impractical.
 
 The workspace must support:
 - All-driver directory, search, pagination and filters.
@@ -111,6 +110,77 @@ Do not infer that a capability is complete because a route, page or type exists.
 - Document expiry enforcement, malware scanning and a retention/deletion policy are release gates before real identity evidence is collected.
 - Do not expose private document URLs or weaken existing ownership/access checks.
 
+## 3A. DRV-00 source audit — completed 8 November 2026
+
+**Audited default-branch baselines**
+- Backend `Olexxee/Logistic-Hub`: `19e34498acd556aa92c58afa1a7aec28de517a64`.
+- Frontend `Olexxee/logistic-frontend`: `7bd5ebc0a946babadbc2700e1c5438d4592deff5`.
+
+This is a source audit of schema, mounted route modules, validators/services/repositories, OpenAPI paths, frontend routes/pages/API modules, and existing tests. It is not staging or production acceptance.
+
+### Confirmed existing foundation
+
+| Area | Source-backed finding | Audit result |
+|---|---|---|
+| Driver identity | `DriverProfile.userId` is unique; one user has at most one driver profile. User platform role is `DRIVER`, not a separate account per service. | Implemented |
+| Multiple vehicles in data model | `DriverProfile.vehicles` is one-to-many. The `Vehicle` model already supports multiple vehicles per profile. | Implemented in schema |
+| Vehicle classes | Existing enum: `BICYCLE`, `MOTORCYCLE`, `CAR`, `VAN`, `PICKUP`, `TRUCK`. Bicycles and motorcycles are already distinct classes. | Implemented in schema |
+| Initial vehicle onboarding | `POST /drivers/onboarding` creates a driver profile and exactly one vehicle in a transaction. A second onboarding attempt is rejected when the profile exists. | Partial |
+| Additional vehicle lifecycle | No driver-owned endpoint exists to add, edit, replace or deactivate another vehicle after onboarding. | Missing |
+| Vehicle assignment binding | `DriverAssignment`, `DriverOffer` and `DeliveryLegOffer` reference the driver profile but have no `vehicleId`. Matching checks whether the driver has *some* active verified vehicle; it does not select or bind the vehicle used for a job. | Missing; critical |
+| Driver service coverage | `DriverCoverage` is keyed by driver, service zone and broad `ServiceType` (`PARCEL_DELIVERY`, `PASSENGER_RIDE`, `HUB_POINT`, `BUSINESS_LOGISTICS`). Coverage is set through an Admin-only endpoint. | Implemented, but not granular driver-role approval |
+| Operational driver work | Direct same-state parcel matching and delivery-leg driver dispatch exist. Delivery-leg drivers are currently limited to `LOCAL_PICKUP` and `FINAL_MILE`. | Implemented |
+| Partner-only leg types | Delivery-leg dispatch rejects `HUB_TRANSFER` and `INTERSTATE_TRANSPORT` for local drivers with `LEG_REQUIRES_PARTNER_EXECUTION`. | Explicit boundary |
+| Driver KYC and verification | Profile verification, KYC tier, suspension, vehicle verification and document review are separate checks. TEST_LIMITED remains restricted; STRICT mode requires identity evidence and, for non-bicycle vehicles, driver licence and vehicle registration evidence. | Implemented with stated policy limits |
+| Vehicle evidence | Documents may be linked to a specific vehicle; supported types include registration, insurance and roadworthiness. `expiresAt` is stored. Expiry enforcement is not implemented. | Partial |
+| Admin driver/vehicle operations | Backend supports paginated driver/vehicle lists, profile/vehicle verification, driver suspension/reactivation, driver audit, document review and coverage assignment. | Partial |
+| Admin frontend | `/admin/driver-verification` already has Driver Applications and Vehicle Verification queues, linked details, KYC status, vehicles, coverage and documents. It lacks general search and capability/suitability management. | Partial; reuse this workspace |
+| Driver frontend | `/drivers` is a profile/onboarding screen. Dispatch opportunities (`/dispatch`) and assignments (`/assignments`) are separate pages. The profile displays all vehicles returned by the API but has no add-vehicle flow. | Partial |
+| Public recruitment | `/become-a-driver` is present on the current frontend main branch and directs applicants through registration to the existing onboarding route. | Implemented in merged code |
+| API contract | Current driver, vehicle, document, coverage, Admin, dispatch and assignment endpoints are represented in `docs/openapi.yaml`. | Existing contracts documented |
+
+### Existing routes and screens
+
+| Workflow | Backend contract | Frontend |
+|---|---|---|
+| Read own driver profile | `GET /drivers/me` | `/drivers` |
+| Submit initial driver + first vehicle | `POST /drivers/onboarding` | `DriverOnboardingForm` on `/drivers` |
+| Reapply after rejection | `POST /drivers/me/reapply` | Reapplication form in driver profile |
+| Upload/list own documents | `POST/GET /drivers/me/documents` | `DriverDocumentsPanel` |
+| Driver availability/location | `PATCH /drivers/availability`, `POST /drivers/location` | Availability control; location integration is separate |
+| Admin driver/vehicle queues | `GET /drivers/admin/drivers`, `GET /drivers/admin/vehicles` | `/admin/driver-verification` |
+| Admin verification | `PATCH /drivers/admin/{driverProfileId}/verification`, `PATCH /drivers/admin/vehicles/{vehicleId}/verification` | Driver and vehicle review flows |
+| Admin driver status/audit | `PATCH /drivers/admin/drivers/{driverProfileId}/status`, `GET /drivers/admin/drivers/{driverProfileId}/audit` | Backend contract exists; unified UI integration is incomplete |
+| Admin document review | `GET/PATCH /drivers/admin/documents...` | `AdminDriverDocumentsPanel` |
+| Admin coverage | `PUT /drivers/admin/coverage` | Coverage is visible in the Admin driver detail; dedicated management integration needs audit/extension |
+| Local parcel opportunities | `GET /driver/offers`, `GET /driver/delivery-leg-offers` | `/dispatch` |
+| Driver assignment execution | `GET /assignments/mine` and assignment lifecycle endpoints | `/assignments` |
+
+### Critical design gaps established by the audit
+
+1. **Do not add a second vehicle-to-driver relation.** The existing one-to-many relation already supports multiple vehicles. The missing work is the add/edit/deactivate API and user interface.
+2. **A job cannot currently identify its operating vehicle.** No offer or assignment stores `vehicleId`. Before enforcing vehicle-specific service suitability, add a safe vehicle-selection/binding contract and persist that choice on the assignment. Revalidate the vehicle at offer/acceptance/execution boundaries as required.
+3. **Broad service coverage is not a driver role.** `DriverCoverage.serviceType` says which broad service is enabled in a zone; it does not express independently requested/approved capabilities such as local dispatch, pickup collection or final-mile delivery. Do not overload `ServiceType` or global `UserRole` to represent those capabilities.
+4. **Do not expose partner work as driver roles.** Hub-transfer and interstate legs are explicitly partner-executed today. The initial driver role set should be local dispatch, pickup collection and final-mile delivery only.
+5. **Extend the existing Admin workspace.** The existing driver-verification page already unifies driver and vehicle review queues. Expand and rename it rather than create a second dashboard that duplicates lists and review state.
+6. **Vehicle requirements are class-aware.** Bicycle is exempt from the current strict-mode motor-vehicle registration/licence pair. The registration plate is optional in the current schema and onboarding validator; any change to make it mandatory needs a deliberate class-specific rule and migration/validation plan.
+7. **Document expiry is only stored, not enforced.** Expiry reminders and expiry-based eligibility must not be represented as existing functionality.
+8. **Current Admin list APIs are paginated but limited.** Driver filters cover verification status and KYC tier; vehicle filters cover verification status and active state. Neither currently supports free-text search, vehicle type, capability or service-area filters.
+9. **Current tests cover the foundation, not the new model.** Existing tests cover Admin role restrictions and pagination, verification lifecycle, TEST_LIMITED restrictions, private document upload/review/download, dispatch eligibility, and rejection of partner-only leg types. There are no tests for adding a second vehicle, vehicle selection on an assignment, capability approval/revocation, or per-vehicle service eligibility.
+
+### DRV-00 completion decision
+
+- [x] Prisma driver, vehicle, document, coverage, assignment and audit models inspected.
+- [x] Mounted driver self-service and Admin route modules, validators, services and repositories inspected.
+- [x] OpenAPI paths reconciled against mounted route contracts.
+- [x] Frontend driver pages, Admin route/navigation, API modules and role guards inspected.
+- [x] Existing one-to-many vehicle support and missing lifecycle operations identified.
+- [x] Existing coverage model, missing granular capability model, and missing assignment vehicle binding identified.
+- [x] Existing tests and uncovered acceptance cases inventoried.
+- [x] Source-backed gap matrix recorded above.
+
+**DRV-00 is complete. No schema migration, API, frontend or production changes were made as part of this audit.**
+
 ## 4. Work breakdown and delivery sequence
 
 Each phase should be a focused PR or a small set of reviewable PRs. Backend/API contracts and tests lead; frontend consumes only verified contracts. Keep rides separate. Update this document and the relevant implementation-status documents after each merged phase.
@@ -119,13 +189,13 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 **Goal:** Establish exactly what exists before changing the schema or UI.
 
-- [ ] Inspect Prisma driver, vehicle, document, service-zone, assignment and audit models.
-- [ ] Inventory mounted driver/vehicle Admin and self-service routes, validators, services and repository methods.
-- [ ] Reconcile OpenAPI and frontend contract-readiness against actual mounted routes.
-- [ ] Inventory frontend driver pages, Admin navigation, query keys, API modules and permissions.
-- [ ] Record current single-vehicle/multiple-vehicle constraints and any existing service/capability fields.
-- [ ] Identify missing list/detail/filter/review endpoints and existing tests.
-- [ ] Produce a source-backed gap matrix; no schema migration or UI rewrite in this phase.
+- [x] Inspect Prisma driver, vehicle, document, service-zone, assignment and audit models.
+- [x] Inventory mounted driver/vehicle Admin and self-service routes, validators, services and repository methods.
+- [x] Reconcile OpenAPI paths against mounted route contracts.
+- [x] Inventory frontend driver pages, Admin navigation, API modules and role guards.
+- [x] Record existing one-to-many vehicle support and missing lifecycle operations.
+- [x] Identify missing capability approval, vehicle-to-assignment binding, list/detail/filter/review gaps and test coverage.
+- [x] Produce the source-backed gap matrix in Section 3A; no schema migration or UI rewrite in this phase.
 
 **Acceptance:** every planned mutation and screen maps to an existing verified contract or a specifically identified backend change.
 
