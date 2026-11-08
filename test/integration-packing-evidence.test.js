@@ -25,6 +25,9 @@ function harness() {
     },
     $transaction: async work => work({
       $queryRaw: async () => [],
+      parcelBooking: {
+        findUnique: async () => ({ integrationPackingEvidenceFrozenAt: null }),
+      },
       integrationPackingEvidence: {
         findUnique: async ({ where }) => rows.find(row => row.clientId === where.clientId_idempotencyKey.clientId && row.idempotencyKey === where.clientId_idempotencyKey.idempotencyKey) ?? null,
         aggregate: async ({ where }) => ({ _max: { version: Math.max(0, ...rows.filter(row => row.parcelBookingId === where.parcelBookingId && row.slot === where.slot).map(row => row.version)) || null } }),
