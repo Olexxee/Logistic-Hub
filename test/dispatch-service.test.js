@@ -201,6 +201,8 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
     status: "MATCHING",
     pickupServiceZoneId: "zone_pickup",
     destinationServiceZoneId: "zone_destination",
+    pickupLatitude: 6.5244,
+    pickupLongitude: 3.3792,
     connectionFeeMinor: 300n,
     otherChargesMinor: 50n,
     currency: "NGN",
