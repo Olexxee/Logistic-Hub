@@ -265,20 +265,6 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw conflict("OFFER_NO_LONGER_AVAILABLE", "The selected driver fare is invalid or expired.");
           }
           if (!offer.vehicleId) throw conflict("VEHICLE_NOT_SELECTED", "The driver has not selected a vehicle for this offer.");
-          const capability = parcelCapabilityForLegType(leg.type);
-          const selectedVehicle = await tx.vehicle.findFirst({
-            where: { id: offer.vehicleId, ...eligibleVehicleWhere({ driverProfileId: offer.driverProfileId, capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) },
-            select: { id: true },
-          });
-          if (!selectedVehicle) throw conflict("VEHICLE_NO_LONGER_ELIGIBLE", "The selected vehicle is no longer approved for this delivery service.");
-          const driverGrant = await tx.driverCapabilityGrant.findFirst({
-            where: { driverProfileId: offer.driverProfileId, capability, status: "APPROVED" },
-            select: { id: true },
-          });
-          if (!driverGrant) throw conflict("DRIVER_CAPABILITY_NO_LONGER_APPROVED", "The selected driver is no longer approved for this delivery service.");
-          const activeZones = await db.findActiveServiceZones(tx, leg, now);
-          const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
-          if (activeZones.length !== requiredZoneCount) throw conflict("SERVICE_ZONE_UNAVAILABLE", "The origin or destination zone is no longer active and available.");
           if (offer.acceptanceIdempotencyKey === idempotencyKey) {
             if (offer.acceptancePayloadHash !== acceptanceHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare acceptance.");
             const assignment = await tx.driverAssignment.findFirst({
@@ -294,6 +280,20 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               currency: offer.currency, paymentRequired: true, paymentEnabled: false, replay: true,
             };
           }
+          const capability = parcelCapabilityForLegType(leg.type);
+          const selectedVehicle = await tx.vehicle.findFirst({
+            where: { id: offer.vehicleId, ...eligibleVehicleWhere({ driverProfileId: offer.driverProfileId, capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) },
+            select: { id: true },
+          });
+          if (!selectedVehicle) throw conflict("VEHICLE_NO_LONGER_ELIGIBLE", "The selected vehicle is no longer approved for this delivery service.");
+          const driverGrant = await tx.driverCapabilityGrant.findFirst({
+            where: { driverProfileId: offer.driverProfileId, capability, status: "APPROVED" },
+            select: { id: true },
+          });
+          if (!driverGrant) throw conflict("DRIVER_CAPABILITY_NO_LONGER_APPROVED", "The selected driver is no longer approved for this delivery service.");
+          const activeZones = await db.findActiveServiceZones(tx, leg, now);
+          const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
+          if (activeZones.length !== requiredZoneCount) throw conflict("SERVICE_ZONE_UNAVAILABLE", "The origin or destination zone is no longer active and available.");
           const driverSnapshot = await tx.driverProfile.findFirst({
             where: {
               id: offer.driverProfileId,
@@ -318,7 +318,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             where: {
               id: offer.driverProfileId,
               verificationStatus: "VERIFIED", kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] }, suspendedAt: null, isOnline: true, isAvailable: true,
-              lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
+              lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
               user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
               ...activeDriverCapabilityWhere(capability),
               ...activeDriverDocumentWhere(now, env.DRIVER_KYC_MODE === "STRICT"),
