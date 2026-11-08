@@ -74,6 +74,17 @@ export function createIntegrationPackingEvidenceService({ prismaClient, storage 
               objectPath: storedPath, uploadedAt: clock(),
             },
           });
+          await tx.bookingEvent.create({
+            data: {
+              parcelBookingId: booking.id,
+              eventType: "INTEGRATION_PACKING_EVIDENCE_RECEIVED",
+              metadata: {
+                evidenceId: evidence.id, slot: evidence.slot, version: evidence.version,
+                actorReference: evidence.actorReference, mimeType: evidence.mimeType,
+                sizeBytes: evidence.sizeBytes.toString(), sha256: evidence.sha256,
+              },
+            },
+          });
           return { evidence, replay: false };
         }, { isolationLevel: "Serializable" });
         if (result.replay) await storage.delete({ objectPath: storedPath, mimeType: metadata.mimeType }).catch(() => {});
@@ -88,14 +99,17 @@ export function createIntegrationPackingEvidenceService({ prismaClient, storage 
       const booking = await findBooking(client.id, externalFulfillmentReference);
       const rows = await prismaClient.integrationPackingEvidence.findMany({
         where: { clientId: client.id, parcelBookingId: booking.id },
-        orderBy: [{ slot: "asc" }, { version: "asc" }],
+        orderBy: [{ slot: "asc" }, { version: "desc" }],
       });
-      return { shipmentReference: booking.publicReference, evidence: rows.map(present) };
+      const latestBySlot = new Map();
+      for (const row of rows) if (!latestBySlot.has(row.slot)) latestBySlot.set(row.slot, row);
+      return { shipmentReference: booking.publicReference, evidence: [...latestBySlot.values()].map(present) };
     },
 
-    async download({ client, evidenceId }) {
+    async download({ client, externalFulfillmentReference, evidenceId }) {
+      const booking = await findBooking(client.id, externalFulfillmentReference);
       const row = await prismaClient.integrationPackingEvidence.findFirst({
-        where: { id: evidenceId, clientId: client.id },
+        where: { id: evidenceId, clientId: client.id, parcelBookingId: booking.id },
       });
       if (!row) throw new NotFoundError("Packing evidence not found.", "PACKING_EVIDENCE_NOT_FOUND");
       const buffer = await storage.download({ objectPath: row.objectPath, mimeType: row.mimeType });
