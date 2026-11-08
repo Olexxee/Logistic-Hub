@@ -451,6 +451,18 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         if (fare <= 0n || fare < minimum) {
           throw conflict("INVALID_FARE", "The selected driver fare is invalid or below the configured minimum.");
         }
+        const requestedZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
+        const activeZones = await tx.serviceZone.findMany({
+          where: { id: { in: requestedZoneIds }, ...activeServiceZoneWhere(now) },
+          select: { id: true, stateId: true },
+        });
+        if (activeZones.length !== requestedZoneIds.length) {
+          throw conflict("SERVICE_ZONE_UNAVAILABLE", "Pickup and destination zones must remain active and available for parcel delivery.");
+        }
+        if (new Set(activeZones.map((zone) => zone.stateId)).size !== 1) {
+          throw conflict("PARTNER_QUOTE_REQUIRED", "Cross-state parcel shipments require an accepted transport-partner quote.");
+        }
+
         const customerPayable = fare + booking.connectionFeeMinor + booking.otherChargesMinor;
         const paymentExpiresAt = new Date(now.getTime() + 15 * 60 * 1000);
 
