@@ -485,6 +485,13 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
 
         const confirmedLeg = await repo.findBookingLeg(handover.deliveryLegId, tx);
 
+        if (handover.fromPartyType === "TRANSPORT_PARTNER" && handover.toPartyType === "RECIPIENT"
+          && !(confirmedLeg?.type === "INTERSTATE_TRANSPORT"
+            && confirmedLeg?.destinationHubPointId == null
+            && Boolean(handover.parcelBooking?.integrationClientId))) {
+          throw fail(409, "PARTNER_RECIPIENT_HANDOVER_NOT_SUPPORTED", "Direct partner-to-recipient completion is reserved for integration end-to-end shipments without a destination hub.");
+        }
+
         if (handover.fromPartyType === "HUB" && ["DRIVER", "TRANSPORT_PARTNER"].includes(handover.toPartyType)) {
           const blockingCase = await repo.findBlockingHubOperationalCase(handover.deliveryLegId, tx);
           if (blockingCase) throw fail(409, "HUB_OPERATIONAL_CASE_OPEN", "This parcel has an unresolved operational exception. Resolve or close the case before releasing custody.");
@@ -589,12 +596,32 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           await projectIntegrationShipmentEvent({ tx, parcelBookingId: handover.parcelBookingId, sourceEvent: sourceEvent_HUB_DESTINATION_CUSTODY_CONFIRMED });
         }
 
-        // A partner interstate leg is complete only when its destination hub confirms custody.
-        if (handover.fromPartyType === "TRANSPORT_PARTNER" && handover.toPartyType === "HUB"
-          && confirmedLeg?.destinationHubPointId === handover.toPartyId) {
+        // A partner interstate leg completes at a destination hub, or directly with the
+        // verified recipient for an integration end-to-end shipment with no destination hub.
+        const partnerRecipientCompletion = handover.fromPartyType === "TRANSPORT_PARTNER"
+          && handover.toPartyType === "RECIPIENT"
+          && confirmedLeg?.type === "INTERSTATE_TRANSPORT"
+          && confirmedLeg?.destinationHubPointId == null
+          && Boolean(handover.parcelBooking?.integrationClientId);
+        const partnerHubCompletion = handover.fromPartyType === "TRANSPORT_PARTNER"
+          && handover.toPartyType === "HUB"
+          && confirmedLeg?.destinationHubPointId === handover.toPartyId;
+        if (partnerHubCompletion || partnerRecipientCompletion) {
+          if (partnerRecipientCompletion) {
+            const laterLeg = await tx.deliveryLeg.findFirst({
+              where: { parcelBookingId: handover.parcelBookingId, sequence: { gt: confirmedLeg.sequence } },
+              select: { id: true, status: true },
+            });
+            if (laterLeg) {
+              throw fail(409, "RECIPIENT_HANDOVER_NOT_TERMINAL", "An integration shipment can be delivered directly to its recipient only on its final delivery leg.");
+            }
+          }
           const assignment = await tx.partnerDeliveryAssignment.findFirst({
             where: { deliveryLegId: handover.deliveryLegId, partnerId: handover.fromPartyId, status: "IN_TRANSIT" },
           });
+          if (!assignment) {
+            throw fail(409, "PARTNER_ASSIGNMENT_NOT_IN_TRANSIT", "The partner assignment is no longer in transit and recipient delivery cannot be completed.");
+          }
           if (assignment) {
             const completedAt = clock();
             const changed = await tx.partnerDeliveryAssignment.updateMany({
@@ -636,27 +663,44 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
               } else if (nextLeg && nextLeg.status !== "READY_FOR_ASSIGNMENT") {
                 throw fail(409, "DELIVERY_LEG_SEQUENCE_CONFLICT", "The next delivery leg is not ready for activation.");
               }
+              const deliveredToRecipient = partnerRecipientCompletion;
               await tx.parcelBooking.update({
                 where: { id: handover.parcelBookingId },
-                data: { status: "IN_TRANSIT" },
+                data: { status: deliveredToRecipient ? "COMPLETED" : "IN_TRANSIT" },
               });
-              const sourceEvent_PARTNER_HUB_CUSTODY_CONFIRMED = await tx.bookingEvent.create({
+              const completionEventType = deliveredToRecipient
+                ? "PARTNER_RECIPIENT_CUSTODY_CONFIRMED"
+                : "PARTNER_HUB_CUSTODY_CONFIRMED";
+              const sourceEvent_PARTNER_CUSTODY_CONFIRMED = await tx.bookingEvent.create({
                 data: {
                   parcelBookingId: handover.parcelBookingId,
                   actorUserId: userId,
-                  eventType: "PARTNER_HUB_CUSTODY_CONFIRMED",
+                  eventType: completionEventType,
                   fromStatus: "IN_TRANSIT",
                   toStatus: "COMPLETED",
-                  metadata: { partnerAssignmentId: assignment.id, deliveryLegId: handover.deliveryLegId, nextDeliveryLegId: nextLeg?.id ?? null, handoverId },
+                  metadata: {
+                    partnerAssignmentId: assignment.id,
+                    deliveryLegId: handover.deliveryLegId,
+                    nextDeliveryLegId: nextLeg?.id ?? null,
+                    handoverId,
+                    receivingPartyType: handover.toPartyType,
+                    receivingPartyId: handover.toPartyId,
+                  },
                 },
               });
-          await projectIntegrationShipmentEvent({ tx, parcelBookingId: handover.parcelBookingId, sourceEvent: sourceEvent_PARTNER_HUB_CUSTODY_CONFIRMED });
+              await projectIntegrationShipmentEvent({
+                tx,
+                parcelBookingId: handover.parcelBookingId,
+                sourceEvent: sourceEvent_PARTNER_CUSTODY_CONFIRMED,
+              });
               await repo.createAudit({
                 actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT",
                 entityId: assignment.id, action: "PARTNER_EXECUTION_COMPLETED_AND_PAYABLE_CREATED",
                 before: { status: assignment.status },
                 after: { status: "COMPLETED", payableId: payable.id, amountMinor: payable.amountMinor.toString(), currency: payable.currency },
               }, tx);
+            } else {
+              throw fail(409, "PARTNER_ASSIGNMENT_COMPLETION_CONFLICT", "The partner assignment changed before delivery completion could be recorded.");
             }
           }
         }

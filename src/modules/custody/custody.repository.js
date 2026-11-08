@@ -56,7 +56,7 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.deliveryLeg.findUnique({
         where: { id: deliveryLegId },
         include: {
-          parcelBooking: { select: { id: true, senderId: true, paymentStatus: true, status: true, recipientName: true, recipientPhone: true } },
+          parcelBooking: { select: { id: true, senderId: true, paymentStatus: true, status: true, recipientName: true, recipientPhone: true, integrationClientId: true } },
           assignments: { where: { status: { notIn: ["CANCELLED", "FAILED", "COMPLETED"] } }, include: { driverProfile: { select: { id: true, userId: true } } } },
           partnerAssignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, select: { partnerId: true, status: true } },
         },
