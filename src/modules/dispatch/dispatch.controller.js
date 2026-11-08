@@ -15,7 +15,7 @@ export function createDispatchController({ service, notifications }) {
     },
     listDriverOffers: async (req, res) => res.status(200).json({ success: true, data: await service.listDriverOffers({ userId: req.user.id }) }),
     proposeFare: async (req, res) => {
-      const result = await service.proposeParcelFare({ offerId: req.validated.params.offerId, userId: req.user.id, proposedFareMinor: req.validated.body.proposedFareMinor, idempotencyKey: req.validated.idempotencyKey });
+      const result = await service.proposeParcelFare({ offerId: req.validated.params.offerId, userId: req.user.id, proposedFareMinor: req.validated.body.proposedFareMinor, vehicleId: req.validated.body.vehicleId, idempotencyKey: req.validated.idempotencyKey });
       if (result.replay !== true) await notifications.notifyFareProposed({ offerId: req.validated.params.offerId, result });
       return res.status(200).json({ success: true, data: result });
     },
