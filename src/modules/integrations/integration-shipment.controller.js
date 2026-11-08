@@ -14,6 +14,17 @@ export function createIntegrationShipmentController({ prismaClient, clock } = {}
   }
 
   return {
+    async freezePackingEvidence(req, res) {
+      const result = await service.freezePackingEvidence({
+        client: req.integrationClient,
+        idempotencyKey: requireIdempotencyKey(req),
+        externalFulfillmentReference: req.params.externalFulfillmentReference,
+      });
+      return res.status(result.statusCode).json({
+        success: true,
+        data: { ...result.body, replay: result.replay === true },
+      });
+    },
     async authorizeDispatch(req, res) {
       const result = await service.authorizeDispatch({
         client: req.integrationClient,
