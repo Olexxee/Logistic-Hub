@@ -165,6 +165,8 @@ export function buildNigeriaGeographyPlan(existing, dataset = nigeriaGeography) 
   return {
     country,
     createCountry: !country,
+    activateCountry: Boolean(country && !country.isActive),
+    activateStateCount: statePlans.filter((item) => item.existing && !item.existing.isActive).length,
     states: statePlans,
     matchedStateCount: statePlans.filter((item) => item.existing).length,
     createStateCount: statePlans.filter((item) => !item.existing).length,
@@ -176,7 +178,7 @@ export function buildNigeriaGeographyPlan(existing, dataset = nigeriaGeography) 
 async function readExistingGeography(client) {
   const countries = await client.country.findMany({
     where: { OR: [{ code: COUNTRY.code }, { name: { equals: COUNTRY.name, mode: "insensitive" } }] },
-    select: { id: true, code: true, name: true },
+    select: { id: true, code: true, name: true, isActive: true },
   });
 
   if (countries.length > 1) {
@@ -187,7 +189,7 @@ async function readExistingGeography(client) {
   const states = country
     ? await client.state.findMany({
       where: { countryId: country.id },
-      select: { id: true, countryId: true, code: true, name: true },
+      select: { id: true, countryId: true, code: true, name: true, isActive: true },
     })
     : [];
 
@@ -208,8 +210,8 @@ async function createPlan(client) {
 function printPlan(plan, database) {
   console.log("\nNigeria geography seed — DRY RUN");
   console.log("Database target: " + database.name + " @ " + database.host);
-  console.log("Country: " + (plan.createCountry ? "CREATE Nigeria (NG)" : "MATCH existing Nigeria"));
-  console.log("States: " + plan.matchedStateCount + " matched; " + plan.createStateCount + " to create.");
+  console.log("Country: " + (plan.createCountry ? "CREATE active Nigeria (NG)" : "MATCH existing Nigeria" + (plan.activateCountry ? " — WILL ACTIVATE" : " — already active")));
+  console.log("States: " + plan.matchedStateCount + " matched; " + plan.createStateCount + " to create; " + plan.activateStateCount + " inactive matches to activate.");
   console.log("LGAs/Area Councils: " + plan.matchedLgaCount + " matched; " + plan.createLgaCount + " to create.");
   console.log("\nPer-state additions:");
   for (const item of plan.states) {
@@ -229,13 +231,20 @@ async function applyNigeriaGeography(client) {
     let createdLgaCount = 0;
 
     if (!country) {
-      country = await tx.country.create({ data: { code: COUNTRY.code, name: COUNTRY.name } });
+      country = await tx.country.create({ data: { code: COUNTRY.code, name: COUNTRY.name, isActive: true } });
+    } else if (plan.activateCountry) {
+      country = await tx.country.update({ where: { id: country.id }, data: { isActive: true } });
     }
 
+    let activatedStateCount = 0;
     for (const item of plan.states) {
-      const state = item.existing ?? await tx.state.create({
-        data: { countryId: country.id, code: item.data.code, name: item.data.name },
+      let state = item.existing ?? await tx.state.create({
+        data: { countryId: country.id, code: item.data.code, name: item.data.name, isActive: true },
       });
+      if (item.existing && !item.existing.isActive) {
+        state = await tx.state.update({ where: { id: state.id }, data: { isActive: true } });
+        activatedStateCount += 1;
+      }
       if (!item.existing) createdStateCount += 1;
 
       if (item.createLgas.length) {
@@ -266,6 +275,8 @@ async function applyNigeriaGeography(client) {
       countryCreated: plan.createCountry,
       statesCreated: createdStateCount,
       statesMatched: plan.matchedStateCount,
+      statesActivated: activatedStateCount,
+      countryActivated: plan.activateCountry,
       lgasCreated: createdLgaCount,
       lgasMatched: plan.matchedLgaCount,
       totalStates: persistedStates.length,
