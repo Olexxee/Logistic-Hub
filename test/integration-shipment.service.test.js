@@ -490,3 +490,222 @@ test("shipment creation atomically projects a sanitized first tracking event", a
   assert.equal("externalPaymentReference" in state.integrationEvents[0].payload, false);
   assert.equal("recipientPhone" in state.integrationEvents[0].payload, false);
 });
+
+
+function actionFixture({
+  bookingStatus = "AWAITING_PARTNER_ASSIGNMENT",
+  legStatus = "READY_FOR_ASSIGNMENT",
+  assignments = [],
+  custodyHandovers = [],
+  pendingHandovers = [],
+} = {}) {
+  const state = {
+    booking: {
+      id: "booking-action-1",
+      integrationClientId: "client_1",
+      senderId: null,
+      publicReference: "LH-PCL-ACTION",
+      status: bookingStatus,
+      paymentStatus: "SUCCEEDED",
+      deliveryLegs: [{ id: "leg-action-1", status: legStatus }],
+      custodyHandovers: structuredClone(custodyHandovers),
+    },
+    assignments: structuredClone(assignments),
+    pendingHandovers: structuredClone(pendingHandovers),
+    bookingEvents: [],
+    integrationEvents: [],
+    idempotency: [],
+    eventSequence: 0,
+  };
+  const tx = {
+    $queryRaw: async () => [],
+    integrationIdempotencyRecord: {
+      findUnique: async ({ where }) => state.idempotency.find(item =>
+        item.clientId === where.clientId_operation_idempotencyKey.clientId
+        && item.operation === where.clientId_operation_idempotencyKey.operation
+        && item.idempotencyKey === where.clientId_operation_idempotencyKey.idempotencyKey) ?? null,
+      create: async ({ data }) => { state.idempotency.push(data); return data; },
+    },
+    integrationExternalReference: {
+      findFirst: async () => ({ internalResourceId: state.booking.id }),
+    },
+    parcelBooking: {
+      findFirst: async () => structuredClone(state.booking),
+      findUnique: async () => ({
+        id: state.booking.id,
+        integrationClientId: state.booking.integrationClientId,
+        senderId: state.booking.senderId,
+        publicReference: state.booking.publicReference,
+        status: state.booking.status,
+      }),
+      updateMany: async ({ where, data }) => {
+        if (where.id !== state.booking.id || where.integrationClientId !== state.booking.integrationClientId) return { count: 0 };
+        const allowed = where.status?.in ?? [where.status];
+        if (!allowed.includes(state.booking.status)) return { count: 0 };
+        Object.assign(state.booking, data);
+        return { count: 1 };
+      },
+      update: async ({ data }) => {
+        if (data.integrationEventSequence?.increment) state.eventSequence += data.integrationEventSequence.increment;
+        return { integrationEventSequence: state.eventSequence };
+      },
+    },
+    partnerDeliveryAssignment: {
+      findMany: async () => structuredClone(state.assignments),
+      updateMany: async ({ where, data }) => {
+        let count = 0;
+        for (const item of state.assignments) {
+          if (where.deliveryLegId.in.includes(item.deliveryLegId) && where.status.in.includes(item.status)) {
+            Object.assign(item, data); count += 1;
+          }
+        }
+        return { count };
+      },
+    },
+    deliveryLeg: {
+      updateMany: async ({ where, data }) => {
+        let count = 0;
+        for (const leg of state.booking.deliveryLegs) {
+          if (where.parcelBookingId === state.booking.id && where.status.in.includes(leg.status)) {
+            Object.assign(leg, data); count += 1;
+          }
+        }
+        return { count };
+      },
+    },
+    custodyHandover: {
+      updateMany: async ({ where, data }) => {
+        let count = 0;
+        for (const item of state.pendingHandovers) {
+          if (item.parcelBookingId === where.parcelBookingId && item.status === where.status) {
+            Object.assign(item, data); count += 1;
+          }
+        }
+        return { count };
+      },
+    },
+    bookingEvent: {
+      findFirst: async ({ where }) => state.bookingEvents.find(item =>
+        item.parcelBookingId === where.parcelBookingId && item.eventType === where.eventType) ?? null,
+      create: async ({ data }) => {
+        const event = { id: `booking-event-${state.bookingEvents.length + 1}`, createdAt: now, ...data };
+        state.bookingEvents.push(event);
+        return event;
+      },
+    },
+    integrationShipmentEvent: {
+      findUnique: async () => null,
+      create: async ({ data }) => {
+        const event = { id: `integration-event-${state.integrationEvents.length + 1}`, sequence: data.sequence, eventType: data.eventType, payload: data.payload };
+        state.integrationEvents.push(event);
+        return event;
+      },
+    },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
+  };
+  const prismaClient = {
+    $transaction: async work => {
+      const snapshot = structuredClone(state);
+      try { return await work(tx); }
+      catch (error) { for (const key of Object.keys(state)) delete state[key]; Object.assign(state, snapshot); throw error; }
+    },
+  };
+  return { state, prismaClient };
+}
+
+test("integration stop atomically cancels an unassigned shipment and projects a terminal event", async () => {
+  const { state, prismaClient } = actionFixture();
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.stopShipment({
+    client: { id: "client_1" }, idempotencyKey: "stop-shipment-001",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer cancelled before dispatch",
+  });
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.status, "STOPPED");
+  assert.equal(state.booking.status, "CANCELLED");
+  assert.equal(state.booking.deliveryLegs[0].status, "CANCELLED");
+  assert.equal(state.booking.cancelledAt.toISOString(), now.toISOString());
+  assert.equal(state.bookingEvents[0].eventType, "INTEGRATION_SHIPMENT_STOPPED");
+  assert.equal(state.integrationEvents[0].eventType, "shipment.cancelled");
+  assert.equal(state.integrationEvents[0].payload.status, "CANCELLED");
+});
+
+test("integration stop cancels an accepted assignment and pending custody handover before transfer", async () => {
+  const { state, prismaClient } = actionFixture({
+    bookingStatus: "DRIVER_ASSIGNED",
+    legStatus: "ASSIGNED",
+    assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "ACCEPTED" }],
+    pendingHandovers: [{ id: "handover-1", parcelBookingId: "booking-action-1", status: "PENDING_CONFIRMATION" }],
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.stopShipment({
+    client: { id: "client_1" }, idempotencyKey: "stop-shipment-002",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer cancelled before collection",
+  });
+  assert.equal(result.body.status, "STOPPED");
+  assert.equal(state.assignments[0].status, "CANCELLED");
+  assert.equal(state.pendingHandovers[0].status, "CANCELLED");
+  assert.equal(state.booking.deliveryLegs[0].status, "CANCELLED");
+});
+
+test("integration stop refuses to claim success after partner or hub custody has begun", async () => {
+  const { state, prismaClient } = actionFixture({
+    bookingStatus: "IN_TRANSIT",
+    legStatus: "IN_TRANSIT",
+    assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "IN_TRANSIT" }],
+    custodyHandovers: [{ id: "handover-1", fromPartyType: "HUB", toPartyType: "TRANSPORT_PARTNER" }],
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  await assert.rejects(
+    service.stopShipment({
+      client: { id: "client_1" }, idempotencyKey: "stop-shipment-003",
+      externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer changed their mind",
+    }),
+    error => error.code === "INTEGRATION_SHIPMENT_STOP_WINDOW_CLOSED",
+  );
+  assert.equal(state.booking.status, "IN_TRANSIT");
+  assert.equal(state.bookingEvents.length, 0);
+});
+
+test("integration return request records operational action without falsely cancelling or completing the shipment", async () => {
+  const { state, prismaClient } = actionFixture({
+    bookingStatus: "IN_TRANSIT",
+    legStatus: "IN_TRANSIT",
+    assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "IN_TRANSIT" }],
+    custodyHandovers: [{ id: "handover-1", fromPartyType: "HUB", toPartyType: "TRANSPORT_PARTNER", fromPartyId: "hub-1", toPartyId: "partner-1", confirmedAt: now }],
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.requestShipmentReturn({
+    client: { id: "client_1" }, idempotencyKey: "return-shipment-001",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer requests return to seller",
+  });
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.body.status, "RETURN_REQUESTED");
+  assert.equal(result.body.physicalReturnConfirmed, false);
+  assert.equal(state.booking.status, "IN_TRANSIT");
+  assert.equal(state.bookingEvents[0].eventType, "INTEGRATION_RETURN_REQUESTED");
+  assert.equal(state.integrationEvents[0].eventType, "shipment.return_requested");
+  assert.equal(state.integrationEvents[0].payload.status, "IN_TRANSIT");
+});
+
+test("a return request is not duplicated when a client retries with a different idempotency key", async () => {
+  const { state, prismaClient } = actionFixture({
+    bookingStatus: "IN_TRANSIT",
+    legStatus: "IN_TRANSIT",
+    assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "IN_TRANSIT" }],
+    custodyHandovers: [{ id: "handover-1", fromPartyType: "HUB", toPartyType: "TRANSPORT_PARTNER", fromPartyId: "hub-1", toPartyId: "partner-1", confirmedAt: now }],
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  await service.requestShipmentReturn({
+    client: { id: "client_1" }, idempotencyKey: "return-shipment-002",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer requests return to seller",
+  });
+  const second = await service.requestShipmentReturn({
+    client: { id: "client_1" }, idempotencyKey: "return-shipment-003",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer repeats return request",
+  });
+  assert.equal(second.body.alreadyRequested, true);
+  assert.equal(state.bookingEvents.length, 1);
+  assert.equal(state.integrationEvents.length, 1);
+});
