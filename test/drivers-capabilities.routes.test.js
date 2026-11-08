@@ -82,3 +82,68 @@ test("Admin can read the capability queue for a driver", async () => {
     assert.deepEqual((await response.json()).data.items, []);
   });
 });
+
+
+test("Admin capability approval is transactional and records the decision in driver audit history", async () => {
+  let status = "REQUESTED";
+  const auditEvents = [];
+  const prismaClient = {
+    driverProfile: { findUnique: async () => ({ id: "driver-1" }) },
+    driverCapabilityGrant: { findMany: async () => [] },
+    vehicle: { findFirst: async () => ({ id: "vehicle-1" }) },
+    vehicleServiceCapability: { findMany: async () => [] },
+    $transaction: async callback => callback({
+      driverProfile: { findUnique: async () => ({ verificationStatus: "VERIFIED", suspendedAt: null }) },
+      driverCapabilityGrant: {
+        findUnique: async () => ({ id: "grant-1", driverProfileId: "driver-1", capability: "LOCAL_DISPATCH", status, reviewReason: null }),
+        updateMany: async ({ data }) => { status = data.status; return { count: 1 }; },
+      },
+      vehicle: { findUnique: async () => ({ driverProfileId: "driver-1" }) },
+      operationalAuditEvent: { create: async ({ data }) => { auditEvents.push(data); return data; } },
+    }),
+  };
+  await withServer("ADMIN", prismaClient, async base => {
+    const response = await fetch(`${base}/drivers/admin/drivers/driver-1/capabilities/LOCAL_DISPATCH`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "APPROVED", reason: "Identity and operating profile reviewed." }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).data.status, "APPROVED");
+  });
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].entityType, "DRIVER_PROFILE");
+  assert.equal(auditEvents[0].entityId, "driver-1");
+  assert.equal(auditEvents[0].action, "CAPABILITY_APPROVED");
+});
+
+test("Admin cannot approve a capability for an unverified driver", async () => {
+  let status = "REQUESTED";
+  const auditEvents = [];
+  const prismaClient = {
+    driverProfile: { findUnique: async () => ({ id: "driver-1" }) },
+    driverCapabilityGrant: { findMany: async () => [] },
+    vehicle: { findFirst: async () => ({ id: "vehicle-1" }) },
+    vehicleServiceCapability: { findMany: async () => [] },
+    $transaction: async callback => callback({
+      driverProfile: { findUnique: async () => ({ verificationStatus: "PENDING", suspendedAt: null }) },
+      driverCapabilityGrant: {
+        findUnique: async () => ({ id: "grant-1", driverProfileId: "driver-1", capability: "LOCAL_DISPATCH", status, reviewReason: null }),
+        updateMany: async ({ data }) => { status = data.status; return { count: 1 }; },
+      },
+      vehicle: { findUnique: async () => ({ driverProfileId: "driver-1" }) },
+      operationalAuditEvent: { create: async ({ data }) => { auditEvents.push(data); return data; } },
+    }),
+  };
+  await withServer("ADMIN", prismaClient, async base => {
+    const response = await fetch(`${base}/drivers/admin/drivers/driver-1/capabilities/LOCAL_DISPATCH`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "APPROVED", reason: "Review completed with required evidence." }),
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error.code, "DRIVER_PROFILE_NOT_APPROVED");
+  });
+  assert.equal(status, "REQUESTED");
+  assert.equal(auditEvents.length, 0);
+});
