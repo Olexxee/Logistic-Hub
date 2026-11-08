@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { env } from "../../config/env.js";
+import { activeDriverCapabilityWhere, activeDriverDocumentWhere, activeServiceZoneWhere, eligibleParcelDriverWhere, eligibleVehicleWhere } from "../drivers/driver-dispatch-eligibility.js";
 
 function payloadHash(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -126,17 +127,16 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
 
         const drivers = await tx.driverProfile.findMany({
           where: {
-            verificationStatus: "VERIFIED",
-            kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] },
-            suspendedAt: null,
-            isOnline: true,
-            isAvailable: true,
+            ...eligibleParcelDriverWhere({
+              capability: "LOCAL_DISPATCH",
+              now,
+              strictMode: env.DRIVER_KYC_MODE === "STRICT",
+              kycTiers: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"],
+            }),
             lastLocationAt: {
               gte: new Date(now.getTime() - MAX_DRIVER_LOCATION_AGE_MS),
               lte: now,
             },
-            user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
-            vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
             AND: [
               {
                 coverage: {
@@ -321,9 +321,14 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         if (offer.proposedFareMinor != null) {
           throw conflict("OFFER_ALREADY_PROPOSED", "A fare proposal has already been submitted for this offer.");
         }
+        const driverGrant = await tx.driverCapabilityGrant.findFirst({
+          where: { driverProfileId: profile.id, capability: "LOCAL_DISPATCH", status: "APPROVED" },
+          select: { id: true },
+        });
+        if (!driverGrant) throw conflict("DRIVER_CAPABILITY_NOT_APPROVED", "Your LOCAL_DISPATCH capability is not approved.");
         const eligibleVehicles = vehicleId
-          ? await tx.vehicle.findMany({ where: { id: vehicleId, driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 })
-          : await tx.vehicle.findMany({ where: { driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 });
+          ? await tx.vehicle.findMany({ where: { id: vehicleId, ...eligibleVehicleWhere({ driverProfileId: profile.id, capability: "LOCAL_DISPATCH", now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) }, select: { id: true }, take: 2 })
+          : await tx.vehicle.findMany({ where: eligibleVehicleWhere({ driverProfileId: profile.id, capability: "LOCAL_DISPATCH", now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }), select: { id: true }, take: 2 });
         if (!eligibleVehicles.length) throw conflict("VEHICLE_NOT_ELIGIBLE", "Select one of your active, verified vehicles before proposing a fare.");
         if (eligibleVehicles.length > 1) throw conflict("VEHICLE_SELECTION_REQUIRED", "Select the vehicle you will use for this delivery.");
         const vehicle = eligibleVehicles[0];
@@ -434,9 +439,14 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         const minimum = BigInt(booking.pricingSnapshot?.minimumDriverFareMinor ?? "0");
         if (!offer.vehicleId) throw conflict("VEHICLE_NOT_SELECTED", "The driver has not selected a vehicle for this offer.");
         const selectedVehicle = await tx.vehicle.findFirst({
-          where: { id: offer.vehicleId, driverProfileId: offer.driverProfileId, isActive: true, verificationStatus: "VERIFIED" },
+          where: { id: offer.vehicleId, ...eligibleVehicleWhere({ driverProfileId: offer.driverProfileId, capability: "LOCAL_DISPATCH", now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) },
           select: { id: true },
         });
+        const driverGrant = await tx.driverCapabilityGrant.findFirst({
+          where: { driverProfileId: offer.driverProfileId, capability: "LOCAL_DISPATCH", status: "APPROVED" },
+          select: { id: true },
+        });
+        if (!driverGrant) throw conflict("DRIVER_CAPABILITY_NO_LONGER_APPROVED", "The selected driver is no longer approved for local dispatch.");
         if (!selectedVehicle) throw conflict("VEHICLE_NO_LONGER_ELIGIBLE", "The selected vehicle is no longer active and verified.");
         if (fare <= 0n || fare < minimum) {
           throw conflict("INVALID_FARE", "The selected driver fare is invalid or below the configured minimum.");
@@ -453,7 +463,9 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
             isOnline: true,
             isAvailable: true,
             user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
-            vehicles: { some: { id: offer.vehicleId, isActive: true, verificationStatus: "VERIFIED" } },
+            ...activeDriverCapabilityWhere("LOCAL_DISPATCH"),
+            ...activeDriverDocumentWhere(now, env.DRIVER_KYC_MODE === "STRICT"),
+            vehicles: { some: { id: offer.vehicleId, ...eligibleVehicleWhere({ capability: "LOCAL_DISPATCH", now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) } },
             AND: [
               { coverage: { some: { serviceZoneId: booking.pickupServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
               { coverage: { some: { serviceZoneId: booking.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
