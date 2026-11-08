@@ -442,7 +442,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           where: { deliveryLegId: { in: legIds } },
           select: { id: true, deliveryLegId: true, status: true },
         }) : [];
-        const physicallyTransferred = booking.custodyHandovers.length > 0
+        const physicallyTransferred = booking.custodyHandovers.some(item => item.status === "CONFIRMED")
           || ["PICKED_UP", "IN_TRANSIT", "DELIVERY_VERIFICATION_PENDING"].includes(booking.status)
           || assignments.some(item => item.status === "IN_TRANSIT");
         if (physicallyTransferred) {
