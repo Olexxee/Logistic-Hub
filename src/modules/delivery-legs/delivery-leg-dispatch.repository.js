@@ -144,6 +144,7 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
               user: { select: { fullName: true } },
             },
           },
+          vehicle: { select: { type: true, make: true, model: true } },
         },
         orderBy: [{ proposedFareMinor: "asc" }, { createdAt: "asc" }],
       });
