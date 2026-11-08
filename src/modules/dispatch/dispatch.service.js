@@ -373,12 +373,13 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           where: { fareProposalIdempotencyKey: idempotencyKey },
         });
         if (!existing) throw error;
-        const expectedHash = payloadHash({ offerId, proposedFareMinor });
+        const expectedHash = payloadHash({ offerId, vehicleId, proposedFareMinor });
         if (existing.id !== offerId || existing.fareProposalPayloadHash !== expectedHash) {
           throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
         }
         return {
           offerId: existing.id,
+          vehicleId: existing.vehicleId,
           proposedFareMinor: existing.proposedFareMinor?.toString() ?? proposedFareMinor,
           currency: existing.currency,
           status: existing.status,
