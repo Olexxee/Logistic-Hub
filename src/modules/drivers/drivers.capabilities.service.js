@@ -10,21 +10,9 @@ const REVIEW_TRANSITIONS = {
   REVOKED: [],
 };
 
-function notFound(message) {
-  const error = new Error(message);
-  error.statusCode = 404;
-  error.code = "NOT_FOUND";
-  return error;
-}
 function conflict(code, message) {
   const error = new Error(message);
   error.statusCode = 409;
-  error.code = code;
-  return error;
-}
-function forbidden(code, message) {
-  const error = new Error(message);
-  error.statusCode = 403;
   error.code = code;
   return error;
 }
@@ -40,7 +28,7 @@ function assertTransition(currentStatus, nextStatus) {
 export function createDriverCapabilitiesService({ prismaClient, clock = () => new Date() }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
 
-  async function requestRecord({ tx, delegate, uniqueWhere, createData, entityType, entityLabel, actorUserId }) {
+  async function requestRecord({ tx, delegate, uniqueWhere, createData, entityType, entityLabel, auditEntityId, actorUserId }) {
     const existing = await delegate.findUnique({ where: uniqueWhere });
     let record;
     let before = null;
@@ -61,8 +49,9 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
     await writeOperationalAuditEvent(tx, {
       actorUserId,
       entityType,
-      entityId: record.id,
+      entityId: auditEntityId,
       action: before ? "CAPABILITY_REREQUESTED" : "CAPABILITY_REQUESTED",
+      metadata: { capabilityRecordId: record.id, capability: record.capability, targetType: entityLabel },
       reason: "Driver requested an operational service capability.",
       before,
       after: { capability: record.capability, status: record.status },
@@ -85,11 +74,16 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
     });
     if (changed.count !== 1) throw conflict("CAPABILITY_REVIEW_CONFLICT", "The capability changed while the review was being saved.");
     const updated = await delegate.findUnique({ where: { id: current.id } });
+    const auditEntityId = entityLabel === "driver"
+      ? current.driverProfileId
+      : (await tx.vehicle.findUnique({ where: { id: current.vehicleId }, select: { driverProfileId: true } }))?.driverProfileId;
+    if (!auditEntityId) throw conflict("CAPABILITY_OWNER_NOT_FOUND", "The driver associated with this capability could not be found.");
     await writeOperationalAuditEvent(tx, {
       actorUserId,
       entityType,
-      entityId: current.id,
+      entityId: auditEntityId,
       action: `CAPABILITY_${status}`,
+      metadata: { capabilityRecordId: current.id, capability: current.capability, targetType: entityLabel },
       reason,
       before: { capability: current.capability, status: current.status, reviewReason: current.reviewReason },
       after: { capability: updated.capability, status: updated.status, reviewReason: updated.reviewReason },
@@ -118,8 +112,9 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
           delegate: tx.driverCapabilityGrant,
           uniqueWhere: { driverProfileId_capability: { driverProfileId: profile.id, capability } },
           createData: { driverProfileId: profile.id, capability, status: "REQUESTED" },
-          entityType: "DRIVER_CAPABILITY",
+          entityType: "DRIVER_PROFILE",
           entityLabel: "driver",
+          auditEntityId: profile.id,
           actorUserId: userId,
         });
       });
@@ -151,8 +146,9 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
           delegate: tx.vehicleServiceCapability,
           uniqueWhere: { vehicleId_capability: { vehicleId, capability } },
           createData: { vehicleId, capability, status: "REQUESTED" },
-          entityType: "VEHICLE_SERVICE_CAPABILITY",
+          entityType: "DRIVER_PROFILE",
           entityLabel: "vehicle",
+          auditEntityId: vehicle.driverProfileId,
           actorUserId: userId,
         });
       });
@@ -177,7 +173,7 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
         status,
         reason,
         actorUserId,
-        entityType: "DRIVER_CAPABILITY",
+        entityType: "DRIVER_PROFILE",
         entityLabel: "driver",
         eligibility: async current => {
           const profile = await tx.driverProfile.findUnique({
@@ -211,7 +207,7 @@ export function createDriverCapabilitiesService({ prismaClient, clock = () => ne
         status,
         reason,
         actorUserId,
-        entityType: "VEHICLE_SERVICE_CAPABILITY",
+        entityType: "DRIVER_PROFILE",
         entityLabel: "vehicle",
         eligibility: async current => {
           const vehicle = await tx.vehicle.findUnique({
