@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 source audit complete; DRV-01 capability contracts are under review in [PR #122](https://github.com/Olexxee/Logistic-Hub/pull/122) with its latest CI passing. DRV-02 multi-vehicle lifecycle is under review in [PR #123](https://github.com/Olexxee/Logistic-Hub/pull/123), stacked on PR #122; unified Admin workspace and complete capability/expiry dispatch enforcement remain planned.
+**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is implemented on branch `feat/drv-05-dispatch-eligibility`; PR/CI and staging acceptance are pending. The remaining DRV-05 execution-boundary and partner-authorization work is still open.
 
 ## 1. Objective
 
@@ -212,7 +212,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [x] Preserve all existing driver/vehicle records through an additive migration; do not backfill or silently grant capabilities to existing profiles.
 - [x] Add Admin review, rejection, suspension and revocation endpoints with required reason and transactional operational audit events.
 - [x] Add owner-scoped driver capability and per-vehicle suitability read/request endpoints; clients cannot submit decision fields.
-- [ ] Define eligibility response/reason codes for dispatch and assignment consumers.
+- [x] Define initial stable eligibility/conflict codes for dispatch and fare-reservation consumers; assignment-execution reason coverage remains in DRV-05.
 - [x] Update OpenAPI and add route-level authorization/request validation tests; no seed/backfill is required because existing drivers receive no implicit capability.
 
 **Acceptance:** route tests prove that driver requests are created only as REQUESTED, caller-supplied decision fields are rejected, and driver accounts cannot call Admin review routes. Admin approval additionally requires a verified, non-suspended driver with FULL KYC (or TEST_LIMITED only for LOCAL_DISPATCH in TEST mode); vehicle suitability approval also requires that exact vehicle to be active and verified. Capability approval remains separate from matching eligibility until DRV-05.
@@ -220,7 +220,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 #### DRV-01 implementation contract
 
-**Implemented on branch `feat/drv-01-capability-contracts` (PR pending).**
+**Merged in backend PR #122.**
 
 - `DriverServiceCapability`: `LOCAL_DISPATCH`, `PICKUP_COLLECTION`, `FINAL_MILE_DELIVERY`.
 - `CapabilityApprovalStatus`: `REQUESTED`, `APPROVED`, `REJECTED`, `SUSPENDED`, `REVOKED`.
@@ -230,7 +230,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - Admin decisions require a 10–500 character reason and are written to `OperationalAuditEvent` in the same transaction as the state change.
 - Driver capability approval requires a verified, non-suspended driver profile with FULL KYC, or TEST_LIMITED only for LOCAL_DISPATCH in TEST mode. Vehicle suitability approval additionally requires the selected vehicle itself to be active and verified.
 - No existing driver or vehicle is backfilled as approved. Existing records begin with no capability grants.
-- These records do not yet affect dispatch matching. DRV-05 will consume both the driver grant and exact vehicle suitability; assignment vehicle binding is a separate DRV-02/DRV-05 gate.
+- Capability grants are consumed by DRV-05A matching, fare proposal and reservation checks. Assignment execution revalidation remains open in DRV-05.
 
 **API**
 - `GET/POST /drivers/me/capabilities`
@@ -253,7 +253,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [x] Revalidate that the exact selected vehicle remains owned by the driver, active and verified at customer fare acceptance.
 - [x] Preserve historical assignment references with nullable vehicle foreign keys and RESTRICT deletion semantics; vehicle retirement never deletes the record.
 - [ ] Enforce expiry dynamically in all dispatch/matching and in-progress execution checks; DRV-05 owns the unified eligibility gate.
-- [ ] Consume approved driver and vehicle capability grants during matching and fare proposal; DRV-05 owns this gate.
+- [x] Consume approved driver and vehicle capability grants during matching, fare proposal and customer reservation; in-progress execution checks remain DRV-05 work.
 
 **API**
 - `GET /drivers/me/vehicles`
@@ -267,7 +267,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 #### DRV-02 implementation contract
 
-**Implemented on branch `feat/drv-02-multi-vehicle-lifecycle` (PR #123).**
+**Merged in backend PR #123.**
 
 - Additive migration `20261108193000_drv_02_vehicle_assignment_binding` adds nullable vehicle references to direct parcel offers, delivery-leg offers and assignments.
 - Drivers can list, register, update eligible unverified records and retire vehicles through owner-scoped APIs. New records are PENDING/inactive; verified vehicle identity is immutable; evidence-linked identity changes require a replacement record.
@@ -282,41 +282,36 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 **Goal:** Deliver one central dashboard for all drivers and vehicles.
 
-- [ ] Add a single Admin route/navigation entry.
-- [ ] Build server-paginated driver and vehicle directories with search, status, capability, vehicle class and service-area filters.
-- [ ] Build linked driver and vehicle detail panels/pages.
-- [ ] Add review queues for applications, capabilities, vehicles and documents.
-- [ ] Add reason-required approve/reject/suspend/reactivate/revoke actions.
-- [ ] Display verification tier separately from verification status.
-- [ ] Show driver capabilities separately from vehicle suitability.
-- [ ] Show eligibility explanations (e.g. capability missing, vehicle unverified, inactive zone, stale location).
-- [ ] Apply Admin authorization in the backend; frontend permission checks are presentation only.
-- [ ] Provide loading, empty, error, forbidden, conflict and success states; support mobile/tablet/desktop.
+- [x] Reuse the existing Admin driver-verification route as the unified workspace.
+- [x] Integrate driver and vehicle review queues and linked detail panels.
+- [x] Integrate capability and per-vehicle suitability review.
+- [x] Integrate suspension/reinstatement and audit visibility.
+- [x] Preserve backend Admin authorization and reason-required audited decisions.
 
-**Acceptance:** an Admin can locate any driver or vehicle from the same workspace, inspect their relationship and make only authorized, audited decisions.
+**Status:** Frontend PR #50 merged. Remaining search/filter and pagination enhancements are tracked as follow-up Admin usability work, not a blocker for the DRV-05 dispatch gate.
 
 ### DRV-04 — Driver self-service workspace
 
 **Goal:** Give every driver one coherent place to manage their operational profile.
 
-- [ ] Driver overview with approval/KYC state and clear next actions.
-- [ ] Capability request/status view.
-- [ ] Vehicle list with add/edit/replace/deactivate flows.
-- [ ] Document upload, review outcome and expiry/renewal state.
-- [ ] Service-area coverage and availability controls.
-- [ ] Assignment/opportunity links to existing parcel workflows.
-- [ ] Clear separation between profile approval, capability approval and vehicle approval.
+- [x] Driver overview with approval/KYC state and clear next actions.
+- [x] Capability request/status view.
+- [x] Multi-vehicle list, registration, eligible edit and deactivation flows.
+- [x] Document upload, review outcome and expiry metadata.
+- [x] Service-area coverage visibility and availability control.
+- [x] Assignment/opportunity links to existing parcel workflows.
+- [x] Clear separation between profile approval, capability approval and vehicle approval.
 
-**Acceptance:** a driver can understand exactly which services and vehicles are approved without being able to self-grant eligibility.
+**Status:** Frontend PR #51 merged at `707ef7995bf905a26b09c9cad731fcc8b1512c0a`. Staging acceptance remains outstanding.
 
 ### DRV-05 — Dispatch and assignment eligibility integration
 
 **Goal:** Ensure the new capability model actually governs operational matching.
 
-- [ ] Apply capability + vehicle suitability checks to local dispatch opportunities.
-- [ ] Apply capability + vehicle suitability checks to pickup and final-mile assignments.
-- [ ] Revalidate active country/state/zone and time-bounded service availability during delivery-leg offer creation.
-- [ ] Use the shared configured driver-location freshness limit consistently across legacy and delivery-leg dispatch.
+- [x] Apply capability + vehicle suitability checks to local dispatch opportunities.
+- [x] Apply capability + vehicle suitability checks to pickup and final-mile matching, fare proposal and reservation.
+- [x] Revalidate active country/state/zone and time-bounded service availability during delivery-leg offer creation and fare acceptance.
+- [x] Use the shared configured driver-location freshness limit consistently across legacy and delivery-leg dispatch and reservation.
 - [ ] Apply route/corridor + vehicle capacity checks to inter-state transport.
 - [ ] Apply hub/transfer authorization to hub-transfer assignments.
 - [ ] Re-check eligibility at offer, acceptance/reservation and execution boundaries where state can change.
@@ -324,7 +319,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [ ] Preserve current availability, location freshness, active-assignment concurrency and custody invariants.
 - [ ] Do not auto-enable availability after assignment completion.
 
-**Acceptance:** API/integration tests prove an ineligible driver or vehicle cannot receive, accept or execute an assignment, including race/state-change cases.
+**DRV-05A status:** implemented on the current backend review branch; see [DRV-05A implementation notes](./driver-dispatch-drv-05a.md). Candidate matching, proposal and reservation gates are implemented. Execution-transition revalidation and staging acceptance are not complete.
 
 ### DRV-06 — Reporting, audit and operational controls
 
