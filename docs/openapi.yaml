@@ -618,6 +618,99 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /drivers/me/vehicles:
+    get:
+      tags: [Drivers]
+      operationId: listMyVehicles
+      summary: List vehicles registered to the authenticated driver
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Driver-owned vehicles and their independent service suitability decisions. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Drivers]
+      operationId: registerMyVehicle
+      summary: Register an additional vehicle for an existing driver profile
+      description: New vehicles always begin inactive and PENDING review. A verified vehicle cannot be edited; register a replacement instead.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type]
+              properties:
+                type: { type: string, enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK] }
+                make: { type: string, maxLength: 80 }
+                model: { type: string, maxLength: 80 }
+                registrationPlate: { type: string, minLength: 2, maxLength: 32 }
+                parcelCapacity: { type: string, maxLength: 80 }
+      responses:
+        '201': { description: Vehicle registered in PENDING and inactive state. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /drivers/me/vehicles/{vehicleId}:
+    parameters:
+      - in: path
+        name: vehicleId
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 128 }
+    patch:
+      tags: [Drivers]
+      operationId: updateMyVehicle
+      summary: Update an unverified vehicle's submitted details
+      description: Verified vehicle records are immutable. Changing details on an unverified vehicle resets it to PENDING and inactive.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              properties:
+                type: { type: string, enum: [BICYCLE, MOTORCYCLE, CAR, VAN, PICKUP, TRUCK] }
+                make: { type: [string, 'null'], maxLength: 80 }
+                model: { type: [string, 'null'], maxLength: 80 }
+                registrationPlate: { type: [string, 'null'], minLength: 2, maxLength: 32 }
+                parcelCapacity: { type: [string, 'null'], maxLength: 80 }
+      responses:
+        '200': { description: Updated vehicle awaiting review. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /drivers/me/vehicles/{vehicleId}/deactivate:
+    post:
+      tags: [Drivers]
+      operationId: deactivateMyVehicle
+      summary: Retire a vehicle from future driver dispatch
+      description: A vehicle with an active assignment cannot be deactivated. Vehicles are retained for historical assignment and audit references.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: vehicleId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Vehicle deactivated; driver may be forced offline if no other verified active vehicle remains. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /drivers/me/vehicles/{vehicleId}/capabilities:
     parameters:
       - in: path
@@ -855,6 +948,11 @@ paths:
           name: X-Vehicle-ID
           required: false
           schema: { type: string, maxLength: 128 }
+        - in: header
+          name: X-Document-Expires-At
+          required: false
+          description: Optional ISO 8601 expiry timestamp. Expired documents cannot be approved.
+          schema: { type: string, format: date-time }
       requestBody:
         required: true
         content:
@@ -2100,8 +2198,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [proposedFareMinor]
+              required: [vehicleId, proposedFareMinor]
               properties:
+                vehicleId: { type: string, minLength: 1, maxLength: 128 }
                 proposedFareMinor:
                   $ref: '#/components/schemas/PositiveMinorAmount'
       responses:
@@ -3635,8 +3734,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [proposedFareMinor]
+              required: [vehicleId, proposedFareMinor]
               properties:
+                vehicleId: { type: string, minLength: 1, maxLength: 128 }
                 proposedFareMinor: { $ref: '#/components/schemas/PositiveMinorAmount' }
       responses:
         '200': { description: Fare proposal recorded or replayed. }
