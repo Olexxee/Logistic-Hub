@@ -22,7 +22,7 @@ export function createIntegrationPackingEvidenceController({ prismaClient, clock
       return res.status(200).json({ success: true, data: result });
     },
     async download(req, res) {
-      const file = await service.download({ client: req.integrationClient, evidenceId: req.params.evidenceId });
+      const file = await service.download({ client: req.integrationClient, externalFulfillmentReference: req.params.externalFulfillmentReference, evidenceId: req.params.evidenceId });
       const safeName = file.originalName.replace(/["\\\r\n]/g, "_");
       res.setHeader("Content-Type", file.mimeType);
       res.setHeader("Content-Length", String(file.buffer.length));
