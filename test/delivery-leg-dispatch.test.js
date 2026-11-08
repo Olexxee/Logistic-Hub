@@ -126,6 +126,7 @@ test("driver fare proposals are idempotent and scoped to the driver's own leg of
   });
   assert.equal(result.proposedFareMinor, "2500");
   assert.equal(offerUpdate.data.proposalIdempotencyKey, "leg-fare-proposal-0001");
+  assert.equal(offerUpdate.data.vehicleId, "vehicle_1");
   assert.equal(event.eventType, "DELIVERY_LEG_FARE_PROPOSED");
 });
 
