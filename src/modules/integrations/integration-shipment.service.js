@@ -200,6 +200,99 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
   }
 
   return {
+    async authorizeDispatch({ client, idempotencyKey, externalFulfillmentReference, reason }) {
+      const now = clock();
+      const operation = "integration.shipment.dispatch-authorize";
+      const input = { externalFulfillmentReference, reason };
+      const payloadHash = hashPayload(input);
+      return serializableTransaction(prismaClient, async tx => {
+        const replay = await replayOrConflict(tx, client.id, operation, idempotencyKey, payloadHash);
+        if (replay) return { ...replay, replay: true };
+
+        const external = await tx.integrationExternalReference.findFirst({
+          where: {
+            clientId: client.id,
+            resourceType: "SHIPMENT",
+            externalReference: externalFulfillmentReference,
+          },
+          select: { internalResourceId: true },
+        });
+        if (!external) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+
+        const booking = await tx.parcelBooking.findFirst({
+          where: { id: external.internalResourceId, integrationClientId: client.id },
+          include: { deliveryLegs: { select: { id: true, type: true, status: true } } },
+        });
+        if (!booking) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+        if (booking.paymentStatus !== "SUCCEEDED") {
+          throw new ConflictError("Dispatch cannot be authorized before payment is confirmed.", "INTEGRATION_SHIPMENT_NOT_PAID");
+        }
+        if (booking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
+          throw new ConflictError("Dispatch authorization is only available before partner assignment.", "INTEGRATION_SHIPMENT_NOT_AWAITING_ASSIGNMENT");
+        }
+        if (!booking.deliveryLegs.length || booking.deliveryLegs.some(leg =>
+          leg.type !== "INTERSTATE_TRANSPORT" || leg.status !== "READY_FOR_ASSIGNMENT"
+        )) {
+          throw new ConflictError("Every partner-executed delivery leg must still be ready for assignment.", "INTEGRATION_SHIPMENT_ASSIGNMENT_ALREADY_STARTED");
+        }
+
+        if (booking.integrationDispatchAuthorizedAt) {
+          const responseBody = {
+            shipmentId: booking.id,
+            externalFulfillmentReference,
+            dispatchAuthorizedAt: booking.integrationDispatchAuthorizedAt,
+            reason: "ALREADY_AUTHORIZED",
+          };
+          await storeIdempotency(tx, {
+            clientId: client.id, operation, key: idempotencyKey, payloadHash,
+            responseStatus: 200, responseBody, now,
+          });
+          return { statusCode: 200, body: responseBody, replay: false };
+        }
+
+        const changed = await tx.parcelBooking.updateMany({
+          where: {
+            id: booking.id,
+            integrationClientId: client.id,
+            status: "AWAITING_PARTNER_ASSIGNMENT",
+            paymentStatus: "SUCCEEDED",
+            integrationDispatchAuthorizedAt: null,
+          },
+          data: { integrationDispatchAuthorizedAt: now },
+        });
+        if (changed.count !== 1) {
+          throw new ConflictError("The shipment changed before dispatch authorization could be recorded.", "INTEGRATION_DISPATCH_AUTHORIZATION_CONFLICT");
+        }
+
+        await tx.bookingEvent.create({
+          data: {
+            parcelBookingId: booking.id,
+            eventType: "INTEGRATION_DISPATCH_AUTHORIZED",
+            fromStatus: booking.status,
+            toStatus: booking.status,
+            metadata: {
+              integrationClientId: client.id,
+              externalFulfillmentReference,
+              reason,
+              authorizedAt: now.toISOString(),
+            },
+          },
+        });
+
+        const responseBody = {
+          shipmentId: booking.id,
+          externalFulfillmentReference,
+          dispatchAuthorizedAt: now,
+          reason,
+        };
+        await storeIdempotency(tx, {
+          clientId: client.id, operation, key: idempotencyKey, payloadHash,
+          responseStatus: 200, responseBody, now,
+        });
+        return { statusCode: 200, body: responseBody, replay: false };
+      });
+    },
+
     async createShipment({ client, idempotencyKey, input }) {
       const now = clock();
       const payloadHash = hashPayload(input);
