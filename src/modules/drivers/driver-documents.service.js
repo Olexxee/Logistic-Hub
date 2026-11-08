@@ -121,7 +121,7 @@ export function createDriverDocumentsService({ prismaClient, storage = createClo
     },
     async reviewDocument({ documentId, reviewStatus, reason, actorUserId }) {
       return prismaClient.$transaction(async tx => {
-        const current = await tx.driverVerificationDocument.findUnique({ where: { id: documentId }, select: { id: true, driverProfileId: true, vehicleId: true, documentType: true, reviewStatus: true, reviewReason: true } });
+        const current = await tx.driverVerificationDocument.findUnique({ where: { id: documentId }, select: { id: true, driverProfileId: true, vehicleId: true, documentType: true, reviewStatus: true, reviewReason: true, expiresAt: true } });
         if (!current) return null;
         if (current.reviewStatus !== "PENDING") throw new ConflictError("Only pending documents can be reviewed.", "DRIVER_DOCUMENT_NOT_REVIEWABLE");
         if (reviewStatus === "APPROVED" && current.expiresAt && current.expiresAt <= clock()) {
