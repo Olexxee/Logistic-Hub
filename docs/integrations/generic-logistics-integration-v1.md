@@ -169,3 +169,14 @@ The response contains the public shipment reference, current booking/payment sta
 ## GIL-04E regression and contract acceptance
 
 The merged service suite verifies shipment creation's rejection boundaries and transactional behavior: expired quote sessions/options, suspended billing and partner agreements, inactive package rates, inactive service zones, external fulfilment-reference mismatch, invalid external-payment verification timestamps, duplicate fulfilment/payment references, idempotency-key payload conflicts, serialization retry behavior, and rollback after late transaction failures. The lifecycle suite verifies integration-owned booking transitions through partner assignment and partner-operator transit start. A PostgreSQL-backed follow-up now tests concurrent uniqueness races for idempotency keys and external shipment references, plus database transaction rollback. GIL-04E is merged; the full CI workflow passed the PostgreSQL-backed uniqueness-race and rollback tests.
+
+## LI-02G-C2 integration shipment stop and return requests
+
+The generic integration shipment API exposes two client-scoped commands under /api/v1/integrations. Both require shipments:write, integration credentials and Idempotency-Key.
+
+- POST /shipments/by-external-reference/{externalFulfillmentReference}/stop — stops a shipment only before confirmed custody transfer. Hub atomically cancels eligible ASSIGNED/ACCEPTED partner assignments, pending handovers and PLANNED/READY_FOR_ASSIGNMENT/ASSIGNED legs, then marks the booking CANCELLED and emits shipment.cancelled. If the shipment has entered custody or transit, the command conflicts; it must not claim the parcel was stopped.
+- POST /shipments/by-external-reference/{externalFulfillmentReference}/return-request — accepts a return request only for a non-terminal shipment that has entered physical execution. Hub emits shipment.return_requested and returns HTTP 202 with physicalReturnConfirmed=false. The booking status remains unchanged.
+
+Both request bodies contain a required reason (5–500 characters). The external fulfilment reference is resolved only within the authenticated integration client. Same-key/different-payload reuse conflicts. Repeated return requests do not create duplicate request events.
+
+A return-request acknowledgement is not physical return execution. It does not create a reverse delivery leg, stop a moving partner, complete custody transfer, cancel the shipment, or authorize a refund. Return-route planning, partner instructions, custody milestones and terminal return confirmation are a separate operational implementation slice. Integrators retain responsibility for their customer order and refund decisions.
