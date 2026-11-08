@@ -412,6 +412,9 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           },
         });
         if (!booking) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+        if (booking.paymentStatus !== "SUCCEEDED" || !booking.deliveryLegs.length) {
+          throw new ConflictError("The integration shipment is missing its paid booking or delivery-leg prerequisites for a safe stop.", "INTEGRATION_SHIPMENT_STOP_PREREQUISITES_MISSING");
+        }
         if (booking.status === "CANCELLED") {
           const priorStop = await tx.bookingEvent.findFirst({
             where: { parcelBookingId: booking.id, eventType: "INTEGRATION_SHIPMENT_STOPPED" },
@@ -529,11 +532,20 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           },
         });
         if (!booking) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+        if (booking.paymentStatus !== "SUCCEEDED" || !booking.deliveryLegs.length) {
+          throw new ConflictError("The integration shipment is missing its paid booking or delivery-leg prerequisites for a return request.", "INTEGRATION_SHIPMENT_RETURN_PREREQUISITES_MISSING");
+        }
         if (["COMPLETED", "CANCELLED", "FAILED"].includes(booking.status)) {
           throw new ConflictError("A return cannot be requested for a terminal shipment.", "INTEGRATION_SHIPMENT_NOT_RETURNABLE");
         }
-        const physicallyTransferred = booking.status === "IN_TRANSIT"
-          || booking.custodyHandovers.length > 0;
+        const legIds = booking.deliveryLegs.map(leg => leg.id);
+        const assignments = await tx.partnerDeliveryAssignment.findMany({
+          where: { deliveryLegId: { in: legIds } },
+          select: { id: true, deliveryLegId: true, status: true },
+        });
+        const physicallyTransferred = ["PICKED_UP", "IN_TRANSIT", "DELIVERY_VERIFICATION_PENDING"].includes(booking.status)
+          || booking.custodyHandovers.length > 0
+          || assignments.some(item => item.status === "IN_TRANSIT");
         if (!physicallyTransferred) {
           throw new ConflictError("The parcel has not entered confirmed custody. Use the stop command while the shipment is still stoppable.", "INTEGRATION_SHIPMENT_NOT_IN_RETURN_WINDOW");
         }
