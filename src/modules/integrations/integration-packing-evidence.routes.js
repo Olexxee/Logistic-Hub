@@ -4,7 +4,7 @@ import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { validate } from "../../shared/http/validate.js";
 import { requireIntegrationAuth, requireIntegrationScope } from "./integration-auth.middleware.js";
 import { createIntegrationPackingEvidenceController } from "./integration-packing-evidence.controller.js";
-import { integrationPackingEvidenceParamsSchema, integrationPackingEvidenceIdParamsSchema } from "./integration-packing-evidence.validators.js";
+import { integrationPackingEvidenceParamsSchema, integrationPackingEvidenceDownloadParamsSchema } from "./integration-packing-evidence.validators.js";
 
 export function createIntegrationPackingEvidenceRouter({ prismaClient = prisma, clock, authMiddleware = requireIntegrationAuth } = {}) {
   const router = Router();
@@ -22,9 +22,9 @@ export function createIntegrationPackingEvidenceRouter({ prismaClient = prisma, 
     requireIntegrationScope("shipments:read"),
     validate(integrationPackingEvidenceParamsSchema, "params"),
     asyncWrapper(controller.list));
-  router.get("/packing-evidence/:evidenceId/download",
+  router.get("/shipments/by-external-reference/:externalFulfillmentReference/packing-evidence/:evidenceId/download",
     requireIntegrationScope("shipments:read"),
-    validate(integrationPackingEvidenceIdParamsSchema, "params"),
+    validate(integrationPackingEvidenceDownloadParamsSchema, "params"),
     asyncWrapper(controller.download));
   return router;
 }
