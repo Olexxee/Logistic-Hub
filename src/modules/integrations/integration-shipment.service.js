@@ -562,10 +562,11 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
             status: "RETURN_REQUESTED",
             shipmentStatus: booking.status,
             requestedAt: existingRequest.createdAt,
+            physicalReturnConfirmed: false,
             alreadyRequested: true,
           };
-          await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 200, responseBody, now });
-          return { statusCode: 200, body: responseBody, replay: false };
+          await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 202, responseBody, now });
+          return { statusCode: 202, body: responseBody, replay: false };
         }
 
         const sourceEvent = await tx.bookingEvent.create({
