@@ -122,7 +122,7 @@ test("driver fare proposals are idempotent and scoped to the driver's own leg of
   const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
   const result = await service.proposeFare({
     offerId: "offer_1", userId: "driver_user_1",
-    vehicleId: "vehicle_1", proposedFareMinor: "2500", idempotencyKey: "leg-fare-proposal-0001",
+    proposedFareMinor: "2500", idempotencyKey: "leg-fare-proposal-0001",
   });
   assert.equal(result.proposedFareMinor, "2500");
   assert.equal(offerUpdate.data.proposalIdempotencyKey, "leg-fare-proposal-0001");
