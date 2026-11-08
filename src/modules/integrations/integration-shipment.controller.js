@@ -14,6 +14,18 @@ export function createIntegrationShipmentController({ prismaClient, clock } = {}
   }
 
   return {
+    async authorizeDispatch(req, res) {
+      const result = await service.authorizeDispatch({
+        client: req.integrationClient,
+        idempotencyKey: requireIdempotencyKey(req),
+        externalFulfillmentReference: req.params.externalFulfillmentReference,
+        reason: req.body.reason,
+      });
+      return res.status(result.statusCode).json({
+        success: true,
+        data: { ...result.body, replay: result.replay === true },
+      });
+    },
     async create(req, res) {
       const result = await service.createShipment({
         client: req.integrationClient,
