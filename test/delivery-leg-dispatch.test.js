@@ -44,6 +44,7 @@ test("matching creates offers only for fresh eligible drivers on a ready local l
   const repository = {
     transaction: (callback) => callback({}),
     findLeg: async () => leg,
+    findActiveServiceZones: async () => [{ id: "zone_ikeja" }],
     listActiveOffers: async () => [],
     findEligibleDrivers: async () => [
       validDriver("near_driver"),
@@ -113,6 +114,7 @@ test("driver fare proposals are idempotent and scoped to the driver's own leg of
   const repository = {
     transaction: (callback) => callback({
       driverProfile: { findUnique: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
+      driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
       vehicle: { findMany: async () => [{ id: "vehicle_1" }] },
     }),
     findOfferForDriver: async () => offer,
@@ -149,15 +151,18 @@ test("customer acceptance reserves one driver and creates an awaiting-payment le
       updateMany: async () => ({ count: 1 }),
     },
     vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
     driverProfile: {
       findFirst: async () => validDriver("profile_1"),
       updateMany: async () => ({ count: 1 }),
     },
     driverAssignment: { create: async (args) => { assignment = args; return { id: "assignment_1" }; } },
+    serviceZone: { findMany: async () => [{ id: "zone_ikeja" }] },
     bookingEvent: { create: async () => ({}) },
   };
   const repository = {
     findOfferByAcceptanceKey: async () => null,
+    findActiveServiceZones: async () => [{ id: "zone_ikeja" }],
     acceptOfferTransaction: (callback) => callback(tx),
   };
   const service = createDeliveryLegDispatchService({
@@ -198,6 +203,7 @@ test("a hub operator with explicit dispatch delegation can request offers for a 
   const repository = {
     transaction: callback => callback(tx),
     findLeg: async () => ({ ...leg, originHubPointId: "hub_1", originHubPoint: { id: "hub_1", name: "Ikeja Hub" } }),
+    findActiveServiceZones: async () => [{ id: "zone_ikeja" }],
     listActiveOffers: async () => [],
     findEligibleDrivers: async () => [validDriver("hub_driver_1")],
     createOffers: async (_tx, data) => { createdOffers = data; return { count: data.length }; },
@@ -326,7 +332,7 @@ test("TEST_LIMITED driver can receive parcel delivery offers in TEST mode",async
   let offers=[];
   const testDriver={...validDriver("test-limited-driver"),kycTier:"TEST_LIMITED"};
   const repository={
-    transaction:callback=>callback({}),findLeg:async()=>leg,listActiveOffers:async()=>[],
+    transaction:callback=>callback({}),findLeg:async()=>leg,findActiveServiceZones:async()=>[{id:"zone_ikeja"}],listActiveOffers:async()=>[],
     findEligibleDrivers:async()=>[testDriver],
     createOffers:async(_tx,data)=>{offers=data;return{count:data.length};},
     recordEvent:async()=>{},
