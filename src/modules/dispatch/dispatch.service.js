@@ -144,6 +144,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
                     serviceZoneId: booking.pickupServiceZoneId,
                     serviceType: "PARCEL_DELIVERY",
                     isEnabled: true,
+                    serviceZone: { is: activeServiceZoneWhere(now) },
                   },
                 },
               },
