@@ -278,8 +278,9 @@ test("a repeated fare proposal replays after the driver becomes unavailable", as
   const offerId = "offer_retry";
   const idempotencyKey = "driver-fare-retry-after-acceptance";
   const proposedFareMinor = "2500";
+  const vehicleId = "vehicle_1";
   const proposalPayloadHash = createHash("sha256")
-    .update(JSON.stringify({ offerId, proposedFareMinor }))
+    .update(JSON.stringify({ offerId, vehicleId, proposedFareMinor }))
     .digest("hex");
   const repository = {
     transaction: callback => callback({
