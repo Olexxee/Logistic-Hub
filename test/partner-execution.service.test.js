@@ -407,6 +407,7 @@ test("partner assignment advances a paid integration-owned shipment from awaitin
         parcelBooking: {
           id: "integration-booking-1", paymentStatus: "SUCCEEDED",
           status: "AWAITING_PARTNER_ASSIGNMENT", integrationClientId: "client-1",
+          integrationDispatchAuthorizedAt: now,
         },
       }),
       updateMany: async () => ({ count: 1 }),
