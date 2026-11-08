@@ -21,8 +21,8 @@ function invalid(res, issues) {
 }
 function parseParams(res, params, includeVehicle = false) {
   const schema = includeVehicle
-    ? z.object({ vehicleId: idSchema }).strict()
-    : z.object({ driverProfileId: idSchema }).strict();
+    ? z.object({ vehicleId: idSchema, capability: capabilitySchema.optional() }).strict()
+    : z.object({ driverProfileId: idSchema, capability: capabilitySchema.optional() }).strict();
   const parsed = schema.safeParse(params);
   return parsed.success ? parsed.data : (invalid(res, parsed.error.issues), null);
 }
