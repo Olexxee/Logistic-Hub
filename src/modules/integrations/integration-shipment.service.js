@@ -408,7 +408,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           where: { id: external.internalResourceId, integrationClientId: client.id },
           include: {
             deliveryLegs: { select: { id: true, status: true } },
-            custodyHandovers: { where: { status: "CONFIRMED" }, select: { id: true, fromPartyType: true, toPartyType: true, fromPartyId: true, toPartyId: true, confirmedAt: true } },
+            custodyHandovers: { where: { status: { in: ["CONFIRMED", "PENDING_CONFIRMATION"] } }, select: { id: true, status: true, fromPartyType: true, toPartyType: true, fromPartyId: true, toPartyId: true, confirmedAt: true } },
           },
         });
         if (!booking) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
@@ -438,18 +438,30 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         }
 
         if (legIds.length) {
-          await tx.partnerDeliveryAssignment.updateMany({
+          const expectedAssignmentCount = assignments.filter(item => ["ASSIGNED", "ACCEPTED"].includes(item.status)).length;
+          const assignmentsChanged = await tx.partnerDeliveryAssignment.updateMany({
             where: { deliveryLegId: { in: legIds }, status: { in: ["ASSIGNED", "ACCEPTED"] } },
             data: { status: "CANCELLED", cancelledAt: now, failureReason: "Integration shipment stopped before custody transfer." },
           });
-          await tx.custodyHandover.updateMany({
+          if (assignmentsChanged.count !== expectedAssignmentCount) {
+            throw new ConflictError("A partner assignment changed while the stop command was being processed. Retry after refreshing shipment state.", "INTEGRATION_SHIPMENT_STOP_ASSIGNMENT_CONFLICT");
+          }
+          const expectedPendingHandoverCount = booking.custodyHandovers.filter(item => item.status === "PENDING_CONFIRMATION").length;
+          const handoversChanged = await tx.custodyHandover.updateMany({
             where: { parcelBookingId: booking.id, status: "PENDING_CONFIRMATION" },
             data: { status: "CANCELLED" },
           });
-          await tx.deliveryLeg.updateMany({
+          if (handoversChanged.count !== expectedPendingHandoverCount) {
+            throw new ConflictError("A custody handover changed while the stop command was being processed. Retry after refreshing shipment state.", "INTEGRATION_SHIPMENT_STOP_CUSTODY_CONFLICT");
+          }
+          const cancellableLegCount = booking.deliveryLegs.filter(leg => ["PLANNED", "READY_FOR_ASSIGNMENT", "ASSIGNED"].includes(leg.status)).length;
+          const legsChanged = await tx.deliveryLeg.updateMany({
             where: { parcelBookingId: booking.id, status: { in: ["PLANNED", "READY_FOR_ASSIGNMENT", "ASSIGNED"] } },
             data: { status: "CANCELLED", cancelledAt: now, failureReason: "Integration shipment stopped before custody transfer." },
           });
+          if (legsChanged.count !== cancellableLegCount) {
+            throw new ConflictError("A delivery leg changed while the stop command was being processed. Retry after refreshing shipment state.", "INTEGRATION_SHIPMENT_STOP_LEG_CONFLICT");
+          }
         }
 
         const changed = await tx.parcelBooking.updateMany({
