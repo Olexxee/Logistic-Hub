@@ -413,7 +413,15 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         });
         if (!booking) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
         if (booking.status === "CANCELLED") {
-          const responseBody = { shipmentId: booking.id, externalFulfillmentReference, status: "STOPPED", alreadyStopped: true };
+          const priorStop = await tx.bookingEvent.findFirst({
+            where: { parcelBookingId: booking.id, eventType: "INTEGRATION_SHIPMENT_STOPPED" },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, createdAt: true },
+          });
+          if (!priorStop) {
+            throw new ConflictError("The shipment is already cancelled outside this integration stop command.", "INTEGRATION_SHIPMENT_ALREADY_CANCELLED");
+          }
+          const responseBody = { shipmentId: booking.id, externalFulfillmentReference, status: "STOPPED", stoppedAt: priorStop.createdAt, alreadyStopped: true };
           await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 200, responseBody, now });
           return { statusCode: 200, body: responseBody, replay: false };
         }
