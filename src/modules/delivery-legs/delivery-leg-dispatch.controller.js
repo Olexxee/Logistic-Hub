@@ -24,6 +24,7 @@ export function createDeliveryLegDispatchController(service) {
         offerId: req.validated.params.offerId,
         userId: req.user.id,
         proposedFareMinor: req.validated.body.proposedFareMinor,
+        vehicleId: req.validated.body.vehicleId,
         idempotencyKey: req.validated.idempotencyKey,
       }),
     }),
