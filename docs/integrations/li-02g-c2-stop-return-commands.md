@@ -61,7 +61,7 @@ This is an acknowledgement that a return request has been received—not a retur
 - No fabricated reverse delivery leg or automatic reassignment of the parcel.
 - No claim that the parcel is stopped after partner pickup.
 - No buyer/seller frontend behavior or MarketIQ webhook projection in this Hub slice.
-- Operational ownership, partner instructions, reverse-route planning, custody milestones and terminal return confirmation require a subsequent return-execution slice. Until then, shipment.return_requested is a durable signal for operations and the integration client, not proof of physical action.
+- Operational ownership, partner instructions, reverse-route planning, custody milestones and terminal return confirmation require a subsequent return-execution slice. This command does not create a dedicated operations work queue or assign an operator; shipment.return_requested is a durable integration event that the next operational slice must surface and action. It is not proof of physical action.
 
 ## Acceptance tests
 
