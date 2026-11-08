@@ -403,7 +403,6 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         });
         if (!external) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
 
-        await tx.$queryRaw`SELECT "id" FROM "parcel_bookings" WHERE "id" = ${external.internalResourceId} FOR UPDATE`;
         const booking = await tx.parcelBooking.findFirst({
           where: { id: external.internalResourceId, integrationClientId: client.id },
           include: {
@@ -523,7 +522,6 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         });
         if (!external) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
 
-        await tx.$queryRaw`SELECT "id" FROM "parcel_bookings" WHERE "id" = ${external.internalResourceId} FOR UPDATE`;
         const booking = await tx.parcelBooking.findFirst({
           where: { id: external.internalResourceId, integrationClientId: client.id },
           include: {
@@ -548,6 +546,19 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           || assignments.some(item => item.status === "IN_TRANSIT");
         if (!physicallyTransferred) {
           throw new ConflictError("The parcel has not entered confirmed custody. Use the stop command while the shipment is still stoppable.", "INTEGRATION_SHIPMENT_NOT_IN_RETURN_WINDOW");
+        }
+
+        const stateGuard = await tx.parcelBooking.updateMany({
+          where: {
+            id: booking.id,
+            integrationClientId: client.id,
+            paymentStatus: "SUCCEEDED",
+            status: booking.status,
+          },
+          data: { updatedAt: now },
+        });
+        if (stateGuard.count !== 1) {
+          throw new ConflictError("The shipment changed while the return request was being recorded. Retry after refreshing shipment state.", "INTEGRATION_RETURN_REQUEST_CONFLICT");
         }
 
         const existingRequest = await tx.bookingEvent.findFirst({
