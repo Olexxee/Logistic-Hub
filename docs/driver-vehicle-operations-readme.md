@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is implemented on branch `feat/drv-05-dispatch-eligibility`; PR/CI and staging acceptance are pending. The remaining DRV-05 execution-boundary and partner-authorization work is still open.
+**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is implemented in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124); latest CI passed on head `990fd9ede467d746b9c945f8265c7d8728107fc1`; staging acceptance is pending. The remaining DRV-05 execution-boundary and partner-authorization work is still open.
 
 ## 1. Objective
 
