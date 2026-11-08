@@ -608,6 +608,9 @@ model Vehicle {
   driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
   verificationDocuments DriverVerificationDocument[]
   serviceCapabilities   VehicleServiceCapability[]
+  assignments           DriverAssignment[]
+  parcelOffers          DriverOffer[]
+  deliveryLegOffers     DeliveryLegOffer[]
 
   @@index([driverProfileId, isActive, verificationStatus])
   @@map("vehicles")
@@ -1080,6 +1083,7 @@ model DriverOffer {
   parcelBookingId             String?
   rideBookingId               String?
   driverProfileId             String
+  vehicleId                   String?
   status                      OfferStatus @default(OFFERED)
   proposedFareMinor           BigInt?
   fareProposalIdempotencyKey  String?     @unique
@@ -1092,10 +1096,12 @@ model DriverOffer {
   parcelBooking ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Cascade)
   rideBooking   RideBooking?   @relation(fields: [rideBookingId],   references: [id], onDelete: Cascade)
   driverProfile DriverProfile  @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  vehicle       Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
 
   @@index([driverProfileId, status, expiresAt])
   @@index([parcelBookingId, status, expiresAt])
   @@index([rideBookingId, status, expiresAt])
+  @@index([vehicleId, status])
   @@map("driver_offers")
 }
 
@@ -1105,6 +1111,7 @@ model DriverAssignment {
   rideBookingId    String?
   deliveryLegId    String?
   driverProfileId  String
+  vehicleId        String?
   assignedByUserId String?
   status           AssignmentStatus @default(AWAITING_PAYMENT)
   agreedFareMinor  BigInt
@@ -1123,6 +1130,7 @@ model DriverAssignment {
   parcelBooking ParcelBooking? @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
   rideBooking   RideBooking?   @relation(fields: [rideBookingId],   references: [id], onDelete: Restrict)
   driverProfile DriverProfile  @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+  vehicle       Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   assignedBy    User?          @relation(fields: [assignedByUserId], references: [id], onDelete: SetNull)
   deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
 
@@ -1130,6 +1138,7 @@ model DriverAssignment {
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
   @@index([deliveryLegId, status])
+  @@index([vehicleId, status])
   @@map("driver_assignments")
 }
 
@@ -1185,6 +1194,7 @@ model DeliveryLegOffer {
   id                         String      @id @default(cuid())
   deliveryLegId              String
   driverProfileId            String
+  vehicleId                  String?
   status                     OfferStatus @default(OFFERED)
   proposedFareMinor          BigInt?
   proposalIdempotencyKey     String?     @unique
@@ -1198,9 +1208,11 @@ model DeliveryLegOffer {
 
   deliveryLeg   DeliveryLeg  @relation(fields: [deliveryLegId], references: [id], onDelete: Cascade)
   driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Restrict)
+  vehicle       Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
 
   @@index([deliveryLegId, status, expiresAt])
   @@index([driverProfileId, status, expiresAt])
+  @@index([vehicleId, status])
   @@map("delivery_leg_offers")
 }
 
