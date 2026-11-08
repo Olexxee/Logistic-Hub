@@ -167,6 +167,8 @@ This is a source audit of schema, mounted route modules, validators/services/rep
 7. **Document expiry is only stored, not enforced.** Expiry reminders and expiry-based eligibility must not be represented as existing functionality.
 8. **Current Admin list APIs are paginated but limited.** Driver filters cover verification status and KYC tier; vehicle filters cover verification status and active state. Neither currently supports free-text search, vehicle type, capability or service-area filters.
 9. **Current tests cover the foundation, not the new model.** Existing tests cover Admin role restrictions and pagination, verification lifecycle, TEST_LIMITED restrictions, private document upload/review/download, dispatch eligibility, and rejection of partner-only leg types. There are no tests for adding a second vehicle, vehicle selection on an assignment, capability approval/revocation, or per-vehicle service eligibility.
+10. **Delivery-leg eligibility does not fully match the documented availability policy.** The delivery-leg dispatch repository checks broad parcel coverage but does not revalidate the current service-zone/country active state or time-bounded `PARCEL_DELIVERY` availability at offer creation. The legacy direct-dispatch path does check active geography and availability. In addition, delivery-leg matching hardcodes a five-minute location freshness window while the shared policy/configuration defines `DRIVER_LOCATION_MAX_AGE_SECONDS`. These must be reconciled before role-based matching is expanded.
+11. **Some Admin controls are backend-only.** Driver suspension/reactivation and driver audit-list endpoints exist, but the current frontend Admin driver-verification API/page does not expose those controls or the audit timeline. The Admin document panel and verification decisions are integrated.
 
 ### DRV-00 completion decision
 
@@ -224,6 +226,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [ ] Replace, deactivate or retire a vehicle with assignment-safety checks.
 - [ ] Capture class-specific registration identifiers and document requirements.
 - [ ] Support vehicle-specific documents, review decisions, expiry metadata and renewal status.
+- [ ] Persist the selected vehicle on each eligible assignment; do not treat the presence of any verified vehicle as proof that a particular job's vehicle is eligible.
 - [ ] Enforce class-aware rules: bicycle registration/license requirements must not be copied from motorized vehicles; motorized vehicle requirements must follow approved compliance policy.
 - [ ] Prevent unverified, suspended, expired or retired vehicles from new assignments.
 - [ ] Preserve historical assignment and audit references when a vehicle is deactivated or replaced.
@@ -267,6 +270,8 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 - [ ] Apply capability + vehicle suitability checks to local dispatch opportunities.
 - [ ] Apply capability + vehicle suitability checks to pickup and final-mile assignments.
+- [ ] Revalidate active country/state/zone and time-bounded service availability during delivery-leg offer creation.
+- [ ] Use the shared configured driver-location freshness limit consistently across legacy and delivery-leg dispatch.
 - [ ] Apply route/corridor + vehicle capacity checks to inter-state transport.
 - [ ] Apply hub/transfer authorization to hub-transfer assignments.
 - [ ] Re-check eligibility at offer, acceptance/reservation and execution boundaries where state can change.
