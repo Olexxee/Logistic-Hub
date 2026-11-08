@@ -37,6 +37,30 @@ export function createIntegrationShipmentController({ prismaClient, clock } = {}
         data: { ...result.body, replay: result.replay === true },
       });
     },
+    async stopShipment(req, res) {
+      const result = await service.stopShipment({
+        client: req.integrationClient,
+        idempotencyKey: requireIdempotencyKey(req),
+        externalFulfillmentReference: req.params.externalFulfillmentReference,
+        reason: req.body.reason,
+      });
+      return res.status(result.statusCode).json({
+        success: true,
+        data: { ...result.body, replay: result.replay === true },
+      });
+    },
+    async requestShipmentReturn(req, res) {
+      const result = await service.requestShipmentReturn({
+        client: req.integrationClient,
+        idempotencyKey: requireIdempotencyKey(req),
+        externalFulfillmentReference: req.params.externalFulfillmentReference,
+        reason: req.body.reason,
+      });
+      return res.status(result.statusCode).json({
+        success: true,
+        data: { ...result.body, replay: result.replay === true },
+      });
+    },
     async create(req, res) {
       const result = await service.createShipment({
         client: req.integrationClient,
