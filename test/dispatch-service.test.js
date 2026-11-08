@@ -268,6 +268,40 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
   assert.equal(writes.find(([kind]) => kind === "event")[1].data.eventType, "DRIVER_FARE_ACCEPTED");
 });
 
+test("driver fare proposal requires an owned active verified vehicle and stores it on the offer", async () => {
+  let offerUpdate;
+  let event;
+  const offer = {
+    id: "offer_vehicle_1",
+    parcelBookingId: "booking_vehicle_1",
+    driverProfileId: "driver_profile_vehicle_1",
+    status: "OFFERED",
+    proposedFareMinor: null,
+    expiresAt: new Date(now.getTime() + 60_000),
+    parcelBooking: { id: "booking_vehicle_1", status: "MATCHING", pricingSnapshot: { minimumDriverFareMinor: "1000" } },
+  };
+  const tx = {
+    driverProfile: { findUnique: async () => ({ id: "driver_profile_vehicle_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
+    driverOffer: {
+      findUnique: async () => offer,
+      updateMany: async (_where, args) => { offerUpdate = args; return { count: 1 }; },
+    },
+    vehicle: { findFirst: async ({ where }) => where.id === "vehicle-verified" ? { id: "vehicle-verified" } : null },
+    bookingEvent: { create: async ({ data }) => { event = data; return data; } },
+  };
+  const service = createDispatchService({ prismaClient: { $transaction: callback => callback(tx) }, clock: () => now });
+  const result = await service.proposeParcelFare({
+    offerId: offer.id,
+    userId: "driver-user",
+    vehicleId: "vehicle-verified",
+    proposedFareMinor: "2500",
+    idempotencyKey: "parcel-fare-with-vehicle-0001",
+  });
+  assert.equal(result.vehicleId, "vehicle-verified");
+  assert.equal(offerUpdate.vehicleId, "vehicle-verified");
+  assert.equal(event.metadata.vehicleId, "vehicle-verified");
+});
+
 test("fare proposal idempotency collisions across offers return a conflict instead of a database error", async () => {
   const key = "shared-fare-key-0001";
   const proposedFareMinor = "2500";
