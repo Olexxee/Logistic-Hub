@@ -20,3 +20,5 @@ export const integrationShipmentCreateSchema = z.object({
 export const integrationShipmentDispatchAuthorizationSchema = z.object({
   reason: z.enum(["BUYER_APPROVED", "REVIEW_TIMEOUT"]),
 }).strict();
+
+export const integrationShipmentPackingEvidenceFreezeSchema = z.object({}).strict();
