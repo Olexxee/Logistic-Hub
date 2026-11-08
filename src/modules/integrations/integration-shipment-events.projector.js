@@ -6,6 +6,8 @@ const EXTERNAL_EVENT_TYPES = Object.freeze({
   HUB_DESTINATION_CUSTODY_CONFIRMED: "shipment.delivery_leg_completed",
   PARTNER_HUB_CUSTODY_CONFIRMED: "shipment.delivery_leg_completed",
   PARTNER_RECIPIENT_CUSTODY_CONFIRMED: "shipment.delivery_leg_completed",
+  INTEGRATION_SHIPMENT_STOPPED: "shipment.cancelled",
+  INTEGRATION_RETURN_REQUESTED: "shipment.return_requested",
 });
 
 export async function projectIntegrationShipmentEvent({ tx, parcelBookingId, sourceEvent }) {
