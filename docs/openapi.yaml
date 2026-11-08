@@ -6731,10 +6731,11 @@ paths:
                 eventTypes:
                   type: array
                   minItems: 1
+                  maxItems: 7
                   uniqueItems: true
                   items:
                     type: string
-                    enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed]
+                    enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed, shipment.cancelled, shipment.return_requested]
       responses:
         '201':
           description: Endpoint metadata and one-time signing secret.
@@ -6790,10 +6791,11 @@ paths:
                 eventTypes:
                   type: array
                   minItems: 1
+                  maxItems: 7
                   uniqueItems: true
                   items:
                     type: string
-                    enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed]
+                    enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed, shipment.cancelled, shipment.return_requested]
                 reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '200':
@@ -7069,7 +7071,7 @@ paths:
                             sequence: { type: integer, minimum: 1 }
                             eventType:
                               type: string
-                              enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed]
+                              enum: [shipment.created, shipment.partner_assigned, shipment.in_transit, shipment.custody_handover_confirmed, shipment.delivery_leg_completed, shipment.cancelled, shipment.return_requested]
                             schemaVersion: { type: integer, const: 1 }
                             occurredAt: { type: string, format: date-time }
                             payload:
