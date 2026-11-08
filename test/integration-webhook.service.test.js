@@ -8,6 +8,7 @@ import {
   validateWebhookEndpointUrl,
 } from "../src/modules/integrations/integration-webhook.security.js";
 import { createIntegrationWebhookService } from "../src/modules/integrations/integration-webhook.service.js";
+import { integrationWebhookEndpointCreateSchema, integrationWebhookEndpointUpdateSchema } from "../src/modules/integrations/integration-webhook.validators.js";
 
 const encryptionKey = Buffer.alloc(32, 7).toString("base64");
 const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
@@ -193,4 +194,26 @@ test("secret rotation increments the version and retains prior encrypted version
   assert.equal(decryptWebhookSecret({
     endpointId: "endpoint-1", version: 2, ...state.secretVersions[1],
   }, { encryptionKey }), second.secret);
+});
+
+
+test("webhook subscriptions accept the new cancellation and return event types", () => {
+  const eventTypes = [
+    "shipment.created",
+    "shipment.partner_assigned",
+    "shipment.in_transit",
+    "shipment.custody_handover_confirmed",
+    "shipment.delivery_leg_completed",
+    "shipment.cancelled",
+    "shipment.return_requested",
+  ];
+  assert.equal(integrationWebhookEndpointCreateSchema.safeParse({
+    url: "https://hooks.example.org/events", eventTypes,
+  }).success, true);
+  assert.equal(integrationWebhookEndpointUpdateSchema.safeParse({
+    eventTypes, reason: "Enable stop and return event delivery",
+  }).success, true);
+  assert.equal(integrationWebhookEndpointCreateSchema.safeParse({
+    url: "https://hooks.example.org/events", eventTypes: [...eventTypes, "shipment.created"],
+  }).success, false);
 });

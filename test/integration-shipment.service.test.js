@@ -508,7 +508,7 @@ function actionFixture({
       status: bookingStatus,
       paymentStatus: "SUCCEEDED",
       deliveryLegs: [{ id: "leg-action-1", status: legStatus }],
-      custodyHandovers: structuredClone(custodyHandovers),
+      custodyHandovers: [...structuredClone(custodyHandovers), ...structuredClone(pendingHandovers)],
     },
     assignments: structuredClone(assignments),
     pendingHandovers: structuredClone(pendingHandovers),
@@ -526,16 +526,12 @@ function actionFixture({
         && item.idempotencyKey === where.clientId_operation_idempotencyKey.idempotencyKey) ?? null,
       create: async ({ data }) => { state.idempotency.push(data); return data; },
     },
-    integrationExternalReference: {
-      findFirst: async () => ({ internalResourceId: state.booking.id }),
-    },
+    integrationExternalReference: { findFirst: async () => ({ internalResourceId: state.booking.id }) },
     parcelBooking: {
       findFirst: async () => structuredClone(state.booking),
       findUnique: async () => ({
-        id: state.booking.id,
-        integrationClientId: state.booking.integrationClientId,
-        senderId: state.booking.senderId,
-        publicReference: state.booking.publicReference,
+        id: state.booking.id, integrationClientId: state.booking.integrationClientId,
+        senderId: state.booking.senderId, publicReference: state.booking.publicReference,
         status: state.booking.status,
       }),
       updateMany: async ({ where, data }) => {
@@ -673,7 +669,7 @@ test("integration return request records operational action without falsely canc
     bookingStatus: "IN_TRANSIT",
     legStatus: "IN_TRANSIT",
     assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "IN_TRANSIT" }],
-    custodyHandovers: [{ id: "handover-1", fromPartyType: "HUB", toPartyType: "TRANSPORT_PARTNER", fromPartyId: "hub-1", toPartyId: "partner-1", confirmedAt: now }],
+    custodyHandovers: [{ id: "handover-1", status: "CONFIRMED", fromPartyType: "HUB", toPartyType: "TRANSPORT_PARTNER", fromPartyId: "hub-1", toPartyId: "partner-1", confirmedAt: now }],
   });
   const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
   const result = await service.requestShipmentReturn({
@@ -694,7 +690,7 @@ test("a return request is not duplicated when a client retries with a different 
     bookingStatus: "IN_TRANSIT",
     legStatus: "IN_TRANSIT",
     assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "IN_TRANSIT" }],
-    custodyHandovers: [{ id: "handover-1", fromPartyType: "HUB", toPartyType: "TRANSPORT_PARTNER", fromPartyId: "hub-1", toPartyId: "partner-1", confirmedAt: now }],
+    custodyHandovers: [{ id: "handover-1", status: "CONFIRMED", fromPartyType: "HUB", toPartyType: "TRANSPORT_PARTNER", fromPartyId: "hub-1", toPartyId: "partner-1", confirmedAt: now }],
   });
   const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
   await service.requestShipmentReturn({
@@ -705,7 +701,44 @@ test("a return request is not duplicated when a client retries with a different 
     client: { id: "client_1" }, idempotencyKey: "return-shipment-003",
     externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer repeats return request",
   });
+  assert.equal(second.statusCode, 202);
   assert.equal(second.body.alreadyRequested, true);
+  assert.equal(second.body.physicalReturnConfirmed, false);
   assert.equal(state.bookingEvents.length, 1);
   assert.equal(state.integrationEvents.length, 1);
+});
+
+
+test("integration stop replays an identical command and rejects idempotency-key payload reuse", async () => {
+  const { state, prismaClient } = actionFixture();
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const input = {
+    client: { id: "client_1" }, idempotencyKey: "stop-shipment-replay",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer cancelled before dispatch",
+  };
+  const first = await service.stopShipment(input);
+  const replay = await service.stopShipment(input);
+  assert.equal(first.body.status, "STOPPED");
+  assert.equal(replay.replay, true);
+  assert.equal(state.bookingEvents.length, 1);
+  await assert.rejects(
+    service.stopShipment({ ...input, reason: "Different cancellation reason" }),
+    error => error.code === "IDEMPOTENCY_CONFLICT",
+  );
+});
+
+test("an in-transit partner assignment is sufficient evidence for a return request", async () => {
+  const { state, prismaClient } = actionFixture({
+    bookingStatus: "DRIVER_ASSIGNED",
+    legStatus: "IN_TRANSIT",
+    assignments: [{ id: "assignment-1", deliveryLegId: "leg-action-1", status: "IN_TRANSIT" }],
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.requestShipmentReturn({
+    client: { id: "client_1" }, idempotencyKey: "return-shipment-assignment-only",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100", reason: "Buyer requests return to seller",
+  });
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.body.status, "RETURN_REQUESTED");
+  assert.equal(state.booking.status, "DRIVER_ASSIGNED");
 });
