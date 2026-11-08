@@ -263,7 +263,7 @@ test("partner-to-recipient custody is rejected for non-integration bookings", as
 });
 
 test("integration recipient handover is rejected when a later delivery leg exists", async () => {
-  const integrationBooking = { ...booking, integrationClientId: "market-iq-client-1" };
+  const integrationBooking = { ...booking, senderId: null, integrationClientId: "market-iq-client-1" };
   const handover = {
     id: "handover-partner-recipient-later-leg",
     parcelBookingId: "booking-1",
@@ -307,7 +307,7 @@ test("integration recipient handover is rejected when a later delivery leg exist
 });
 
 test("confirmed partner-to-recipient handover completes an integration end-to-end shipment", async () => {
-  const integrationBooking = { ...booking, integrationClientId: "market-iq-client-1" };
+  const integrationBooking = { ...booking, senderId: null, integrationClientId: "market-iq-client-1" };
   const handover = {
     id: "handover-partner-recipient-1",
     parcelBookingId: "booking-1",
