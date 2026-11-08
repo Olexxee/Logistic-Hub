@@ -388,6 +388,184 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
       });
     },
 
+    async stopShipment({ client, idempotencyKey, externalFulfillmentReference, reason }) {
+      const now = clock();
+      const operation = "integration.shipment.stop";
+      const input = { externalFulfillmentReference, reason };
+      const payloadHash = hashPayload(input);
+      return serializableTransaction(prismaClient, async tx => {
+        const replay = await replayOrConflict(tx, client.id, operation, idempotencyKey, payloadHash);
+        if (replay) return { ...replay, replay: true };
+
+        const external = await tx.integrationExternalReference.findFirst({
+          where: { clientId: client.id, resourceType: "SHIPMENT", externalReference: externalFulfillmentReference },
+          select: { internalResourceId: true },
+        });
+        if (!external) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+
+        await tx.$queryRaw`SELECT "id" FROM "parcel_bookings" WHERE "id" = ${external.internalResourceId} FOR UPDATE`;
+        const booking = await tx.parcelBooking.findFirst({
+          where: { id: external.internalResourceId, integrationClientId: client.id },
+          include: {
+            deliveryLegs: { select: { id: true, status: true } },
+            custodyHandovers: { where: { status: "CONFIRMED" }, select: { id: true, fromPartyType: true, toPartyType: true, fromPartyId: true, toPartyId: true, confirmedAt: true } },
+          },
+        });
+        if (!booking) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+        if (booking.status === "CANCELLED") {
+          const responseBody = { shipmentId: booking.id, externalFulfillmentReference, status: "STOPPED", alreadyStopped: true };
+          await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 200, responseBody, now });
+          return { statusCode: 200, body: responseBody, replay: false };
+        }
+        if (!["AWAITING_PARTNER_ASSIGNMENT", "DRIVER_ASSIGNED"].includes(booking.status)) {
+          throw new ConflictError("The shipment has progressed beyond the safe stop window. Submit a return request instead.", "INTEGRATION_SHIPMENT_STOP_WINDOW_CLOSED");
+        }
+
+        const legIds = booking.deliveryLegs.map(leg => leg.id);
+        const assignments = legIds.length ? await tx.partnerDeliveryAssignment.findMany({
+          where: { deliveryLegId: { in: legIds } },
+          select: { id: true, deliveryLegId: true, status: true },
+        }) : [];
+        const physicallyTransferred = booking.custodyHandovers.length > 0
+          || assignments.some(item => item.status === "IN_TRANSIT");
+        if (physicallyTransferred) {
+          throw new ConflictError("The parcel has entered partner or hub custody. A stop cannot be confirmed; submit a return request.", "INTEGRATION_SHIPMENT_IN_CUSTODY_USE_RETURN");
+        }
+        if (assignments.some(item => !["ASSIGNED", "ACCEPTED", "CANCELLED", "FAILED", "COMPLETED"].includes(item.status))) {
+          throw new ConflictError("The shipment has an unsupported assignment state and requires operational review.", "INTEGRATION_SHIPMENT_STOP_STATE_UNSUPPORTED");
+        }
+
+        if (legIds.length) {
+          await tx.partnerDeliveryAssignment.updateMany({
+            where: { deliveryLegId: { in: legIds }, status: { in: ["ASSIGNED", "ACCEPTED"] } },
+            data: { status: "CANCELLED", cancelledAt: now, failureReason: "Integration shipment stopped before custody transfer." },
+          });
+          await tx.custodyHandover.updateMany({
+            where: { parcelBookingId: booking.id, status: "PENDING_CONFIRMATION" },
+            data: { status: "CANCELLED" },
+          });
+          await tx.deliveryLeg.updateMany({
+            where: { parcelBookingId: booking.id, status: { in: ["PLANNED", "READY_FOR_ASSIGNMENT", "ASSIGNED"] } },
+            data: { status: "CANCELLED", cancelledAt: now, failureReason: "Integration shipment stopped before custody transfer." },
+          });
+        }
+
+        const changed = await tx.parcelBooking.updateMany({
+          where: {
+            id: booking.id, integrationClientId: client.id,
+            status: { in: ["AWAITING_PARTNER_ASSIGNMENT", "DRIVER_ASSIGNED"] },
+          },
+          data: { status: "CANCELLED", cancelledAt: now, cancellationReason: reason },
+        });
+        if (changed.count !== 1) {
+          throw new ConflictError("The shipment changed while the stop command was being processed.", "INTEGRATION_SHIPMENT_STOP_CONFLICT");
+        }
+
+        const sourceEvent = await tx.bookingEvent.create({
+          data: {
+            parcelBookingId: booking.id,
+            eventType: "INTEGRATION_SHIPMENT_STOPPED",
+            fromStatus: booking.status,
+            toStatus: "CANCELLED",
+            metadata: {
+              integrationClientId: client.id,
+              externalFulfillmentReference,
+              reason,
+              stoppedAt: now.toISOString(),
+              cancelledLegIds: legIds,
+            },
+          },
+        });
+        await projectIntegrationShipmentEvent({ tx, parcelBookingId: booking.id, sourceEvent });
+        const responseBody = { shipmentId: booking.id, externalFulfillmentReference, status: "STOPPED", stoppedAt: now };
+        await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 200, responseBody, now });
+        return { statusCode: 200, body: responseBody, replay: false };
+      });
+    },
+
+    async requestShipmentReturn({ client, idempotencyKey, externalFulfillmentReference, reason }) {
+      const now = clock();
+      const operation = "integration.shipment.return-request";
+      const input = { externalFulfillmentReference, reason };
+      const payloadHash = hashPayload(input);
+      return serializableTransaction(prismaClient, async tx => {
+        const replay = await replayOrConflict(tx, client.id, operation, idempotencyKey, payloadHash);
+        if (replay) return { ...replay, replay: true };
+
+        const external = await tx.integrationExternalReference.findFirst({
+          where: { clientId: client.id, resourceType: "SHIPMENT", externalReference: externalFulfillmentReference },
+          select: { internalResourceId: true },
+        });
+        if (!external) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+
+        await tx.$queryRaw`SELECT "id" FROM "parcel_bookings" WHERE "id" = ${external.internalResourceId} FOR UPDATE`;
+        const booking = await tx.parcelBooking.findFirst({
+          where: { id: external.internalResourceId, integrationClientId: client.id },
+          include: {
+            deliveryLegs: { select: { id: true, status: true } },
+            custodyHandovers: { where: { status: "CONFIRMED" }, orderBy: { confirmedAt: "desc" }, select: { id: true, fromPartyType: true, toPartyType: true, fromPartyId: true, toPartyId: true, confirmedAt: true } },
+          },
+        });
+        if (!booking) throw new NotFoundError("Integration shipment not found.", "INTEGRATION_SHIPMENT_NOT_FOUND");
+        if (["COMPLETED", "CANCELLED", "FAILED"].includes(booking.status)) {
+          throw new ConflictError("A return cannot be requested for a terminal shipment.", "INTEGRATION_SHIPMENT_NOT_RETURNABLE");
+        }
+        const physicallyTransferred = booking.status === "IN_TRANSIT"
+          || booking.custodyHandovers.length > 0;
+        if (!physicallyTransferred) {
+          throw new ConflictError("The parcel has not entered confirmed custody. Use the stop command while the shipment is still stoppable.", "INTEGRATION_SHIPMENT_NOT_IN_RETURN_WINDOW");
+        }
+
+        const existingRequest = await tx.bookingEvent.findFirst({
+          where: { parcelBookingId: booking.id, eventType: "INTEGRATION_RETURN_REQUESTED" },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, createdAt: true, metadata: true },
+        });
+        if (existingRequest) {
+          const responseBody = {
+            shipmentId: booking.id,
+            externalFulfillmentReference,
+            status: "RETURN_REQUESTED",
+            shipmentStatus: booking.status,
+            requestedAt: existingRequest.createdAt,
+            alreadyRequested: true,
+          };
+          await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 200, responseBody, now });
+          return { statusCode: 200, body: responseBody, replay: false };
+        }
+
+        const sourceEvent = await tx.bookingEvent.create({
+          data: {
+            parcelBookingId: booking.id,
+            eventType: "INTEGRATION_RETURN_REQUESTED",
+            fromStatus: booking.status,
+            toStatus: booking.status,
+            metadata: {
+              integrationClientId: client.id,
+              externalFulfillmentReference,
+              reason,
+              requestedAt: now.toISOString(),
+              custodySnapshot: booking.custodyHandovers[0] ?? null,
+              legStatuses: booking.deliveryLegs.map(leg => ({ deliveryLegId: leg.id, status: leg.status })),
+              operationalActionRequired: true,
+              physicalReturnConfirmed: false,
+            },
+          },
+        });
+        await projectIntegrationShipmentEvent({ tx, parcelBookingId: booking.id, sourceEvent });
+        const responseBody = {
+          shipmentId: booking.id,
+          externalFulfillmentReference,
+          status: "RETURN_REQUESTED",
+          shipmentStatus: booking.status,
+          requestedAt: now,
+          physicalReturnConfirmed: false,
+        };
+        await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 202, responseBody, now });
+        return { statusCode: 202, body: responseBody, replay: false };
+      });
+    },
+
     async createShipment({ client, idempotencyKey, input }) {
       const now = clock();
       const payloadHash = hashPayload(input);
