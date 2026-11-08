@@ -286,7 +286,7 @@ test("driver fare proposal requires an owned active verified vehicle and stores 
       findUnique: async () => offer,
       updateMany: async ({ data }) => { offerUpdate = data; return { count: 1 }; },
     },
-    vehicle: { findFirst: async ({ where }) => where.id === "vehicle-verified" ? { id: "vehicle-verified" } : null },
+    vehicle: { findMany: async () => [{ id: "vehicle-verified" }] },
     bookingEvent: { create: async ({ data }) => { event = data; return data; } },
   };
   const service = createDispatchService({ prismaClient: { $transaction: callback => callback(tx) }, clock: () => now });
