@@ -427,8 +427,14 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           await storeIdempotency(tx, { clientId: client.id, operation, key: idempotencyKey, payloadHash, responseStatus: 200, responseBody, now });
           return { statusCode: 200, body: responseBody, replay: false };
         }
+        if (["COMPLETED", "FAILED"].includes(booking.status)) {
+          throw new ConflictError("A terminal shipment cannot be stopped or returned.", "INTEGRATION_SHIPMENT_TERMINAL");
+        }
+        if (["PICKED_UP", "IN_TRANSIT", "DELIVERY_VERIFICATION_PENDING"].includes(booking.status)) {
+          throw new ConflictError("The parcel has progressed beyond the safe stop window. Submit a return request instead.", "INTEGRATION_SHIPMENT_STOP_WINDOW_CLOSED");
+        }
         if (!["AWAITING_PARTNER_ASSIGNMENT", "DRIVER_ASSIGNED"].includes(booking.status)) {
-          throw new ConflictError("The shipment has progressed beyond the safe stop window. Submit a return request instead.", "INTEGRATION_SHIPMENT_STOP_WINDOW_CLOSED");
+          throw new ConflictError("The shipment is not in a supported pre-custody stop state and requires operational review.", "INTEGRATION_SHIPMENT_STOP_STATE_UNSUPPORTED");
         }
 
         const legIds = booking.deliveryLegs.map(leg => leg.id);
