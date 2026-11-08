@@ -293,13 +293,36 @@ test("driver fare proposal requires an owned active verified vehicle and stores 
   const result = await service.proposeParcelFare({
     offerId: offer.id,
     userId: "driver-user",
-    vehicleId: "vehicle-verified",
     proposedFareMinor: "2500",
     idempotencyKey: "parcel-fare-with-vehicle-0001",
   });
   assert.equal(result.vehicleId, "vehicle-verified");
   assert.equal(offerUpdate.vehicleId, "vehicle-verified");
   assert.equal(event.metadata.vehicleId, "vehicle-verified");
+});
+
+test("legacy fare proposal without vehicleId is rejected when multiple verified vehicles are active", async () => {
+  const offer = {
+    id: "offer_multi_vehicle",
+    parcelBookingId: "booking_multi_vehicle",
+    driverProfileId: "driver_profile_multi",
+    status: "OFFERED",
+    proposedFareMinor: null,
+    expiresAt: new Date(now.getTime() + 60_000),
+    parcelBooking: { id: "booking_multi_vehicle", status: "MATCHING", pricingSnapshot: { minimumDriverFareMinor: "1000" } },
+  };
+  let offerWasUpdated = false;
+  const tx = {
+    driverProfile: { findUnique: async () => ({ id: "driver_profile_multi", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
+    driverOffer: { findUnique: async () => offer, updateMany: async () => { offerWasUpdated = true; return { count: 1 }; } },
+    vehicle: { findMany: async () => [{ id: "vehicle-1" }, { id: "vehicle-2" }] },
+  };
+  const service = createDispatchService({ prismaClient: { $transaction: callback => callback(tx) }, clock: () => now });
+  await assert.rejects(
+    service.proposeParcelFare({ offerId: offer.id, userId: "driver-user", proposedFareMinor: "2500", idempotencyKey: "multi-vehicle-fare-0001" }),
+    error => error.code === "VEHICLE_SELECTION_REQUIRED" && error.statusCode === 409,
+  );
+  assert.equal(offerWasUpdated, false);
 });
 
 test("fare proposal idempotency collisions across offers return a conflict instead of a database error", async () => {
