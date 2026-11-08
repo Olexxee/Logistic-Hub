@@ -311,6 +311,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           }
           return {
             offerId: offer.id,
+            vehicleId: offer.vehicleId,
             proposedFareMinor: offer.proposedFareMinor?.toString() ?? proposedFareMinor,
             currency: offer.currency,
             status: offer.status,
