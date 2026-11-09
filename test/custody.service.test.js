@@ -618,6 +618,7 @@ test("admin authorizes hub custody recovery only for a paid, held parcel assignm
       findFirst: async () => null,
       create: async ({ data }) => { const recovery = { id: "hub-recovery-1", ...data }; calls.recoveries.push(recovery); return recovery; },
     },
+    hubIntakeRecord: { findFirst: async () => null },
     operationalCase: { findUnique: async () => hubSafetyCase },
     hubPoint: { findUnique: async () => hubRecoveryConfig },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
@@ -642,6 +643,7 @@ test("admin cannot authorize hub recovery for a pre-pickup assignment", async ()
     operationalCase: { findUnique: async () => hubSafetyCase },
     driverAssignmentRecovery: { findFirst: async () => null },
     driverAssignmentHubRecovery: { findFirst: async () => null },
+    hubIntakeRecord: { findFirst: async () => null },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   const result = await service.initiateAdminHubRecovery({
