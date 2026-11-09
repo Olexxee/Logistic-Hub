@@ -39,7 +39,7 @@ function zone(id, options = {}) {
 function serviceFor(zones) {
   return createServiceZonesAdminService({
     clock: () => now,
-    prismaClient: { serviceZone: { findMany: async () => zones } },
+    prismaClient: { serviceZone: { findMany: async () => zones }, pricingRule: { findMany: async () => [] } },
   });
 }
 
