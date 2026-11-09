@@ -66,8 +66,27 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
     async submitOnboarding({ user, input }) {
       const existing = await prismaClient.driverProfile.findUnique({ where: { userId: user.id }, select: { id: true } });
       if (existing) throw conflict("DRIVER_PROFILE_EXISTS", "A driver onboarding profile already exists for this account.");
+      if (!["CUSTOMER", "DRIVER"].includes(user.role)) {
+        throw conflict("PRIMARY_WORKSPACE_CONVERSION_REQUIRED", "This account already belongs to another operational workspace. Contact an administrator before changing its primary workspace.");
+      }
       try {
         const profile = await prismaClient.$transaction(async (tx) => {
+          if (user.role === "CUSTOMER") {
+            const [partnerMemberships, hubMemberships] = await Promise.all([
+              tx.transportPartnerMember.count({ where: { userId: user.id, isActive: true } }),
+              tx.hubPointOperator.count({ where: { userId: user.id, isActive: true } }),
+            ]);
+            if (partnerMemberships || hubMemberships) {
+              throw conflict("PRIMARY_WORKSPACE_MEMBERSHIP_CONFLICT", "This account has active operational memberships. An administrator must resolve those memberships before changing its primary workspace.");
+            }
+            const roleUpdate = await tx.user.updateMany({
+              where: { id: user.id, role: "CUSTOMER" },
+              data: { role: "DRIVER" },
+            });
+            if (roleUpdate.count !== 1) {
+              throw conflict("PRIMARY_WORKSPACE_CHANGED", "The account's primary workspace changed. Refresh your session and try again.");
+            }
+          }
           const created = await tx.driverProfile.create({
             data: {
               userId: user.id,
@@ -89,6 +108,18 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
               isActive: false,
             },
           });
+          if (user.role === "CUSTOMER") {
+            await writeOperationalAuditEvent(tx, {
+              actorUserId: user.id,
+              entityType: "USER",
+              entityId: user.id,
+              action: "PRIMARY_WORKSPACE_ASSIGNED_DRIVER",
+              reason: "User submitted a driver application.",
+              before: { role: "CUSTOMER" },
+              after: { role: "DRIVER" },
+              metadata: { driverProfileId: created.id },
+            });
+          }
           return created;
         });
         return { id: profile.id, verificationStatus: profile.verificationStatus, isOnline: false, isAvailable: false };
@@ -192,6 +223,24 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
         });
         if (!profile) return null;
         if (profile.verificationStatus !== "REJECTED") throw conflict("DRIVER_NOT_REAPPLICABLE", "Only rejected driver applications can be resubmitted.");
+        const account = await tx.user.findUnique({ where: { id: userId }, select: { role: true } });
+        if (!account || !["CUSTOMER", "DRIVER"].includes(account.role)) {
+          throw conflict("PRIMARY_WORKSPACE_CONVERSION_REQUIRED", "This account no longer belongs to the Driver or Customer workspace. Contact an administrator.");
+        }
+        if (account.role === "CUSTOMER") {
+          const [partnerMemberships, hubMemberships] = await Promise.all([
+            tx.transportPartnerMember.count({ where: { userId, isActive: true } }),
+            tx.hubPointOperator.count({ where: { userId, isActive: true } }),
+          ]);
+          if (partnerMemberships || hubMemberships) {
+            throw conflict("PRIMARY_WORKSPACE_MEMBERSHIP_CONFLICT", "Active operational memberships must be resolved before restoring the Driver workspace.");
+          }
+          const roleUpdate = await tx.user.updateMany({
+            where: { id: userId, role: "CUSTOMER" },
+            data: { role: "DRIVER" },
+          });
+          if (roleUpdate.count !== 1) throw conflict("PRIMARY_WORKSPACE_CHANGED", "The account's primary workspace changed. Refresh your session and try again.");
+        }
         if (kycMode === "STRICT") {
           const updatedEvidence = await tx.driverVerificationDocument.findFirst({
             where: { driverProfileId: profile.id, reviewStatus: { in: ["PENDING", "APPROVED"] }, createdAt: { gt: profile.updatedAt } },
@@ -204,13 +253,12 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
           data: { verificationStatus: "PENDING", isOnline: false, isAvailable: false },
           select: { id: true, verificationStatus: true, kycTier: true, isOnline: true, isAvailable: true },
         });
-        await tx.user.update({ where: { id: userId }, data: { role: "CUSTOMER" } });
         await writeOperationalAuditEvent(tx, {
           actorUserId: userId, entityType: "DRIVER_PROFILE", entityId: profile.id,
           action: "DRIVER_APPLICATION_RESUBMITTED", reason,
           before: { verificationStatus: profile.verificationStatus, isOnline: profile.isOnline, isAvailable: profile.isAvailable },
           after: { verificationStatus: updated.verificationStatus, isOnline: updated.isOnline, isAvailable: updated.isAvailable },
-          metadata: { kycTier: updated.kycTier },
+          metadata: { kycTier: updated.kycTier, primaryWorkspaceRole: "DRIVER" },
         });
         return updated;
       });
@@ -285,10 +333,24 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
             data: { isActive: approved && !profile.suspendedAt },
           });
         }
-        await tx.user.update({
-          where: { id: profile.userId },
-          data: { role: approved ? "DRIVER" : "CUSTOMER" },
-        });
+        const account = await tx.user.findUnique({ where: { id: profile.userId }, select: { role: true } });
+        if (!account || !["CUSTOMER", "DRIVER"].includes(account.role)) {
+          throw conflict("PRIMARY_WORKSPACE_CONVERSION_REQUIRED", "The driver's primary workspace changed. Resolve the account role before reviewing this application.");
+        }
+        if (account.role === "CUSTOMER") {
+          const [partnerMemberships, hubMemberships] = await Promise.all([
+            tx.transportPartnerMember.count({ where: { userId: profile.userId, isActive: true } }),
+            tx.hubPointOperator.count({ where: { userId: profile.userId, isActive: true } }),
+          ]);
+          if (partnerMemberships || hubMemberships) {
+            throw conflict("PRIMARY_WORKSPACE_MEMBERSHIP_CONFLICT", "Active operational memberships must be resolved before assigning the Driver workspace.");
+          }
+          const roleUpdate = await tx.user.updateMany({
+            where: { id: profile.userId, role: "CUSTOMER" },
+            data: { role: "DRIVER" },
+          });
+          if (roleUpdate.count !== 1) throw conflict("PRIMARY_WORKSPACE_CHANGED", "The account's primary workspace changed during driver review.");
+        }
         await writeOperationalAuditEvent(tx, {
           actorUserId,
           entityType: "DRIVER_PROFILE",
