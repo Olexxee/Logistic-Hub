@@ -513,7 +513,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
               throw fail(409, "HUB_RECOVERY_DISPOSITION_REQUIRED", "A safety-recovered parcel can only be released on its explicitly approved continuation leg.");
             }
             await repo.updateHubIntakeDisposition(disposition.id, {
-              status: "RELEASED", releasedAt: clock(), releasedByUserId: handover.createdByUserId,
+              status: "RELEASED", releasedAt: clock(), releasedByUserId: handover.initiatedByUserId,
             }, tx);
           }
           await repo.updateHubIntakeRecord(intake.id, { status: "RELEASED", releasedAt: clock() }, tx);
