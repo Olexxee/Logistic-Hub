@@ -401,6 +401,7 @@ test("verification code issuance is blocked while assignment is on safety hold",
   });
   let tokenWrites = 0;
   const tx = {
+    $queryRaw: async () => [],
     driverAssignment: { findUnique: async () => assignment },
     verificationToken: {
       updateMany: async () => { tokenWrites += 1; return { count: 1 }; },
