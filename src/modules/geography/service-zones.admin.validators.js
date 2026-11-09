@@ -1,12 +1,18 @@
 import { z } from "zod";
 import { serviceTypeSchema } from "./service-zones.schemas.js";
+import { validateServiceZoneBoundary } from "./geojson-boundary.js";
+
+const boundaryGeoJsonSchema = z.unknown().superRefine((value, context) => {
+  const result = validateServiceZoneBoundary(value);
+  for (const message of result.issues) context.addIssue({ code: z.ZodIssueCode.custom, message });
+});
 
 export const createServiceZoneAdminSchema = z.object({
   stateId: z.string().trim().min(1).max(128),
   lgaId: z.string().trim().min(1).max(128).nullable().optional(),
   code: z.string().trim().min(2).max(40).regex(/^[A-Z0-9_-]+$/),
   name: z.string().trim().min(2).max(120),
-  boundaryGeoJson: z.record(z.string(), z.unknown()).nullable().optional(),
+  boundaryGeoJson: z.union([z.null(), boundaryGeoJsonSchema]).optional(),
 }).strict();
 
 export const updateServiceZoneAdminSchema = createServiceZoneAdminSchema
