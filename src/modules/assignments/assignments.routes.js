@@ -35,6 +35,54 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     assignmentId: z.string().trim().min(1).max(128),
   });
   const adminHoldSchema = z.object({reason:z.string().trim().min(5).max(1000)}).strict();
+  const recoveryIdSchema = z.object({ recoveryId: z.string().trim().min(1).max(128) }).strict();
+  const recoveryEvidenceSchema = z.array(z.object({
+    uri: z.string().url().max(2048),
+    type: z.enum(["IMAGE", "VIDEO", "DOCUMENT"]).default("IMAGE"),
+    capturedAt: z.string().datetime().optional(),
+    note: z.string().trim().max(300).optional(),
+  }).strict()).min(1).max(10);
+  const initiateRecoverySchema = z.object({
+    replacementDriverProfileId: z.string().trim().min(1).max(128),
+    replacementVehicleId: z.string().trim().min(1).max(128),
+    reason: z.string().trim().min(10).max(1000),
+  }).strict();
+  const recoveryReleaseSchema = z.object({
+    reason: z.string().trim().min(5).max(1000),
+    evidence: recoveryEvidenceSchema,
+  }).strict();
+  const recoveryExceptionSchema = z.object({
+    reason: z.string().trim().min(10).max(1000),
+    evidence: recoveryEvidenceSchema,
+  }).strict();
+  const recoveryReceiptSchema = z.object({
+    conditionAtReceipt: z.string().trim().min(2).max(500),
+    evidence: recoveryEvidenceSchema,
+  }).strict();
+  router.post(
+    "/admin/:assignmentId/recoveries",
+    requireAuth, requireRole("ADMIN"),
+    validate(idSchema, "params"), validate(initiateRecoverySchema),
+    controller.initiateCustodyRecovery,
+  );
+  router.post(
+    "/admin/recoveries/:recoveryId/release-exception",
+    requireAuth, requireRole("ADMIN"),
+    validate(recoveryIdSchema, "params"), validate(recoveryExceptionSchema),
+    controller.authorizeCustodyRecoveryReleaseException,
+  );
+  router.post(
+    "/recoveries/:recoveryId/release",
+    requireAuth, requireRole("DRIVER"),
+    validate(recoveryIdSchema, "params"), validate(recoveryReleaseSchema),
+    controller.confirmCustodyRecoveryRelease,
+  );
+  router.post(
+    "/recoveries/:recoveryId/receive",
+    requireAuth, requireRole("DRIVER"),
+    validate(recoveryIdSchema, "params"), validate(recoveryReceiptSchema),
+    controller.confirmCustodyRecoveryReceipt,
+  );
   router.get(
     "/admin/execution-holds",
     requireAuth,
