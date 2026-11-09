@@ -1,11 +1,17 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { createAssignmentsRepository } from "./assignments.repository.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
+async function serializableTransaction(prismaClient,callback){
+ for(let attempt=0;;attempt+=1){
+  try{return await prismaClient.$transaction(callback,{isolationLevel:"Serializable"});}
+  catch(error){if(error?.code!=="P2034"||attempt>=2)throw error;}
+ }
+}
 export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
  const repository=createAssignmentsRepository(prismaClient);
  return {
   async placeExecutionHold({assignmentId,actorUserId,reason}) {
-   return prismaClient.$transaction(async tx => {
+   return serializableTransaction(prismaClient, async tx => {
     const assignment = await repository.findAssignmentForAdminHold(assignmentId, tx);
     if (!assignment) return {notFound:true};
     if (!assignment.parcelBookingId) return {blocker:"PARCEL_ASSIGNMENT_REQUIRED"};
@@ -32,7 +38,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
      metadata:{parcelBookingId:assignment.parcelBookingId,deliveryLegId:assignment.deliveryLegId??null},
     },tx);
     return {assignmentId,heldAt,caseId:operationalCase.id,replay:false};
-   },{isolationLevel:"Serializable"});
+   });
   },
   async releaseExecutionHold({assignmentId,actorUserId,reason}) {
    return prismaClient.$transaction(async tx => {
@@ -63,6 +69,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
      startedAt:assignment.startedAt,
      completedAt:assignment.completedAt,
      failureReason:assignment.failureReason,
+     executionHeld:Boolean(assignment.executionHoldAt),
      vehicle:assignment.vehicle?{id:assignment.vehicle.id,type:assignment.vehicle.type,make:assignment.vehicle.make,model:assignment.vehicle.model,registrationPlate:assignment.vehicle.registrationPlate}:null,
      createdAt:assignment.createdAt,
      updatedAt:assignment.updatedAt,
