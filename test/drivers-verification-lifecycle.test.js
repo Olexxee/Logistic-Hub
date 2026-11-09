@@ -317,9 +317,12 @@ test("new driver application assigns Driver workspace atomically and records the
 test("new driver application is blocked when the customer has active operational memberships", async () => {
   let profileCreated = false;
   const tx = {
+    user: {
+      findUnique: async () => ({ role: "CUSTOMER" }),
+      updateMany: async () => { throw new Error("Role must not change."); },
+    },
     transportPartnerMember: { count: async () => 1 },
     hubPointOperator: { count: async () => 0 },
-    user: { updateMany: async () => { throw new Error("Role must not change."); } },
     driverProfile: { create: async () => { profileCreated = true; } },
   };
   const prismaClient = {
