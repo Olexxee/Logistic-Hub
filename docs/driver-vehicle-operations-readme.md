@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is merged in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124). DRV-05B assignment execution eligibility is implemented on branch `feat/drv-05b-assignment-execution-eligibility`; PR/CI and staging acceptance are pending. Admin safety-hold/recovery and partner authorization remain open.
+**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is merged in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124). DRV-05B assignment execution eligibility is implemented in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125); CI passed on head `4737c98dc13e8d71bb1a3f219202bbaafcfc295e`. Staging acceptance is pending. Admin safety-hold/recovery and partner authorization remain open.
 
 ## 1. Objective
 
@@ -324,7 +324,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 **DRV-05A status:** merged in backend PR #124. See [DRV-05A implementation notes](./driver-dispatch-drv-05a.md).
 
-**DRV-05B status:** implemented on the current backend review branch; see [DRV-05B assignment execution notes](./driver-assignment-execution-drv-05b.md). Pre-custody execution checks and post-custody continuity/audit are implemented. Admin safety-hold/recovery and staging acceptance remain open.
+**DRV-05B status:** implemented in [backend PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125); CI passed on head `4737c98dc13e8d71bb1a3f219202bbaafcfc295e`. See [DRV-05B assignment execution notes](./driver-assignment-execution-drv-05b.md). Pre-custody execution checks and post-custody continuity/audit are implemented. Admin safety-hold/recovery and staging acceptance remain open.
 
 ### DRV-06 — Reporting, audit and operational controls
 
