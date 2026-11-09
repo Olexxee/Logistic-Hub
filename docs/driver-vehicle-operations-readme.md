@@ -320,7 +320,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [ ] Add operational-case creation/notification and safe release/reassignment when pre-custody eligibility becomes invalid.
 - [x] Reject ineligible driver/vehicle combinations at dispatch, proposal, reservation and pre-custody execution with stable domain error codes.
 - [x] Preserve current availability, location freshness, active-assignment concurrency and pickup/delivery verification invariants.
-- [ ] Do not auto-enable availability after assignment completion.
+- [x] Do not auto-enable availability after assignment completion or an in-custody eligibility exception.
 
 **DRV-05A status:** merged in backend PR #124. See [DRV-05A implementation notes](./driver-dispatch-drv-05a.md).
 
