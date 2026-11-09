@@ -71,6 +71,10 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
       }
       try {
         const profile = await prismaClient.$transaction(async (tx) => {
+          const currentUser = await tx.user.findUnique({ where: { id: user.id }, select: { role: true } });
+          if (!currentUser || currentUser.role !== user.role) {
+            throw conflict("PRIMARY_WORKSPACE_CHANGED", "The account's primary workspace changed. Refresh your session and try again.");
+          }
           if (user.role === "CUSTOMER") {
             const [partnerMemberships, hubMemberships] = await Promise.all([
               tx.transportPartnerMember.count({ where: { userId: user.id, isActive: true } }),
