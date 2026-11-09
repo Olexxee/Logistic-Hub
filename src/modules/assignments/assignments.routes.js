@@ -35,6 +35,10 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     assignmentId: z.string().trim().min(1).max(128),
   });
   const adminHoldSchema = z.object({reason:z.string().trim().min(5).max(1000)}).strict();
+  const recoveryMineQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  }).strict();
   const recoveryQueueQuerySchema = z.object({
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -67,6 +71,12 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     conditionAtReceipt: z.string().trim().min(2).max(500),
     evidence: recoveryEvidenceSchema,
   }).strict();
+  router.get(
+    "/recoveries/mine",
+    requireAuth, requireRole("DRIVER"),
+    validate(recoveryMineQuerySchema, "query"),
+    controller.listMyCustodyRecoveries,
+  );
   router.get(
     "/admin/recoveries",
     requireAuth, requireRole("ADMIN"),
