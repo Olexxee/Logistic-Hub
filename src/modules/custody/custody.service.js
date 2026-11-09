@@ -739,6 +739,9 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (!assignment.pickupAt || !["PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"].includes(assignment.status)) {
           return { blocker: "ASSIGNMENT_NOT_IN_CUSTODY" };
         }
+        if (["COMPLETED", "FAILED", "CANCELLED"].includes(assignment.deliveryLeg.status)) return { blocker: "DELIVERY_LEG_TERMINAL" };
+        if (await repo.findPendingHandover(assignment.deliveryLegId, tx)) return { blocker: "PENDING_CUSTODY_HANDOVER_EXISTS" };
+        if (await repo.findAnyReceivedHubIntake(assignment.parcelBookingId, tx)) return { blocker: "PARCEL_ALREADY_IN_HUB_CUSTODY" };
         if (!assignment.executionHoldAt || !assignment.executionHoldOperationalCaseId) {
           return { blocker: "ACTIVE_SAFETY_HOLD_REQUIRED" };
         }
@@ -814,6 +817,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           return { blocker: "SOURCE_ASSIGNMENT_RECOVERY_STATE_CHANGED" };
         }
         if (assignment.parcelBooking?.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
+        if (["COMPLETED", "FAILED", "CANCELLED"].includes(assignment.deliveryLeg.status)) return { blocker: "DELIVERY_LEG_TERMINAL" };
+        if (await repo.findPendingHandover(assignment.deliveryLegId, tx)) return { blocker: "PENDING_CUSTODY_HANDOVER_EXISTS" };
+        const activeIntake = await repo.findAnyReceivedHubIntake(recovery.parcelBookingId, tx);
+        if (activeIntake) return { blocker: "PARCEL_ALREADY_IN_HUB_CUSTODY" };
         const safetyCase = await tx.operationalCase.findUnique({ where: { id: recovery.operationalCaseId } });
         if (!safetyCase || safetyCase.type !== "SAFETY_INCIDENT"
           || !["OPEN", "TRIAGED", "IN_PROGRESS"].includes(safetyCase.status)
