@@ -222,12 +222,6 @@ export function createCustodyRepository({ prismaClient }) {
         data: { status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED" },
       });
     },
-    findHubRecoveryForIntake(intakeRecordId, tx = prismaClient) {
-      return tx.driverAssignmentHubRecovery.findFirst({
-        where: { hubIntakeRecordId: intakeRecordId },
-        select: { id: true },
-      });
-    },
     updateHubRecovery(id, data, tx = prismaClient) {
       return tx.driverAssignmentHubRecovery.update({ where: { id }, data });
     },
@@ -393,6 +387,10 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.hubIntakeRecord.findFirst({
         where: { parcelBookingId, hubPointId, status: "RECEIVED" },
         orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        include: {
+          driverAssignmentHubRecovery: { select: { id: true } },
+          disposition: { select: { id: true, status: true, nextDeliveryLegId: true } },
+        },
       });
     },
     updateHubIntakeRecord(id, data, tx = prismaClient) {
