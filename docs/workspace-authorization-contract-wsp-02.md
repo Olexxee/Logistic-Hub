@@ -213,7 +213,7 @@ The backend resolver derives the workspace key and landing route from the curren
 | `SUPPORT` | `SUPPORT` | `/support` |
 | `ADMIN` | `ADMIN` | `/admin` |
 
-The `workspace` object returned by login and `GET /auth/me` contains:
+The `workspace` object returned by login, refresh and `GET /auth/me` contains:
 
 - `key`: canonical workspace identifier derived from `User.role`;
 - `status`: `READY`, `RESTRICTED` or `BLOCKED`;
