@@ -1839,14 +1839,13 @@ model HubIntakeRecord {
   deliveryLeg   DeliveryLeg   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
   hubPoint      HubPoint      @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
   receivedBy    User          @relation("HubIntakeReceiver", fields: [receivedByUserId], references: [id], onDelete: Restrict)
+  driverAssignmentHubRecovery DriverAssignmentHubRecovery?
 
   @@index([hubPointId, status, receivedAt])
   @@index([parcelBookingId, hubPointId, status])
   @@index([deliveryLegId, hubPointId])
   @@map("hub_intake_records")
 }
-  driverAssignmentHubRecovery DriverAssignmentHubRecovery?
-
 
 model DriverAssignmentHubRecovery {
   id                    String                           @id @default(cuid())
