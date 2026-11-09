@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createDriversService } from "../src/modules/drivers/drivers.service.js";
 
-function transactionClient({ profile, vehicle } = {}) {
+function transactionClient({ profile, vehicle, role = "DRIVER" } = {}) {
   const events = [];
   const state = {
     profile: { id: "driver-1", userId: "user-1", verificationStatus: "PENDING", isOnline: true, isAvailable: true, suspendedAt: null, ...profile },
     vehicle: { id: "vehicle-1", driverProfileId: "driver-1", verificationStatus: "PENDING", isActive: false, driverProfile: { verificationStatus: "PENDING", suspendedAt: null }, ...vehicle },
-    role: null,
+    role,
     vehicleActivation: null,
   };
   const tx = {
@@ -20,7 +20,16 @@ function transactionClient({ profile, vehicle } = {}) {
       findUnique: async () => ({ ...state.vehicle }),
       update: async ({ data }) => { state.vehicle = { ...state.vehicle, ...data }; return { ...state.vehicle }; },
     },
-    user: { update: async ({ data }) => { state.role = data.role; return { id: "user-1", ...data }; } },
+    user: {
+      findUnique: async () => ({ id: "user-1", role: state.role }),
+      updateMany: async ({ where, data }) => {
+        if (state.role !== where.role) return { count: 0 };
+        state.role = data.role;
+        return { count: 1 };
+      },
+    },
+    transportPartnerMember: { count: async () => 0 },
+    hubPointOperator: { count: async () => 0 },
     operationalAuditEvent: { create: async ({ data }) => { events.push(data); return data; } },
   };
   return {
@@ -65,7 +74,7 @@ test("driver rejection deactivates verified vehicles and audits the reason", asy
     reason: "Required identity evidence was not provided",
     actorUserId: "admin-1",
   });
-  assert.equal(fixture.state.role, "CUSTOMER");
+  assert.equal(fixture.state.role, "DRIVER");
   assert.deepEqual(fixture.state.vehicleActivation.data, { isActive: false });
   assert.equal(fixture.events[0].action, "DRIVER_VERIFICATION_REJECTED");
   assert.equal(fixture.events[0].reason, "Required identity evidence was not provided");
