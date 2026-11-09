@@ -2469,7 +2469,7 @@ paths:
       tags: [Authentication]
       operationId: refreshAuthSession
       summary: Rotate the HttpOnly refresh cookie and issue a new access token
-      description: 'No request body. The browser sends the HttpOnly refresh cookie automatically with credentials included. The response rotates Set-Cookie and returns only the bearer access token. Requires an allowlisted Origin and X-Auth-CSRF: 1.'
+      description: 'No request body. The browser sends the HttpOnly refresh cookie automatically with credentials included. The response rotates Set-Cookie and returns a bearer access token plus the current user role and canonical workspace readiness, consistent with login and GET /auth/me. Requires an allowlisted Origin and X-Auth-CSRF: 1.'
       x-implementation-status: implemented
       security: []
       responses:
