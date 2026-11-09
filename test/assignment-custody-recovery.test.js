@@ -69,6 +69,7 @@ function makeClient({ candidateEligible = true, recovery = null } = {}) {
     source: { ...sourceAssignment },
     recovery: recovery ? { ...recovery } : null,
     replacementAssignment: null,
+    recoveryListQuery: null,
     audits: [],
     events: [],
     driverAvailabilityWrites: [],
@@ -94,6 +95,8 @@ function makeClient({ candidateEligible = true, recovery = null } = {}) {
     driverAssignmentRecovery: {
       findFirst: async () => state.recovery && ["PENDING_RELEASE", "PENDING_RECEIPT"].includes(state.recovery.status) ? state.recovery : null,
       findUnique: async () => state.recovery,
+      findMany: async args => { state.recoveryListQuery = args; return state.recovery ? [state.recovery] : []; },
+      count: async () => state.recovery ? 1 : 0,
       create: async ({ data }) => {
         state.recovery = { id: "recovery_1", ...data };
         return state.recovery;
@@ -124,6 +127,31 @@ function makeClient({ candidateEligible = true, recovery = null } = {}) {
   };
   return { state, client: { $transaction: async callback => callback(tx) } };
 }
+
+test("replacement driver can list only their pending custody recovery work", async () => {
+  const { client, state } = makeClient({
+    recovery: {
+      ...recoverySeed,
+      status: "PENDING_RECEIPT",
+      sourceAssignment: {
+        id: "assignment_source",
+        status: "IN_PROGRESS",
+        pickupAt: sourceAssignment.pickupAt,
+        parcelBooking: { publicReference: "LH-RECOVERY-1", pickupAddress: "Pickup", destinationAddress: "Dropoff", recipientName: "Recipient", recipientPhone: "+2348000000000" },
+        deliveryLeg: { id: "leg_recovery", sequence: 1, type: "DIRECT", status: "IN_TRANSIT" },
+      },
+    },
+  });
+  const service = createAssignmentsService({ prismaClient: client, clock: () => now });
+
+  const result = await service.listMyCustodyRecoveries({ userId: "replacement_user", page: 1, limit: 20 });
+
+  assert.equal(state.recoveryListQuery.where.replacementDriverProfile.userId, "replacement_user");
+  assert.equal(result.items[0].id, "recovery_1");
+  assert.equal(result.items[0].nextAction, "CONFIRM_PHYSICAL_RECEIPT");
+  assert.equal(result.items[0].sourceAssignment.parcelBooking.publicReference, "LH-RECOVERY-1");
+  assert.equal(result.pagination.total, 1);
+});
 
 test("Admin initiates recovery only for a held in-custody parcel and an eligible replacement pair", async () => {
   const { client, state } = makeClient();
