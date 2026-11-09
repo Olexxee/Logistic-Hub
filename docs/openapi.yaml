@@ -8265,7 +8265,7 @@ components:
       minItems: 2
       maxItems: 2
       items: { type: number }
-      description: [longitude, latitude] in WGS 84 order; backend enforces coordinate ranges and finite values.
+      description: '[longitude, latitude] in WGS 84 order; backend enforces coordinate ranges and finite values.'
     GeoJSONLinearRing:
       type: array
       minItems: 4
