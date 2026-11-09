@@ -1,5 +1,13 @@
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 export function createAssignmentsController(service){return {
+ cancelCustodyRecovery:asyncWrapper(async(req,res)=>{
+  const result=await service.cancelCustodyRecovery({
+   recoveryId:req.params.recoveryId,actorUserId:req.user.id,reason:req.body.reason,
+  });
+  if(result.notFound)return res.status(404).json({success:false,error:{code:"ASSIGNMENT_RECOVERY_NOT_FOUND",message:"Assignment recovery not found."}});
+  if(result.blocker)return res.status(409).json({success:false,error:{code:result.blocker,message:"Only pending custody recoveries can be cancelled."}});
+  return res.status(200).json({success:true,data:result});
+ }),
  listCustodyRecoveries:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listCustodyRecoveries(req.validated.query)})),
  initiateCustodyRecovery:asyncWrapper(async(req,res)=>{
   const result=await service.initiateCustodyRecovery({
