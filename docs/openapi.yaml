@@ -4999,6 +4999,122 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/assignments/hub-recoveries:
+    get:
+      tags: [Admin]
+      operationId: listAdminDriverAssignmentHubRecoveries
+      summary: List safety-held driver assignment recoveries awaiting or completing hub receipt
+      description: ADMIN-only operational queue. Lists the selected hub, source assignment, parcel reference and linked safety incident.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [PENDING_RECEIPT, CONFIRMED, CANCELLED] } }
+        - { name: hubPointId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: cursor, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/assignments/{assignmentId}/hub-recoveries:
+    post:
+      tags: [Admin]
+      operationId: authorizeDriverAssignmentHubRecovery
+      summary: Authorize a safety-held parcel assignment to be recovered into a hub
+      description: Requires an active safety incident and an assignment already in physical custody. The selected active hub must be in either service zone of the source leg. Authorization does not assert physical receipt or change assignment/booking/leg state.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: assignmentId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [hubPointId, reason]
+              properties:
+                hubPointId: { type: string, minLength: 1, maxLength: 128 }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/hub-recoveries/{recoveryId}/cancel:
+    post:
+      tags: [Admin]
+      operationId: cancelDriverAssignmentHubRecovery
+      summary: Cancel an authorized hub recovery before physical receipt
+      description: Cancelling authorization does not release or clear the source assignment safety hold.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: recoveryId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /hub-operations/hub-recoveries/{recoveryId}/receive:
+    post:
+      tags: [Delivery legs]
+      operationId: confirmDriverAssignmentHubRecoveryReceipt
+      summary: Confirm physical receipt of a safety-held parcel at the authorized hub
+      description: Requires an active hub operator membership. Revalidates the safety hold, hub eligibility, parcel type and hub capacity transactionally. Receipt creates a HubIntakeRecord and retires the source assignment under payout review, but does not complete the delivery leg or booking.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: recoveryId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [conditionAtReceipt, weightGrams]
+              properties:
+                conditionAtReceipt: { type: string, minLength: 2, maxLength: 500 }
+                weightGrams: { type: integer, minimum: 1, maximum: 100000000 }
+                lengthMm: { type: integer, minimum: 1, maximum: 1000000 }
+                widthMm: { type: integer, minimum: 1, maximum: 1000000 }
+                heightMm: { type: integer, minimum: 1, maximum: 1000000 }
+                evidence:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT], default: IMAGE }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/hub-intakes:
     get:
       tags: [Admin]
