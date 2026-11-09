@@ -179,6 +179,26 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     return {recovery:updated,replacementAssignment,replay:false};
    });
   },
+  async cancelCustodyRecovery({recoveryId,actorUserId,reason}) {
+   return serializableTransaction(prismaClient,async tx=>{
+    await repository.lockRecovery(recoveryId,tx);
+    const recovery=await repository.findRecoveryForUpdate(recoveryId,tx);
+    if(!recovery)return {notFound:true};
+    if(recovery.status==="CANCELLED"&&recovery.cancelledByUserId===actorUserId)return {recovery,replay:true};
+    if(!["PENDING_RELEASE","PENDING_RECEIPT"].includes(recovery.status))return {blocker:"RECOVERY_NOT_CANCELLABLE"};
+    const now=clock();
+    const updated=await repository.updateAssignmentRecovery(recoveryId,{
+     status:"CANCELLED",cancelledByUserId:actorUserId,cancelledAt:now,cancellationReason:reason,
+    },tx);
+    await repository.createOperationalAudit({
+     actorUserId,entityType:"DRIVER_ASSIGNMENT_RECOVERY",entityId:recoveryId,
+     action:"DRIVER_CUSTODY_RECOVERY_CANCELLED",reason,
+     before:{status:recovery.status},after:{status:"CANCELLED",cancelledAt:now.toISOString()},
+     metadata:{sourceAssignmentId:recovery.sourceAssignmentId,operationalCaseId:recovery.operationalCaseId},
+    },tx);
+    return {recovery:updated,replay:false};
+   });
+  },
   async listCustodyRecoveries({page=1,limit=25,status}) {
    const result=await repository.listAssignmentRecoveries({status,skip:(page-1)*limit,take:limit});
    return {
