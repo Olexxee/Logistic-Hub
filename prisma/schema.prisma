@@ -1144,6 +1144,7 @@ model DriverAssignment {
   @@index([rideBookingId, status])
   @@index([deliveryLegId, status])
   @@index([vehicleId, status])
+  @@index([executionHoldAt])
   @@map("driver_assignments")
 }
 
