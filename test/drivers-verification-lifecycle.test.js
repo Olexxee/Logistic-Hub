@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createDriversService } from "../src/modules/drivers/drivers.service.js";
 
-function transactionClient({ profile, vehicle } = {}) {
+function transactionClient({ profile, vehicle, role = "DRIVER", partnerMemberships = 0, hubMemberships = 0 } = {}) {
   const events = [];
   const state = {
     profile: { id: "driver-1", userId: "user-1", verificationStatus: "PENDING", isOnline: true, isAvailable: true, suspendedAt: null, ...profile },
     vehicle: { id: "vehicle-1", driverProfileId: "driver-1", verificationStatus: "PENDING", isActive: false, driverProfile: { verificationStatus: "PENDING", suspendedAt: null }, ...vehicle },
-    role: null,
+    role,
     vehicleActivation: null,
   };
   const tx = {
@@ -20,7 +20,16 @@ function transactionClient({ profile, vehicle } = {}) {
       findUnique: async () => ({ ...state.vehicle }),
       update: async ({ data }) => { state.vehicle = { ...state.vehicle, ...data }; return { ...state.vehicle }; },
     },
-    user: { update: async ({ data }) => { state.role = data.role; return { id: "user-1", ...data }; } },
+    user: {
+      findUnique: async () => ({ id: "user-1", role: state.role }),
+      updateMany: async ({ where, data }) => {
+        if (state.role !== where.role) return { count: 0 };
+        state.role = data.role;
+        return { count: 1 };
+      },
+    },
+    transportPartnerMember: { count: async () => partnerMemberships },
+    hubPointOperator: { count: async () => hubMemberships },
     operationalAuditEvent: { create: async ({ data }) => { events.push(data); return data; } },
   };
   return {
@@ -65,7 +74,7 @@ test("driver rejection deactivates verified vehicles and audits the reason", asy
     reason: "Required identity evidence was not provided",
     actorUserId: "admin-1",
   });
-  assert.equal(fixture.state.role, "CUSTOMER");
+  assert.equal(fixture.state.role, "DRIVER");
   assert.deepEqual(fixture.state.vehicleActivation.data, { isActive: false });
   assert.equal(fixture.events[0].action, "DRIVER_VERIFICATION_REJECTED");
   assert.equal(fixture.events[0].reason, "Required identity evidence was not provided");
@@ -173,7 +182,12 @@ test("STRICT mode does not activate a legacy verified motor vehicle without appr
       findMany: async () => [{ id: "car-1", type: "CAR" }, { id: "bike-1", type: "BICYCLE" }],
       updateMany: async args => { vehicleUpdates.push(args); return { count: 1 }; },
     },
-    user: { update: async () => ({}) },
+    user: {
+      findUnique: async () => ({ role: "DRIVER" }),
+      updateMany: async () => ({ count: 0 }),
+    },
+    transportPartnerMember: { count: async () => 0 },
+    hubPointOperator: { count: async () => 0 },
     operationalAuditEvent: { create: async ({ data }) => data },
   };
   const service = createDriversService({ prismaClient: { $transaction: callback => callback(tx) }, kycMode: "STRICT" });
@@ -215,4 +229,135 @@ test("TEST mode can explicitly reassess a legacy verified UNASSESSED driver", as
   assert.equal(result.kycTier, "TEST_LIMITED");
   assert.equal(fixture.events[0].action, "DRIVER_KYC_REASSESSED");
   assert.equal(fixture.events[0].metadata.isKycReassessment, true);
+});
+
+
+test("legacy rejected driver is restored to Driver workspace when explicitly reapplying", async () => {
+  const fixture = transactionClient({
+    profile: { verificationStatus: "REJECTED", kycTier: "TEST_LIMITED" },
+    role: "CUSTOMER",
+  });
+  const service = createDriversService({ prismaClient: fixture.prismaClient });
+  const result = await service.reapply({
+    userId: "user-1",
+    reason: "Corrected my vehicle details and availability information.",
+  });
+  assert.equal(result.verificationStatus, "PENDING");
+  assert.equal(fixture.state.role, "DRIVER");
+  assert.equal(fixture.events[0].metadata.primaryWorkspaceRole, "DRIVER");
+});
+
+test("legacy driver review cannot change the primary workspace while active partner memberships exist", async () => {
+  const fixture = transactionClient({
+    profile: { verificationStatus: "PENDING" },
+    role: "CUSTOMER",
+    partnerMemberships: 1,
+  });
+  const service = createDriversService({ prismaClient: fixture.prismaClient });
+  await assert.rejects(
+    service.reviewDriver({
+      driverProfileId: "driver-1",
+      verificationStatus: "VERIFIED",
+      reason: "Review attempted before resolving the partner membership.",
+      actorUserId: "admin-1",
+    }),
+    error => error.code === "PRIMARY_WORKSPACE_MEMBERSHIP_CONFLICT",
+  );
+  assert.equal(fixture.state.role, "CUSTOMER");
+  assert.equal(fixture.state.profile.verificationStatus, "PENDING");
+  assert.equal(fixture.events.length, 0);
+});
+
+test("new driver application assigns Driver workspace atomically and records the transition", async () => {
+  const state = { role: "CUSTOMER", profile: null, vehicle: null, audit: [] };
+  const tx = {
+    user: {
+      findUnique: async () => ({ role: "CUSTOMER" }),
+      updateMany: async ({ where, data }) => {
+        assert.deepEqual(where, { id: "user-1", role: "CUSTOMER" });
+        state.role = data.role;
+        return { count: 1 };
+      },
+    },
+    transportPartnerMember: { count: async () => 0 },
+    hubPointOperator: { count: async () => 0 },
+    driverProfile: {
+      create: async ({ data }) => {
+        state.profile = { id: "driver-1", ...data };
+        return state.profile;
+      },
+    },
+    vehicle: {
+      create: async ({ data }) => {
+        state.vehicle = data;
+        return data;
+      },
+    },
+    operationalAuditEvent: { create: async ({ data }) => { state.audit.push(data); return data; } },
+  };
+  const prismaClient = {
+    driverProfile: { findUnique: async () => null },
+    $transaction: callback => callback(tx),
+  };
+  const service = createDriversService({ prismaClient });
+  const result = await service.submitOnboarding({
+    user: { id: "user-1", role: "CUSTOMER" },
+    input: {
+      serviceRadiusMeters: 5000,
+      vehicle: { type: "BICYCLE", make: "Test", model: "Bike", registrationPlate: "TEST-001", parcelCapacity: 10 },
+    },
+  });
+  assert.equal(result.id, "driver-1");
+  assert.equal(state.role, "DRIVER");
+  assert.equal(state.profile.verificationStatus, "PENDING");
+  assert.equal(state.vehicle.isActive, false);
+  assert.equal(state.audit[0].action, "PRIMARY_WORKSPACE_ASSIGNED_DRIVER");
+});
+
+test("new driver application is blocked when the customer has active operational memberships", async () => {
+  let profileCreated = false;
+  const tx = {
+    user: {
+      findUnique: async () => ({ role: "CUSTOMER" }),
+      updateMany: async () => { throw new Error("Role must not change."); },
+    },
+    transportPartnerMember: { count: async () => 1 },
+    hubPointOperator: { count: async () => 0 },
+    driverProfile: { create: async () => { profileCreated = true; } },
+  };
+  const prismaClient = {
+    driverProfile: { findUnique: async () => null },
+    $transaction: callback => callback(tx),
+  };
+  const service = createDriversService({ prismaClient });
+  await assert.rejects(
+    service.submitOnboarding({
+      user: { id: "user-1", role: "CUSTOMER" },
+      input: { serviceRadiusMeters: 5000, vehicle: { type: "BICYCLE", parcelCapacity: 10 } },
+    }),
+    error => error.code === "PRIMARY_WORKSPACE_MEMBERSHIP_CONFLICT",
+  );
+  assert.equal(profileCreated, false);
+});
+
+
+test("driver onboarding rejects a primary-role change that races with the authenticated request", async () => {
+  let profileCreated = false;
+  const tx = {
+    user: { findUnique: async () => ({ role: "PARTNER_OPERATOR" }) },
+    driverProfile: { create: async () => { profileCreated = true; } },
+  };
+  const prismaClient = {
+    driverProfile: { findUnique: async () => null },
+    $transaction: callback => callback(tx),
+  };
+  const service = createDriversService({ prismaClient });
+  await assert.rejects(
+    service.submitOnboarding({
+      user: { id: "user-1", role: "CUSTOMER" },
+      input: { serviceRadiusMeters: 5000, vehicle: { type: "BICYCLE", parcelCapacity: 10 } },
+    }),
+    error => error.code === "PRIMARY_WORKSPACE_CHANGED",
+  );
+  assert.equal(profileCreated, false);
 });
