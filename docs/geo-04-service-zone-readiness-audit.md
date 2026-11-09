@@ -32,7 +32,7 @@ Give Admin a read-only operational audit before enabling parcel service in a zon
 
 ## Environment
 
-No new environment variable or package is introduced in GEO-04. The Maps browser key and backend Maps provider keys remain as documented in GEO-02/GEO-03. Keep backend `.env.example` aligned with `src/config/env.js` whenever environment configuration changes.
+No new environment variable or package is introduced in GEO-04. The Maps browser key and backend Maps provider keys remain as documented in GEO-02/GEO-03. A regression test now compares every runtime key in `src/config/env.js` against backend `.env.example` so future configuration changes cannot silently omit required entries.
 
 ## Validation and rollout
 
