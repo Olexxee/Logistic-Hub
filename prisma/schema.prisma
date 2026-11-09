@@ -373,6 +373,7 @@ enum CustodyHandoverStatus {
 }
 
 enum OperationalCaseType {
+  SAFETY_INCIDENT
   FAILED_HANDOVER
   DAMAGED_PARCEL
   MISSING_PARCEL
