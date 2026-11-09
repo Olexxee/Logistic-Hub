@@ -1,6 +1,6 @@
 import { createServiceZonesAdminRepository } from "./service-zones.admin.repository.js";
 import { writeOperationalAuditEvent } from "../../shared/audit/operational-audit.js";
-import { validateServiceZoneBoundary, serviceZoneBoundariesOverlap } from "./geojson-boundary.js";
+import { validateServiceZoneBoundary, serviceZoneBoundariesOverlapValidated } from "./geojson-boundary.js";
 
 function conflict(code, message) { const error = new Error(message); error.statusCode = 409; error.code = code; return error; }
 function snapshot(value) { return value ? { id: value.id, stateId: value.stateId, lgaId: value.lgaId, code: value.code, name: value.name, isActive: value.isActive, boundaryGeoJson: value.boundaryGeoJson ?? null } : null; }
@@ -66,7 +66,7 @@ export function createServiceZonesAdminService({ prismaClient, clock = () => new
         for (let j = i + 1; j < zones.length; j += 1) {
           const second = zones[j];
           if (!assessed[j].isActive || !assessed[j].geographyActive || assessed[j].boundary.status !== "VALID") continue;
-          if (serviceZoneBoundariesOverlap(first.boundaryGeoJson, second.boundaryGeoJson)) {
+          if (serviceZoneBoundariesOverlapValidated(first.boundaryGeoJson, second.boundaryGeoJson)) {
             overlapWarnings.push({
               zoneIds: [first.id, second.id],
               zones: [{ id: first.id, code: first.code, name: first.name }, { id: second.id, code: second.code, name: second.name }],
