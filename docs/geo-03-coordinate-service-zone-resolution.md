@@ -1,6 +1,6 @@
 # GEO-03 — Coordinate-to-service-zone resolution
 
-**Status:** Implementation in review; operational acceptance not complete.  
+**Status:** Backend implementation and automated CI complete; operational acceptance and release approval remain outstanding.  
 **Scope:** Backend point-in-polygon resolution and parcel booking-time revalidation.  
 **Spatial engine:** Application-level WGS84 geometry evaluation using the existing validated GeoJSON implementation. No PostGIS extension or new package is introduced.
 
@@ -33,6 +33,8 @@ This changes parcel booking creation from trusting supplied zone IDs to requirin
 No zone is activated, no boundary is written to the database, and no live deployment is performed by this PR.
 
 ## Tests and acceptance
+
+**CI evidence:** backend PR #138 run [42638103426](https://github.com/Olexxee/Logistic-Hub/actions/runs/42638103426) passed. The workflow completed Prisma validation/client generation, OpenAPI/route validation, foundation integrity validation, disposable PostgreSQL migration/history/schema-drift checks, and `npm test` (675 passed, 0 failed, 1 skipped by the explicit PostgreSQL integrity-test gate).
 
 Automated coverage added for Polygon/MultiPolygon containment, exterior edges, holes, missing boundaries, invalid stored geometry, overlapping-zone ambiguity, optional legacy hints, mismatch rejection, independently resolved pickup/destination, and pricing selection from the resolved pickup zone.
 
