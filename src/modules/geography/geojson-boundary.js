@@ -130,8 +130,7 @@ function pointInPolygon(point, polygon) {
   if (outer !== 1) return outer;
   for (let i = 1; i < polygon.length; i += 1) {
     const hole = pointInRing(point, polygon[i]);
-    if (hole === 0) return 0;
-    if (hole === 1) return -1;
+    if (hole === 0 || hole === 1) return -1;
   }
   return 1;
 }
