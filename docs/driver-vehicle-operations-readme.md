@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is implemented in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124); latest CI passed on head `990fd9ede467d746b9c945f8265c7d8728107fc1`; staging acceptance is pending. The remaining DRV-05 execution-boundary and partner-authorization work is still open.
+**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is merged in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124). DRV-05B assignment execution eligibility is implemented on branch `feat/drv-05b-assignment-execution-eligibility`; PR/CI and staging acceptance are pending. Admin safety-hold/recovery and partner authorization remain open.
 
 ## 1. Objective
 
@@ -314,12 +314,17 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [x] Use the shared configured driver-location freshness limit consistently across legacy and delivery-leg dispatch and reservation.
 - [ ] Apply route/corridor + vehicle capacity checks to inter-state transport.
 - [ ] Apply hub/transfer authorization to hub-transfer assignments.
-- [ ] Re-check eligibility at offer, acceptance/reservation and execution boundaries where state can change.
-- [ ] Reject stale, suspended, unverified or incompatible driver/vehicle combinations with stable domain error codes.
-- [ ] Preserve current availability, location freshness, active-assignment concurrency and custody invariants.
+- [x] Re-check driver capability, selected vehicle suitability, active account/KYC and strict-mode evidence before pickup arrival and pickup custody verification.
+- [x] Preserve post-pickup parcel completion if eligibility changes mid-route; record `IN_CUSTODY_ELIGIBILITY_EXCEPTION_COMPLETED` without restoring driver availability.
+- [ ] Add an Admin-controlled safety hold and controlled custody recovery/reassignment for critical incidents after pickup.
+- [ ] Add operational-case creation/notification and safe release/reassignment when pre-custody eligibility becomes invalid.
+- [x] Reject ineligible driver/vehicle combinations at dispatch, proposal, reservation and pre-custody execution with stable domain error codes.
+- [x] Preserve current availability, location freshness, active-assignment concurrency and pickup/delivery verification invariants.
 - [ ] Do not auto-enable availability after assignment completion.
 
-**DRV-05A status:** implemented on the current backend review branch; see [DRV-05A implementation notes](./driver-dispatch-drv-05a.md). Candidate matching, proposal and reservation gates are implemented. Execution-transition revalidation and staging acceptance are not complete.
+**DRV-05A status:** merged in backend PR #124. See [DRV-05A implementation notes](./driver-dispatch-drv-05a.md).
+
+**DRV-05B status:** implemented on the current backend review branch; see [DRV-05B assignment execution notes](./driver-assignment-execution-drv-05b.md). Pre-custody execution checks and post-custody continuity/audit are implemented. Admin safety-hold/recovery and staging acceptance remain open.
 
 ### DRV-06 — Reporting, audit and operational controls
 
