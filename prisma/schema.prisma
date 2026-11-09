@@ -1175,10 +1175,10 @@ model DriverAssignmentRecovery {
   receiptConfirmedBy User? @relation("AssignmentRecoveryReceiver", fields: [receiptConfirmedByUserId], references: [id], onDelete: Restrict)
   cancelledBy User? @relation("AssignmentRecoveryCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
 
-  @@index([sourceAssignmentId, status, createdAt], map: "drv_asgn_hub_rec_source_status_created_idx")
+  @@index([sourceAssignmentId, status, createdAt])
   @@index([deliveryLegId, status, createdAt])
   @@index([replacementDriverProfileId, status])
-  @@index([operationalCaseId, createdAt], map: "drv_asgn_hub_rec_case_created_idx")
+  @@index([operationalCaseId, createdAt])
   @@map("driver_assignment_recoveries")
 }
 
@@ -1876,9 +1876,9 @@ model DriverAssignmentHubRecovery {
   cancelledBy User? @relation("HubRecoveryCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
   hubIntakeRecord HubIntakeRecord? @relation(fields: [hubIntakeRecordId], references: [id], onDelete: Restrict)
 
-  @@index([sourceAssignmentId, status, createdAt])
+  @@index([sourceAssignmentId, status, createdAt], map: "drv_asgn_hub_rec_source_status_created_idx")
   @@index([hubPointId, status, createdAt], map: "drv_asgn_hub_rec_hub_status_created_idx")
-  @@index([operationalCaseId, createdAt])
+  @@index([operationalCaseId, createdAt], map: "drv_asgn_hub_rec_case_created_idx")
   @@map("driver_assignment_hub_recoveries")
 }
 
