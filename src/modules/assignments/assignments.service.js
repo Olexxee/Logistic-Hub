@@ -10,6 +10,163 @@ async function serializableTransaction(prismaClient,callback){
 export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
  const repository=createAssignmentsRepository(prismaClient);
  return {
+  async initiateCustodyRecovery({assignmentId,replacementDriverProfileId,replacementVehicleId,actorUserId,reason}) {
+   return serializableTransaction(prismaClient, async tx => {
+    await repository.lockAssignment(assignmentId,tx);
+    const source=await repository.findAssignmentForRecovery(assignmentId,tx);
+    if(!source)return {notFound:true};
+    if(!source.parcelBookingId||!source.deliveryLegId)return {blocker:"PARCEL_DELIVERY_LEG_REQUIRED"};
+    if(!source.executionHoldAt||!source.executionHoldOperationalCaseId)return {blocker:"ACTIVE_SAFETY_HOLD_REQUIRED"};
+    if(!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status)||!source.pickupAt)return {blocker:"ASSIGNMENT_NOT_IN_CUSTODY"};
+    if(source.driverProfileId===replacementDriverProfileId)return {blocker:"REPLACEMENT_DRIVER_MUST_DIFFER"};
+    if(source.vehicleId===replacementVehicleId)return {blocker:"REPLACEMENT_VEHICLE_MUST_DIFFER"};
+    await repository.lockDeliveryLeg(source.deliveryLegId,tx);
+    const existing=await repository.findActiveRecoveryForSource(source.id,tx);
+    if(existing)return {recovery:existing,replay:true};
+    await repository.lockRecoveryCandidate(replacementDriverProfileId,replacementVehicleId,tx);
+    const candidate=await repository.checkRecoveryCandidate(tx,{
+     sourceAssignment:source,replacementDriverProfileId,replacementVehicleId,now:clock(),
+    });
+    if(!candidate.eligible)return candidate;
+    const recovery=await repository.createAssignmentRecovery({
+     parcelBookingId:source.parcelBookingId,
+     deliveryLegId:source.deliveryLegId,
+     sourceAssignmentId:source.id,
+     replacementDriverProfileId,
+     replacementVehicleId,
+     operationalCaseId:source.executionHoldOperationalCaseId,
+     initiatedByUserId:actorUserId,
+     status:"PENDING_RELEASE",
+     reason,
+    },tx);
+    await repository.createOperationalAudit({
+     actorUserId,entityType:"DRIVER_ASSIGNMENT_RECOVERY",entityId:recovery.id,
+     action:"DRIVER_ASSIGNMENT_RECOVERY_INITIATED",reason,
+     before:{sourceAssignmentId:source.id,sourceDriverProfileId:source.driverProfileId,sourceVehicleId:source.vehicleId},
+     after:{status:recovery.status,replacementDriverProfileId,replacementVehicleId,operationalCaseId:recovery.operationalCaseId},
+     metadata:{parcelBookingId:source.parcelBookingId,deliveryLegId:source.deliveryLegId},
+    },tx);
+    return {recovery,replay:false};
+   });
+  },
+  async confirmCustodyRecoveryRelease({recoveryId,userId,reason,evidence}) {
+   return serializableTransaction(prismaClient,async tx=>{
+    await repository.lockRecovery(recoveryId,tx);
+    const recovery=await repository.findRecoveryForUpdate(recoveryId,tx);
+    if(!recovery)return {notFound:true};
+    if(recovery.status==="PENDING_RECEIPT"&&recovery.releaseConfirmedByUserId===userId)return {recovery,replay:true};
+    if(recovery.status!=="PENDING_RELEASE")return {blocker:"RECOVERY_NOT_AWAITING_RELEASE"};
+    await repository.lockAssignment(recovery.sourceAssignmentId,tx);
+    const source=await repository.findAssignmentForRecovery(recovery.sourceAssignmentId,tx);
+    if(!source||source.driverProfile.userId!==userId)return {forbidden:true};
+    if(!source.executionHoldAt||!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status))return {blocker:"SOURCE_ASSIGNMENT_NOT_RECOVERABLE"};
+    const now=clock();
+    const updated=await repository.updateAssignmentRecovery(recoveryId,{
+     status:"PENDING_RECEIPT",releaseConfirmedByUserId:userId,releaseConfirmedAt:now,
+     releaseReason:reason,releaseEvidence:evidence??undefined,
+    },tx);
+    await repository.createOperationalAudit({
+     actorUserId:userId,entityType:"DRIVER_ASSIGNMENT_RECOVERY",entityId:recoveryId,
+     action:"DRIVER_CUSTODY_RELEASE_CONFIRMED",reason,
+     before:{status:"PENDING_RELEASE"},after:{status:"PENDING_RECEIPT",releaseConfirmedAt:now.toISOString()},
+     metadata:{sourceAssignmentId:source.id,replacementDriverProfileId:recovery.replacementDriverProfileId},
+    },tx);
+    return {recovery:updated,replay:false};
+   });
+  },
+  async authorizeCustodyRecoveryReleaseException({recoveryId,actorUserId,reason,evidence}) {
+   return serializableTransaction(prismaClient,async tx=>{
+    await repository.lockRecovery(recoveryId,tx);
+    const recovery=await repository.findRecoveryForUpdate(recoveryId,tx);
+    if(!recovery)return {notFound:true};
+    if(recovery.status==="PENDING_RECEIPT"&&recovery.exceptionAuthorizedByUserId===actorUserId)return {recovery,replay:true};
+    if(recovery.status!=="PENDING_RELEASE")return {blocker:"RECOVERY_NOT_AWAITING_RELEASE"};
+    await repository.lockAssignment(recovery.sourceAssignmentId,tx);
+    const source=await repository.findAssignmentForRecovery(recovery.sourceAssignmentId,tx);
+    if(!source||!source.executionHoldAt||!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status))return {blocker:"SOURCE_ASSIGNMENT_NOT_RECOVERABLE"};
+    const now=clock();
+    const updated=await repository.updateAssignmentRecovery(recoveryId,{
+     status:"PENDING_RECEIPT",exceptionAuthorizedByUserId:actorUserId,
+     exceptionAuthorizedAt:now,exceptionReason:reason,exceptionEvidence:evidence,
+    },tx);
+    await repository.createOperationalAudit({
+     actorUserId,entityType:"DRIVER_ASSIGNMENT_RECOVERY",entityId:recoveryId,
+     action:"DRIVER_CUSTODY_RELEASE_EXCEPTION_AUTHORIZED",reason,
+     before:{status:"PENDING_RELEASE"},after:{status:"PENDING_RECEIPT",exceptionAuthorizedAt:now.toISOString()},
+     metadata:{sourceAssignmentId:source.id,replacementDriverProfileId:recovery.replacementDriverProfileId,evidenceCount:evidence.length},
+    },tx);
+    return {recovery:updated,replay:false};
+   });
+  },
+  async confirmCustodyRecoveryReceipt({recoveryId,userId,conditionAtReceipt,evidence}) {
+   return serializableTransaction(prismaClient,async tx=>{
+    await repository.lockRecovery(recoveryId,tx);
+    const recovery=await repository.findRecoveryForUpdate(recoveryId,tx);
+    if(!recovery)return {notFound:true};
+    if(recovery.status==="CONFIRMED"&&recovery.receiptConfirmedByUserId===userId)return {recovery,replay:true};
+    if(recovery.status!=="PENDING_RECEIPT")return {blocker:"RECOVERY_NOT_AWAITING_RECEIPT"};
+    await repository.lockDeliveryLeg(recovery.deliveryLegId,tx);
+    await repository.lockAssignment(recovery.sourceAssignmentId,tx);
+    await repository.lockRecoveryCandidate(recovery.replacementDriverProfileId,recovery.replacementVehicleId,tx);
+    const source=await repository.findAssignmentForRecovery(recovery.sourceAssignmentId,tx);
+    if(!source||!source.executionHoldAt||!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status))return {blocker:"SOURCE_ASSIGNMENT_NOT_RECOVERABLE"};
+    if(recovery.replacementDriverProfile?.userId!==userId)return {forbidden:true};
+    const candidate=await repository.checkRecoveryCandidate(tx,{
+     sourceAssignment:source,
+     replacementDriverProfileId:recovery.replacementDriverProfileId,
+     replacementVehicleId:recovery.replacementVehicleId,
+     now:clock(),
+    });
+    if(!candidate.eligible)return candidate;
+    const now=clock();
+    const replacementAssignment=await repository.createRecoveryReplacementAssignment({
+     parcelBookingId:source.parcelBookingId,
+     deliveryLegId:source.deliveryLegId,
+     driverProfileId:recovery.replacementDriverProfileId,
+     vehicleId:recovery.replacementVehicleId,
+     assignedByUserId:recovery.initiatedByUserId,
+     status:"IN_PROGRESS",
+     agreedFareMinor:source.agreedFareMinor,
+     currency:source.currency,
+     reservedAt:now,
+     acceptedAt:now,
+     pickupAt:source.pickupAt,
+     startedAt:now,
+     payoutReviewRequired:true,
+    },tx);
+    await repository.updateAssignmentForRecovery(source.id,{
+     status:"FAILED",
+     failureReason:`CUSTODY_RECOVERED_TO_ASSIGNMENT:${replacementAssignment.id}`,
+     executionHoldAt:null,
+    },tx);
+    await repository.updateRecoveryDriverAvailability(recovery.replacementDriverProfileId,false,tx);
+    const updated=await repository.updateAssignmentRecovery(recoveryId,{
+     status:"CONFIRMED",replacementAssignmentId:replacementAssignment.id,
+     receiptConfirmedByUserId:userId,receiptConfirmedAt:now,
+     receiptCondition:conditionAtReceipt,receiptEvidence:evidence??undefined,
+    },tx);
+    await repository.createAssignmentBookingEvent({
+     parcelBookingId:source.parcelBookingId,actorUserId:userId,
+     eventType:"DRIVER_ASSIGNMENT_CUSTODY_RECOVERED",
+     fromStatus:source.status,toStatus:"IN_PROGRESS",
+     metadata:{
+      recoveryId,sourceAssignmentId:source.id,replacementAssignmentId:replacementAssignment.id,
+      sourceDriverProfileId:source.driverProfileId,replacementDriverProfileId:recovery.replacementDriverProfileId,
+      sourceVehicleId:source.vehicleId,replacementVehicleId:recovery.replacementVehicleId,
+      operationalCaseId:recovery.operationalCaseId,payoutReviewRequired:true,
+     },
+    },tx);
+    await repository.createOperationalAudit({
+     actorUserId:userId,entityType:"DRIVER_ASSIGNMENT_RECOVERY",entityId:recoveryId,
+     action:"DRIVER_CUSTODY_RECOVERY_CONFIRMED",
+     reason:conditionAtReceipt,
+     before:{status:"PENDING_RECEIPT",sourceAssignmentStatus:source.status},
+     after:{status:"CONFIRMED",sourceAssignmentStatus:"FAILED",replacementAssignmentId:replacementAssignment.id,receiptConfirmedAt:now.toISOString()},
+     metadata:{operationalCaseId:recovery.operationalCaseId,manualPayoutReviewRequired:true},
+    },tx);
+    return {recovery:updated,replacementAssignment,replay:false};
+   });
+  },
   async placeExecutionHold({assignmentId,actorUserId,reason}) {
    return serializableTransaction(prismaClient, async tx => {
     await repository.lockAssignment(assignmentId,tx);
