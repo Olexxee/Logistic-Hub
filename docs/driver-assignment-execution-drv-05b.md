@@ -25,7 +25,7 @@ Before a parcel driver can mark arrival at pickup or consume the pickup verifica
 
 A missing legacy vehicle binding is not guessed. It returns `VEHICLE_NOT_BOUND` and requires operations review before pickup. A driver assignment for a partner-only leg is rejected by the driver eligibility predicate.
 
-These checks are transactional and happen before pickup custody can transfer. They do not require the driver's current availability flag or a fresh dispatch location: the driver is already reserved for this assignment, and these are not appropriate in-flight execution gates.
+These checks run in a serializable transaction with bounded retry for PostgreSQL serialization conflicts, so a concurrent Admin change cannot silently race past the pickup gate. They happen before pickup custody can transfer. They do not require the driver's current availability flag or a fresh dispatch location: the driver is already reserved for this assignment, and these are not appropriate in-flight execution gates.
 
 ## Custody continuity after pickup
 
