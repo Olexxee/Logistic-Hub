@@ -1,7 +1,7 @@
 # DRV-05C-D — Controlled Hub Custody Recovery
 
 **Branch:** `feat/drv-05c-d-hub-custody-recovery`  
-**Phase status:** D1 backend implementation pushed; CI and staging acceptance pending  
+**Phase status:** D1 backend implementation pushed; CI passed on implementation commit `fbf28c61`; staging acceptance pending  
 **Scope:** Backend-first safety recovery into an approved, active hub.
 
 ## Why this phase exists
@@ -60,7 +60,7 @@ Routes:
 
 Receipt revalidates the source assignment and linked safety case under serializable transaction locks, enforces hub service-zone/category/capacity rules, creates the intake record, marks the source assignment failed with payout review required, and clears only the active hold timestamp. The safety incident linkage and hold metadata remain. The booking and leg are not mutated.
 
-The current PR remains subject to CI and staging verification. This is not a declaration that the phase is complete.
+CI passed on implementation commit `fbf28c61` (634 passed, 1 skipped, 0 failed). Staging acceptance remains outstanding; this is not a declaration that the phase is complete.
 
 ## D2 — Hub-held shipment disposition and route continuation (separate acceptance slice)
 
