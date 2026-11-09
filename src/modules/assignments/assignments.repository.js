@@ -136,6 +136,29 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     select: { id: true, driverProfileId: true, vehicleId: true, status: true },
    });
   },
+  listMyAssignmentRecoveries({ userId, skip = 0, take = 25 } = {}, tx = prismaClient) {
+   const where = {
+    replacementDriverProfile: { userId },
+    status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] },
+   };
+   return Promise.all([
+    tx.driverAssignmentRecovery.findMany({
+     where, skip, take,
+     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+     include: {
+      sourceAssignment: {
+       select: {
+        id: true, status: true, pickupAt: true,
+        parcelBooking: { select: { publicReference: true, pickupAddress: true, destinationAddress: true, recipientName: true, recipientPhone: true } },
+        deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+       },
+      },
+      replacementVehicle: { select: { id: true, type: true, make: true, model: true, registrationPlate: true } },
+     },
+    }),
+    tx.driverAssignmentRecovery.count({ where }),
+   ]).then(([items, total]) => ({ items, total }));
+  },
   listAssignmentRecoveries({ status, skip = 0, take = 25 } = {}, tx = prismaClient) {
    const where = status ? { status } : { status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] } };
    return Promise.all([
