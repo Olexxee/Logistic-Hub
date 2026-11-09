@@ -561,19 +561,21 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             where: { id: assignment.driverProfileId },
             data: { isAvailable: true, completedJobs: { increment: 1 } },
           });
-          await tx.driverPayout.upsert({
-            where: { idempotencyKey: "completion-" + assignment.id },
-            create: {
-              driverProfileId: assignment.driverProfileId,
-              parcelBookingId: handover.parcelBookingId,
-              amountMinor: assignment.agreedFareMinor,
-              currency: assignment.currency,
-              status: "PENDING",
-              provider: "PAYSTACK",
-              idempotencyKey: "completion-" + assignment.id,
-            },
-            update: {},
-          });
+          if (!assignment.payoutReviewRequired) {
+            await tx.driverPayout.upsert({
+              where: { idempotencyKey: "completion-" + assignment.id },
+              create: {
+                driverProfileId: assignment.driverProfileId,
+                parcelBookingId: handover.parcelBookingId,
+                amountMinor: assignment.agreedFareMinor,
+                currency: assignment.currency,
+                status: "PENDING",
+                provider: "PAYSTACK",
+                idempotencyKey: "completion-" + assignment.id,
+              },
+              update: {},
+            });
+          }
           const nextLeg = await tx.deliveryLeg.findFirst({
             where: { parcelBookingId: handover.parcelBookingId, sequence: { gt: confirmedLeg.sequence } },
             orderBy: { sequence: "asc" },
