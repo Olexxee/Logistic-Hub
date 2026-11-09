@@ -12,6 +12,7 @@ export function createServiceZonesRouter({ prismaClient = prisma, authMiddleware
   const admin = createServiceZonesAdminController({ prismaClient });
   const requireAdmin = roleMiddleware("ADMIN");
 
+  router.get("/admin/readiness", authMiddleware, requireAdmin, admin.readiness);
   router.get("/admin", authMiddleware, requireAdmin, admin.list);
   router.post("/admin", authMiddleware, requireAdmin, admin.create);
   router.patch("/admin/:serviceZoneId", authMiddleware, requireAdmin, admin.update);

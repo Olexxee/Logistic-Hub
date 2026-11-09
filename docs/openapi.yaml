@@ -6327,6 +6327,82 @@ paths:
         '204': { description: LGA deleted. }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /service-zones/admin/readiness:
+    get:
+      tags: [Service zones]
+      operationId: getServiceZoneReadinessAdmin
+      summary: Audit service-zone readiness and active boundary overlaps
+      description: Reports booking blockers for each zone, configured driver-coverage counts, and active zone boundary overlaps. An overlap is blocking for the requested service only when both zones currently have effective availability.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: serviceType
+          schema:
+            $ref: '#/components/schemas/ServiceType'
+            default: PARCEL_DELIVERY
+      responses:
+        '200':
+          description: Readiness assessment; this is diagnostic and does not activate or mutate zones.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [serviceType, assessedAt, summary, zones, overlapWarnings]
+                    properties:
+                      serviceType: { $ref: '#/components/schemas/ServiceType' }
+                      assessedAt: { type: string, format: date-time }
+                      summary:
+                        type: object
+                        required: [totalZones, bookingReadyZones, blockedZones, zonesWithoutDispatchCoverage, activeBoundaryOverlapCount]
+                        properties:
+                          totalZones: { type: integer, minimum: 0 }
+                          bookingReadyZones: { type: integer, minimum: 0 }
+                          blockedZones: { type: integer, minimum: 0 }
+                          zonesWithoutDispatchCoverage: { type: integer, minimum: 0 }
+                          activeBoundaryOverlapCount: { type: integer, minimum: 0 }
+                      zones:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, code, name, isActive, geographyActive, boundary, availability, pricingConfigured, enabledDriverCoverageCount, bookingReady, dispatchCoverageConfigured, blockers]
+                          properties:
+                            id: { type: string }
+                            code: { type: string }
+                            name: { type: string }
+                            isActive: { type: boolean }
+                            geographyActive: { type: boolean }
+                            boundary:
+                              type: object
+                              required: [status, issues]
+                              properties:
+                                status: { type: string, enum: [MISSING, INVALID, VALID] }
+                                issues: { type: array, items: { type: string } }
+                            availability: { type: [object, 'null'], additionalProperties: true }
+                            pricingConfigured: { type: boolean }
+                            enabledDriverCoverageCount: { type: integer, minimum: 0 }
+                            bookingReady: { type: boolean }
+                            dispatchCoverageConfigured: { type: boolean }
+                            blockers: { type: array, items: { type: string } }
+                      overlapWarnings:
+                        type: array
+                        items:
+                          type: object
+                          required: [zoneIds, severity, affectsCurrentService, code, message]
+                          properties:
+                            zoneIds: { type: array, minItems: 2, maxItems: 2, items: { type: string } }
+                            severity: { type: string, enum: [BLOCKING, WARNING] }
+                            affectsCurrentService: { type: boolean }
+                            code: { type: string }
+                            message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /service-zones/admin:
     get:
       tags: [Service zones]

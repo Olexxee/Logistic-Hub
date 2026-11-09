@@ -5,6 +5,7 @@ import {
   serviceZoneStatusAdminSchema,
   updateServiceZoneAdminSchema,
 } from "./service-zones.admin.validators.js";
+import { serviceZoneReadinessQuerySchema } from "./service-zones.schemas.js";
 
 function invalid(res, issues) {
   return res.status(400).json({ success: false, error: {
@@ -17,6 +18,12 @@ function invalid(res, issues) {
 export function createServiceZonesAdminController({ prismaClient }) {
   const service = createServiceZonesAdminService({ prismaClient });
   return {
+    readiness: async (req, res, next) => {
+      const parsed = serviceZoneReadinessQuerySchema.safeParse(req.query);
+      if (!parsed.success) return invalid(res, parsed.error.issues);
+      try { return res.status(200).json({ success: true, data: await service.listReadiness(parsed.data.serviceType) }); }
+      catch (error) { return next(error); }
+    },
     list: async (req, res, next) => {
       try { return res.status(200).json({ success: true, data: { items: await service.list() } }); }
       catch (error) { return next(error); }

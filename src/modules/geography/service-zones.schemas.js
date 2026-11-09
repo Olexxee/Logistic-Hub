@@ -13,3 +13,7 @@ export const listServiceZonesQuerySchema = z.object({
   lgaCode: z.string().trim().min(1).max(32).optional(),
   serviceType: serviceTypeSchema.optional(),
 }).strict();
+
+export const serviceZoneReadinessQuerySchema = z.object({
+  serviceType: serviceTypeSchema.default("PARCEL_DELIVERY"),
+}).strict();
