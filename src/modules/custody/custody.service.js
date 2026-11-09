@@ -800,10 +800,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         await repo.lockHubRecovery(recoveryId, tx);
         const recovery = await repo.findHubRecovery(recoveryId, tx);
         if (!recovery) return { notFound: true };
-        if (recovery.status === "CONFIRMED") return { recovery, replay: true };
-        if (recovery.status !== "PENDING_RECEIPT") return { blocker: "HUB_RECOVERY_NOT_RECEIVABLE" };
         const membership = await repo.findHubOperator(recovery.hubPointId, userId, tx);
         if (!membership?.isActive) throw forbidden();
+        if (recovery.status === "CONFIRMED") return { recovery, replay: true };
+        if (recovery.status !== "PENDING_RECEIPT") return { blocker: "HUB_RECOVERY_NOT_RECEIVABLE" };
 
         await repo.lockDriverAssignment(recovery.sourceAssignmentId, tx);
         const assignment = await repo.findHubRecoveryAssignment(recovery.sourceAssignmentId, tx);
