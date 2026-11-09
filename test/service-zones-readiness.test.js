@@ -36,10 +36,10 @@ function zone(id, options = {}) {
   };
 }
 
-function serviceFor(zones) {
+function serviceFor(zones, globalPricingRules = []) {
   return createServiceZonesAdminService({
     clock: () => now,
-    prismaClient: { serviceZone: { findMany: async () => zones }, pricingRule: { findMany: async () => [] } },
+    prismaClient: { serviceZone: { findMany: async () => zones }, pricingRule: { findMany: async () => globalPricingRules } },
   });
 }
 
@@ -83,4 +83,9 @@ test("readiness reports invalid stored boundaries without crashing the full audi
   assert.equal(result.zones[0].boundary.status, "INVALID");
   assert.equal(result.zones[0].blockers.includes("BOUNDARY_INVALID"), true);
   assert.equal(result.overlapWarnings.length, 0);
+});
+test("readiness recognizes an effective global pricing fallback", async () => {
+  const result = await serviceFor([zone("zone-global-pricing", { pricing: false })], [{ id: "global-pricing-1" }]).listReadiness();
+  assert.equal(result.zones[0].pricingConfigured, true);
+  assert.equal(result.zones[0].bookingReady, true);
 });
