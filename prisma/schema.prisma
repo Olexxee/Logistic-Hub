@@ -379,6 +379,12 @@ enum DriverAssignmentRecoveryStatus {
   CANCELLED
 }
 
+enum DriverAssignmentHubRecoveryStatus {
+  PENDING_RECEIPT
+  CONFIRMED
+  CANCELLED
+}
+
 enum OperationalCaseType {
   SAFETY_INCIDENT
   FAILED_HANDOVER
@@ -453,6 +459,9 @@ model User {
 
   operationalAuditEvents OperationalAuditEvent[] @relation("OperationalAuditActor")
   initiatedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryInitiator")
+  initiatedHubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoveryInitiator")
+  receivedHubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoveryReceiver")
+  cancelledHubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoveryCanceller")
   releasedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReleaser")
   receivedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReceiver")
   authorizedAssignmentRecoveryExceptions DriverAssignmentRecovery[] @relation("AssignmentRecoveryExceptionAuthorizer")
@@ -858,6 +867,7 @@ model HubPoint {
   custodyHandovers CustodyHandover[]
   operationalCases OperationalCase[]
   intakeRecords HubIntakeRecord[]
+  driverAssignmentHubRecoveries DriverAssignmentHubRecovery[]
 
   @@index([serviceZoneId, status])
   @@index([partnerId, status])
@@ -1248,6 +1258,12 @@ model DeliveryLeg {
   destinationHubPoint HubPoint? @relation("DeliveryLegDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
   assignments       DriverAssignment[]
   assignmentRecoveries DriverAssignmentRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoverySourceAssignment")
   offers             DeliveryLegOffer[]
   verificationTokens VerificationToken[]
   partnerAssignments PartnerDeliveryAssignment[]
@@ -1832,6 +1848,43 @@ model HubIntakeRecord {
   @@index([deliveryLegId, hubPointId])
   @@map("hub_intake_records")
 }
+  driverAssignmentHubRecovery DriverAssignmentHubRecovery?
+
+
+model DriverAssignmentHubRecovery {
+  id                    String                           @id @default(cuid())
+  parcelBookingId       String
+  deliveryLegId         String
+  sourceAssignmentId    String
+  hubPointId            String
+  operationalCaseId     String
+  initiatedByUserId     String
+  status                DriverAssignmentHubRecoveryStatus @default(PENDING_RECEIPT)
+  reason                String
+  hubIntakeRecordId     String?                          @unique
+  receivedByUserId      String?
+  receivedAt            DateTime?
+  cancelledByUserId     String?
+  cancelledAt           DateTime?
+  cancellationReason    String?
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+
+  parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  deliveryLeg DeliveryLeg @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  sourceAssignment DriverAssignment @relation("HubRecoverySourceAssignment", fields: [sourceAssignmentId], references: [id], onDelete: Restrict)
+  hubPoint HubPoint @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
+  operationalCase OperationalCase @relation(fields: [operationalCaseId], references: [id], onDelete: Restrict)
+  initiatedBy User @relation("HubRecoveryInitiator", fields: [initiatedByUserId], references: [id], onDelete: Restrict)
+  receivedBy User? @relation("HubRecoveryReceiver", fields: [receivedByUserId], references: [id], onDelete: Restrict)
+  cancelledBy User? @relation("HubRecoveryCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  hubIntakeRecord HubIntakeRecord? @relation(fields: [hubIntakeRecordId], references: [id], onDelete: Restrict)
+
+  @@index([sourceAssignmentId, status, createdAt])
+  @@index([hubPointId, status, createdAt])
+  @@index([operationalCaseId, createdAt])
+  @@map("driver_assignment_hub_recoveries")
+}
 
 model PartnerDeliveryAssignment {
   id                         String                  @id @default(cuid())
@@ -1933,6 +1986,7 @@ model OperationalCase {
   reportedBy      User             @relation("OperationalCaseReporter", fields: [reportedByUserId], references: [id], onDelete: Restrict)
   assignedTo      User?            @relation("OperationalCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: Restrict)
   assignmentRecoveries DriverAssignmentRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[]
 
   @@index([status, priority, createdAt])
   @@index([parcelBookingId, status])
