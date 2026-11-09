@@ -145,6 +145,88 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     tx.driverAssignment.count({where}),
    ]).then(([items,total])=>({items,total}));
   },
+  lockAssignment(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${id} FOR UPDATE`;
+  },
+  lockDeliveryLeg(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "delivery_legs" WHERE "id" = ${id} FOR UPDATE`;
+  },
+  lockRecovery(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_assignment_recoveries" WHERE "id" = ${id} FOR UPDATE`;
+  },
+  lockRecoveryCandidate(driverProfileId, vehicleId, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_profiles" WHERE "id" = ${driverProfileId} FOR UPDATE`
+    .then(() => tx.$queryRaw`SELECT "id" FROM "vehicles" WHERE "id" = ${vehicleId} FOR UPDATE`);
+  },
+  findAssignmentForRecovery(id, tx = prismaClient) {
+   return tx.driverAssignment.findUnique({
+    where: { id },
+    include: {
+     parcelBooking: true,
+     deliveryLeg: true,
+     driverProfile: { select: { id: true, userId: true } },
+     vehicle: { select: { id: true } },
+    },
+   });
+  },
+  findActiveRecoveryForSource(sourceAssignmentId, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.findFirst({
+    where: { sourceAssignmentId, status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] } },
+   });
+  },
+  findRecoveryForUpdate(id, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.findUnique({
+    where: { id },
+    include: {
+     sourceAssignment: { include: { parcelBooking: true, deliveryLeg: true, driverProfile: { select: { id: true, userId: true } } } },
+     replacementDriverProfile: { include: { user: { select: { id: true, status: true, role: true, emailVerifiedAt: true } } } },
+     replacementVehicle: true,
+     operationalCase: { select: { id: true, status: true, priority: true } },
+    },
+   });
+  },
+  checkRecoveryCandidate(tx, { sourceAssignment, replacementDriverProfileId, replacementVehicleId, now }) {
+   return (async () => {
+    const candidateAssignment = {
+     ...sourceAssignment,
+     driverProfileId: replacementDriverProfileId,
+     vehicleId: replacementVehicleId,
+    };
+    const eligibility = await findParcelExecutionEligibility(tx, candidateAssignment, now);
+    if (eligibility) return { ineligible: eligibility };
+    const driver = await tx.driverProfile.findUnique({
+     where: { id: replacementDriverProfileId },
+     select: { id: true, isOnline: true, isAvailable: true },
+    });
+    if (!driver || !driver.isOnline || !driver.isAvailable) return { blocker: "REPLACEMENT_DRIVER_UNAVAILABLE" };
+    const activeAssignment = await tx.driverAssignment.findFirst({
+     where: { driverProfileId: replacementDriverProfileId, status: { notIn: ["COMPLETED", "CANCELLED", "FAILED"] } },
+     select: { id: true },
+    });
+    if (activeAssignment) return { blocker: "REPLACEMENT_DRIVER_ALREADY_ASSIGNED" };
+    const activeVehicleAssignment = await tx.driverAssignment.findFirst({
+     where: { vehicleId: replacementVehicleId, status: { notIn: ["COMPLETED", "CANCELLED", "FAILED"] } },
+     select: { id: true },
+    });
+    if (activeVehicleAssignment) return { blocker: "REPLACEMENT_VEHICLE_ALREADY_ASSIGNED" };
+    return { eligible: true };
+   })();
+  },
+  createAssignmentRecovery(data, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.create({ data });
+  },
+  updateAssignmentRecovery(id, data, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.update({ where: { id }, data });
+  },
+  createRecoveryReplacementAssignment(data, tx = prismaClient) {
+   return tx.driverAssignment.create({ data });
+  },
+  updateAssignmentForRecovery(id, data, tx = prismaClient) {
+   return tx.driverAssignment.update({ where: { id }, data });
+  },
+  updateRecoveryDriverAvailability(id, isAvailable, tx = prismaClient) {
+   return tx.driverProfile.update({ where: { id }, data: { isAvailable } });
+  },
   findAssignmentForAdminHold(id, tx = prismaClient) {
    return tx.driverAssignment.findUnique({where:{id},include:{parcelBooking:{select:{id:true,publicReference:true}},deliveryLeg:{select:{id:true,sequence:true}},driverProfile:{select:{id:true,userId:true}},vehicle:{select:{id:true}}}});
   },
