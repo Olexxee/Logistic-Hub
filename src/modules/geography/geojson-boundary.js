@@ -154,12 +154,18 @@ export function validateServiceZoneBoundary(value) {
     return { valid: false, issues: ["Boundary type must be Polygon or MultiPolygon."] };
   }
   const positions = [];
-  const collect = (node) => {
-    if (!Array.isArray(node)) return;
+  const pending = [value.coordinates];
+  let inspectedNodes = 0;
+  while (pending.length) {
+    const node = pending.pop();
+    inspectedNodes += 1;
+    if (inspectedNodes > MAX_BOUNDARY_POSITIONS * 4) {
+      return { valid: false, issues: ["Boundary coordinate structure exceeds the validation complexity limit."] };
+    }
+    if (!Array.isArray(node)) continue;
     if (node.length === 2 && node.every(Number.isFinite)) positions.push(node);
-    else node.forEach(collect);
-  };
-  collect(value.coordinates);
+    else pending.push(...node);
+  }
   if (positions.length > MAX_BOUNDARY_POSITIONS) {
     return { valid: false, issues: [`Boundary exceeds the ${MAX_BOUNDARY_POSITIONS} position limit.`] };
   }
