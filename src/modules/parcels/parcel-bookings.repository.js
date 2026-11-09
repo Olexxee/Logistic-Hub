@@ -18,7 +18,6 @@ export function createParcelBookingsRepository({ prismaClient }) {
         where: {
           isActive: true,
           state: { isActive: true, country: { isActive: true, code: "NG" } },
-          boundaryGeoJson: { not: null },
           availability: { some: activeParcelAvailability(now) },
         },
         select: {
