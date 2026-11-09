@@ -959,3 +959,48 @@ test("recovered hub intake cannot be released on a leg other than its approved c
   }, "hub-operator-1");
   assert.equal(result.blocker, "HUB_RECOVERY_DISPOSITION_REQUIRED");
 });
+
+
+test("generic custody confirmation cannot release a recovery intake on an unapproved continuation leg", async () => {
+  const handover = {
+    id: "handover-recovery-1",
+    parcelBookingId: "booking-1",
+    deliveryLegId: "leg-1",
+    initiatedByUserId: "hub-operator-1",
+    fromPartyType: "HUB",
+    fromPartyId: "hub-1",
+    toPartyType: "DRIVER",
+    toPartyId: "driver-1",
+    status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"),
+    parcelBooking: booking,
+  };
+  let intakeUpdates = 0;
+  const { db } = tx({
+    custodyHandover: {
+      findUnique: async () => handover,
+      findFirst: async () => null,
+      update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }),
+    },
+    driverProfile: {
+      findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }),
+    },
+    operationalCase: { findFirst: async () => null },
+    driverAssignmentHubRecovery: { findFirst: async () => ({ id: "hub-recovery-record-1" }) },
+    hubIntakeDisposition: {
+      findUnique: async () => ({
+        id: "disposition-1", status: "ROUTE_APPROVED", nextDeliveryLegId: "different-leg",
+      }),
+    },
+    hubIntakeRecord: {
+      findFirst: async () => ({ id: "intake-recovery-1" }),
+      update: async () => { intakeUpdates += 1; return {}; },
+    },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: "handover-recovery-1", userId: "driver-user-1" }),
+    error => error.code === "HUB_RECOVERY_DISPOSITION_REQUIRED",
+  );
+  assert.equal(intakeUpdates, 0);
+});
