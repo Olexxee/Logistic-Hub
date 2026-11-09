@@ -2810,6 +2810,37 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Recovery not found. }
         '409': { description: Recovery is not awaiting release. }
+  /assignments/admin/recoveries/{recoveryId}/cancel:
+    post:
+      tags: [Admin]
+      operationId: cancelDriverAssignmentCustodyRecovery
+      summary: Cancel a pending custody recovery without releasing the source assignment hold
+      description: ADMIN-only. Cancels a recovery awaiting release or receipt so a new candidate can be selected. The source assignment remains safety-held and in custody; cancellation does not release or reassign the parcel.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: recoveryId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '200': { description: Pending recovery cancelled; source assignment remains on safety hold. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: ADMIN role required. }
+        '404': { description: Recovery not found. }
+        '409': { description: Recovery is no longer pending and cannot be cancelled. }
   /assignments/admin/recoveries/{recoveryId}/release-exception:
     post:
       tags: [Admin]
