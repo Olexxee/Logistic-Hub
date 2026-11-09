@@ -35,6 +35,11 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     assignmentId: z.string().trim().min(1).max(128),
   });
   const adminHoldSchema = z.object({reason:z.string().trim().min(5).max(1000)}).strict();
+  const recoveryQueueQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    status: z.enum(["PENDING_RELEASE", "PENDING_RECEIPT", "CONFIRMED", "CANCELLED"]).optional(),
+  }).strict();
   const recoveryIdSchema = z.object({ recoveryId: z.string().trim().min(1).max(128) }).strict();
   const recoveryEvidenceSchema = z.array(z.object({
     uri: z.string().url().max(2048),
@@ -59,6 +64,12 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     conditionAtReceipt: z.string().trim().min(2).max(500),
     evidence: recoveryEvidenceSchema,
   }).strict();
+  router.get(
+    "/admin/recoveries",
+    requireAuth, requireRole("ADMIN"),
+    validate(recoveryQueueQuerySchema, "query"),
+    controller.listCustodyRecoveries,
+  );
   router.post(
     "/admin/:assignmentId/recoveries",
     requireAuth, requireRole("ADMIN"),
