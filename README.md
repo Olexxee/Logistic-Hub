@@ -1,5 +1,9 @@
 # Logistic Hub
 
+## Identity and workspace authorization
+
+- [Workspace Authorization Contract (WSP-02)](docs/workspace-authorization-contract-wsp-02.md) — defines primary workspace roles, independent partner/hub memberships, Partner-owner hub access, driver application lifecycle, explicit role provisioning and backend authorization requirements. Documentation only; runtime enforcement is a subsequent phase.
+
 ## Generic business integrations
 
 - [Generic Logistics Integration API](docs/integrations/generic-logistics-integration-v1.md) — reusable multi-client boundary for commerce, importation and fulfilment platforms. GIL-01–GIL-05D are merged. LI-02G-A private packing evidence, LI-02G-B four-photo buyer review/dispatch authorization and LI-02G-C1A end-to-end partner-to-recipient delivery closure are merged. LI-02G-C2 adds authenticated, idempotent stop and return-request commands; implementation is under review in Logistic Hub PR #117. A return request is not physical return completion. See the [generic integration contract](docs/integrations/generic-logistics-integration-v1.md), [MarketIQ contract v2](docs/integrations/marketIQ-v2.md), [C1A delivery closure](docs/integrations/li-02g-c1a-end-to-end-delivery-closure.md) and [C2 stop/return contract](docs/integrations/li-02g-c2-stop-return-commands.md). Billing/reconciliation remain future work.
