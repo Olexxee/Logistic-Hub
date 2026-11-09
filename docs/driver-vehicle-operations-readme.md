@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 through DRV-07 roadmap. DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, and DRV-05C-C pre-pickup eligibility alerting are merged. DRV-05C-D controlled hub custody recovery is now being implemented on `feat/drv-05c-d-hub-custody-recovery`. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md). CI and staging acceptance remain release gates.
+**Status:** DRV-00 through DRV-07 roadmap. DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, and DRV-05C-C pre-pickup eligibility alerting are merged. DRV-05C-D1 controlled hub custody recovery backend is implemented on `feat/drv-05c-d-hub-custody-recovery`; schema, migration, APIs, transactional capacity enforcement and tests are pushed. CI and staging acceptance remain release gates. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md). CI and staging acceptance remain release gates.
 
 ## 1. Objective
 
@@ -421,4 +421,4 @@ A phase is complete only when:
 
 ## 8. Immediate next step
 
-Start with **DRV-00**. Re-audit the current default branches and any open DRV PRs, then produce the exact gap matrix for the unified Admin workspace, capability model and multi-vehicle lifecycle. Do not start by creating new Prisma tables: first prove that existing driver/vehicle structures cannot represent the required relationships.
+Complete DRV-05C-D1 CI and staging acceptance, then design and implement DRV-05C-D2 hub-held shipment disposition and route continuation. D2 must preserve the rule that physical hub receipt is not delivery-leg completion and must not activate a next leg until the remaining route is explicitly approved.
