@@ -84,6 +84,7 @@ function makeClient({ candidateEligible = true, recovery = null } = {}) {
         return null;
       },
       create: async ({ data }) => {
+        assert.equal(state.source.status, "FAILED", "source assignment must be retired before replacement insert");
         state.replacementAssignment = { id: "assignment_replacement", ...data };
         return state.replacementAssignment;
       },
@@ -324,7 +325,7 @@ test("replacement driver receipt creates a new assignment and retires the source
   assert.equal(result.replacementAssignment.payoutReviewRequired, true);
   assert.equal(state.source.status, "FAILED");
   assert.equal(state.source.executionHoldAt, null);
-  assert.match(state.source.failureReason, /CUSTODY_RECOVERED_TO_ASSIGNMENT/);
+  assert.match(state.source.failureReason, /CUSTODY_RECOVERED_BY_RECOVERY/);
   assert.deepEqual(state.driverAvailabilityWrites, [{ isAvailable: false }]);
   assert.equal(state.events[0].eventType, "DRIVER_ASSIGNMENT_CUSTODY_RECOVERED");
   assert.equal(state.audits[0].action, "DRIVER_CUSTODY_RECOVERY_CONFIRMED");
