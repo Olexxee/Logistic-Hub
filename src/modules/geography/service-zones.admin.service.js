@@ -67,9 +67,21 @@ export function createServiceZonesAdminService({ prismaClient, clock = () => new
             overlapWarnings.push({
               zoneIds: [first.id, second.id],
               zones: [{ id: first.id, code: first.code, name: first.name }, { id: second.id, code: second.code, name: second.name }],
-              severity: "BLOCKING", code: "ACTIVE_ZONE_BOUNDARY_OVERLAP",
+              severity: assessed[i].availability?.effective && assessed[j].availability?.effective ? "BLOCKING" : "WARNING",
+              affectsCurrentService: Boolean(assessed[i].availability?.effective && assessed[j].availability?.effective),
+              code: "ACTIVE_ZONE_BOUNDARY_OVERLAP",
               message: "These active service-zone boundaries overlap or touch. Coordinates in the shared area may be rejected as ambiguous.",
             });
+          }
+        }
+      }
+      for (const warning of overlapWarnings) {
+        if (!warning.affectsCurrentService) continue;
+        for (const zoneId of warning.zoneIds) {
+          const zone = assessed.find(item => item.id === zoneId);
+          if (zone && !zone.blockers.includes("ACTIVE_ZONE_BOUNDARY_OVERLAP")) {
+            zone.blockers.push("ACTIVE_ZONE_BOUNDARY_OVERLAP");
+            zone.bookingReady = false;
           }
         }
       }
