@@ -102,6 +102,57 @@ test("pickup arrival is blocked when the exact assigned vehicle loses its approv
   });
 });
 
+test("execution eligibility is evaluated against active service zones before pickup", async () => {
+  const assignment = baseAssignment();
+  let profileReads = 0;
+  const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }] },
+    driverAssignment: { findUnique: async () => assignment },
+    driverProfile: { findFirst: async () => { profileReads += 1; return null; } },
+  };
+  const repository = createAssignmentsRepository({ $transaction: callback => callback(tx) });
+
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_1",
+    nextStatus: "ARRIVED_AT_PICKUP",
+    now,
+  });
+
+  assert.equal(result.ineligible.code, "SERVICE_ZONE_UNAVAILABLE");
+  assert.equal(profileReads, 0);
+});
+
+test("same-zone parcel assignments remain valid when their single zone is active", async () => {
+  const assignment = baseAssignment({
+    parcelBooking: {
+      id: "booking_1",
+      senderId: "sender_1",
+      pickupServiceZoneId: "zone_same",
+      destinationServiceZoneId: "zone_same",
+      status: "PICKUP_VERIFICATION_PENDING",
+    },
+  });
+  const tx = {
+    serviceZone: { findMany: async args => {
+      assert.deepEqual(args.where.id.in, ["zone_same"]);
+      return [{ id: "zone_same" }];
+    } },
+    driverAssignment: { findUnique: async () => assignment },
+    driverProfile: { findFirst: async () => null },
+  };
+  const repository = createAssignmentsRepository({ $transaction: callback => callback(tx) });
+
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_1",
+    nextStatus: "ARRIVED_AT_PICKUP",
+    now,
+  });
+
+  assert.equal(result.ineligible.code, "DRIVER_EXECUTION_ELIGIBILITY_CHANGED");
+});
+
 test("partner-only delivery legs cannot enter local-driver pickup execution", async () => {
   const assignment = baseAssignment({
     deliveryLeg: { id: "leg_1", type: "HUB_TRANSFER" },
