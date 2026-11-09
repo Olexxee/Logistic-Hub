@@ -1077,6 +1077,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           destinationHubPointId: destinationHub?.id ?? null,
           nextDeliveryLegId: nextDeliveryLeg.id,
           approvedAt: clock(),
+          approvedByUserId: actorUserId,
         };
         const disposition = existing
           ? await repo.updateHubIntakeDisposition(existing.id, dispositionData, tx)
