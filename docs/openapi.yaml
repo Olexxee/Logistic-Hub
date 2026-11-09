@@ -5115,6 +5115,37 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/hub-intakes/{intakeRecordId}/disposition:
+    post:
+      tags: [Admin]
+      operationId: setRecoveredHubIntakeDisposition
+      summary: Hold a safety-recovered parcel or approve its remaining route
+      description: ADMIN-only. A continuation decision creates a new delivery leg from the recovery hub and marks the superseded source leg failed. The new leg is READY_FOR_ASSIGNMENT only after this explicit approval. Physical hub release still requires the existing two-party custody handover on that exact next leg. D1 hub intake is never treated as delivery completion.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: intakeRecordId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision, reason]
+              properties:
+                decision: { type: string, enum: [HOLD_FOR_INVESTIGATION, CONTINUE_DELIVERY] }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+                destinationServiceZoneId: { type: string, minLength: 1, maxLength: 128, description: Required for CONTINUE_DELIVERY. }
+                destinationHubPointId: { type: string, minLength: 1, maxLength: 128, description: Optional for same-state final-mile delivery; otherwise identifies the next receiving hub. }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/hub-intakes:
     get:
       tags: [Admin]
