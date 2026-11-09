@@ -2730,7 +2730,7 @@ paths:
           name: status
           schema: { type: string, enum: [PENDING_RELEASE, PENDING_RECEIPT, CONFIRMED, CANCELLED] }
       responses:
-        '200': { description: Paginated recovery queue with source assignment, replacement driver/vehicle and operational case context. }
+        '200': { description: "Paginated recovery queue with source assignment, replacement driver/vehicle, and operational case context." }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: ADMIN role required. }
   /assignments/admin/{assignmentId}/recoveries:
