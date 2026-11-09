@@ -17,6 +17,7 @@ const validBooking = {
 
 test("parcel draft schema accepts a valid booking and rejects client-owned lifecycle fields", () => {
   assert.equal(createParcelBookingSchema.safeParse(validBooking).success, true);
+  assert.equal(createParcelBookingSchema.safeParse(({ pickupServiceZoneId, destinationServiceZoneId, ...withoutZoneHints }) => withoutZoneHints)(validBooking)).success, true);
   assert.equal(createParcelBookingSchema.safeParse({ ...validBooking, status: "COMPLETED" }).success, false);
   assert.equal(createParcelBookingSchema.safeParse({
     ...validBooking,
