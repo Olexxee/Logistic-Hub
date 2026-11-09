@@ -2814,8 +2814,8 @@ paths:
     post:
       tags: [Admin]
       operationId: cancelDriverAssignmentCustodyRecovery
-      description: ADMIN-only. Cancels a recovery awaiting release or receipt so a new candidate can be selected. The source assignment remains safety-held and in custody; cancellation does not release or reassign the parcel.
-      description: ADMIN-only. Cancels a recovery awaiting release or receipt so a new candidate can be selected. The source assignment remains safety-held and in custody; cancellation does not release or reassign the parcel.
+      summary: Cancel a custody recovery before physical release without releasing the source assignment hold
+      description: ADMIN-only. Cancels only a recovery still awaiting source-driver release so a new candidate can be selected. Once release or an Admin release exception is recorded, cancellation is blocked. The source assignment remains safety-held.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
