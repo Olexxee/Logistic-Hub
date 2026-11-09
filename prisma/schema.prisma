@@ -1235,9 +1235,7 @@ model DriverAssignment {
   deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
   sourceRecoveries DriverAssignmentRecovery[] @relation("RecoverySourceAssignment")
   replacementForRecovery DriverAssignmentRecovery? @relation("RecoveryReplacementAssignment")
-  hubCustodyRecoveries DriverAssignmentHubRecovery[]
-  sourceHubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionSourceLeg")
-  nextHubIntakeDisposition HubIntakeDisposition? @relation("HubIntakeDispositionNextLeg") @relation("HubRecoverySourceAssignment")
+  hubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoverySourceAssignment")
 
   @@index([driverProfileId, status, reservedAt])
   @@index([parcelBookingId, status])
@@ -1281,6 +1279,8 @@ model DeliveryLeg {
   assignments       DriverAssignment[]
   assignmentRecoveries DriverAssignmentRecovery[]
   hubCustodyRecoveries DriverAssignmentHubRecovery[]
+  sourceHubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionSourceLeg")
+  nextHubIntakeDisposition HubIntakeDisposition? @relation("HubIntakeDispositionNextLeg")
   offers             DeliveryLegOffer[]
   verificationTokens VerificationToken[]
   partnerAssignments PartnerDeliveryAssignment[]
