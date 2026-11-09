@@ -123,6 +123,7 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
 ### API
 
 - `GET /api/v1/assignments/admin/recoveries` — paginated Admin recovery queue.
+- `POST /api/v1/assignments/admin/recoveries/:recoveryId/cancel` — Admin cancels a pending recovery without releasing the source safety hold.
 - `POST /api/v1/assignments/admin/:assignmentId/recoveries` — Admin initiates recovery.
 - `POST /api/v1/assignments/recoveries/:recoveryId/release` — source driver confirms physical release.
 - `POST /api/v1/assignments/admin/recoveries/:recoveryId/release-exception` — Admin authorizes an evidenced release exception.
