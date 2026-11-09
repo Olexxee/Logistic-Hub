@@ -28,7 +28,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 
 ## Driver & Vehicle Operations
 
-- [Driver & Vehicle Operations README](docs/driver-vehicle-operations-readme.md) — unified Admin workspace for all drivers and vehicles, one driver identity with multiple independently approved service capabilities, vehicle-specific service suitability, KYC/verification boundaries and the DRV-00–DRV-07 implementation sequence. This is a roadmap; the new unified workspace and capability model are not yet claimed implemented.
+- [Driver & Vehicle Operations README](docs/driver-vehicle-operations-readme.md) — source-of-truth DRV-00–DRV-07 roadmap. The unified Admin driver/vehicle workspace and capability/suitability model are implemented; DRV-05C backend safety holds, driver recovery, hub recovery and hub disposition (D1–D2) are merged. Route-specific pricing/activation (D2B), frontend recovery/disposition workflows and staging acceptance remain outstanding.
 
 ## Driver assignment lifecycle
 

@@ -64,6 +64,9 @@ CI passed on implementation commit `fbf28c61` (634 passed, 1 skipped, 0 failed).
 
 ## D2 — Hub-held shipment disposition and route continuation
 
+**Status: Backend merged in [PR #131](https://github.com/Olexxee/Logistic-Hub/pull/131) on November 9, 2026.** Validated PR head: `1fc604053b378f732cde066679f5fb8f198690c0`. CI: 642 tests, 641 passed, 0 failed, 1 skipped; Prisma schema/client, OpenAPI, migration application/history and PostgreSQL schema-drift checks passed. No frontend workflow or staging acceptance is implied by this merge.
+
+
 D2 adds an explicit Admin disposition for a D1 recovery intake. A parcel with no disposition remains physically held; receipt alone never activates a route.
 
 ### Decisions and route construction

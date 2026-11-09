@@ -329,43 +329,38 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 ## DRV-05C — Admin Safety Holds and Custody Recovery
 
-DRV-05B is merged in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125) (merge commit `834465ed2cd4833a32c1e8982c6216c35b7f3c4b`). DRV-05C is now opened on branch `feat/drv-05c-admin-safety-holds-custody-recovery`. Implementation slice A is in [PR #127](https://github.com/Olexxee/Logistic-Hub/pull/127), stacked on PR #126; merge #126 first, then #127 after CI. The source audit and safety contract are recorded in [DRV-05C implementation notes](./driver-safety-holds-drv-05c.md). This first slice is contract/audit only; no schema/API behavior has been changed yet.
+**Backend status: D1 and D2 merged. Frontend integration and staging acceptance remain outstanding.**
 
-DRV-05C is split into execution-hold primitive, controlled custody recovery, and operational alerting/acceptance. PR #127 is merged into PR #126's branch; PR #126 itself remains open against `main`. DRV-05C-B creates a separate recovery record and only creates a replacement assignment after evidenced release and replacement-driver receipt. Recovery assignments are flagged for manual payout review. The first B slice is driver-to-driver; hub inventory recovery remains a separate extension. See [DRV-05C implementation notes](./driver-safety-holds-drv-05c.md) for the transaction, audit, role and staging gates.
+The DRV-05C backend sequence is implemented across these merged pull requests:
 
+- **D1A — Safety holds:** [PR #126](https://github.com/Olexxee/Logistic-Hub/pull/126). Admin can place/release auditable execution holds on parcel assignments. Holds block unsafe pre-custody execution and custody handovers without changing booking/payment state.
+- **D1B — Driver-to-driver custody recovery:** [PR #128](https://github.com/Olexxee/Logistic-Hub/pull/128). Creates a separate recovery record; requires source-driver release (or a distinct Admin release exception) and replacement-driver receipt before creating the replacement assignment. Recovered assignments require manual payout review.
+- **D1C — Eligibility-change alerting:** [PR #129](https://github.com/Olexxee/Logistic-Hub/pull/129). An embedded API-process worker scans paid pre-pickup parcel assignments, reuses the DRV-05B eligibility evaluator, and creates idempotent operational alerts/notifications. It does not automatically hold, reassign or mutate custody/payment state.
+- **D1D — Hub custody recovery:** [PR #130](https://github.com/Olexxee/Logistic-Hub/pull/130). Admin authorizes physical recovery from a safety-held driver assignment into an eligible hub. Hub receipt is a custody intake only; it does not complete the booking, activate a route or create a replacement assignment.
+- **D2 — Hub-held shipment disposition and route planning:** [PR #131](https://github.com/Olexxee/Logistic-Hub/pull/131), merged November 9, 2026 (merge commit `6767e6edf8ab9b2e6b019bd6f757ae5c6c0f0c2f`). Admin can hold a recovered intake for investigation or approve a remaining route. Approval creates a new `PLANNED` delivery leg and fails the superseded source leg; it does not activate dispatch.
 
+### D2 safety and commercial boundary
 
-### DRV-05C-C — Pre-pickup eligibility change alerting
+- Same-state hub-to-hub continuation plans a partner-only `HUB_TRANSFER`; cross-state hub-to-hub continuation plans a partner-only `INTERSTATE_TRANSPORT`; a same-state final destination plans `FINAL_MILE`.
+- Existing later legs are rejected rather than silently reordered or overwritten.
+- The booking remains `IN_TRANSIT`; the new leg remains `PLANNED`.
+- D2 does not create assignments, dispatch offers, route prices, partner payables, payouts, refunds or settlements.
+- Hub release is permitted only on the exact approved continuation leg and still requires the existing two-party custody handover.
+- D2 deliberately does not reuse the original booking quote for a changed route. Current partner execution does not support `HUB_TRANSFER`; route-specific pricing and execution authorization must be added before activation.
 
-**Status:** Merged; see the merged DRV-05C-C implementation in the repository history.
+### Remaining backend work
 
-**Implemented in this slice:**
+1. **DRV-05C-D2B — Route-specific pricing and controlled activation.** Define the commercial scope for a recovery-created leg; obtain a valid rate-card/partner quote or explicit authorized operations quote for that exact route and service; preserve quote/version/audit evidence; add partner execution support for `HUB_TRANSFER` or keep it blocked; and activate a `PLANNED` leg only after all route, commercial, capacity and execution checks pass.
+2. **DRV-05C-D2C — Backend release hardening.** Verify D1/D2/D2B route transitions, idempotency, concurrent disposition/activation, hub capacity and handover release against PostgreSQL; reconcile OpenAPI and operational queue filters after D2B.
+3. **Staging acceptance.** Exercise driver-to-driver recovery, driver-to-hub recovery, hub receipt, investigation hold, approved route continuation, route-specific pricing, dispatch, two-party hub release and final delivery. Record evidence separately from merge status. D1 staging acceptance is still outstanding.
 
-- Added an embedded server worker that scans paid, active parcel assignments before physical pickup and reuses the DRV-05B execution eligibility evaluator (no duplicate eligibility policy).
-- Detects missing/inactive route zones, inactive hubs, invalid driver approval/KYC/capability/evidence, missing vehicle binding, and vehicle approval/verification changes.
-- Creates one HIGH-priority `ROUTE_DISRUPTION` operational case per assignment/reason and notifies the assigned driver plus active verified Admin/Support recipients.
-- Notification delivery keys provide idempotency across repeated scans; operational case creation and recipient notifications are transactional.
-- Writes an operational audit event for alert creation.
-- Worker runs inside the existing API process, polls every 60 seconds, uses bounded batches, logs failures, backs off, and shuts down gracefully. No separate Render worker service or schema migration is introduced.
-- Added worker tests for alert creation and duplicate scan suppression.
+### Frontend status
 
-**Safety boundary:** This worker only alerts for pre-pickup parcel assignments (`ACCEPTED`, `ARRIVED_AT_PICKUP` with no pickup timestamp). It does not automatically hold, reassign, cancel, release, or alter custody/payment state. Existing execution-time checks remain authoritative. Post-pickup recovery remains DRV-05C-B's controlled workflow.
+The frontend has existing read-only Admin shipment/hub-intake oversight and hub-operator intake, handover and dispatch workflows. It does not yet expose the D1 recovery queues/actions or D2 disposition controls. The frontend implementation plan and current source audit are tracked separately in the [frontend DRV-05C readiness document](https://github.com/Olexxee/logistic-frontend/blob/main/docs/driver-hub-custody-recovery-drv-05c-readiness.md).
 
-**Remaining before PR review:** run the complete repository CI, resolve any failures, update OpenAPI if needed (no new HTTP endpoint in this slice), and inspect the worker's case/notification privacy and operational queue consumption. This is not merged or deployed.
+**Do not mark DRV-05C end-to-end complete until D2B, frontend integration, full regression and staging acceptance are complete.**
 
-### DRV-05C-D2 — Hub-held shipment disposition and route continuation
-
-**Status:** Backend implementation in progress on `feat/drv-05c-d2-hub-disposition-route-continuation`.
-
-- Admin may explicitly hold a D1 recovery intake for investigation or approve a remaining route.
-- Continuation creates a new PLANNED delivery leg from the recovery hub; it never marks the superseded leg completed.
-- Same-state hub-to-hub routes use partner-only `HUB_TRANSFER`; cross-state hub-to-hub routes use partner-only `INTERSTATE_TRANSPORT`; same-state final destination uses `FINAL_MILE`.
-- Existing future legs are rejected rather than silently rewritten.
-- D2 does not activate dispatch. D2B must add route-specific pricing/partner authorization and explicit leg activation before the existing dispatch/partner assignment and two-party custody handover workflows can release the parcel. A recovered intake can only be released on the exact approved next leg.
-- No automatic driver/partner assignment, new price, payable, payout, refund or settlement is created.
-
-See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md) for route rules and acceptance criteria.
-### DRV-06 — Reporting, audit and operational controls
+## DRV-06 — Reporting, audit and operational controls
 
 **Goal:** Make driver and fleet operations observable and accountable.
 
