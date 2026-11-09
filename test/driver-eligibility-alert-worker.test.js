@@ -9,6 +9,8 @@ function createHarness() {
   const assignment = {
     id: "assignment-eligibility-01",
     parcelBookingId: "parcel-01",
+    driverProfileId: "driver-profile-01",
+    vehicleId: "vehicle-01",
     deliveryLegId: null,
     status: "ACCEPTED",
     pickupAt: null,
