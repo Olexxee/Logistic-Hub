@@ -955,9 +955,17 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     }) {
       return serializableTransaction(prismaClient, async tx => {
         await requireActiveUser(tx, actorUserId);
+        const initialIntake = await repo.findHubIntakeDispositionContext(intakeRecordId, tx);
+        if (!initialIntake) return { notFound: true };
+        await repo.lockDeliveryLeg(initialIntake.deliveryLegId, tx);
         await repo.lockHubIntake(intakeRecordId, tx);
+        await repo.lockHubCapacity(initialIntake.hubPointId, tx);
         const intake = await repo.findHubIntakeDispositionContext(intakeRecordId, tx);
         if (!intake) return { notFound: true };
+        if (intake.deliveryLegId !== initialIntake.deliveryLegId
+          || intake.hubPointId !== initialIntake.hubPointId) {
+          return { blocker: "HUB_INTAKE_STATE_CHANGED" };
+        }
         if (intake.status !== "RECEIVED") return { blocker: "HUB_INTAKE_NOT_ACTIVE" };
         if (!intake.driverAssignmentHubRecovery
           || intake.driverAssignmentHubRecovery.status !== "CONFIRMED") {
@@ -971,6 +979,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (await repo.findPendingHandover(intake.deliveryLegId, tx)) {
           return { blocker: "PENDING_CUSTODY_HANDOVER_EXISTS" };
         }
+        const activeIntake = await repo.findAnyReceivedHubIntake(intake.parcelBookingId, tx);
+        if (activeIntake?.id !== intake.id) return { blocker: "PARCEL_CUSTODY_LOCATION_CONFLICT" };
 
         const existing = intake.disposition;
         if (existing?.status === "RELEASED") return { blocker: "HUB_INTAKE_ALREADY_RELEASED" };
@@ -999,7 +1009,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (existing?.status === "ROUTE_APPROVED") {
           if (existing.destinationServiceZoneId === destinationServiceZoneId
             && (existing.destinationHubPointId ?? null) === (destinationHubPointId ?? null)) {
-            return { disposition: existing, nextDeliveryLeg: existing.nextDeliveryLeg, replay: true };
+            const approvedDisposition = await repo.findHubIntakeDisposition(intakeRecordId, tx);
+            return { disposition: approvedDisposition, nextDeliveryLeg: approvedDisposition?.nextDeliveryLeg ?? null, replay: true };
           }
           return { blocker: "HUB_DISPOSITION_ALREADY_APPROVED" };
         }
