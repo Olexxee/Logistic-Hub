@@ -12,7 +12,7 @@ const input = {
   reason: "Assign this verified driver to the approved operating area.",
 };
 
-function createPrisma({ eligible = true, previous = null } = {}) {
+function createPrisma({ eligible = true, previous = null, transactionFailures = 0 } = {}) {
   const calls = { upsert: 0, audit: [] };
   const tx = {
     serviceZone: {
@@ -41,9 +41,17 @@ function createPrisma({ eligible = true, previous = null } = {}) {
       create: async ({ data }) => { calls.audit.push(data); return data; },
     },
   };
+  let attempts = 0;
   const prisma = {
     $transaction: async (callback, options) => {
+      attempts += 1;
+      calls.transactionAttempts = attempts;
       calls.transactionOptions = options;
+      if (attempts <= transactionFailures) {
+        const error = new Error("Serialization conflict");
+        error.code = "P2034";
+        throw error;
+      }
       return callback(tx);
     },
   };
@@ -98,4 +106,13 @@ test("disabling existing coverage remains possible and is audited", async () => 
   assert.equal(calls.audit[0].action, "DRIVER_COVERAGE_DISABLED");
   assert.equal(calls.audit[0].before.isEnabled, true);
   assert.equal(calls.audit[0].after.isEnabled, false);
+});
+
+test("retries transient serializable transaction conflicts", async () => {
+  const { prisma, calls } = createPrisma({ transactionFailures: 1 });
+  const service = createDriversService({ prismaClient: prisma, clock: () => now });
+  await service.setCoverage({ input, actorUserId: "admin-1" });
+  assert.equal(calls.transactionAttempts, 2);
+  assert.equal(calls.upsert, 1);
+  assert.equal(calls.audit.length, 1);
 });
