@@ -28,7 +28,9 @@ async function findParcelExecutionEligibility(tx, assignment, now) {
   message: "This assignment has no selected operating vehicle. Operations must review it before pickup.",
  };
  const strictMode = env.DRIVER_KYC_MODE === "STRICT";
- const kycTiers = env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"];
+ const kycTiers = env.DRIVER_KYC_MODE === "TEST" && capability === "LOCAL_DISPATCH"
+  ? ["FULL", "TEST_LIMITED"]
+  : ["FULL"];
  const driver = await tx.driverProfile.findFirst({
   where: eligibleParcelAssignmentDriverWhere({
    driverProfileId: assignment.driverProfileId, capability, now, strictMode, kycTiers,
