@@ -164,7 +164,7 @@ export function validateServiceZoneBoundary(value) {
     }
     if (!Array.isArray(node)) continue;
     if (node.length === 2 && node.every(Number.isFinite)) positions.push(node);
-    else pending.push(...node);
+    else for (const child of node) pending.push(child);
   }
   if (positions.length > MAX_BOUNDARY_POSITIONS) {
     return { valid: false, issues: [`Boundary exceeds the ${MAX_BOUNDARY_POSITIONS} position limit.`] };
