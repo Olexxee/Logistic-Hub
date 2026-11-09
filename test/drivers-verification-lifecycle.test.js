@@ -272,6 +272,7 @@ test("new driver application assigns Driver workspace atomically and records the
   const state = { role: "CUSTOMER", profile: null, vehicle: null, audit: [] };
   const tx = {
     user: {
+      findUnique: async () => ({ role: "CUSTOMER" }),
       updateMany: async ({ where, data }) => {
         assert.deepEqual(where, { id: "user-1", role: "CUSTOMER" });
         state.role = data.role;
@@ -332,6 +333,28 @@ test("new driver application is blocked when the customer has active operational
       input: { serviceRadiusMeters: 5000, vehicle: { type: "BICYCLE", parcelCapacity: 10 } },
     }),
     error => error.code === "PRIMARY_WORKSPACE_MEMBERSHIP_CONFLICT",
+  );
+  assert.equal(profileCreated, false);
+});
+
+
+test("driver onboarding rejects a primary-role change that races with the authenticated request", async () => {
+  let profileCreated = false;
+  const tx = {
+    user: { findUnique: async () => ({ role: "PARTNER_OPERATOR" }) },
+    driverProfile: { create: async () => { profileCreated = true; } },
+  };
+  const prismaClient = {
+    driverProfile: { findUnique: async () => null },
+    $transaction: callback => callback(tx),
+  };
+  const service = createDriversService({ prismaClient });
+  await assert.rejects(
+    service.submitOnboarding({
+      user: { id: "user-1", role: "CUSTOMER" },
+      input: { serviceRadiusMeters: 5000, vehicle: { type: "BICYCLE", parcelCapacity: 10 } },
+    }),
+    error => error.code === "PRIMARY_WORKSPACE_CHANGED",
   );
   assert.equal(profileCreated, false);
 });
