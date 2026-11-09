@@ -42,7 +42,8 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
    });
   },
   async releaseExecutionHold({assignmentId,actorUserId,reason}) {
-   return prismaClient.$transaction(async tx => {
+   return serializableTransaction(prismaClient, async tx => {
+    await repository.lockAssignment(assignmentId,tx);
     const assignment=await repository.findAssignmentForAdminHold(assignmentId,tx);
     if(!assignment)return {notFound:true};
     if(!assignment.executionHoldAt)return {blocker:"ASSIGNMENT_NOT_HELD"};
@@ -55,7 +56,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
      metadata:{operationalCaseId:assignment.executionHoldOperationalCaseId},
     },tx);
     return {assignmentId,releasedAt:clock(),caseId:assignment.executionHoldOperationalCaseId,replay:false};
-   },{isolationLevel:"Serializable"});
+   });
   },
   async listMine({userId,page=1,limit=20}){
    const result=await repository.listDriverAssignments({userId,skip:(page-1)*limit,take:limit});
