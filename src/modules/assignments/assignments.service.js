@@ -185,7 +185,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     const recovery=await repository.findRecoveryForUpdate(recoveryId,tx);
     if(!recovery)return {notFound:true};
     if(recovery.status==="CANCELLED"&&recovery.cancelledByUserId===actorUserId)return {recovery,replay:true};
-    if(!["PENDING_RELEASE","PENDING_RECEIPT"].includes(recovery.status))return {blocker:"RECOVERY_NOT_CANCELLABLE"};
+    if(recovery.status!=="PENDING_RELEASE")return {blocker:"RECOVERY_NOT_CANCELLABLE_AFTER_RELEASE"};
     const now=clock();
     const updated=await repository.updateAssignmentRecovery(recoveryId,{
      status:"CANCELLED",cancelledByUserId:actorUserId,cancelledAt:now,cancellationReason:reason,
