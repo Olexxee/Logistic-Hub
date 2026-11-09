@@ -42,11 +42,11 @@ CREATE TABLE "driver_assignment_recoveries" (
 
 CREATE UNIQUE INDEX "driver_assignment_recoveries_replacementAssignmentId_key"
   ON "driver_assignment_recoveries"("replacementAssignmentId");
-CREATE INDEX "driver_assignment_recoveries_sourceAssignmentId_status_createdAt_idx"
+CREATE INDEX "driver_assignment_recoveries_sourceAssignmentId_status_crea_idx"
   ON "driver_assignment_recoveries"("sourceAssignmentId", "status", "createdAt");
 CREATE INDEX "driver_assignment_recoveries_deliveryLegId_status_createdAt_idx"
   ON "driver_assignment_recoveries"("deliveryLegId", "status", "createdAt");
-CREATE INDEX "driver_assignment_recoveries_replacementDriverProfileId_status_idx"
+CREATE INDEX "driver_assignment_recoveries_replacementDriverProfileId_sta_idx"
   ON "driver_assignment_recoveries"("replacementDriverProfileId", "status");
 CREATE INDEX "driver_assignment_recoveries_operationalCaseId_createdAt_idx"
   ON "driver_assignment_recoveries"("operationalCaseId", "createdAt");
