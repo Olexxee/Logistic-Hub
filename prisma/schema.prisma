@@ -1937,8 +1937,8 @@ model HubIntakeDisposition {
   approvedBy User? @relation("HubIntakeDispositionApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
   releasedBy User? @relation("HubIntakeDispositionReleaser", fields: [releasedByUserId], references: [id], onDelete: Restrict)
 
-  @@index([hubPointId, status, createdAt])
-  @@index([parcelBookingId, createdAt])
+  @@index([hubPointId, status, createdAt], map: "hub_intake_dispositions_hub_status_created_idx")
+  @@index([parcelBookingId, createdAt], map: "hub_intake_dispositions_booking_created_idx")
   @@map("hub_intake_dispositions")
 }
 
