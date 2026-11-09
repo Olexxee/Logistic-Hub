@@ -70,6 +70,18 @@ export function activeDriverDocumentWhere(now, strictMode = false) {
   };
 }
 
+export function eligibleParcelAssignmentDriverWhere({ driverProfileId, capability, now, strictMode = false, kycTiers = ["FULL"] }) {
+  return {
+    id: driverProfileId,
+    verificationStatus: "VERIFIED",
+    kycTier: { in: kycTiers },
+    suspendedAt: null,
+    user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
+    ...activeDriverCapabilityWhere(capability),
+    ...activeDriverDocumentWhere(now, strictMode),
+  };
+}
+
 export function activeServiceZoneWhere(now) {
   return {
     isActive: true,
