@@ -329,7 +329,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 
 ## DRV-05C — Admin Safety Holds and Custody Recovery
 
-DRV-05B is merged in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125) (merge commit `834465ed2cd4833a32c1e8982c6216c35b7f3c4b`). DRV-05C is now opened on branch `feat/drv-05c-admin-safety-holds-custody-recovery`. The source audit and safety contract are recorded in [DRV-05C implementation notes](./driver-safety-holds-drv-05c.md). This first slice is contract/audit only; no schema/API behavior has been changed yet.
+DRV-05B is merged in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125) (merge commit `834465ed2cd4833a32c1e8982c6216c35b7f3c4b`). DRV-05C is now opened on branch `feat/drv-05c-admin-safety-holds-custody-recovery`. Implementation slice A is in [PR #127](https://github.com/Olexxee/Logistic-Hub/pull/127), stacked on PR #126; merge #126 first, then #127 after CI. The source audit and safety contract are recorded in [DRV-05C implementation notes](./driver-safety-holds-drv-05c.md). This first slice is contract/audit only; no schema/API behavior has been changed yet.
 
 DRV-05C is split into execution-hold primitive, controlled custody recovery, and operational alerting/acceptance. Key boundary: an Admin safety hold must override DRV-05B's routine post-pickup continuity exception; custody recovery must not silently overwrite an assignment or falsely claim a physical handover. See the phase document for required transaction, audit, role and staging gates.
 
