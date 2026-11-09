@@ -24,11 +24,11 @@ CREATE TABLE "driver_assignment_hub_recoveries" (
 
 CREATE UNIQUE INDEX "driver_assignment_hub_recoveries_hubIntakeRecordId_key"
   ON "driver_assignment_hub_recoveries"("hubIntakeRecordId");
-CREATE INDEX "driver_assignment_hub_recoveries_sourceAssignmentId_status_createdAt_idx"
+CREATE INDEX "drv_asgn_hub_rec_source_status_created_idx"
   ON "driver_assignment_hub_recoveries"("sourceAssignmentId", "status", "createdAt");
-CREATE INDEX "driver_assignment_hub_recoveries_hubPointId_status_createdAt_idx"
+CREATE INDEX "drv_asgn_hub_rec_hub_status_created_idx"
   ON "driver_assignment_hub_recoveries"("hubPointId", "status", "createdAt");
-CREATE INDEX "driver_assignment_hub_recoveries_operationalCaseId_createdAt_idx"
+CREATE INDEX "drv_asgn_hub_rec_case_created_idx"
   ON "driver_assignment_hub_recoveries"("operationalCaseId", "createdAt");
 
 ALTER TABLE "driver_assignment_hub_recoveries"
