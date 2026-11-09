@@ -659,6 +659,7 @@ test("admin cannot select a hub outside both service zones of the source leg", a
     operationalCase: { findUnique: async () => hubSafetyCase },
     driverAssignmentRecovery: { findFirst: async () => null },
     driverAssignmentHubRecovery: { findFirst: async () => null },
+    hubIntakeRecord: { findFirst: async () => null },
     hubPoint: { findUnique: async () => ({ ...hubRecoveryConfig, serviceZoneId: "zone-elsewhere" }) },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
