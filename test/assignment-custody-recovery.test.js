@@ -230,6 +230,23 @@ test("Admin release exception records reason and evidence without pretending the
   assert.equal(state.audits[0].action, "DRIVER_CUSTODY_RELEASE_EXCEPTION_AUTHORIZED");
 });
 
+test("Admin can cancel a pending recovery without releasing the source safety hold", async () => {
+  const { client, state } = makeClient({ recovery: { ...recoverySeed } });
+  const service = createAssignmentsService({ prismaClient: client, clock: () => now });
+
+  const result = await service.cancelCustodyRecovery({
+    recoveryId: "recovery_1",
+    actorUserId: "admin_user",
+    reason: "Replacement driver became unavailable; select another candidate.",
+  });
+
+  assert.equal(result.recovery.status, "CANCELLED");
+  assert.equal(result.recovery.cancelledByUserId, "admin_user");
+  assert.equal(state.source.executionHoldAt.toISOString(), sourceAssignment.executionHoldAt.toISOString());
+  assert.equal(state.source.status, "IN_PROGRESS");
+  assert.equal(state.audits[0].action, "DRIVER_CUSTODY_RECOVERY_CANCELLED");
+});
+
 test("replacement driver receipt creates a new assignment and retires the source atomically", async () => {
   const { client, state } = makeClient({ recovery: { ...recoverySeed, status: "PENDING_RECEIPT", releaseConfirmedByUserId: "source_user" } });
   const service = createAssignmentsService({ prismaClient: client, clock: () => now });
