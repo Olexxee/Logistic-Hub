@@ -4,6 +4,7 @@ import {
   activeDriverDocumentWhere,
   activeServiceZoneWhere,
   eligibleParcelDriverWhere,
+  eligibleParcelAssignmentDriverWhere,
   eligibleVehicleWhere,
   parcelCapabilityForLegType,
 } from "../src/modules/drivers/driver-dispatch-eligibility.js";
@@ -70,4 +71,34 @@ test("service-zone eligibility requires active country/state/zone and current pa
     { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
     { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
   ]);
+});
+
+
+test("parcel assignment execution rechecks driver capability, active account, KYC and strict identity evidence without requiring availability", () => {
+  const where = eligibleParcelAssignmentDriverWhere({
+    driverProfileId: "driver_1",
+    capability: "PICKUP_COLLECTION",
+    now,
+    strictMode: true,
+    kycTiers: ["FULL"],
+  });
+  assert.equal(where.id, "driver_1");
+  assert.equal(where.verificationStatus, "VERIFIED");
+  assert.deepEqual(where.kycTier, { in: ["FULL"] });
+  assert.equal(where.suspendedAt, null);
+  assert.deepEqual(where.user, {
+    is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } },
+  });
+  assert.deepEqual(where.capabilities.some, {
+    capability: "PICKUP_COLLECTION",
+    status: "APPROVED",
+  });
+  assert.equal(where.verificationDocuments.some.documentType, "IDENTITY");
+  assert.equal("isAvailable" in where, false);
+  assert.equal("isOnline" in where, false);
+  const withCoverage = eligibleParcelAssignmentDriverWhere({
+    driverProfileId: "driver_1", capability: "PICKUP_COLLECTION", now,
+    requiredServiceZoneIds: ["zone_origin", "zone_destination"],
+  });
+  assert.deepEqual(withCoverage.AND.map(item => item.coverage.some.serviceZoneId), ["zone_origin", "zone_destination"]);
 });

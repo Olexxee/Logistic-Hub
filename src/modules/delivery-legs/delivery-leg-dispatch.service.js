@@ -25,7 +25,7 @@ function conflict(code, message) {
   return new ConflictError(message, code);
 }
 function assertEligibleDriver(driver, leg, now) {
-  if (!driver || driver.verificationStatus !== "VERIFIED" || driver.suspendedAt || !(driver.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && driver.kycTier === "TEST_LIMITED")) || !driver.isOnline || !driver.isAvailable) return false;
+  if (!driver || driver.verificationStatus !== "VERIFIED" || driver.suspendedAt || driver.kycTier !== "FULL" || !driver.isOnline || !driver.isAvailable) return false;
   if (!driver.lastLocationAt || driver.lastLocationAt > now || driver.lastLocationAt < new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000)) return false;
   const location = driver.locations?.[0];
   if (!location || location.recordedAt > now || location.recordedAt < new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000)) return false;
@@ -137,7 +137,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
 
     async listDriverOffers({ userId }) {
       const profile = await db.findDriverProfile(userId);
-      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED")) || !profile.isOnline || !profile.isAvailable) {
+      if (!profile || profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || profile.kycTier !== "FULL" || !profile.isOnline || !profile.isAvailable) {
         throw new ForbiddenError("A verified, online and available driver profile is required.");
       }
       return (await db.findDriverOffers(profile.id, clock())).map(serializeDriverOffer);
@@ -162,7 +162,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             if (offer.proposalPayloadHash !== proposalHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
             return { offerId, proposedFareMinor: offer.proposedFareMinor.toString(), currency: offer.currency, status: offer.status, replay: true };
           }
-          if (profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED")) || !profile.isOnline || !profile.isAvailable) {
+          if (profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || profile.kycTier !== "FULL" || !profile.isOnline || !profile.isAvailable) {
             throw new ForbiddenError("A verified, online and available driver profile is required.");
           }
           if (offer.status !== "OFFERED" || offer.proposedFareMinor != null
@@ -317,7 +317,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const driverReserved = await tx.driverProfile.updateMany({
             where: {
               id: offer.driverProfileId,
-              verificationStatus: "VERIFIED", kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] }, suspendedAt: null, isOnline: true, isAvailable: true,
+              verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true,
               lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
               user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
               ...activeDriverCapabilityWhere(capability),

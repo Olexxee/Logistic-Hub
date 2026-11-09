@@ -41,7 +41,7 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
             capability,
             now,
             strictMode: env.DRIVER_KYC_MODE === "STRICT",
-            kycTiers: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"],
+            kycTiers: ["FULL"],
           }),
           lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
           AND: [

@@ -1,5 +1,6 @@
 import { prisma } from "../../db/prisma.js";
 import { env } from "../../config/env.js";
+import { activeServiceZoneWhere, eligibleParcelAssignmentDriverWhere, eligibleVehicleWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
 
 const ASSIGNMENT_TRANSITIONS = Object.freeze({
  ACCEPTED: ["ARRIVED_AT_PICKUP"],
@@ -13,7 +14,89 @@ export function isAllowedAssignmentTransition(currentStatus, nextStatus) {
  return (ASSIGNMENT_TRANSITIONS[currentStatus] ?? []).includes(nextStatus);
 }
 
+async function serializableTransaction(prismaClient, callback) {
+ for (let attempt = 0; ; attempt += 1) {
+  try {
+   return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" });
+  } catch (error) {
+   if (error?.code !== "P2034" || attempt >= 2) throw error;
+  }
+ }
+}
+
 export const MAX_VERIFICATION_CODE_ATTEMPTS = 5;
+
+async function findParcelExecutionEligibility(tx, assignment, now) {
+ if (!assignment.parcelBookingId) return null;
+ const capability = parcelCapabilityForLegType(assignment.deliveryLeg?.type ?? "DIRECT");
+ if (!capability) return {
+  code: "LEG_REQUIRES_PARTNER_EXECUTION",
+  message: "This delivery leg is reserved for transport-partner execution.",
+ };
+ if (!assignment.vehicleId) return {
+  code: "VEHICLE_NOT_BOUND",
+  message: "This assignment has no selected operating vehicle. Operations must review it before pickup.",
+ };
+ const strictMode = env.DRIVER_KYC_MODE === "STRICT";
+ const booking = assignment.parcelBooking;
+ const leg = assignment.deliveryLeg;
+ const originServiceZoneId = leg?.originServiceZoneId ?? booking?.pickupServiceZoneId;
+ const destinationServiceZoneId = leg?.destinationServiceZoneId ?? booking?.destinationServiceZoneId;
+ if (!originServiceZoneId || !destinationServiceZoneId) return {
+  code: "SERVICE_ZONE_UNAVAILABLE",
+  message: "The assignment does not have a complete origin and destination service-zone route.",
+ };
+ const requiredServiceZoneIds = [...new Set([originServiceZoneId, destinationServiceZoneId])];
+ const activeZones = await tx.serviceZone.findMany({
+  where: { id: { in: requiredServiceZoneIds }, ...activeServiceZoneWhere(now) },
+  select: { id: true },
+ });
+ if (activeZones.length !== requiredServiceZoneIds.length) return {
+  code: "SERVICE_ZONE_UNAVAILABLE",
+  message: "The origin or destination service zone is no longer active for parcel delivery.",
+ };
+ const hubIds = [...new Set([
+  leg?.originHubPointId,
+  leg?.destinationHubPointId,
+ ].filter(Boolean))];
+ if (hubIds.length) {
+  const activeHubs = await tx.hubPoint.findMany({
+   where: { id: { in: hubIds }, status: "ACTIVE" },
+   select: { id: true },
+  });
+  if (activeHubs.length !== hubIds.length) return {
+   code: "HUB_UNAVAILABLE",
+   message: "An origin or destination hub on this assignment is no longer active.",
+  };
+ }
+ const kycTiers = env.DRIVER_KYC_MODE === "TEST" && capability === "LOCAL_DISPATCH"
+  ? ["FULL", "TEST_LIMITED"]
+  : ["FULL"];
+ const driver = await tx.driverProfile.findFirst({
+  where: eligibleParcelAssignmentDriverWhere({
+   driverProfileId: assignment.driverProfileId, capability, now, strictMode, kycTiers, requiredServiceZoneIds,
+  }),
+  select: { id: true },
+ });
+ if (!driver) return {
+  code: "DRIVER_EXECUTION_ELIGIBILITY_CHANGED",
+  message: "Driver approval, account status, or required identity evidence is no longer valid for this pickup.",
+ };
+ const vehicle = await tx.vehicle.findFirst({
+  where: {
+   id: assignment.vehicleId,
+   ...eligibleVehicleWhere({
+    driverProfileId: assignment.driverProfileId, capability, now, strictMode,
+   }),
+  },
+  select: { id: true },
+ });
+ if (!vehicle) return {
+  code: "VEHICLE_EXECUTION_ELIGIBILITY_CHANGED",
+  message: "The selected vehicle is no longer active, verified, or approved for this service.",
+ };
+ return null;
+}
 export function createAssignmentsRepository(prismaClient = prisma) {
  return {
   async listDriverAssignments({userId,skip,take}){
@@ -61,12 +144,17 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    });
   },
   transition({assignmentId,driverUserId,nextStatus,now}) {
-   return prismaClient.$transaction(async tx=>{
+   return serializableTransaction(prismaClient, async tx=>{
     const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
-    if(a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || !(a.driverProfile.kycTier==="FULL" || (env.DRIVER_KYC_MODE==="TEST" && a.driverProfile.kycTier==="TEST_LIMITED")) || (a.rideBookingId && a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
+    if(!a.parcelBookingId && !a.rideBookingId) return {forbidden:true};
+    if(a.rideBookingId && (a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
     if(!isAllowedAssignmentTransition(a.status,nextStatus))return {conflict:true,status:a.status};
+    if(a.parcelBookingId && nextStatus==="ARRIVED_AT_PICKUP") {
+     const ineligible = await findParcelExecutionEligibility(tx, a, now);
+     if(ineligible) return {ineligible};
+    }
     const transition = await tx.driverAssignment.updateMany({
      where: { id: a.id, status: a.status },
      data: {
@@ -87,12 +175,17 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    });
   },
   verifyCode({assignmentId,driverUserId,action,tokenHash,now}) {
-   return prismaClient.$transaction(async tx=>{
+   return serializableTransaction(prismaClient, async tx=>{
     const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId)return {forbidden:true};
-    if(a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || !(a.driverProfile.kycTier==="FULL" || (env.DRIVER_KYC_MODE==="TEST" && a.driverProfile.kycTier==="TEST_LIMITED")) || (a.rideBookingId && a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
+    if(!a.parcelBookingId && !a.rideBookingId) return {forbidden:true};
     const isParcel=Boolean(a.parcelBookingId);const booking=a.parcelBooking||a.rideBooking;
+    if(!isParcel && (a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
+    const eligibilityIssue = isParcel
+     ? await findParcelExecutionEligibility(tx, a, now)
+     : null;
+    if(isParcel && action==="PICKUP" && eligibilityIssue) return {ineligible:eligibilityIssue};
     const tokenAction=action==="PICKUP"?(isParcel?"PARCEL_PICKUP":"RIDE_PICKUP"):(isParcel?"PARCEL_DELIVERY":"RIDE_COMPLETION");
     const token=await tx.verificationToken.findFirst({where:{...(isParcel?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),...(a.deliveryLegId?{deliveryLegId:a.deliveryLegId}:{}),action:tokenAction,status:"ACTIVE",expiresAt:{gt:now}}});
     if(!token)return {invalid:true};
@@ -139,6 +232,18 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     }});
     else await tx.rideBooking.update({where:{id:booking.id},data:{status:action==="PICKUP"?"TRIP_IN_PROGRESS":"COMPLETED",...(action==="PICKUP"?{tripStartedAt:now}:{completedAt:now})}});
     await tx.bookingEvent.create({data:{...(isParcel?{parcelBookingId:booking.id}:{rideBookingId:booking.id}),actorUserId:driverUserId,eventType:action==="PICKUP"?"PICKUP_VERIFIED":"COMPLETION_VERIFIED",fromStatus:a.status,toStatus:nextStatus,metadata:{assignmentId:a.id,...(a.deliveryLegId?{deliveryLegId:a.deliveryLegId}:{}),...(nextDeliveryLegId?{nextDeliveryLegId}:{})}}});
+    if(isParcel && action==="DELIVERY" && eligibilityIssue) {
+     await tx.bookingEvent.create({data:{
+      parcelBookingId:booking.id,actorUserId:driverUserId,
+      eventType:"IN_CUSTODY_ELIGIBILITY_EXCEPTION_COMPLETED",
+      fromStatus:a.status,toStatus:nextStatus,
+      metadata:{
+       assignmentId:a.id,driverProfileId:a.driverProfileId,vehicleId:a.vehicleId,
+       reasonCode:eligibilityIssue.code,
+       policy:"ALLOW_EXISTING_CUSTODY_COMPLETION",
+      },
+     }});
+    }
     if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{completedJobs:{increment:1}}});if(a.driverProfile.kycTier==="FULL")await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
     return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):isParcel?(finalDeliveryLeg?"COMPLETED":"IN_TRANSIT"):"COMPLETED",nextDeliveryLegId,verifiedAt:now};
    });

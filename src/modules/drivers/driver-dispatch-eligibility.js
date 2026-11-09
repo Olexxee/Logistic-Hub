@@ -70,6 +70,30 @@ export function activeDriverDocumentWhere(now, strictMode = false) {
   };
 }
 
+export function eligibleParcelAssignmentDriverWhere({ driverProfileId, capability, now, strictMode = false, kycTiers = ["FULL"], requiredServiceZoneIds = [] }) {
+  return {
+    id: driverProfileId,
+    verificationStatus: "VERIFIED",
+    kycTier: { in: kycTiers },
+    suspendedAt: null,
+    user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
+    ...activeDriverCapabilityWhere(capability),
+    ...activeDriverDocumentWhere(now, strictMode),
+    ...(requiredServiceZoneIds.length ? {
+      AND: requiredServiceZoneIds.map(serviceZoneId => ({
+        coverage: {
+          some: {
+            serviceZoneId,
+            serviceType: "PARCEL_DELIVERY",
+            isEnabled: true,
+            serviceZone: { is: activeServiceZoneWhere(now) },
+          },
+        },
+      })),
+    } : {}),
+  };
+}
+
 export function activeServiceZoneWhere(now) {
   return {
     isActive: true,

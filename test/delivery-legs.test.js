@@ -50,12 +50,17 @@ test("driver arrival moves the linked delivery leg to pickup verification pendin
     parcelBookingId: "booking_1",
     rideBookingId: null,
     driverProfileId: "driver_profile_1",
+    vehicleId: "vehicle_1",
     driverProfile: { userId: "driver_user_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null },
-    parcelBooking: { id: "booking_1", status: "DRIVER_ASSIGNED" },
+    parcelBooking: { id: "booking_1", status: "DRIVER_ASSIGNED", pickupServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
+    deliveryLeg: { id: "leg_1", type: "LOCAL_PICKUP", originServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
     rideBooking: null,
     status: "ACCEPTED",
   };
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
+    driverProfile: { findFirst: async () => ({ id: "driver_profile_1" }) },
+    vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
     driverAssignment: {
       findUnique: async () => assignment,
       updateMany: async ({ where, data }) => {
@@ -91,12 +96,17 @@ test("concurrent assignment transition loses the compare-and-set without changin
     parcelBookingId: "booking_race",
     rideBookingId: null,
     driverProfileId: "driver_profile_race",
+    vehicleId: "vehicle_race",
     driverProfile: { userId: "driver_user_race", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null },
-    parcelBooking: { id: "booking_race", status: "DRIVER_ASSIGNED" },
+    parcelBooking: { id: "booking_race", status: "DRIVER_ASSIGNED", pickupServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
+    deliveryLeg: { id: "leg_race", type: "LOCAL_PICKUP", originServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
     rideBooking: null,
     status: "ACCEPTED",
   };
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
+    driverProfile: { findFirst: async () => ({ id: "driver_profile_race" }) },
+    vehicle: { findFirst: async () => ({ id: "vehicle_race" }) },
     driverAssignment: {
       findUnique: async () => assignment,
       updateMany: async () => ({ count: 0 }),
@@ -126,14 +136,19 @@ test("pickup verification records parcel pickup separately from transit start", 
     parcelBookingId: "booking_pickup",
     rideBookingId: null,
     driverProfileId: "driver_profile_pickup",
+    vehicleId: "vehicle_pickup",
     driverProfile: { userId: "driver_user_pickup", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null },
-    parcelBooking: { id: "booking_pickup", senderId: "sender_pickup", publicReference: "LH-PCL-PICKUP" },
+    parcelBooking: { id: "booking_pickup", senderId: "sender_pickup", publicReference: "LH-PCL-PICKUP", pickupServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
+    deliveryLeg: { id: "leg_pickup", type: "LOCAL_PICKUP", originServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
     rideBooking: null,
     status: "ARRIVED_AT_PICKUP",
     agreedFareMinor: 1500n,
     currency: "NGN",
   };
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
+    driverProfile: { findFirst: async () => ({ id: "driver_profile_pickup" }) },
+    vehicle: { findFirst: async () => ({ id: "vehicle_pickup" }) },
     driverAssignment: { findUnique: async () => assignment, update: async () => ({}) },
     verificationToken: { findFirst: async () => ({ id: "pickup_token", tokenHash: "pickup-hash", failedAttempts: 0 }), updateMany: async () => ({ count: 1 }) },
     deliveryLeg: { update: async ({ where, data }) => { legUpdates.push({ where, data }); return {}; } },
@@ -202,18 +217,22 @@ test("completing a non-final leg activates only the next leg and keeps the booki
   const assignment = {
     id: "assignment_first_leg",
     deliveryLegId: "leg_first",
-    deliveryLeg: { id: "leg_first", sequence: 1 },
+    deliveryLeg: { id: "leg_first", sequence: 1, type: "LOCAL_PICKUP", originServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
     parcelBookingId: "booking_multi",
     rideBookingId: null,
     driverProfileId: "driver_profile_first",
+    vehicleId: "vehicle_first",
     driverProfile: { userId: "driver_user_first", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null },
-    parcelBooking: { id: "booking_multi", senderId: "sender_multi", publicReference: "LH-PCL-MULTI" },
+    parcelBooking: { id: "booking_multi", senderId: "sender_multi", publicReference: "LH-PCL-MULTI", pickupServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination" },
     rideBooking: null,
     status: "ARRIVED_AT_DESTINATION",
     agreedFareMinor: 1800n,
     currency: "NGN",
   };
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
+    driverProfile: { findFirst: async () => ({ id: "driver_profile_first" }), update: async () => ({}) },
+    vehicle: { findFirst: async () => ({ id: "vehicle_first" }) },
     driverAssignment: { findUnique: async () => assignment, update: async () => ({}) },
     verificationToken: {
       findFirst: async () => ({ id: "token_first_leg", tokenHash: "first-leg-token-hash", failedAttempts: 0 }),
@@ -229,7 +248,7 @@ test("completing a non-final leg activates only the next leg and keeps the booki
     },
     parcelBooking: { update: async ({ data }) => { bookingUpdate = data; return {}; } },
     bookingEvent: { create: async ({ data }) => { bookingEvent = data; return {}; } },
-    driverProfile: { update: async () => ({}) },
+    driverProfile: { findFirst: async () => ({ id: "driver_profile_first" }), update: async () => ({}) },
     driverPayout: { upsert: async () => ({}) },
   };
   const repository = createAssignmentsRepository({ $transaction: (callback) => callback(tx) });
