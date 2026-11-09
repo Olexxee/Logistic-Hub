@@ -53,9 +53,9 @@ The backend implementation adds `DriverAssignmentHubRecovery` as an authorizatio
 
 Routes:
 
-- `POST /api/v1/assignments/admin/:assignmentId/hub-recoveries` — Admin authorization.
-- `GET /api/v1/assignments/admin/hub-recoveries` — Admin recovery queue.
-- `POST /api/v1/assignments/admin/hub-recoveries/:recoveryId/cancel` — cancel before receipt.
+- `POST /api/v1/admin/assignments/:assignmentId/hub-recoveries` — Admin authorization.
+- `GET /api/v1/admin/assignments/hub-recoveries` — Admin recovery queue.
+- `POST /api/v1/admin/assignments/hub-recoveries/:recoveryId/cancel` — cancel before receipt.
 - `POST /api/v1/hub-operations/hub-recoveries/:recoveryId/receive` — active hub operator confirms physical receipt.
 
 Receipt revalidates the source assignment and linked safety case under serializable transaction locks, enforces hub service-zone/category/capacity rules, creates the intake record, marks the source assignment failed with payout review required, and clears only the active hold timestamp. The safety incident linkage and hold metadata remain. The booking and leg are not mutated.
