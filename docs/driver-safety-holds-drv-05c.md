@@ -118,10 +118,11 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
 - Successful recovery emits `DRIVER_ASSIGNMENT_CUSTODY_RECOVERED`; integration-owned shipments project this as `shipment.driver_reassigned`.
 - Only after receipt confirmation does the system create a new `IN_PROGRESS` assignment with the exact replacement driver/vehicle, mark the source assignment `FAILED` with a recovery reference, clear its active execution hold, and record booking/audit events atomically.
 - The source assignment and its original driver/vehicle binding remain intact as historical evidence. The replacement assignment is a new record; there is no in-place driver or vehicle overwrite.
-- Recovered assignment payout is flagged for manual review. Automatic driver payout creation is suppressed for that assignment in both verification-code completion and hub-receipt completion paths. No refund, customer payment, seller settlement, or automatic payout adjustment is made.
+- Recovered assignment payout is flagged for manual review and exposed as `payoutReviewRequired` in the driver assignment list. Automatic driver payout creation is suppressed for that assignment in both verification-code completion and hub-receipt completion paths. No refund, customer payment, seller settlement, or automatic payout adjustment is made.
 
 ### API
 
+- `GET /api/v1/assignments/recoveries/mine` — replacement-driver inbox for pending release/receipt work.
 - `GET /api/v1/assignments/admin/recoveries` — paginated Admin recovery queue.
 - `POST /api/v1/assignments/admin/recoveries/:recoveryId/cancel` — Admin cancels a recovery only before physical release; the source safety hold remains active.
 - `POST /api/v1/assignments/admin/:assignmentId/recoveries` — Admin initiates recovery.
