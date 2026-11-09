@@ -1,4 +1,4 @@
-const MAX_BOUNDARY_POSITIONS = 10000;
+const MAX_BOUNDARY_POSITIONS = 2000;
 const EPSILON = 1e-12;
 
 function samePoint(a, b) {
