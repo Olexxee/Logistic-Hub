@@ -23,6 +23,9 @@ function createHarness() {
     driverProfile: { id: "driver-profile-01", userId: "driver-user-01" },
   };
   const tx = {
+    // The worker takes a row-level lock before re-reading eligibility.
+    $queryRaw: async () => [],
+    driverAssignment: { findUnique: async () => assignment },
     serviceZone: { findMany: async () => [{ id: "zone-a" }, { id: "zone-b" }] },
     hubPoint: { findMany: async () => [] },
     driverProfile: { findFirst: async () => null },
