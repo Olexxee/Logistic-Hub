@@ -67,6 +67,62 @@ test("pickup arrival is blocked when current driver capability or identity eligi
   assert.equal(vehicleQuery, undefined);
 });
 
+test("pickup arrival is blocked when the exact assigned vehicle loses its approved suitability", async () => {
+  const assignment = baseAssignment();
+  let vehicleWhere;
+  const tx = {
+    driverAssignment: {
+      findUnique: async () => assignment,
+      updateMany: async () => ({ count: 1 }),
+    },
+    driverProfile: { findFirst: async () => ({ id: "driver_profile_1" }) },
+    vehicle: { findFirst: async args => { vehicleWhere = args.where; return null; } },
+  };
+  const repository = createAssignmentsRepository({ $transaction: callback => callback(tx) });
+
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_1",
+    nextStatus: "ARRIVED_AT_PICKUP",
+    now,
+  });
+
+  assert.equal(result.ineligible.code, "VEHICLE_EXECUTION_ELIGIBILITY_CHANGED");
+  assert.equal(vehicleWhere.id, assignment.vehicleId);
+  assert.equal(vehicleWhere.driverProfileId, assignment.driverProfileId);
+  assert.equal(vehicleWhere.isActive, true);
+  assert.equal(vehicleWhere.verificationStatus, "VERIFIED");
+  assert.deepEqual(vehicleWhere.serviceCapabilities.some, {
+    capability: "LOCAL_DISPATCH",
+    status: "APPROVED",
+  });
+});
+
+test("partner-only delivery legs cannot enter local-driver pickup execution", async () => {
+  const assignment = baseAssignment({
+    deliveryLeg: { id: "leg_1", type: "HUB_TRANSFER" },
+  });
+  let profileReads = 0;
+  const tx = {
+    driverAssignment: {
+      findUnique: async () => assignment,
+      updateMany: async () => ({ count: 1 }),
+    },
+    driverProfile: { findFirst: async () => { profileReads += 1; return null; } },
+  };
+  const repository = createAssignmentsRepository({ $transaction: callback => callback(tx) });
+
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_1",
+    nextStatus: "ARRIVED_AT_PICKUP",
+    now,
+  });
+
+  assert.equal(result.ineligible.code, "LEG_REQUIRES_PARTNER_EXECUTION");
+  assert.equal(profileReads, 0);
+});
+
 test("post-pickup parcel progression is not blocked by later driver suspension", async () => {
   const assignment = baseAssignment({
     status: "PICKUP_CONFIRMED",
