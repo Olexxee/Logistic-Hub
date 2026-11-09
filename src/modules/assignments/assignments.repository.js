@@ -126,6 +126,63 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    return {items,total};
   },
   findAssignment(id) { return prismaClient.driverAssignment.findUnique({where:{id},include:{driverProfile:{select:{id:true,userId:true,verificationStatus:true,kycTier:true,suspendedAt:true}},vehicle:{select:{id:true,type:true,make:true,model:true,registrationPlate:true}},parcelBooking:true,rideBooking:true}}); },
+  findOtherActiveAssignmentOnLeg(deliveryLegId, sourceAssignmentId, tx = prismaClient) {
+   return tx.driverAssignment.findFirst({
+    where: {
+     deliveryLegId,
+     id: { not: sourceAssignmentId },
+     status: { notIn: ["COMPLETED", "CANCELLED", "FAILED"] },
+    },
+    select: { id: true, driverProfileId: true, vehicleId: true, status: true },
+   });
+  },
+  listMyAssignmentRecoveries({ userId, skip = 0, take = 25 } = {}, tx = prismaClient) {
+   const where = {
+    OR: [
+     { replacementDriverProfile: { userId } },
+     { sourceAssignment: { driverProfile: { userId } } },
+    ],
+    status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] },
+   };
+   return Promise.all([
+    tx.driverAssignmentRecovery.findMany({
+     where, skip, take,
+     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+     include: {
+      sourceAssignment: {
+       select: {
+        id: true, status: true, pickupAt: true,
+        driverProfile: { select: { userId: true } },
+        parcelBooking: { select: { publicReference: true, pickupAddress: true, destinationAddress: true, recipientName: true, recipientPhone: true } },
+        deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+       },
+      },
+      replacementDriverProfile: { select: { userId: true } },
+      replacementVehicle: { select: { id: true, type: true, make: true, model: true, registrationPlate: true } },
+     },
+    }),
+    tx.driverAssignmentRecovery.count({ where }),
+   ]).then(([items, total]) => ({ items, total }));
+  },
+  listAssignmentRecoveries({ status, skip = 0, take = 25 } = {}, tx = prismaClient) {
+   const where = status ? { status } : { status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] } };
+   return Promise.all([
+    tx.driverAssignmentRecovery.findMany({
+     where, skip, take,
+     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+     include: {
+      parcelBooking: { select: { id: true, publicReference: true, status: true } },
+      deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+      sourceAssignment: { select: { id: true, status: true, driverProfileId: true, vehicleId: true } },
+      replacementAssignment: { select: { id: true, status: true, payoutReviewRequired: true } },
+      replacementDriverProfile: { select: { id: true, user: { select: { fullName: true, email: true, phone: true } } } },
+      replacementVehicle: { select: { id: true, type: true, make: true, model: true, registrationPlate: true } },
+      operationalCase: { select: { id: true, publicReference: true, status: true, priority: true } },
+     },
+    }),
+    tx.driverAssignmentRecovery.count({ where }),
+   ]).then(([items, total]) => ({ items, total }));
+  },
   lockAssignment(id, tx = prismaClient) {
    return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${id} FOR UPDATE`;
   },
@@ -144,6 +201,89 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     }),
     tx.driverAssignment.count({where}),
    ]).then(([items,total])=>({items,total}));
+  },
+  lockAssignment(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${id} FOR UPDATE`;
+  },
+  lockDeliveryLeg(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "delivery_legs" WHERE "id" = ${id} FOR UPDATE`;
+  },
+  lockRecovery(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_assignment_recoveries" WHERE "id" = ${id} FOR UPDATE`;
+  },
+  lockRecoveryCandidate(driverProfileId, vehicleId, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_profiles" WHERE "id" = ${driverProfileId} FOR UPDATE`
+    .then(() => tx.$queryRaw`SELECT "id" FROM "vehicles" WHERE "id" = ${vehicleId} FOR UPDATE`);
+  },
+  findAssignmentForRecovery(id, tx = prismaClient) {
+   return tx.driverAssignment.findUnique({
+    where: { id },
+    include: {
+     parcelBooking: true,
+     deliveryLeg: true,
+     driverProfile: { select: { id: true, userId: true } },
+     vehicle: { select: { id: true } },
+    },
+   });
+  },
+  findActiveRecoveryForSource(sourceAssignmentId, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.findFirst({
+    where: { sourceAssignmentId, status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] } },
+   });
+  },
+  findRecoveryForUpdate(id, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.findUnique({
+    where: { id },
+    include: {
+     sourceAssignment: { include: { parcelBooking: true, deliveryLeg: true, driverProfile: { select: { id: true, userId: true } } } },
+     replacementDriverProfile: { include: { user: { select: { id: true, status: true, role: true, emailVerifiedAt: true } } } },
+     replacementVehicle: true,
+     replacementAssignment: { select: { id: true, status: true, driverProfileId: true, vehicleId: true } },
+     operationalCase: { select: { id: true, status: true, priority: true } },
+    },
+   });
+  },
+  checkRecoveryCandidate(tx, { sourceAssignment, replacementDriverProfileId, replacementVehicleId, now }) {
+   return (async () => {
+    const candidateAssignment = {
+     ...sourceAssignment,
+     driverProfileId: replacementDriverProfileId,
+     vehicleId: replacementVehicleId,
+    };
+    const eligibility = await findParcelExecutionEligibility(tx, candidateAssignment, now);
+    if (eligibility) return { ineligible: eligibility };
+    const driver = await tx.driverProfile.findUnique({
+     where: { id: replacementDriverProfileId },
+     select: { id: true, isOnline: true, isAvailable: true },
+    });
+    if (!driver || !driver.isOnline || !driver.isAvailable) return { blocker: "REPLACEMENT_DRIVER_UNAVAILABLE" };
+    const activeAssignment = await tx.driverAssignment.findFirst({
+     where: { driverProfileId: replacementDriverProfileId, status: { notIn: ["COMPLETED", "CANCELLED", "FAILED"] } },
+     select: { id: true },
+    });
+    if (activeAssignment) return { blocker: "REPLACEMENT_DRIVER_ALREADY_ASSIGNED" };
+    const activeVehicleAssignment = await tx.driverAssignment.findFirst({
+     where: { vehicleId: replacementVehicleId, status: { notIn: ["COMPLETED", "CANCELLED", "FAILED"] } },
+     select: { id: true },
+    });
+    if (activeVehicleAssignment) return { blocker: "REPLACEMENT_VEHICLE_ALREADY_ASSIGNED" };
+    return { eligible: true };
+   })();
+  },
+  createAssignmentRecovery(data, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.create({ data });
+  },
+  updateAssignmentRecovery(id, data, tx = prismaClient) {
+   return tx.driverAssignmentRecovery.update({ where: { id }, data });
+  },
+  createRecoveryReplacementAssignment(data, tx = prismaClient) {
+   return tx.driverAssignment.create({ data });
+  },
+  updateAssignmentForRecovery(id, data, tx = prismaClient) {
+   return tx.driverAssignment.update({ where: { id }, data });
+  },
+  updateRecoveryDriverAvailability(id, isAvailable, tx = prismaClient) {
+   return tx.driverProfile.update({ where: { id }, data: { isAvailable } });
   },
   findAssignmentForAdminHold(id, tx = prismaClient) {
    return tx.driverAssignment.findUnique({where:{id},include:{parcelBooking:{select:{id:true,publicReference:true}},deliveryLeg:{select:{id:true,sequence:true}},driverProfile:{select:{id:true,userId:true}},vehicle:{select:{id:true}}}});
@@ -288,7 +428,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
       },
      }});
     }
-    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{completedJobs:{increment:1}}});if(a.driverProfile.kycTier==="FULL")await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
+    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{completedJobs:{increment:1}}});if(a.driverProfile.kycTier==="FULL"&&!a.payoutReviewRequired)await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
     return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):isParcel?(finalDeliveryLeg?"COMPLETED":"IN_TRANSIT"):"COMPLETED",nextDeliveryLegId,verifiedAt:now};
    });
   },

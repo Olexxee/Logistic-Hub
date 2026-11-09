@@ -1,5 +1,56 @@
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 export function createAssignmentsController(service){return {
+ cancelCustodyRecovery:asyncWrapper(async(req,res)=>{
+  const result=await service.cancelCustodyRecovery({
+   recoveryId:req.params.recoveryId,actorUserId:req.user.id,reason:req.body.reason,
+  });
+  if(result.notFound)return res.status(404).json({success:false,error:{code:"ASSIGNMENT_RECOVERY_NOT_FOUND",message:"Assignment recovery not found."}});
+  if(result.blocker)return res.status(409).json({success:false,error:{code:result.blocker,message:"Only pending custody recoveries can be cancelled."}});
+  return res.status(200).json({success:true,data:result});
+ }),
+ listMyCustodyRecoveries:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listMyCustodyRecoveries({userId:req.user.id,...req.validated.query})})),
+ listCustodyRecoveries:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listCustodyRecoveries(req.validated.query)})),
+ initiateCustodyRecovery:asyncWrapper(async(req,res)=>{
+  const result=await service.initiateCustodyRecovery({
+   assignmentId:req.params.assignmentId,
+   replacementDriverProfileId:req.body.replacementDriverProfileId,
+   replacementVehicleId:req.body.replacementVehicleId,
+   actorUserId:req.user.id,
+   reason:req.body.reason,
+  });
+  if(result.notFound)return res.status(404).json({success:false,error:{code:"ASSIGNMENT_NOT_FOUND",message:"Assignment not found."}});
+  if(result.ineligible)return res.status(409).json({success:false,error:{code:result.ineligible.code,message:result.ineligible.message}});
+  if(result.blocker)return res.status(409).json({success:false,error:{code:result.blocker,message:"The assignment or proposed replacement is not eligible for custody recovery."}});
+  return res.status(result.replay?200:201).json({success:true,data:result});
+ }),
+ confirmCustodyRecoveryRelease:asyncWrapper(async(req,res)=>{
+  const result=await service.confirmCustodyRecoveryRelease({
+   recoveryId:req.params.recoveryId,userId:req.user.id,reason:req.body.reason,evidence:req.body.evidence,
+  });
+  if(result.notFound)return res.status(404).json({success:false,error:{code:"ASSIGNMENT_RECOVERY_NOT_FOUND",message:"Assignment recovery not found."}});
+  if(result.forbidden)return res.status(403).json({success:false,error:{code:"CUSTODY_PARTY_REQUIRED",message:"Only the currently assigned driver can confirm physical release."}});
+  if(result.blocker)return res.status(409).json({success:false,error:{code:result.blocker,message:"The recovery is not eligible for release confirmation."}});
+  return res.status(result.replay?200:200).json({success:true,data:result});
+ }),
+ authorizeCustodyRecoveryReleaseException:asyncWrapper(async(req,res)=>{
+  const result=await service.authorizeCustodyRecoveryReleaseException({
+   recoveryId:req.params.recoveryId,actorUserId:req.user.id,reason:req.body.reason,evidence:req.body.evidence,
+  });
+  if(result.notFound)return res.status(404).json({success:false,error:{code:"ASSIGNMENT_RECOVERY_NOT_FOUND",message:"Assignment recovery not found."}});
+  if(result.blocker)return res.status(409).json({success:false,error:{code:result.blocker,message:"The recovery is not eligible for an Admin release exception."}});
+  return res.status(result.replay?200:200).json({success:true,data:result});
+ }),
+ confirmCustodyRecoveryReceipt:asyncWrapper(async(req,res)=>{
+  const result=await service.confirmCustodyRecoveryReceipt({
+   recoveryId:req.params.recoveryId,userId:req.user.id,
+   conditionAtReceipt:req.body.conditionAtReceipt,evidence:req.body.evidence,
+  });
+  if(result.notFound)return res.status(404).json({success:false,error:{code:"ASSIGNMENT_RECOVERY_NOT_FOUND",message:"Assignment recovery not found."}});
+  if(result.forbidden)return res.status(403).json({success:false,error:{code:"CUSTODY_PARTY_REQUIRED",message:"Only the selected replacement driver can confirm physical receipt."}});
+  if(result.ineligible)return res.status(409).json({success:false,error:{code:result.ineligible.code,message:result.ineligible.message}});
+  if(result.blocker)return res.status(409).json({success:false,error:{code:result.blocker,message:"The recovery or replacement driver is no longer eligible for receipt."}});
+  return res.status(result.replay?200:201).json({success:true,data:result});
+ }),
  placeExecutionHold:asyncWrapper(async(req,res)=>{
   const result=await service.placeExecutionHold({assignmentId:req.params.assignmentId,actorUserId:req.user.id,reason:req.body.reason});
   if(result.notFound)return res.status(404).json({success:false,error:{code:"ASSIGNMENT_NOT_FOUND",message:"Assignment not found."}});

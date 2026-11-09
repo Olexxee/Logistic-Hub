@@ -3,6 +3,7 @@ const EXTERNAL_EVENT_TYPES = Object.freeze({
   INTEGRATION_PARTNER_ASSIGNMENT_CREATED: "shipment.partner_assigned",
   INTEGRATION_PARTNER_LEG_STARTED: "shipment.in_transit",
   HUB_PICKUP_CUSTODY_CONFIRMED: "shipment.custody_handover_confirmed",
+  DRIVER_ASSIGNMENT_CUSTODY_RECOVERED: "shipment.driver_reassigned",
   HUB_DESTINATION_CUSTODY_CONFIRMED: "shipment.delivery_leg_completed",
   PARTNER_HUB_CUSTODY_CONFIRMED: "shipment.delivery_leg_completed",
   PARTNER_RECIPIENT_CUSTODY_CONFIRMED: "shipment.delivery_leg_completed",

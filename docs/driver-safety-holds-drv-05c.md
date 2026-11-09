@@ -1,6 +1,6 @@
 # DRV-05C — Admin Safety Holds and Custody Recovery
 
-**Status:** Phase opened on `feat/drv-05c-admin-safety-holds-custody-recovery`. This document records the source audit and acceptance contract before changing assignment/custody state. No API, schema, or migration is included in this planning commit.
+**Status:** DRV-05C-A is implemented in PR #127 and merged into the stacked DRV-05C foundation branch. DRV-05C-B implementation is in progress on `feat/drv-05c-b-controlled-custody-recovery`, stacked on PR #126 until that foundation is merged into `main`.
 
 ## Why this phase exists
 
@@ -102,3 +102,41 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
 - Verify Admin endpoint role middleware and validation, API error mapping, and tests for hold/release idempotency.
 - Run existing assignment, custody, operational-case and payout tests. No payment/payout state is changed by hold/release.
 - Staging test: hold before pickup, hold after pickup, attempted pickup/delivery code, release, and case/audit inspection.
+
+
+## DRV-05C-B implementation snapshot
+
+**Branch:** `feat/drv-05c-b-controlled-custody-recovery`
+
+### Implemented contract
+
+- Added `DriverAssignmentRecovery` with an explicit lifecycle: `PENDING_RELEASE`, `PENDING_RECEIPT`, `CONFIRMED`, and `CANCELLED`.
+- Admin initiates recovery only for an in-custody parcel assignment that has an active safety hold and linked incident case.
+- Admin must nominate an exact replacement driver profile and exact vehicle. Candidate checks reuse the DRV-05B execution eligibility policy and revalidate active account, KYC, identity evidence, capability, vehicle suitability, service-zone availability, hub availability, online/available state, and conflicting driver/vehicle assignments.
+- Current driver confirms physical release with a reason and evidence. If the current custodian is unavailable or unsafe, an Admin can authorize a separate release exception with a reason and evidence. The exception is explicitly recorded; it does not impersonate driver confirmation.
+- Replacement driver must separately confirm physical receipt with condition and evidence. Eligibility is revalidated inside the final serializable transaction.
+- Successful recovery emits `DRIVER_ASSIGNMENT_CUSTODY_RECOVERED`; integration-owned shipments project this as `shipment.driver_reassigned`.
+- Only after receipt confirmation does the system create a new `IN_PROGRESS` assignment with the exact replacement driver/vehicle, mark the source assignment `FAILED` with a recovery reference, clear its active execution hold, and record booking/audit events atomically.
+- The source assignment and its original driver/vehicle binding remain intact as historical evidence. The replacement assignment is a new record; there is no in-place driver or vehicle overwrite.
+- Recovered assignment payout is flagged for manual review and exposed as `payoutReviewRequired` in the driver assignment list. Automatic driver payout creation is suppressed for that assignment in both verification-code completion and hub-receipt completion paths. No refund, customer payment, seller settlement, or automatic payout adjustment is made.
+
+### API
+
+- `GET /api/v1/assignments/recoveries/mine` — driver inbox for pending release/receipt work, visible to both the current custodian and selected replacement driver.
+- `GET /api/v1/assignments/admin/recoveries` — paginated Admin recovery queue.
+- `POST /api/v1/assignments/admin/recoveries/:recoveryId/cancel` — Admin cancels a recovery only before physical release; the source safety hold remains active.
+- `POST /api/v1/assignments/admin/:assignmentId/recoveries` — Admin initiates recovery.
+- `POST /api/v1/assignments/recoveries/:recoveryId/release` — source driver confirms physical release.
+- `POST /api/v1/assignments/admin/recoveries/:recoveryId/release-exception` — Admin authorizes an evidenced release exception.
+- `POST /api/v1/assignments/recoveries/:recoveryId/receive` — selected replacement driver confirms physical receipt and activates the new assignment.
+
+### Deliberate scope boundary
+
+Admin can cancel and replace a candidate only while recovery is still awaiting source-driver release. Once physical release or an Admin release exception is recorded, cancellation is blocked so the parcel cannot be left in an untracked custody state. This first B slice implements **driver-to-driver recovery**. It does not use the generic custody endpoint to bypass safety holds and does not yet implement recovery into hub inventory. A hub fallback needs an explicit intake/capacity workflow, hub operator receipt authority, and a defined next-leg dispatch state; it must be designed as a separate extension rather than treating a hub ID as a replacement driver.
+
+### Validation still required
+
+- Prisma validation/generation and migration/schema-drift checks.
+- Assignment recovery service tests, route contract validation, existing assignment/custody tests, and payment/payout regression tests.
+- CI must pass on the latest PR head after PR #126 is merged and the recovery PR is retargeted to `main`.
+- Staging must prove normal two-party transfer, Admin release exception, replacement ineligibility at receipt, duplicate requests, and manual payout-review behavior.

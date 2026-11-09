@@ -2710,6 +2710,245 @@ paths:
           description: ADMIN role required.
         '404':
           description: Assignment or active hold not found.
+  /assignments/admin/recoveries:
+    get:
+      tags: [Admin]
+      operationId: listDriverAssignmentCustodyRecoveries
+      summary: List controlled parcel custody recoveries
+      description: ADMIN-only paginated recovery queue. Defaults to pending release and receipt work; status can be supplied to inspect completed or cancelled history.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING_RELEASE, PENDING_RECEIPT, CONFIRMED, CANCELLED] }
+      responses:
+        '200': { description: "Paginated recovery queue with source assignment, replacement driver/vehicle, and operational case context." }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: ADMIN role required. }
+  /assignments/admin/{assignmentId}/recoveries:
+    post:
+      tags: [Admin]
+      operationId: initiateDriverAssignmentCustodyRecovery
+      summary: Initiate a controlled recovery for a safety-held parcel assignment
+      description: ADMIN-only. Selects and revalidates an exact replacement driver and vehicle. The replacement assignment is not created or executable until the replacement driver confirms physical receipt.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [replacementDriverProfileId, replacementVehicleId, reason]
+              properties:
+                replacementDriverProfileId: { type: string, minLength: 1, maxLength: 128 }
+                replacementVehicleId: { type: string, minLength: 1, maxLength: 128 }
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '201': { description: Recovery initiated; waiting for the current driver to release physical custody. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Source assignment not found. }
+        '409': { description: Source assignment or replacement driver/vehicle is not eligible. }
+  /assignments/recoveries/mine:
+    get:
+      tags: [Assignments]
+      operationId: listMyDriverAssignmentCustodyRecoveries
+      summary: List pending custody recoveries assigned to the authenticated replacement driver
+      description: DRIVER-only and owner-scoped. Returns pending release/receipt work when the authenticated driver is either the current custodian or selected replacement driver, with parcel reference, route-leg context, and exact replacement vehicle.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Paginated pending recovery tasks for the authenticated driver. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /assignments/recoveries/{recoveryId}/release:
+    post:
+      tags: [Assignments]
+      operationId: confirmDriverAssignmentRecoveryRelease
+      summary: Confirm physical parcel release by the currently assigned driver
+      description: DRIVER-only and owner-scoped. Requires a release reason and at least one evidence item. Moves recovery to receipt confirmation; does not create a replacement assignment.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: recoveryId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason, evidence]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+                evidence:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT] }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '200': { description: Physical release recorded; waiting for replacement driver receipt. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Recovery not found. }
+        '409': { description: Recovery is not awaiting release. }
+  /assignments/admin/recoveries/{recoveryId}/cancel:
+    post:
+      tags: [Admin]
+      operationId: cancelDriverAssignmentCustodyRecovery
+      summary: Cancel a custody recovery before physical release without releasing the source assignment hold
+      description: ADMIN-only. Cancels only a recovery still awaiting source-driver release so a new candidate can be selected. Once release or an Admin release exception is recorded, cancellation is blocked. The source assignment remains safety-held.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: recoveryId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '200': { description: Recovery cancelled before physical release; source assignment remains on safety hold. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: ADMIN role required. }
+        '404': { description: Recovery not found. }
+        '409': { description: Physical release was already recorded or recovery is no longer pending; cancellation is blocked. }
+  /assignments/admin/recoveries/{recoveryId}/release-exception:
+    post:
+      tags: [Admin]
+      operationId: authorizeDriverAssignmentRecoveryReleaseException
+      summary: Authorize release without current-driver confirmation
+      description: ADMIN-only exception for an unavailable or unsafe current custodian. Requires an explicit reason and evidence; does not claim that the driver personally confirmed release. Replacement driver receipt is still mandatory.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: recoveryId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason, evidence]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+                evidence:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT] }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '200': { description: Admin exception recorded; waiting for replacement driver receipt. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: ADMIN role required. }
+        '404': { description: Recovery not found. }
+        '409': { description: Recovery is not awaiting release. }
+  /assignments/recoveries/{recoveryId}/receive:
+    post:
+      tags: [Assignments]
+      operationId: confirmDriverAssignmentRecoveryReceipt
+      summary: Confirm physical receipt by the selected replacement driver
+      description: DRIVER-only and owner-scoped. Revalidates driver, vehicle, KYC, capability and route eligibility in the final transaction. Only then creates the replacement assignment and retires the source assignment. Recovered assignment payout is held for manual review.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: recoveryId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [conditionAtReceipt, evidence]
+              properties:
+                conditionAtReceipt: { type: string, minLength: 2, maxLength: 500 }
+                evidence:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [uri]
+                    properties:
+                      uri: { type: string, format: uri, maxLength: 2048 }
+                      type: { type: string, enum: [IMAGE, VIDEO, DOCUMENT] }
+                      capturedAt: { type: string, format: date-time }
+                      note: { type: string, maxLength: 300 }
+      responses:
+        '201': { description: Physical receipt confirmed and replacement assignment created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Recovery not found. }
+        '409': { description: Recovery or replacement driver/vehicle is no longer eligible. }
   /assignments/{assignmentId}/verification-codes:
     post:
       tags: [Assignments]
