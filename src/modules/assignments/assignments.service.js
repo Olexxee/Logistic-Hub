@@ -142,6 +142,14 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     });
     if(!candidate.eligible)return candidate;
     const now=clock();
+    // Retire the held source assignment before inserting the replacement so the
+    // one-active-assignment-per-booking partial unique index remains satisfied.
+    // The surrounding serializable transaction rolls this update back if creation fails.
+    await repository.updateAssignmentForRecovery(source.id,{
+     status:"FAILED",
+     failureReason:`CUSTODY_RECOVERED_BY_RECOVERY:${recoveryId}`,
+     executionHoldAt:null,
+    },tx);
     const replacementAssignment=await repository.createRecoveryReplacementAssignment({
      parcelBookingId:source.parcelBookingId,
      deliveryLegId:source.deliveryLegId,
@@ -156,11 +164,6 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
      pickupAt:source.pickupAt,
      startedAt:now,
      payoutReviewRequired:true,
-    },tx);
-    await repository.updateAssignmentForRecovery(source.id,{
-     status:"FAILED",
-     failureReason:`CUSTODY_RECOVERED_TO_ASSIGNMENT:${replacementAssignment.id}`,
-     executionHoldAt:null,
     },tx);
     await repository.updateRecoveryDriverAvailability(recovery.replacementDriverProfileId,false,tx);
     const updated=await repository.updateAssignmentRecovery(recoveryId,{
