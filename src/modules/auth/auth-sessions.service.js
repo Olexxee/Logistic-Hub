@@ -27,7 +27,20 @@ export function createAuthSessionsService({ prismaClient, secret, clock = () => 
       const rotated = await repository.rotate({ id: session.id, oldTokenHash: oldHash, newTokenHash: hashOpaqueToken(rawNext), expiresAt: new Date(now.getTime() + REFRESH_TTL_MS), now });
       if (!rotated) throw new AuthenticationError("Refresh token has already been used or revoked.", "INVALID_REFRESH_TOKEN");
       const access = signAccessToken({ userId: rotated.user.id, role: rotated.user.role, sessionId: rotated.id, secret, now: now.getTime() });
-      return { refreshToken: rawNext, refreshExpiresAt: rotated.expiresAt, accessToken: access.token, tokenType: "Bearer", expiresIn: access.expiresIn };
+      return {
+        refreshToken: rawNext,
+        refreshExpiresAt: rotated.expiresAt,
+        accessToken: access.token,
+        tokenType: "Bearer",
+        expiresIn: access.expiresIn,
+        user: {
+          id: rotated.user.id,
+          fullName: rotated.user.fullName,
+          email: rotated.user.email,
+          role: rotated.user.role,
+          status: rotated.user.status,
+        },
+      };
     },
     async revoke(rawToken) {
       if (typeof rawToken !== "string" || !/^[a-f0-9]{64}$/i.test(rawToken)) return { revoked: false };
