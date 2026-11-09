@@ -314,7 +314,7 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 - [x] Use the shared configured driver-location freshness limit consistently across legacy and delivery-leg dispatch and reservation.
 - [ ] Apply route/corridor + vehicle capacity checks to inter-state transport.
 - [ ] Apply hub/transfer authorization to hub-transfer assignments.
-- [x] Re-check driver capability, selected vehicle suitability, active account/KYC and strict-mode evidence before pickup arrival and pickup custody verification.
+- [x] Re-check driver capability, selected vehicle suitability, active account/KYC, active route zones/coverage/hubs and strict-mode evidence before pickup arrival and pickup custody verification.
 - [x] Preserve post-pickup parcel completion if eligibility changes mid-route; record `IN_CUSTODY_ELIGIBILITY_EXCEPTION_COMPLETED` without restoring driver availability.
 - [ ] Add an Admin-controlled safety hold and controlled custody recovery/reassignment for critical incidents after pickup.
 - [ ] Add operational-case creation/notification and safe release/reassignment when pre-custody eligibility becomes invalid.
