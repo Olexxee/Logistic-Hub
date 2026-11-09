@@ -1,4 +1,5 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
+import { projectIntegrationShipmentEvent } from "../integrations/integration-shipment-events.projector.js";
 import { createAssignmentsRepository } from "./assignments.repository.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 async function serializableTransaction(prismaClient,callback){
@@ -26,7 +27,12 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     if(source.vehicleId===replacementVehicleId)return {blocker:"REPLACEMENT_VEHICLE_MUST_DIFFER"};
     await repository.lockDeliveryLeg(source.deliveryLegId,tx);
     const existing=await repository.findActiveRecoveryForSource(source.id,tx);
-    if(existing)return {recovery:existing,replay:true};
+    if(existing) {
+     if(existing.replacementDriverProfileId===replacementDriverProfileId&&existing.replacementVehicleId===replacementVehicleId)return {recovery:existing,replay:true};
+     return {blocker:"RECOVERY_ALREADY_ACTIVE",recoveryId:existing.id};
+    }
+    const otherActiveAssignment=await repository.findOtherActiveAssignmentOnLeg(source.deliveryLegId,source.id,tx);
+    if(otherActiveAssignment)return {blocker:"LEG_HAS_OTHER_ACTIVE_DRIVER_ASSIGNMENT"};
     await repository.lockRecoveryCandidate(replacementDriverProfileId,replacementVehicleId,tx);
     const candidate=await repository.checkRecoveryCandidate(tx,{
      sourceAssignment:source,replacementDriverProfileId,replacementVehicleId,now:clock(),
@@ -115,6 +121,8 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     const source=await repository.findAssignmentForRecovery(recovery.sourceAssignmentId,tx);
     if(!source||!source.executionHoldAt||!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status))return {blocker:"SOURCE_ASSIGNMENT_NOT_RECOVERABLE"};
     if(recovery.replacementDriverProfile?.userId!==userId)return {forbidden:true};
+    const otherActiveAssignment=await repository.findOtherActiveAssignmentOnLeg(source.deliveryLegId,source.id,tx);
+    if(otherActiveAssignment)return {blocker:"LEG_HAS_OTHER_ACTIVE_DRIVER_ASSIGNMENT"};
     const candidate=await repository.checkRecoveryCandidate(tx,{
      sourceAssignment:source,
      replacementDriverProfileId:recovery.replacementDriverProfileId,
@@ -149,7 +157,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
      receiptConfirmedByUserId:userId,receiptConfirmedAt:now,
      receiptCondition:conditionAtReceipt,receiptEvidence:evidence??undefined,
     },tx);
-    await repository.createAssignmentBookingEvent({
+    const sourceEvent=await repository.createAssignmentBookingEvent({
      parcelBookingId:source.parcelBookingId,actorUserId:userId,
      eventType:"DRIVER_ASSIGNMENT_CUSTODY_RECOVERED",
      fromStatus:source.status,toStatus:"IN_PROGRESS",
@@ -160,6 +168,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
       operationalCaseId:recovery.operationalCaseId,payoutReviewRequired:true,
      },
     },tx);
+    await projectIntegrationShipmentEvent({tx,parcelBookingId:source.parcelBookingId,sourceEvent});
     await repository.createOperationalAudit({
      actorUserId:userId,entityType:"DRIVER_ASSIGNMENT_RECOVERY",entityId:recoveryId,
      action:"DRIVER_CUSTODY_RECOVERY_CONFIRMED",
@@ -170,6 +179,13 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     },tx);
     return {recovery:updated,replacementAssignment,replay:false};
    });
+  },
+  async listCustodyRecoveries({page=1,limit=25,status}) {
+   const result=await repository.listAssignmentRecoveries({status,skip:(page-1)*limit,take:limit});
+   return {
+    items:result.items,
+    pagination:{page,limit,total:result.total,totalPages:Math.ceil(result.total/limit)},
+   };
   },
   async placeExecutionHold({assignmentId,actorUserId,reason}) {
    return serializableTransaction(prismaClient, async tx => {
