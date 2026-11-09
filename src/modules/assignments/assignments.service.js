@@ -12,6 +12,10 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
  return {
   async initiateCustodyRecovery({assignmentId,replacementDriverProfileId,replacementVehicleId,actorUserId,reason}) {
    return serializableTransaction(prismaClient, async tx => {
+    const snapshot=await repository.findAssignmentForRecovery(assignmentId,tx);
+    if(!snapshot)return {notFound:true};
+    if(!snapshot.deliveryLegId)return {blocker:"PARCEL_DELIVERY_LEG_REQUIRED"};
+    await repository.lockDeliveryLeg(snapshot.deliveryLegId,tx);
     await repository.lockAssignment(assignmentId,tx);
     const source=await repository.findAssignmentForRecovery(assignmentId,tx);
     if(!source)return {notFound:true};
