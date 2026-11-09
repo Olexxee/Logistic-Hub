@@ -11,6 +11,7 @@ async function requestAs(role, path, method = "GET") {
     state: { findMany: async () => [] },
     lGA: { findMany: async () => [] },
     serviceZone: { findMany: async () => [] },
+    pricingRule: { findMany: async () => [] },
   };
   const options = {
     prismaClient,
@@ -42,4 +43,14 @@ test("service-zone administration remains ADMIN-only", async () => {
   assert.equal((await requestAs("CUSTOMER", "/service-zones/admin")).status, 403);
   assert.equal((await requestAs("SUPPORT", "/service-zones/admin")).status, 403);
   assert.equal((await requestAs("ADMIN", "/service-zones/admin")).status, 200);
+});
+
+
+test("service-zone readiness audit remains ADMIN-only", async () => {
+  assert.equal((await requestAs("CUSTOMER", "/service-zones/admin/readiness")).status, 403);
+  assert.equal((await requestAs("SUPPORT", "/service-zones/admin/readiness")).status, 403);
+  const admin = await requestAs("ADMIN", "/service-zones/admin/readiness");
+  assert.equal(admin.status, 200);
+  assert.equal(admin.body.data.serviceType, "PARCEL_DELIVERY");
+  assert.equal(admin.body.data.summary.totalZones, 0);
 });
