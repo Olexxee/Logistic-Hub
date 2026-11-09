@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createParcelBookingsRepository } from "./parcel-bookings.repository.js";
 import { ConflictError, ForbiddenError } from "../../shared/http/app-error.js";
+import { prepareServiceZoneBoundaries, resolveServiceZoneForPoint } from "../geography/service-zone-resolution.js";
 
 function requestHash(input) { return createHash("sha256").update(JSON.stringify(input)).digest("hex"); }
 function publicReference() { return `LH-PCL-${randomBytes(6).toString("hex").toUpperCase()}`; }
@@ -82,13 +83,34 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
       const existing = await findExistingByIdempotencyKey(idempotencyKey, hash, senderId);
       if (existing) return existing;
       const now = clock();
-      const zoneIds = [...new Set([input.pickupServiceZoneId, input.destinationServiceZoneId])];
-      const zones = await db.findActiveParcelZones(zoneIds, now);
-      if (zones.length !== zoneIds.length) {
-        throw new ConflictError("One or both requested zones are not active for parcel delivery.", "SERVICE_ZONE_UNAVAILABLE");
+      const serviceableZones = await db.findServiceableParcelZones(now);
+      const preparedZones = prepareServiceZoneBoundaries(serviceableZones);
+      const pickupResolution = resolveServiceZoneForPoint(preparedZones, input.pickup);
+      const destinationResolution = resolveServiceZoneForPoint(preparedZones, input.destination);
+      function requireResolvedZone(result, label) {
+        if (result.status === "invalid-boundary") {
+          throw new ConflictError("An active parcel zone has an invalid stored boundary and must be corrected by an administrator.", "SERVICE_ZONE_BOUNDARY_INVALID");
+        }
+        if (result.status === "ambiguous") {
+          throw new ConflictError(`The ${label} coordinate falls in more than one active parcel service zone.`, "SERVICE_ZONE_AMBIGUOUS");
+        }
+        if (result.status !== "resolved") {
+          throw new ConflictError(`The ${label} coordinate is outside active parcel service coverage.`, "SERVICE_ZONE_NOT_FOUND");
+        }
+        return result.zone;
       }
-      const pricingRules = await db.findApplicablePricingRules(input.pickupServiceZoneId, now);
-      const pricingRule = pricingRules.find((rule) => rule.serviceZoneId === input.pickupServiceZoneId)
+      const pickupZone = requireResolvedZone(pickupResolution, "Pickup");
+      const destinationZone = requireResolvedZone(destinationResolution, "Destination");
+      if (input.pickupServiceZoneId && input.pickupServiceZoneId !== pickupZone.id) {
+        throw new ConflictError("The supplied pickup zone no longer matches the server-resolved coordinate.", "SERVICE_ZONE_RESOLUTION_MISMATCH");
+      }
+      if (input.destinationServiceZoneId && input.destinationServiceZoneId !== destinationZone.id) {
+        throw new ConflictError("The supplied destination zone no longer matches the server-resolved coordinate.", "SERVICE_ZONE_RESOLUTION_MISMATCH");
+      }
+      const pickupServiceZoneId = pickupZone.id;
+      const destinationServiceZoneId = destinationZone.id;
+      const pricingRules = await db.findApplicablePricingRules(pickupServiceZoneId, now);
+      const pricingRule = pricingRules.find((rule) => rule.serviceZoneId === pickupServiceZoneId)
         ?? pricingRules.find((rule) => rule.serviceZoneId == null);
       if (!pricingRule) throw new ConflictError("Parcel pricing is not configured for the pickup zone.", "PRICING_UNAVAILABLE");
 
@@ -97,8 +119,8 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         idempotencyKey,
         idempotencyPayloadHash: hash,
         senderId,
-        pickupServiceZoneId: input.pickupServiceZoneId,
-        destinationServiceZoneId: input.destinationServiceZoneId,
+        pickupServiceZoneId,
+        destinationServiceZoneId,
         status: "DRAFT",
         paymentStatus: "INITIALIZED",
         currency: pricingRule.currency,

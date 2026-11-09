@@ -130,8 +130,7 @@ function pointInPolygon(point, polygon) {
   if (outer !== 1) return outer;
   for (let i = 1; i < polygon.length; i += 1) {
     const hole = pointInRing(point, polygon[i]);
-    if (hole === 0) return 0;
-    if (hole === 1) return -1;
+    if (hole === 0 || hole === 1) return -1;
   }
   return 1;
 }
@@ -190,3 +189,29 @@ export function validateServiceZoneBoundary(value) {
 }
 
 export const serviceZoneBoundaryPositionLimit = MAX_BOUNDARY_POSITIONS;
+
+
+/**
+ * Classifies a WGS84 point against a validated Polygon/MultiPolygon boundary.
+ * Polygon edges are inclusive and reported separately so overlapping zone edges
+ * can be treated as ambiguous by the caller.
+ */
+export function classifyPointInValidatedServiceZoneBoundary(boundary, point) {
+  if (!Array.isArray(point) || point.length !== 2 ||
+      !Number.isFinite(point[0]) || !Number.isFinite(point[1]) ||
+      point[0] < -180 || point[0] > 180 || point[1] < -90 || point[1] > 90) return "invalid";
+  const polygons = boundary.type === "Polygon" ? [boundary.coordinates] : boundary.coordinates;
+  let onBoundary = false;
+  for (const polygon of polygons) {
+    const result = pointInPolygon(point, polygon);
+    if (result === 1) return "inside";
+    if (result === 0) onBoundary = true;
+  }
+  return onBoundary ? "boundary" : "outside";
+}
+
+export function classifyPointInServiceZoneBoundary(boundary, point) {
+  const validation = validateServiceZoneBoundary(boundary);
+  if (!validation.valid) return "invalid";
+  return classifyPointInValidatedServiceZoneBoundary(boundary, point);
+}

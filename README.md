@@ -1,5 +1,10 @@
 # Logistic Hub
 
+## Geography and serviceability
+
+- [GEO-01 Service-Zone Operations Audit](docs/geo-01-service-zone-operations-audit.md) — verified geography/service-zone foundation and GEO roadmap.
+- [GEO-03 Coordinate-to-Service-Zone Resolution](docs/geo-03-coordinate-service-zone-resolution.md) — server-authoritative point-in-polygon rules, fail-closed behavior, environment requirements and rollout gates.
+
 ## Identity and workspace authorization
 
 - [Workspace Authorization Contract (WSP-02)](docs/workspace-authorization-contract-wsp-02.md) — defines primary workspace roles, independent partner/hub memberships, Partner-owner hub access, driver application lifecycle, explicit role provisioning and backend authorization requirements. WSP-03A Driver/Partner enforcement and WSP-03B canonical workspace resolution are implemented in the backend; full route-scope audit, Admin provisioning and frontend workspace migration remain separate phases.

@@ -13,6 +13,20 @@ export function createParcelBookingsRepository({ prismaClient }) {
     findByIdempotencyKey(key) {
       return prismaClient.parcelBooking.findUnique({ where: { idempotencyKey: key } });
     },
+    findServiceableParcelZones(now) {
+      return prismaClient.serviceZone.findMany({
+        where: {
+          isActive: true,
+          state: { isActive: true, country: { isActive: true, code: "NG" } },
+          availability: { some: activeParcelAvailability(now) },
+        },
+        select: {
+          id: true, code: true, name: true, boundaryGeoJson: true,
+          state: { select: { id: true, code: true, name: true, country: { select: { code: true } } } },
+          lga: { select: { id: true, code: true, name: true } },
+        },
+      });
+    },
     findActiveParcelZones(zoneIds, now) {
       return prismaClient.serviceZone.findMany({
         where: {
