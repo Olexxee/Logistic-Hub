@@ -15,6 +15,16 @@ function conflict(code, message) {
   return error;
 }
 
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt >= 2) throw error;
+    }
+  }
+}
+
 export function createDriversService({ prismaClient, clock = () => new Date(), kycMode = env.DRIVER_KYC_MODE }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
 
@@ -436,7 +446,7 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
     },
 
     async setCoverage({ input, actorUserId }) {
-      return prismaClient.$transaction(async (tx) => {
+      return serializableTransaction(prismaClient, async (tx) => {
         const now = clock();
         const zone = await tx.serviceZone.findUnique({
           where: { id: input.serviceZoneId },
@@ -495,7 +505,7 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
           },
         });
         return updated;
-      }, { isolationLevel: "Serializable" });
+      });
     },
   };
 }
