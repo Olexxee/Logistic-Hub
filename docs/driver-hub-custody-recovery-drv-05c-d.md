@@ -74,16 +74,16 @@ D2 adds an explicit Admin disposition for a D1 recovery intake. A parcel with no
 - When a destination hub is selected, it must be active, belong to the selected destination zone, differ from the recovery hub, and accept the parcel category. The next leg is `HUB_TRANSFER` when both hubs are in the same state or `INTERSTATE_TRANSPORT` when they are in different states. Both remain partner-executed under the existing policy.
 - Without a destination hub, the selected zone must be the booking's final destination zone and be in the same state as the recovery hub. The next leg is `FINAL_MILE` and uses the booking's destination coordinates.
 - D2 rejects an existing later delivery leg rather than silently rewriting or skipping a pre-planned route. Such shipments require a separately reviewed route-replan workflow.
-- On approval, the superseded source leg is marked `FAILED` with `HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED`; it is never marked completed. A new leg is created from the recovery hub with status `READY_FOR_ASSIGNMENT`.
+- On approval, the superseded source leg is marked `FAILED` with `HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED`; it is never marked completed. A new leg is created from the recovery hub with status `PLANNED`. It is not dispatchable in D2.
 - The booking remains `IN_TRANSIT`. D2 does not create a driver or partner assignment, negotiate new pricing, create a payable, release payout, refund or settle funds.
 
 ### Explicit release gate
 
 The existing hub dispatch, partner assignment and two-party custody workflows are reused:
 
-1. Admin approves a disposition and the next leg becomes eligible for the existing dispatch/partner workflow.
-2. A driver or partner must be assigned to that exact leg and reach the existing pickup/acceptance state.
-3. Hub staff initiates the existing hub-to-recipient custody handover against the approved next leg.
+1. Admin approves the remaining route; the new leg remains `PLANNED`.
+2. A later D2B route-pricing/activation gate must validate route-specific pricing and activate the leg. This is required because existing partner quotes are booking-route scoped and the current partner execution API does not support `HUB_TRANSFER`.
+3. Only after that gate creates a valid driver/partner assignment may hub staff initiate the existing hub-to-recipient custody handover against the approved next leg.
 4. The receiving party confirms. Only then does the intake become `RELEASED` and the disposition become `RELEASED`.
 
 For a D1 recovery intake, both the hub handover creation path and confirmation transaction enforce that the handover leg matches `nextDeliveryLegId` on the approved disposition. A generic custody request cannot bypass the route approval. The D1 safety incident and payout-review flag remain intact.
@@ -92,7 +92,7 @@ For a D1 recovery intake, both the hub handover creation path and confirmation t
 
 - `POST /api/v1/admin/hub-intakes/:intakeRecordId/disposition` — Admin records a hold or approves continuation.
 - Existing `GET /api/v1/admin/hub-intakes` and `GET /api/v1/hub-operations/intakes` include recovery/disposition state.
-- Existing `/api/v1/delivery-legs/:legId/request-matching` / hub matching and partner assignment workflows handle the approved leg; no second dispatch implementation is introduced.
+- D2 creates a planned leg only. Dispatch and partner assignment remain blocked until D2B adds route-specific pricing validation and explicit activation; this avoids reusing a booking quote for a materially changed route.
 
 The endpoint is idempotent for an identical already-approved route. A held disposition may be escalated to continuation after review; an approved route cannot be silently replaced.
 
@@ -104,9 +104,9 @@ The endpoint is idempotent for an identical already-approved route. A held dispo
 - A recovered intake must still be `RECEIVED`, its booking paid and `IN_TRANSIT`, and its hub active.
 - A hold creates no delivery leg and leaves the parcel in hub custody.
 - Continuation rejects inactive origin/destination zones, inactive country/state, invalid or non-accepting destination hubs, and cross-state final-mile routes without a destination hub.
-- Same-state hub continuation creates a partner-only `HUB_TRANSFER`; cross-state hub continuation creates a partner-only `INTERSTATE_TRANSPORT`; same-state final destination creates a `FINAL_MILE` leg.
+- Same-state hub continuation plans a partner-only `HUB_TRANSFER`; cross-state hub continuation plans a partner-only `INTERSTATE_TRANSPORT`; same-state final destination plans a `FINAL_MILE` leg. Every D2 leg remains `PLANNED`.
 - Existing later legs block continuation; the system must not reorder or silently overwrite them.
-- Approval atomically fails the superseded source leg, creates exactly one next leg, persists the disposition and writes an audit event.
+- Approval atomically fails the superseded source leg, creates exactly one `PLANNED` next leg, persists the disposition and writes an audit event.
 - Booking remains `IN_TRANSIT`; no assignment, payout, refund, settlement or payable is created.
 - Recovery intake cannot be released on any leg other than its approved `nextDeliveryLegId`, including through the generic custody endpoint.
 - Releasing custody requires the existing two-party handover confirmation; only confirmation changes intake/disposition to `RELEASED`.
@@ -120,3 +120,8 @@ The endpoint is idempotent for an identical already-approved route. A held dispo
 - Receipt atomically links intake, retires the source assignment, clears active hold fields, preserves incident history, and writes audit events.
 - No leg completion, next-leg activation, driver payout, refund, or settlement is produced by D1.
 - Cancellation before receipt leaves the source assignment held and in custody.
+
+
+### D2B dependency
+
+D2B must introduce route-specific pricing/partner authorization for a recovery-created leg and only then activate it. It must not reuse the original booking quote without proving that its route and commercial scope match. It must also add partner execution support for `HUB_TRANSFER` or keep that leg blocked. No recovered intake can be physically released until the continuation leg has a valid receiving assignment.
