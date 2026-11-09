@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 through DRV-07 roadmap. DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, and DRV-05C-C pre-pickup eligibility alerting are merged. DRV-05C-D1 controlled hub custody recovery backend is implemented on `feat/drv-05c-d-hub-custody-recovery`; schema, migration, APIs, transactional capacity enforcement and tests are pushed. CI passed on the current implementation (634 passed, 1 skipped, 0 failed); staging acceptance remains pending. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md). CI and staging acceptance remain release gates.
+**Status:** DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, DRV-05C-C eligibility alerting, and DRV-05C-D1 controlled hub custody intake are merged. D1 is merged in [PR #130](https://github.com/Olexxee/Logistic-Hub/pull/130). DRV-05C-D2 hub intake disposition and route continuation is in implementation on `feat/drv-05c-d2-hub-disposition-route-continuation`; staging acceptance for D1 remains outstanding. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md).
 
 ## 1. Objective
 
@@ -337,7 +337,7 @@ DRV-05C is split into execution-hold primitive, controlled custody recovery, and
 
 ### DRV-05C-C — Pre-pickup eligibility change alerting
 
-**Status:** Backend implementation in progress on `feat/drv-05c-c-eligibility-change-alerting`.
+**Status:** Merged; see the merged DRV-05C-C implementation in the repository history.
 
 **Implemented in this slice:**
 
@@ -353,6 +353,18 @@ DRV-05C is split into execution-hold primitive, controlled custody recovery, and
 
 **Remaining before PR review:** run the complete repository CI, resolve any failures, update OpenAPI if needed (no new HTTP endpoint in this slice), and inspect the worker's case/notification privacy and operational queue consumption. This is not merged or deployed.
 
+### DRV-05C-D2 — Hub-held shipment disposition and route continuation
+
+**Status:** Backend implementation in progress on `feat/drv-05c-d2-hub-disposition-route-continuation`.
+
+- Admin may explicitly hold a D1 recovery intake for investigation or approve a remaining route.
+- Continuation creates a new delivery leg from the recovery hub; it never marks the superseded leg completed.
+- Same-state hub-to-hub routes use partner-only `HUB_TRANSFER`; cross-state hub-to-hub routes use partner-only `INTERSTATE_TRANSPORT`; same-state final destination uses `FINAL_MILE`.
+- Existing future legs are rejected rather than silently rewritten.
+- The existing hub dispatch/partner assignment and two-party custody handover workflows are reused. A recovered intake can only be released on the exact approved next leg.
+- No automatic driver/partner assignment, new price, payable, payout, refund or settlement is created.
+
+See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md) for route rules and acceptance criteria.
 ### DRV-06 — Reporting, audit and operational controls
 
 **Goal:** Make driver and fleet operations observable and accountable.
@@ -421,4 +433,4 @@ A phase is complete only when:
 
 ## 8. Immediate next step
 
-Complete DRV-05C-D1 CI and staging acceptance, then design and implement DRV-05C-D2 hub-held shipment disposition and route continuation. D2 must preserve the rule that physical hub receipt is not delivery-leg completion and must not activate a next leg until the remaining route is explicitly approved.
+Complete DRV-05C-D2 backend CI/review, then implement the dependent Admin and hub-operations frontend workflow. D1 staging acceptance remains a separate release gate.
