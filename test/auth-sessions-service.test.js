@@ -57,7 +57,6 @@ test("rotates refresh tokens and rejects replay of the previous token", async ()
     fullName: user.fullName,
     email: user.email,
     role: user.role,
-    status: user.status,
   });
   assert.equal(rows.get("session-1").tokenHash, hashOpaqueToken(rotated.refreshToken));
   const rotatedClaims = verifyAccessToken(rotated.accessToken, secret);
