@@ -166,7 +166,10 @@ export function createAssignmentsRepository(prismaClient = prisma) {
      where, skip, take,
      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
      include: {
+      parcelBooking: { select: { id: true, publicReference: true, status: true } },
+      deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
       sourceAssignment: { select: { id: true, status: true, driverProfileId: true, vehicleId: true } },
+      replacementAssignment: { select: { id: true, status: true, payoutReviewRequired: true } },
       replacementDriverProfile: { select: { id: true, user: { select: { fullName: true, email: true, phone: true } } } },
       replacementVehicle: { select: { id: true, type: true, make: true, model: true, registrationPlate: true } },
       operationalCase: { select: { id: true, publicReference: true, status: true, priority: true } },
