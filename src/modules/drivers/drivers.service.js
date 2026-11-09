@@ -15,6 +15,16 @@ function conflict(code, message) {
   return error;
 }
 
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt >= 2) throw error;
+    }
+  }
+}
+
 export function createDriversService({ prismaClient, clock = () => new Date(), kycMode = env.DRIVER_KYC_MODE }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
 
@@ -435,23 +445,66 @@ export function createDriversService({ prismaClient, clock = () => new Date(), k
       });
     },
 
-    async setCoverage(input) {
-      const zone = await prismaClient.serviceZone.findUnique({ where: { id: input.serviceZoneId }, include: { state: { include: { country: true } }, availability: { where: { serviceType: input.serviceType, isEnabled: true, AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: clock() } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: clock() } }] }] } } } });
-      if (!zone) return null;
-      if (input.isEnabled && (!zone.isActive || !zone.state?.isActive || !zone.state.country?.isActive || zone.availability.length === 0)) throw conflict("SERVICE_ZONE_NOT_ELIGIBLE", "Coverage requires an active zone, state, country, and matching service availability.");
-      const profile = await prismaClient.driverProfile.findUnique({ where: { id: input.driverProfileId }, select: { id: true } });
-      if (!profile) return null;
-      return prismaClient.driverCoverage.upsert({
-        where: {
+    async setCoverage({ input, actorUserId }) {
+      return serializableTransaction(prismaClient, async (tx) => {
+        const now = clock();
+        const zone = await tx.serviceZone.findUnique({
+          where: { id: input.serviceZoneId },
+          include: {
+            state: { include: { country: true } },
+            availability: {
+              where: {
+                serviceType: input.serviceType,
+                isEnabled: true,
+                AND: [
+                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                  { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+                ],
+              },
+            },
+          },
+        });
+        if (!zone) return null;
+        if (input.isEnabled && (!zone.isActive || !zone.state?.isActive || !zone.state.country?.isActive || zone.availability.length === 0)) {
+          throw conflict("SERVICE_ZONE_NOT_ELIGIBLE", "Coverage requires an active zone, state, country, and matching service availability.");
+        }
+        const profile = await tx.driverProfile.findUnique({ where: { id: input.driverProfileId }, select: { id: true } });
+        if (!profile) return null;
+        const unique = {
           driverProfileId_serviceZoneId_serviceType: {
             driverProfileId: input.driverProfileId,
             serviceZoneId: input.serviceZoneId,
             serviceType: input.serviceType,
           },
-        },
-        create: input,
-        update: { isEnabled: input.isEnabled },
-        select: { id: true, driverProfileId: true, serviceZoneId: true, serviceType: true, isEnabled: true },
+        };
+        const previous = await tx.driverCoverage.findUnique({ where: unique });
+        const { reason, ...coverageInput } = input;
+        const updated = await tx.driverCoverage.upsert({
+          where: unique,
+          create: coverageInput,
+          update: { isEnabled: input.isEnabled },
+          select: { id: true, driverProfileId: true, serviceZoneId: true, serviceType: true, isEnabled: true },
+        });
+        await writeOperationalAuditEvent(tx, {
+          actorUserId,
+          entityType: "DRIVER_COVERAGE",
+          entityId: updated.id,
+          action: input.isEnabled ? "DRIVER_COVERAGE_ENABLED" : "DRIVER_COVERAGE_DISABLED",
+          reason,
+          before: previous ? {
+            driverProfileId: previous.driverProfileId,
+            serviceZoneId: previous.serviceZoneId,
+            serviceType: previous.serviceType,
+            isEnabled: previous.isEnabled,
+          } : null,
+          after: {
+            driverProfileId: updated.driverProfileId,
+            serviceZoneId: updated.serviceZoneId,
+            serviceType: updated.serviceType,
+            isEnabled: updated.isEnabled,
+          },
+        });
+        return updated;
       });
     },
   };

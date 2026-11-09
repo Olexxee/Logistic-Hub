@@ -1216,12 +1216,13 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [driverProfileId, serviceZoneId, serviceType, isEnabled]
+              required: [driverProfileId, serviceZoneId, serviceType, isEnabled, reason]
               properties:
                 driverProfileId: { type: string }
                 serviceZoneId: { type: string }
                 serviceType: { $ref: '#/components/schemas/ServiceType' }
                 isEnabled: { type: boolean }
+                reason: { type: string, minLength: 10, maxLength: 500 }
       responses:
         '200': { description: Driver coverage upserted. }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -6374,7 +6375,7 @@ paths:
                 lgaId: { type: [string, 'null'], maxLength: 128 }
                 code: { type: string, minLength: 2, maxLength: 40, pattern: '^[A-Z0-9_-]+$' }
                 name: { type: string, minLength: 2, maxLength: 120 }
-                boundaryGeoJson: { type: [object, 'null'], additionalProperties: true }
+                boundaryGeoJson: { oneOf: [{ $ref: '#/components/schemas/GeoJSONPolygon' }, { $ref: '#/components/schemas/GeoJSONMultiPolygon' }, { type: 'null' }] }
       responses:
         '201':
           description: Service zone created.
@@ -8259,6 +8260,40 @@ components:
         startsAt: { type: [string, 'null'], format: date-time }
         endsAt: { type: [string, 'null'], format: date-time }
         config: { type: [object, 'null'], additionalProperties: true }
+    GeoJSONPosition:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items: { type: number }
+      description: '[longitude, latitude] in WGS 84 order; backend enforces coordinate ranges and finite values.'
+    GeoJSONLinearRing:
+      type: array
+      minItems: 4
+      items: { $ref: '#/components/schemas/GeoJSONPosition' }
+      description: Backend additionally requires closure and non-zero area.
+    GeoJSONPolygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { const: Polygon }
+        coordinates:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/GeoJSONLinearRing' }
+      additionalProperties: true
+    GeoJSONMultiPolygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { const: MultiPolygon }
+        coordinates:
+          type: array
+          minItems: 1
+          items:
+            type: array
+            minItems: 1
+            items: { $ref: '#/components/schemas/GeoJSONLinearRing' }
+      additionalProperties: true
     ServiceZoneResource:
       type: object
       required: [id, stateId, code, name, isActive]

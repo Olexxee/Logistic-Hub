@@ -48,10 +48,14 @@ test("driver eligibility requires verified profile, verified vehicle, and curren
 
     await assert.rejects(
       service.setCoverage({
-        driverProfileId: profile.id,
-        serviceZoneId: zone.id,
-        serviceType: "PARCEL_DELIVERY",
-        isEnabled: true,
+        input: {
+          driverProfileId: profile.id,
+          serviceZoneId: zone.id,
+          serviceType: "PARCEL_DELIVERY",
+          isEnabled: true,
+          reason: "Integration test coverage assignment attempt.",
+        },
+        actorUserId: reviewerUser.id,
       }),
       (error) => error.code === "SERVICE_ZONE_NOT_ELIGIBLE",
     );
@@ -59,10 +63,14 @@ test("driver eligibility requires verified profile, verified vehicle, and curren
     await prisma.country.update({ where: { id: country.id }, data: { isActive: true } });
     await prisma.state.update({ where: { id: state.id }, data: { isActive: true } });
     const coverage = await service.setCoverage({
-      driverProfileId: profile.id,
-      serviceZoneId: zone.id,
-      serviceType: "PARCEL_DELIVERY",
-      isEnabled: true,
+      input: {
+        driverProfileId: profile.id,
+        serviceZoneId: zone.id,
+        serviceType: "PARCEL_DELIVERY",
+        isEnabled: true,
+        reason: "Integration test coverage assignment approval.",
+      },
+      actorUserId: reviewerUser.id,
     });
     assert.equal(coverage.isEnabled, true);
 
