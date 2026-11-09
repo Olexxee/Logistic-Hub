@@ -1,7 +1,7 @@
 # DRV-05C-D — Controlled Hub Custody Recovery
 
 **Branch:** `feat/drv-05c-d-hub-custody-recovery`  
-**Phase status:** Implementation started  
+**Phase status:** D1 backend implementation pushed; CI and staging acceptance pending  
 **Scope:** Backend-first safety recovery into an approved, active hub.
 
 ## Why this phase exists
@@ -46,6 +46,21 @@ An active, verified hub operator for the selected hub confirms physical receipt.
 - Cancellation is permitted only before hub receipt; cancelling does not release the source assignment's safety hold.
 - Duplicate requests are idempotent; a different active hub selection conflicts.
 - Every authorization, receipt, and cancellation is audited.
+
+## D1 implementation pushed
+
+The backend implementation adds `DriverAssignmentHubRecovery` as an authorization/receipt lifecycle record and links it to the existing `HubIntakeRecord`. The source assignment, parcel booking, delivery leg, selected hub and safety incident remain explicitly linked.
+
+Routes:
+
+- `POST /api/v1/assignments/admin/:assignmentId/hub-recoveries` — Admin authorization.
+- `GET /api/v1/assignments/admin/hub-recoveries` — Admin recovery queue.
+- `POST /api/v1/assignments/admin/hub-recoveries/:recoveryId/cancel` — cancel before receipt.
+- `POST /api/v1/hub-operations/hub-recoveries/:recoveryId/receive` — active hub operator confirms physical receipt.
+
+Receipt revalidates the source assignment and linked safety case under serializable transaction locks, enforces hub service-zone/category/capacity rules, creates the intake record, marks the source assignment failed with payout review required, and clears only the active hold timestamp. The safety incident linkage and hold metadata remain. The booking and leg are not mutated.
+
+The current PR remains subject to CI and staging verification. This is not a declaration that the phase is complete.
 
 ## D2 — Hub-held shipment disposition and route continuation (separate acceptance slice)
 
