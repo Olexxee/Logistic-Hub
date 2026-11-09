@@ -117,8 +117,10 @@ function makeClient({ candidateEligible = true, recovery = null } = {}) {
       create: async ({ data }) => { state.audits.push(data); return data; },
     },
     bookingEvent: {
-      create: async ({ data }) => { state.events.push(data); return data; },
+      create: async ({ data }) => { state.events.push(data); return { id: "booking_event_1", createdAt: now, ...data }; },
     },
+    integrationShipmentEvent: { findUnique: async () => null },
+    parcelBooking: { findUnique: async () => ({ id: "booking_recovery", integrationClientId: null, senderId: "sender_1" }) },
   };
   return { state, client: { $transaction: async callback => callback(tx) } };
 }
