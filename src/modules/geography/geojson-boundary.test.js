@@ -39,8 +39,10 @@ test("rejects zero-area and self-intersecting rings", () => {
   assert.equal(validateServiceZoneBoundary(polygon([[[0, 0], [2, 2], [0, 2], [2, 0], [0, 0]]])).valid, false);
 });
 
-test("requires holes to be strictly inside the exterior ring", () => {
+test("accepts a valid interior hole and requires holes to be strictly inside", () => {
+  const holeInside = [[0.5, 0.5], [1.5, 0.5], [1.5, 1.5], [0.5, 1.5], [0.5, 0.5]];
   const holeOutside = [[3, 3], [4, 3], [4, 4], [3, 4], [3, 3]];
+  assert.equal(validateServiceZoneBoundary(polygon([square, holeInside])).valid, true);
   assert.equal(validateServiceZoneBoundary(polygon([square, holeOutside])).valid, false);
 });
 
@@ -51,6 +53,6 @@ test("rejects overlapping or touching MultiPolygon components", () => {
 
 test("rejects boundaries exceeding the vertex ceiling", () => {
   const many = [];
-  for (let i = 0; i < 10001; i += 1) many.push([0, 0]);
+  for (let i = 0; i < 2001; i += 1) many.push([0, 0]);
   assert.equal(validateServiceZoneBoundary(polygon([many])).valid, false);
 });
