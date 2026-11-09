@@ -1,6 +1,6 @@
 # DRV-05B — Assignment Execution Eligibility
 
-**Status:** Implemented on branch `feat/drv-05b-assignment-execution-eligibility`; PR/CI and staging acceptance pending. This slice enforces parcel-driver eligibility immediately before custody transfers and defines an audited continuity path after custody has transferred.
+**Status:** Implemented in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125); CI passed on head `4737c98dc13e8d71bb1a3f219202bbaafcfc295e`. Staging acceptance pending. This slice enforces parcel-driver eligibility immediately before custody transfers and defines an audited continuity path after custody has transferred.
 
 ## Source baseline
 
@@ -73,5 +73,5 @@ The service maps these to HTTP 409 conflict responses. Ownership failures remain
 - Predicate tests prove the assignment execution query requires active account, driver capability, exact vehicle suitability, active route coverage and strict-mode evidence without incorrectly requiring online/available state.
 - Repository tests prove eligibility changes block pre-custody arrival and pickup verification.
 - Repository tests prove post-pickup continuation is preserved and an eligibility exception is audited at delivery completion.
-- Full `npm test`, Prisma validation/generation and API contract validation in CI.
+- Full `npm test` passed: 608 tests, 607 passed, 0 failed. Prisma validation/generation, OpenAPI validation, migration application/history and schema-drift checks also passed in CI.
 - Staging acceptance remains separate from merge status.
