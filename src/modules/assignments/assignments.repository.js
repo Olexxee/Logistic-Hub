@@ -370,7 +370,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
       },
      }});
     }
-    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{completedJobs:{increment:1}}});if(a.driverProfile.kycTier==="FULL")await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
+    if(action==="DELIVERY"){await tx.driverProfile.update({where:{id:a.driverProfileId},data:{completedJobs:{increment:1}}});if(a.driverProfile.kycTier==="FULL"&&!a.payoutReviewRequired)await tx.driverPayout.upsert({where:{idempotencyKey:"completion-"+a.id},create:{driverProfileId:a.driverProfileId,...(a.parcelBookingId?{parcelBookingId:a.parcelBookingId}:{rideBookingId:a.rideBookingId}),amountMinor:a.agreedFareMinor,currency:a.currency,status:"PENDING",provider:"PAYSTACK",idempotencyKey:"completion-"+a.id},update:{}});}
     return {id:a.id,status:nextStatus,bookingStatus:action==="PICKUP"?(isParcel?"PICKED_UP":"TRIP_IN_PROGRESS"):isParcel?(finalDeliveryLeg?"COMPLETED":"IN_TRANSIT"):"COMPLETED",nextDeliveryLegId,verifiedAt:now};
    });
   },
