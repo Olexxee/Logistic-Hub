@@ -125,13 +125,24 @@ function validatePolygon(rings, path, issues) {
   return true;
 }
 
+function pointInPolygon(point, polygon) {
+  const outer = pointInRing(point, polygon[0]);
+  if (outer !== 1) return outer;
+  for (let i = 1; i < polygon.length; i += 1) {
+    const hole = pointInRing(point, polygon[i]);
+    if (hole === 0) return 0;
+    if (hole === 1) return -1;
+  }
+  return 1;
+}
+
 function polygonsIntersect(a, b) {
   for (const ringA of a) {
     for (const ringB of b) {
       if (ringEdgesIntersect(ringA, ringB)) return true;
     }
   }
-  return pointInRing(a[0][0], b[0]) === 1 || pointInRing(b[0][0], a[0]) === 1;
+  return pointInPolygon(a[0][0], b) === 1 || pointInPolygon(b[0][0], a) === 1;
 }
 
 export function validateServiceZoneBoundary(value) {
