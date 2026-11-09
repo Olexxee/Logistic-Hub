@@ -15,6 +15,7 @@ CREATE TABLE "hub_intake_dispositions" (
   "destinationHubPointId" TEXT,
   "nextDeliveryLegId" TEXT,
   "createdByUserId" TEXT NOT NULL,
+  "approvedByUserId" TEXT,
   "approvedAt" TIMESTAMP(3),
   "releasedAt" TIMESTAMP(3),
   "releasedByUserId" TEXT,
@@ -48,5 +49,7 @@ ALTER TABLE "hub_intake_dispositions"
     FOREIGN KEY ("destinationHubPointId") REFERENCES "hub_points"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "hub_intake_dispositions_createdByUserId_fkey"
     FOREIGN KEY ("createdByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "hub_intake_dispositions_approvedByUserId_fkey"
+    FOREIGN KEY ("approvedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "hub_intake_dispositions_releasedByUserId_fkey"
     FOREIGN KEY ("releasedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
