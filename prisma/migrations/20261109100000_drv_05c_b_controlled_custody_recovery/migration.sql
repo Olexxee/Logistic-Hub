@@ -32,6 +32,9 @@ CREATE TABLE "driver_assignment_recoveries" (
   "receiptConfirmedAt" TIMESTAMP(3),
   "receiptCondition" TEXT,
   "receiptEvidence" JSONB,
+  "cancelledByUserId" TEXT,
+  "cancelledAt" TIMESTAMP(3),
+  "cancellationReason" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "driver_assignment_recoveries_pkey" PRIMARY KEY ("id")
@@ -70,4 +73,6 @@ ALTER TABLE "driver_assignment_recoveries"
   ADD CONSTRAINT "driver_assignment_recoveries_exceptionAuthorizedByUserId_fkey"
     FOREIGN KEY ("exceptionAuthorizedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "driver_assignment_recoveries_receiptConfirmedByUserId_fkey"
-    FOREIGN KEY ("receiptConfirmedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    FOREIGN KEY ("receiptConfirmedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "driver_assignment_recoveries_cancelledByUserId_fkey"
+    FOREIGN KEY ("cancelledByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
