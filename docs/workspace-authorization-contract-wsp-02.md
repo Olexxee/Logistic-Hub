@@ -3,7 +3,7 @@
 **Status:** Proposed implementation contract based on the accepted workspace decision  
 **Date:** 9 November 2026  
 **Scope:** Logistic Hub backend identity, role provisioning, memberships, API authorization and workspace resolution  
-**Implementation status:** Contract/documentation only. No runtime authorization behavior or database records are changed by this document.
+**Implementation status:** WSP-03B implements the canonical workspace resolver in the backend. The resolver is exposed by login and `GET /auth/me`; it does not replace resource-level authorization.
 
 ## 1. Governing decision
 
@@ -198,3 +198,37 @@ Run role/status/deep-link/API ownership tests and staging acceptance for every s
 8. Admin oversight does not confer customer or operational execution rights.
 9. Role transitions are explicit, prerequisite-checked and audited.
 10. No production deployment or database migration is implied by this contract.
+
+
+## 10. Canonical workspace resolution (WSP-03B)
+
+The backend resolver derives the workspace key and landing route from the current `User.role`. It does not accept a requested workspace, client-supplied role, query parameter or stored frontend preference.
+
+| Primary role | Workspace key | Canonical landing route |
+|---|---|---|
+| `CUSTOMER` | `CUSTOMER` | `/` |
+| `DRIVER` | `DRIVER` | `/driver` |
+| `PARTNER_OPERATOR` | `PARTNER` | `/partner` |
+| `HUB_OPERATOR` | `HUB` | `/hub` |
+| `SUPPORT` | `SUPPORT` | `/support` |
+| `ADMIN` | `ADMIN` | `/admin` |
+
+The `workspace` object returned by login, refresh and `GET /auth/me` contains:
+
+- `key`: canonical workspace identifier derived from `User.role`;
+- `status`: `READY`, `RESTRICTED` or `BLOCKED`;
+- `reasonCode`: stable machine-readable explanation when readiness is not READY;
+- `landingPath`: canonical workspace landing route, or null for unsupported roles;
+- `profileStatus`: Driver profile verification state when applicable.
+
+Readiness rules:
+
+- Customer, Support and Admin resolve to READY after authentication has passed the account-status gate.
+- Driver requires its own DriverProfile. PENDING, REJECTED and NOT_SUBMITTED profiles remain in the Driver workspace with RESTRICTED readiness. A suspended profile is also RESTRICTED. Only a verified, non-suspended profile resolves READY; execution APIs still enforce all KYC, vehicle, capability, safety, availability and assignment checks.
+- Partner requires at least one active membership whose partner is both ACTIVE and VERIFIED. A pending/unverified partner is RESTRICTED; no active membership or only non-operational partner resources is BLOCKED.
+- Hub requires at least one active membership whose hub is ACTIVE and whose operator verification is VERIFIED. A pending hub is RESTRICTED; no active membership or only non-operational hubs is BLOCKED.
+- A Partner owner with hub memberships remains in the Partner workspace; Hub memberships are not considered when resolving the primary workspace for `PARTNER_OPERATOR`.
+- Inactive memberships are excluded from readiness. A blocked operational workspace is never rewritten to Customer.
+- An inactive account or unsupported role fails closed.
+
+This response is a routing/readiness hint, not an authorization grant. Every operational API continues to enforce role, membership, exact resource scope and execution eligibility independently. No membership IDs or private partner/hub records are returned by the resolver.

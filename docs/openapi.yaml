@@ -473,7 +473,8 @@ paths:
     get:
       tags: [Authentication]
       operationId: getCurrentAccount
-      summary: Return the authenticated account profile
+      summary: Return the authenticated account and canonical primary workspace
+      description: Returns the current database-backed primary role and a server-resolved workspace readiness state. Partner and Hub readiness requires at least one active membership in an ACTIVE and VERIFIED resource. Driver readiness reflects the DriverProfile verification and suspension state; it does not authorize individual execution actions. Missing or inactive operational memberships are reported as blocked within the assigned workspace and never cause Customer fallback.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -2468,7 +2469,7 @@ paths:
       tags: [Authentication]
       operationId: refreshAuthSession
       summary: Rotate the HttpOnly refresh cookie and issue a new access token
-      description: 'No request body. The browser sends the HttpOnly refresh cookie automatically with credentials included. The response rotates Set-Cookie and returns only the bearer access token. Requires an allowlisted Origin and X-Auth-CSRF: 1.'
+      description: 'No request body. The browser sends the HttpOnly refresh cookie automatically with credentials included. The response rotates Set-Cookie and returns a bearer access token plus the current user role and canonical workspace readiness, consistent with login and GET /auth/me. Requires an allowlisted Origin and X-Auth-CSRF: 1.'
       x-implementation-status: implemented
       security: []
       responses:
