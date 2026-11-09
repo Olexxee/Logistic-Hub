@@ -190,3 +190,25 @@ export function validateServiceZoneBoundary(value) {
 }
 
 export const serviceZoneBoundaryPositionLimit = MAX_BOUNDARY_POSITIONS;
+
+
+/**
+ * Classifies a WGS84 point against a validated Polygon/MultiPolygon boundary.
+ * Polygon edges are inclusive and reported separately so overlapping zone edges
+ * can be treated as ambiguous by the caller.
+ */
+export function classifyPointInServiceZoneBoundary(boundary, point) {
+  const validation = validateServiceZoneBoundary(boundary);
+  if (!validation.valid) return "invalid";
+  if (!Array.isArray(point) || point.length !== 2 ||
+      !Number.isFinite(point[0]) || !Number.isFinite(point[1]) ||
+      point[0] < -180 || point[0] > 180 || point[1] < -90 || point[1] > 90) return "invalid";
+  const polygons = boundary.type === "Polygon" ? [boundary.coordinates] : boundary.coordinates;
+  let onBoundary = false;
+  for (const polygon of polygons) {
+    const result = pointInPolygon(point, polygon);
+    if (result === 1) return "inside";
+    if (result === 0) onBoundary = true;
+  }
+  return onBoundary ? "boundary" : "outside";
+}
