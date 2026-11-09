@@ -790,3 +790,172 @@ test("confirmed hub recovery replay remains restricted to an active member of th
     error => error.statusCode === 403,
   );
 });
+
+
+function recoveredIntakeContext(overrides = {}) {
+  return {
+    id: "intake-recovery-1",
+    parcelBookingId: "booking-1",
+    deliveryLegId: "leg-1",
+    hubPointId: "hub-recovery-1",
+    status: "RECEIVED",
+    parcelBooking: {
+      id: "booking-1", status: "IN_TRANSIT", paymentStatus: "SUCCEEDED",
+      parcelCategory: "PARCEL", destinationServiceZoneId: "zone-destination",
+      destinationLatitude: 6.5, destinationLongitude: 3.4,
+    },
+    deliveryLeg: { id: "leg-1", sequence: 1, status: "IN_TRANSIT", type: "INTERSTATE_TRANSPORT" },
+    hubPoint: {
+      id: "hub-recovery-1", name: "Recovery Hub", status: "ACTIVE",
+      serviceZoneId: "zone-origin", latitude: 6.4, longitude: 3.3, acceptedParcelTypes: [],
+    },
+    driverAssignmentHubRecovery: { id: "hub-recovery-record-1", status: "CONFIRMED", operationalCaseId: "case-safety-1" },
+    disposition: null,
+    ...overrides,
+  };
+}
+
+function hubDispositionDb({ intake = recoveredIntakeContext(), destinationStateId = "state-1", destinationHub = null } = {}) {
+  const calls = { audits: [], legCreates: [], legUpdates: [], dispositionCreates: [], dispositionUpdates: [], bookingUpdates: [] };
+  const { db } = tx({
+    hubIntakeRecord: {
+      findUnique: async () => intake,
+      findFirst: async () => ({ id: intake.id }),
+      update: async ({ where, data }) => ({ id: where.id, ...data }),
+    },
+    deliveryLeg: {
+      findUnique: async () => leg,
+      findFirst: async () => ({ id: "leg-1", sequence: 1 }),
+      updateMany: async args => { calls.legUpdates.push(args); return { count: 1 }; },
+      create: async ({ data }) => { const result = { id: "leg-2", ...data }; calls.legCreates.push(result); return result; },
+    },
+    hubPoint: {
+      findUnique: async ({ where }) => where.id === "hub-recovery-1"
+        ? intake.hubPoint
+        : destinationHub,
+    },
+    serviceZone: {
+      findUnique: async ({ where }) => ({
+        id: where.id, isActive: true,
+        state: { id: where.id === "zone-origin" ? "state-1" : destinationStateId, isActive: true, country: { isActive: true } },
+      }),
+    },
+    custodyHandover: { findFirst: async () => null },
+    operationalCase: { findFirst: async () => null },
+    hubIntakeDisposition: {
+      findUnique: async () => intake.disposition,
+      create: async ({ data }) => {
+        const result = { id: "disposition-1", ...data };
+        calls.dispositionCreates.push(result);
+        return result;
+      },
+      update: async ({ where, data }) => {
+        const result = { id: where.id, ...intake.disposition, ...data };
+        calls.dispositionUpdates.push(result);
+        return result;
+      },
+    },
+    parcelBooking: {
+      findUnique: async () => booking,
+      update: async args => { calls.bookingUpdates.push(args); return {}; },
+    },
+    operationalAuditEvent: {
+      create: async ({ data }) => { calls.audits.push(data); return data; },
+    },
+  });
+  return { db, calls };
+}
+
+test("Admin can hold a recovered hub intake without creating or activating a delivery leg", async () => {
+  const { db, calls } = hubDispositionDb();
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setAdminHubIntakeDisposition({
+    intakeRecordId: "intake-recovery-1",
+    decision: "HOLD_FOR_INVESTIGATION",
+    reason: "Parcel condition requires a documented investigation.",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.disposition.status, "HELD");
+  assert.equal(calls.legCreates.length, 0);
+  assert.equal(calls.legUpdates.length, 0);
+  assert.equal(calls.bookingUpdates.length, 0);
+  assert.equal(calls.audits[0].action, "HUB_RECOVERED_PARCEL_HELD_FOR_INVESTIGATION");
+});
+
+test("Admin continuation creates a same-state final-mile leg and fails the superseded leg", async () => {
+  const { db, calls } = hubDispositionDb();
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setAdminHubIntakeDisposition({
+    intakeRecordId: "intake-recovery-1",
+    decision: "CONTINUE_DELIVERY",
+    reason: "Safety review permits controlled continuation to the recipient.",
+    destinationServiceZoneId: "zone-destination",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.disposition.status, "ROUTE_APPROVED");
+  assert.equal(result.nextDeliveryLeg.type, "FINAL_MILE");
+  assert.equal(result.nextDeliveryLeg.status, "READY_FOR_ASSIGNMENT");
+  assert.equal(result.nextDeliveryLeg.originHubPointId, "hub-recovery-1");
+  assert.equal(calls.legUpdates[0].data.status, "FAILED");
+  assert.equal(calls.legUpdates[0].data.failureReason, "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED");
+  assert.equal(calls.bookingUpdates.length, 0);
+  assert.equal(calls.audits[0].action, "HUB_RECOVERED_PARCEL_ROUTE_APPROVED");
+});
+
+test("cross-state recovery continuation requires an explicitly selected destination hub", async () => {
+  const { db, calls } = hubDispositionDb({ destinationStateId: "state-2" });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setAdminHubIntakeDisposition({
+    intakeRecordId: "intake-recovery-1",
+    decision: "CONTINUE_DELIVERY",
+    reason: "Continue through a verified receiving hub in the destination state.",
+    destinationServiceZoneId: "zone-destination",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "CONTINUATION_DESTINATION_HUB_REQUIRED");
+  assert.equal(calls.legCreates.length, 0);
+  assert.equal(calls.legUpdates.length, 0);
+});
+
+test("cross-state hub continuation creates an interstate partner leg", async () => {
+  const destinationHub = {
+    id: "hub-destination", name: "Destination Hub", status: "ACTIVE",
+    serviceZoneId: "zone-destination", latitude: 7.1, longitude: 4.2,
+    acceptedParcelTypes: ["PARCEL"],
+  };
+  const { db, calls } = hubDispositionDb({ destinationStateId: "state-2", destinationHub });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.setAdminHubIntakeDisposition({
+    intakeRecordId: "intake-recovery-1",
+    decision: "CONTINUE_DELIVERY",
+    reason: "Continue via the approved destination hub.",
+    destinationServiceZoneId: "zone-destination",
+    destinationHubPointId: "hub-destination",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.nextDeliveryLeg.type, "INTERSTATE_TRANSPORT");
+  assert.equal(result.nextDeliveryLeg.destinationHubPointId, "hub-destination");
+  assert.equal(calls.legCreates.length, 1);
+});
+
+test("recovered hub intake cannot be released on a leg other than its approved continuation", async () => {
+  const { db } = tx({
+    hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
+    driverAssignmentHubRecovery: { findFirst: async () => ({ id: "hub-recovery-record-1" }) },
+    hubIntakeDisposition: {
+      findUnique: async () => ({
+        id: "disposition-1", status: "ROUTE_APPROVED", nextDeliveryLegId: "different-leg",
+      }),
+    },
+    hubIntakeRecord: { findFirst: async () => ({ id: "intake-recovery-1" }) },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.createHubHandover({
+    hubPointId: "hub-1",
+    deliveryLegId: "leg-1",
+    toPartyType: "DRIVER",
+    toPartyId: "driver-1",
+    conditionAtRelease: "Parcel sealed and ready for onward movement.",
+  }, "hub-operator-1");
+  assert.equal(result.blocker, "HUB_RECOVERY_DISPOSITION_REQUIRED");
+});
