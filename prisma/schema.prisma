@@ -1124,6 +1124,10 @@ model DriverAssignment {
   completedAt      DateTime?
   cancelledAt      DateTime?
   failureReason    String?
+  executionHoldAt  DateTime?
+  executionHoldReason String?
+  executionHoldActorUserId String?
+  executionHoldOperationalCaseId String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
