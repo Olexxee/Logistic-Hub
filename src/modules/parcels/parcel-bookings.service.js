@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createParcelBookingsRepository } from "./parcel-bookings.repository.js";
 import { ConflictError, ForbiddenError } from "../../shared/http/app-error.js";
-import { resolveServiceZoneForPoint } from "../geography/service-zone-resolution.js";
+import { prepareServiceZoneBoundaries, resolveServiceZoneForPoint } from "../geography/service-zone-resolution.js";
 
 function requestHash(input) { return createHash("sha256").update(JSON.stringify(input)).digest("hex"); }
 function publicReference() { return `LH-PCL-${randomBytes(6).toString("hex").toUpperCase()}`; }
@@ -84,8 +84,9 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
       if (existing) return existing;
       const now = clock();
       const serviceableZones = await db.findServiceableParcelZones(now);
-      const pickupResolution = resolveServiceZoneForPoint(serviceableZones, input.pickup);
-      const destinationResolution = resolveServiceZoneForPoint(serviceableZones, input.destination);
+      const preparedZones = prepareServiceZoneBoundaries(serviceableZones);
+      const pickupResolution = resolveServiceZoneForPoint(preparedZones, input.pickup);
+      const destinationResolution = resolveServiceZoneForPoint(preparedZones, input.destination);
       function requireResolvedZone(result, label) {
         if (result.status === "invalid-boundary") {
           throw new ConflictError("An active parcel zone has an invalid stored boundary and must be corrected by an administrator.", "SERVICE_ZONE_BOUNDARY_INVALID");
