@@ -407,9 +407,13 @@ export function createAuthRouter({
     try {
       const refreshToken = readRefreshCookie(req);
       const tokens = await sessions.refresh(refreshToken);
+      const workspace = await workspaceResolver.resolve(tokens.user);
       setRefreshCookie(res, tokens.refreshToken);
-      const { refreshToken: _refreshToken, refreshExpiresAt: _refreshExpiresAt, ...publicTokens } = tokens;
-      return res.status(200).json({ success: true, data: publicTokens });
+      const { refreshToken: _refreshToken, refreshExpiresAt: _refreshExpiresAt, user, ...publicTokens } = tokens;
+      return res.status(200).json({
+        success: true,
+        data: { ...publicTokens, user: { ...user, workspace } },
+      });
     } catch (error) {
       if (["INVALID_REFRESH_TOKEN", "UNAUTHORIZED"].includes(error.code)) clearRefreshCookie(res);
       return next(error);
