@@ -215,3 +215,21 @@ export function classifyPointInServiceZoneBoundary(boundary, point) {
   if (!validation.valid) return "invalid";
   return classifyPointInValidatedServiceZoneBoundary(boundary, point);
 }
+
+/**
+ * Returns true when two valid service-zone boundaries overlap or touch.
+ * Polygon holes are respected by point containment; all ring edges participate
+ * in intersection checks. This is an operational warning, not a replacement
+ * for booking-time ambiguity detection.
+ */
+export function serviceZoneBoundariesOverlap(first, second) {
+  if (!validateServiceZoneBoundary(first).valid || !validateServiceZoneBoundary(second).valid) return false;
+  const firstPolygons = first.type === "Polygon" ? [first.coordinates] : first.coordinates;
+  const secondPolygons = second.type === "Polygon" ? [second.coordinates] : second.coordinates;
+  for (const a of firstPolygons) {
+    for (const b of secondPolygons) {
+      if (polygonsIntersect(a, b)) return true;
+    }
+  }
+  return false;
+}
