@@ -26,7 +26,7 @@ async function serializableTransaction(prismaClient, callback) {
 
 export const MAX_VERIFICATION_CODE_ATTEMPTS = 5;
 
-async function findParcelExecutionEligibility(tx, assignment, now) {
+export async function findParcelExecutionEligibility(tx, assignment, now) {
  if (!assignment.parcelBookingId) return null;
  const capability = parcelCapabilityForLegType(assignment.deliveryLeg?.type ?? "DIRECT");
  if (!capability) return {
