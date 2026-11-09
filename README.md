@@ -5,6 +5,7 @@
 - [GEO-01 Service-Zone Operations Audit](docs/geo-01-service-zone-operations-audit.md) — verified geography/service-zone foundation and GEO roadmap.
 - [GEO-03 Coordinate-to-Service-Zone Resolution](docs/geo-03-coordinate-service-zone-resolution.md) — server-authoritative point-in-polygon rules and fail-closed booking resolution.
 - [GEO-04 Service-Zone Readiness Audit](docs/geo-04-service-zone-readiness-audit.md) — Admin preflight for zone boundaries, availability, pricing, configured driver coverage and active overlaps.
+- [GEO-04 Staging Acceptance Record](docs/geo-04-staging-acceptance.md) — deployment evidence, environment blockers, and the controlled read-only data acceptance checklist.
 
 ## Identity and workspace authorization
 
