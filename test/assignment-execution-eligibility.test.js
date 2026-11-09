@@ -23,6 +23,8 @@ const baseAssignment = (overrides = {}) => ({
   parcelBooking: {
     id: "booking_1",
     senderId: "sender_1",
+    pickupServiceZoneId: "zone_origin",
+    destinationServiceZoneId: "zone_destination",
     status: "PICKUP_VERIFICATION_PENDING",
   },
   rideBooking: null,
@@ -36,6 +38,7 @@ test("pickup arrival is blocked when current driver capability or identity eligi
   let assignmentWrites = 0;
   const assignment = baseAssignment();
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
     driverAssignment: {
       findUnique: async () => assignment,
       updateMany: async () => { assignmentWrites += 1; return { count: 1 }; },
@@ -71,6 +74,7 @@ test("pickup arrival is blocked when the exact assigned vehicle loses its approv
   const assignment = baseAssignment();
   let vehicleWhere;
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
     driverAssignment: {
       findUnique: async () => assignment,
       updateMany: async () => ({ count: 1 }),
@@ -169,6 +173,7 @@ test("pickup verification refuses custody transfer when parcel execution eligibi
   let tokenReads = 0;
   let tokenWrites = 0;
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
     driverAssignment: { findUnique: async () => assignment },
     driverProfile: { findFirst: async () => null },
     vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
@@ -208,6 +213,7 @@ test("delivery verification completes existing parcel custody and records an eli
   let assignmentStatus;
   let bookingStatus;
   const tx = {
+    serviceZone: { findMany: async () => [{ id: "zone_origin" }, { id: "zone_destination" }] },
     driverAssignment: {
       findUnique: async () => assignment,
       update: async (_args) => { assignmentStatus = "COMPLETED"; return {}; },
