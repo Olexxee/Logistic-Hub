@@ -11,6 +11,7 @@ import {
 } from "./auth.crypto.js";
 import { createAuthMiddleware } from "./auth.middleware.js";
 import { createAuthSessionsService } from "./auth-sessions.service.js";
+import { createWorkspaceResolver } from "./workspace-resolver.service.js";
 import { createPersistentRateLimit } from "../../shared/http/rate-limit.middleware.js";
 
 const registerSchema = z.object({
@@ -109,6 +110,7 @@ export function createAuthRouter({
   const authRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-write", limit: 10, windowMs: 15 * 60_000 });
   const refreshRateLimit = createPersistentRateLimit({ prismaClient, namespace: "auth-refresh", limit: 30, windowMs: 15 * 60_000 });
   const sessions = createAuthSessionsService({ prismaClient, secret });
+  const workspaceResolver = createWorkspaceResolver({ prismaClient });
   const outbox = createOutboxService({ prismaClient });
 
   router.post("/register", authRateLimit, async (req, res, next) => {
@@ -296,11 +298,12 @@ export function createAuthRouter({
       const sessionTokens = await sessions.issue(user, { userAgent: req.get("user-agent"), ipHash: hashOpaqueToken(req.ip ?? req.socket?.remoteAddress ?? "unknown") });
       setRefreshCookie(res, sessionTokens.refreshToken);
       const { refreshToken: _refreshToken, refreshExpiresAt: _refreshExpiresAt, ...publicTokens } = sessionTokens;
+      const workspace = await workspaceResolver.resolve(user);
       return res.status(200).json({
         success: true,
         data: {
           ...publicTokens,
-          user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role },
+          user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role, workspace },
         },
       });
     } catch (error) {
@@ -433,15 +436,19 @@ export function createAuthRouter({
     }
   });
 
-  router.get("/me", requireAuth, (req, res) => res.status(200).json({
-    success: true,
-    data: {
-      id: req.user.id,
-      fullName: req.user.fullName,
-      email: req.user.email,
-      role: req.user.role,
-    },
-  }));
+  router.get("/me", requireAuth, async (req, res) => {
+    const workspace = await workspaceResolver.resolve(req.user);
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: req.user.id,
+        fullName: req.user.fullName,
+        email: req.user.email,
+        role: req.user.role,
+        workspace,
+      },
+    });
+  });
 
   return router;
 }
