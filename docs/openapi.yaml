@@ -2766,6 +2766,26 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Source assignment not found. }
         '409': { description: Source assignment or replacement driver/vehicle is not eligible. }
+  /assignments/recoveries/mine:
+    get:
+      tags: [Assignments]
+      operationId: listMyDriverAssignmentCustodyRecoveries
+      summary: List pending custody recoveries assigned to the authenticated replacement driver
+      description: DRIVER-only and owner-scoped. Returns only pending release/receipt work for the authenticated driver's profile, with the parcel reference, route-leg context, and exact replacement vehicle.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Paginated pending recovery tasks for the authenticated driver. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /assignments/recoveries/{recoveryId}/release:
     post:
       tags: [Assignments]
