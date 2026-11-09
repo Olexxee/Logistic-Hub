@@ -8,6 +8,7 @@ export function createAssignmentsController(service){return {
   if(result.blocker)return res.status(409).json({success:false,error:{code:result.blocker,message:"Only pending custody recoveries can be cancelled."}});
   return res.status(200).json({success:true,data:result});
  }),
+ listMyCustodyRecoveries:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listMyCustodyRecoveries({userId:req.user.id,...req.validated.query})})),
  listCustodyRecoveries:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listCustodyRecoveries(req.validated.query)})),
  initiateCustodyRecovery:asyncWrapper(async(req,res)=>{
   const result=await service.initiateCustodyRecovery({
