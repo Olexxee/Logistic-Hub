@@ -1,3 +1,5 @@
+ALTER TYPE "OperationalCaseType" ADD VALUE 'SAFETY_INCIDENT';
+
 ALTER TABLE "driver_assignments"
   ADD COLUMN "executionHoldAt" TIMESTAMP(3),
   ADD COLUMN "executionHoldReason" TEXT,
