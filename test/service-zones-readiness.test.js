@@ -64,9 +64,9 @@ test("readiness reports missing boundaries, availability, pricing and driver cov
   const result = await serviceFor([
     zone("ready-no-coverage", { coverage: false }),
     zone("missing-boundary", { boundaryGeoJson: null }),
-    zone("missing-pricing", { pricing: false }),
-    zone("inactive-availability", { availability: false }),
-    zone("inactive-geography", { geographyActive: false }),
+    zone("missing-pricing", { pricing: false, boundaryGeoJson: squareAway }),
+    zone("inactive-availability", { availability: false, boundaryGeoJson: { type: "Polygon", coordinates: [[[11, 6], [12, 6], [12, 7], [11, 7], [11, 6]]] } }),
+    zone("inactive-geography", { geographyActive: false, boundaryGeoJson: { type: "Polygon", coordinates: [[[14, 6], [15, 6], [15, 7], [14, 7], [14, 6]]] } }),
   ]).listReadiness();
   const byId = Object.fromEntries(result.zones.map(item => [item.id, item]));
   assert.equal(byId["ready-no-coverage"].bookingReady, true);
