@@ -248,6 +248,37 @@ test("pickup verification refuses custody transfer when parcel execution eligibi
   assert.equal(tokenWrites, 0);
 });
 
+test("serializable assignment checks retry PostgreSQL serialization conflicts", async () => {
+  const assignment = baseAssignment({
+    deliveryLeg: { id: "leg_1", type: "HUB_TRANSFER" },
+  });
+  let attempts = 0;
+  let transactionOptions;
+  const tx = {
+    driverAssignment: { findUnique: async () => assignment },
+  };
+  const client = {
+    $transaction: async (callback, options) => {
+      attempts += 1;
+      transactionOptions = options;
+      if (attempts === 1) throw Object.assign(new Error("serialization conflict"), { code: "P2034" });
+      return callback(tx);
+    },
+  };
+  const repository = createAssignmentsRepository(client);
+
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_1",
+    nextStatus: "ARRIVED_AT_PICKUP",
+    now,
+  });
+
+  assert.equal(attempts, 2);
+  assert.equal(transactionOptions.isolationLevel, "Serializable");
+  assert.equal(result.ineligible.code, "LEG_REQUIRES_PARTNER_EXECUTION");
+});
+
 test("delivery verification completes existing parcel custody and records an eligibility exception", async () => {
   const assignment = baseAssignment({
     status: "ARRIVED_AT_DESTINATION",
