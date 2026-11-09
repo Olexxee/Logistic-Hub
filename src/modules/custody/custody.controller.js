@@ -115,6 +115,20 @@ export function createCustodyController(service) {
       if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "The hub cannot confirm recovery receipt in the current state." } });
       return res.status(200).json({ success: true, data: result });
     },
+    setAdminHubIntakeDisposition: async (req, res) => {
+      const result = await service.setAdminHubIntakeDisposition({
+        ...req.body, intakeRecordId: req.params.intakeRecordId, actorUserId: req.user.id,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: {
+        code: "HUB_INTAKE_NOT_FOUND", message: "Hub intake record not found.",
+      } });
+      if (result.blocker) return res.status(409).json({ success: false, error: {
+        code: result.blocker, message: "The recovered parcel cannot receive this disposition in its current state.",
+      } });
+      return res.status(result.replay ? 200 : 201).json({ success: true, data: {
+        disposition: result.disposition, nextDeliveryLeg: result.nextDeliveryLeg ?? null, replay: Boolean(result.replay),
+      } });
+    },
     cancelAdminHubRecovery: async (req, res) => {
       const result = await service.cancelAdminHubRecovery({
         ...req.body, recoveryId: req.params.recoveryId, actorUserId: req.user.id,
