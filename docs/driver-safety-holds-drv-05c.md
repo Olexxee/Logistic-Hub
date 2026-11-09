@@ -72,3 +72,33 @@ DRV-05B deliberately allows the same assigned driver to finish delivery after el
 ## Open engineering decision
 
 The source audit confirms that the existing custody handover model is not itself a driver reassignment mechanism. The implementation must preserve this distinction. DRV-05C-B will not be considered complete until it proves how the assignment history, active driver reservation, vehicle binding, and physical custody handover move together without creating a window in which two drivers can claim the parcel.
+
+
+## DRV-05C-A implementation snapshot
+
+Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-holds`:
+
+- Added explicit nullable hold metadata to `DriverAssignment`: `executionHoldAt`, `executionHoldReason`, `executionHoldActorUserId`, and `executionHoldOperationalCaseId`. Assignment lifecycle status remains unchanged.
+- Added `SAFETY_INCIDENT` to `OperationalCaseType`; Admin hold creates a CRITICAL operational case linked to the parcel booking and delivery leg.
+- Admin endpoints (ADMIN-only):
+  - `POST /api/v1/assignments/admin/:assignmentId/execution-hold`
+  - `POST /api/v1/assignments/admin/:assignmentId/execution-hold/release`
+  - Both require a reason (5–1000 characters).
+- Hold placement is a serializable transaction with retry on Prisma `P2034`: creates the case, writes hold metadata, revokes active booking verification tokens, and records `OperationalAuditEvent` together.
+- Hold/release are idempotent where appropriate. Repeated hold returns the existing hold/case without duplicate case/audit. Release clears active hold metadata but keeps the incident case and audit history.
+- Assignment driver transitions, pickup/delivery verification, and verification-code issuance reject held assignments with `ASSIGNMENT_EXECUTION_HELD`. Hold check happens before token lookup/consumption, so a held parcel cannot be picked up or delivered through the ordinary verification path.
+- Driver assignment list exposes only a boolean `executionHeld`; it does not leak the Admin's incident reason.
+- Operations overview now counts `heldParcelAssignments`.
+- Safety holds are parcel-only in this initial slice. Ride assignments are explicitly excluded.
+- This is **not** custody recovery yet. Release resumes the existing assignment only after Admin review. DRV-05C-B still needs a separate physical handover/recovery mechanism for a current driver who cannot safely continue.
+
+### Migration
+
+`prisma/migrations/20261109090000_drv_05c_assignment_execution_holds/migration.sql` adds the hold columns/index and `SAFETY_INCIDENT` enum value. Validate Prisma schema, migration application/history, and schema drift in CI before merge.
+
+### Remaining acceptance before merge
+
+- CI must pass on the latest PR head.
+- Verify Admin endpoint role middleware and validation, API error mapping, and tests for hold/release idempotency.
+- Run existing assignment, custody, operational-case and payout tests. No payment/payout state is changed by hold/release.
+- Staging test: hold before pickup, hold after pickup, attempted pickup/delivery code, release, and case/audit inspection.
