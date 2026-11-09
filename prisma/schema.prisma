@@ -1145,6 +1145,9 @@ model DriverAssignmentRecovery {
   receiptConfirmedAt           DateTime?
   receiptCondition             String?
   receiptEvidence              Json?
+  cancelledByUserId             String?
+  cancelledAt                   DateTime?
+  cancellationReason            String?
   createdAt                    DateTime                          @default(now())
   updatedAt                    DateTime                          @updatedAt
 
