@@ -2771,7 +2771,7 @@ paths:
       tags: [Assignments]
       operationId: listMyDriverAssignmentCustodyRecoveries
       summary: List pending custody recoveries assigned to the authenticated replacement driver
-      description: DRIVER-only and owner-scoped. Returns only pending release/receipt work for the authenticated driver's profile, with the parcel reference, route-leg context, and exact replacement vehicle.
+      description: DRIVER-only and owner-scoped. Returns pending release/receipt work when the authenticated driver is either the current custodian or selected replacement driver, with parcel reference, route-leg context, and exact replacement vehicle.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
