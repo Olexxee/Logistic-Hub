@@ -295,10 +295,10 @@ export function createAuthRouter({
           error: { code: "ACCOUNT_NOT_ACTIVE", message: "Verify your email before signing in." },
         });
       }
+      const workspace = await workspaceResolver.resolve(user);
       const sessionTokens = await sessions.issue(user, { userAgent: req.get("user-agent"), ipHash: hashOpaqueToken(req.ip ?? req.socket?.remoteAddress ?? "unknown") });
       setRefreshCookie(res, sessionTokens.refreshToken);
       const { refreshToken: _refreshToken, refreshExpiresAt: _refreshExpiresAt, ...publicTokens } = sessionTokens;
-      const workspace = await workspaceResolver.resolve(user);
       return res.status(200).json({
         success: true,
         data: {
