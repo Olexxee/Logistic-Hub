@@ -1,6 +1,6 @@
 # GEO-03 — Coordinate-to-service-zone resolution
 
-**Status:** Backend implementation and automated CI complete; operational acceptance and release approval remain outstanding.  
+**Status:** Backend PR #138 and customer frontend PR #60 are merged. Operational staging acceptance and controlled rollout remain outstanding.  
 **Scope:** Backend point-in-polygon resolution and parcel booking-time revalidation.  
 **Spatial engine:** Application-level WGS84 geometry evaluation using the existing validated GeoJSON implementation. No PostGIS extension or new package is introduced.
 
@@ -30,7 +30,7 @@ This phase does not infer state/LGA from Google free-text components. Polygon co
 
 This changes parcel booking creation from trusting supplied zone IDs to requiring valid coordinate coverage. Existing active zones without boundaries will no longer accept new parcel bookings after this backend change is deployed. Do not deploy/enable the phase until the intended launch zones have validated boundaries, effective parcel availability, and an operationally reviewed coverage plan. This is deliberate fail-closed behavior, not a silent fallback to client-supplied IDs.
 
-No zone is activated, no boundary is written to the database, and no live deployment is performed by this PR.
+No zone activation, boundary data write, or live deployment was included in the implementation PRs.
 
 ## Tests and acceptance
 
