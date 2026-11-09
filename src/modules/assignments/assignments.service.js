@@ -47,15 +47,16 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     const assignment=await repository.findAssignmentForAdminHold(assignmentId,tx);
     if(!assignment)return {notFound:true};
     if(!assignment.executionHoldAt)return {blocker:"ASSIGNMENT_NOT_HELD"};
-    const before={executionHoldAt:assignment.executionHoldAt.toISOString(),executionHoldReason:assignment.executionHoldReason,operationalCaseId:assignment.executionHoldOperationalCaseId};
+    const caseId=assignment.executionHoldOperationalCaseId;
+    const before={executionHoldAt:assignment.executionHoldAt.toISOString(),executionHoldReason:assignment.executionHoldReason,operationalCaseId:caseId};
     await repository.updateExecutionHold(assignmentId,{executionHoldAt:null,executionHoldReason:null,executionHoldActorUserId:null,executionHoldOperationalCaseId:null},tx);
     await repository.createOperationalAudit({
      actorUserId,entityType:"DRIVER_ASSIGNMENT",entityId:assignmentId,
      action:"ASSIGNMENT_EXECUTION_HOLD_RELEASED",reason,
      before,after:{executionHoldAt:null,releaseReason:reason},
-     metadata:{operationalCaseId:assignment.executionHoldOperationalCaseId},
+     metadata:{operationalCaseId:caseId},
     },tx);
-    return {assignmentId,releasedAt:clock(),caseId:assignment.executionHoldOperationalCaseId,replay:false};
+    return {assignmentId,releasedAt:clock(),caseId,replay:false};
    });
   },
   async listExecutionHolds({page=1,limit=25}) {
