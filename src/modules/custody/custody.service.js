@@ -861,7 +861,13 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           return { blocker: "HUB_WEIGHT_CAPACITY_EXCEEDED" };
         }
         let volumeCm3 = null;
-        if (hasAllDimensions) volumeCm3 = Math.ceil((lengthMm * widthMm * heightMm) / 1000);
+        if (hasAllDimensions) {
+          const volumeCm3BigInt = (BigInt(lengthMm) * BigInt(widthMm) * BigInt(heightMm) + 999n) / 1000n;
+          if (volumeCm3BigInt > 2147483647n) {
+            throw fail(400, "HUB_INTAKE_DIMENSIONS_OUT_OF_RANGE", "The measured parcel volume exceeds the supported hub intake range.");
+          }
+          volumeCm3 = Number(volumeCm3BigInt);
+        }
         if (Number.isInteger(capacity.maxVolumeCm3)) {
           if (volumeCm3 === null) return { blocker: "HUB_INTAKE_DIMENSIONS_REQUIRED" };
           const currentVolume = Number(totals._sum.volumeCm3 ?? 0);
