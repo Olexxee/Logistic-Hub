@@ -5120,7 +5120,7 @@ paths:
       tags: [Admin]
       operationId: setRecoveredHubIntakeDisposition
       summary: Hold a safety-recovered parcel or approve its remaining route
-      description: ADMIN-only. A continuation decision creates a new delivery leg from the recovery hub and marks the superseded source leg failed. The new leg is READY_FOR_ASSIGNMENT only after this explicit approval. Physical hub release still requires the existing two-party custody handover on that exact next leg. D1 hub intake is never treated as delivery completion.
+      description: ADMIN-only. A continuation decision creates a new delivery leg from the recovery hub and marks the superseded source leg failed. The new leg remains PLANNED after approval; route-specific pricing and activation are a separate gate. Physical hub release still requires the existing two-party custody handover on that exact next leg. D1 hub intake is never treated as delivery completion.
       security: [{ bearerAuth: [] }]
       x-implementation-status: implemented
       parameters:
