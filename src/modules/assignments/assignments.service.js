@@ -1,9 +1,55 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import { createAssignmentsRepository } from "./assignments.repository.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
  const repository=createAssignmentsRepository(prismaClient);
  return {
+  async placeExecutionHold({assignmentId,actorUserId,reason}) {
+   return prismaClient.$transaction(async tx => {
+    const assignment = await repository.findAssignmentForAdminHold(assignmentId, tx);
+    if (!assignment) return {notFound:true};
+    if (!assignment.parcelBookingId) return {blocker:"PARCEL_ASSIGNMENT_REQUIRED"};
+    if (["COMPLETED","CANCELLED","FAILED"].includes(assignment.status)) return {blocker:"ASSIGNMENT_TERMINAL"};
+    if (assignment.executionHoldAt) return {assignmentId,heldAt:assignment.executionHoldAt,caseId:assignment.executionHoldOperationalCaseId,replay:true};
+    const heldAt=clock();
+    const operationalCase=await repository.createSafetyHoldCase({
+     publicReference:`OPS-${randomUUID().replaceAll("-","").slice(0,12).toUpperCase()}`,
+     type:"OTHER",status:"OPEN",priority:"CRITICAL",
+     parcelBookingId:assignment.parcelBookingId,
+     ...(assignment.deliveryLegId?{deliveryLegId:assignment.deliveryLegId}:{}),
+     reportedByUserId:actorUserId,
+     title:"Parcel assignment placed on safety hold",
+     description:`Admin safety hold for assignment ${assignmentId}. Reason: ${reason}`,
+     evidence:{assignmentId,driverProfileId:assignment.driverProfileId,vehicleId:assignment.vehicleId??null,holdReason:reason},
+    },tx);
+    await repository.updateExecutionHold(assignmentId,{executionHoldAt:heldAt,executionHoldReason:reason,executionHoldActorUserId:actorUserId,executionHoldOperationalCaseId:operationalCase.id},tx);
+    await repository.revokeAssignmentVerificationCodes(assignment,tx);
+    await repository.createOperationalAudit({
+     actorUserId,entityType:"DRIVER_ASSIGNMENT",entityId:assignmentId,
+     action:"ASSIGNMENT_EXECUTION_HELD",reason,
+     before:{status:assignment.status,executionHoldAt:null},
+     after:{status:assignment.status,executionHoldAt:heldAt.toISOString(),operationalCaseId:operationalCase.id},
+     metadata:{parcelBookingId:assignment.parcelBookingId,deliveryLegId:assignment.deliveryLegId??null},
+    },tx);
+    return {assignmentId,heldAt,caseId:operationalCase.id,replay:false};
+   },{isolationLevel:"Serializable"});
+  },
+  async releaseExecutionHold({assignmentId,actorUserId,reason}) {
+   return prismaClient.$transaction(async tx => {
+    const assignment=await repository.findAssignmentForAdminHold(assignmentId,tx);
+    if(!assignment)return {notFound:true};
+    if(!assignment.executionHoldAt)return {blocker:"ASSIGNMENT_NOT_HELD"};
+    const before={executionHoldAt:assignment.executionHoldAt.toISOString(),executionHoldReason:assignment.executionHoldReason,operationalCaseId:assignment.executionHoldOperationalCaseId};
+    await repository.updateExecutionHold(assignmentId,{executionHoldAt:null,executionHoldReason:null,executionHoldActorUserId:null,executionHoldOperationalCaseId:null},tx);
+    await repository.createOperationalAudit({
+     actorUserId,entityType:"DRIVER_ASSIGNMENT",entityId:assignmentId,
+     action:"ASSIGNMENT_EXECUTION_HOLD_RELEASED",reason,
+     before,after:{executionHoldAt:null,releaseReason:reason},
+     metadata:{operationalCaseId:assignment.executionHoldOperationalCaseId},
+    },tx);
+    return {assignmentId,releasedAt:clock(),caseId:assignment.executionHoldOperationalCaseId,replay:false};
+   },{isolationLevel:"Serializable"});
+  },
   async listMine({userId,page=1,limit=20}){
    const result=await repository.listDriverAssignments({userId,skip:(page-1)*limit,take:limit});
    return {
@@ -59,11 +105,11 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     pagination:{page,limit,total:result.total,totalPages:Math.ceil(result.total/limit)},
    };
   },
-  async markArrived({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_PICKUP",now:clock()});if(result?.conflict)throw new ConflictError("Assignment is not in a state that allows arrival at pickup.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();if(result?.ineligible)throw new ConflictError(result.ineligible.message,result.ineligible.code);return result;},
-  async startTrip({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"IN_PROGRESS",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified before starting the trip.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
-  async markDestination({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_DESTINATION",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified and the trip started before arriving at destination.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();return result;},
-  async issueCode({assignmentId,user,action}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");const booking=a.parcelBooking||a.rideBooking;const ownerId=a.parcelBooking?booking.senderId:booking.passengerId;if(user.id!==ownerId)throw new ForbiddenError("Only the booking owner can request a verification code.");const code=String(randomInt(0,1000000)).padStart(6,"0");const result=await repository.issueCode({assignment:a,action,tokenHash:createHash("sha256").update(code).digest("hex"),expiresAt:new Date(clock().getTime()+10*60_000),now:clock()});if(!result)throw new ConflictError("Assignment is no longer active.");if(result.conflict)throw new ConflictError("The driver must arrive at the relevant stop before a code can be issued.","ASSIGNMENT_STATE_CONFLICT");return {assignmentId,action,code,expiresInSeconds:600,note:"Share this one-time code only with your assigned driver."};},
-  async verifyCode({assignmentId,userId,action,code}){const result=await repository.verifyCode({assignmentId,driverUserId:userId,action,tokenHash:createHash("sha256").update(code).digest("hex"),now:clock()});if(!result)throw new NotFoundError("Assignment not found.");if(result.forbidden)throw new ForbiddenError();if(result.ineligible)throw new ConflictError(result.ineligible.message,result.ineligible.code);if(result.invalid)throw new ConflictError("The verification code is invalid or expired.","INVALID_VERIFICATION_CODE");if(result.conflict)throw new ConflictError("Assignment is not in the state required for this verification.","ASSIGNMENT_STATE_CONFLICT");return result;},
+  async markArrived({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_PICKUP",now:clock()});if(result?.conflict)throw new ConflictError("Assignment is not in a state that allows arrival at pickup.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();if(result?.held)throw new ConflictError("This assignment is under an Admin safety hold. Operations must resolve the hold before driver actions can continue.","ASSIGNMENT_EXECUTION_HELD");if(result?.ineligible)throw new ConflictError(result.ineligible.message,result.ineligible.code);return result;},
+  async startTrip({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"IN_PROGRESS",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified before starting the trip.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();if(result?.held)throw new ConflictError("This assignment is under an Admin safety hold. Operations must resolve the hold before driver actions can continue.","ASSIGNMENT_EXECUTION_HELD");return result;},
+  async markDestination({assignmentId,userId}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");if(a.driverProfile.userId!==userId)throw new ForbiddenError();const result=await repository.transition({assignmentId,driverUserId:userId,nextStatus:"ARRIVED_AT_DESTINATION",now:clock()});if(result?.conflict)throw new ConflictError("Pickup must be verified and the trip started before arriving at destination.","ASSIGNMENT_STATE_CONFLICT");if(result?.forbidden)throw new ForbiddenError();if(result?.held)throw new ConflictError("This assignment is under an Admin safety hold. Operations must resolve the hold before driver actions can continue.","ASSIGNMENT_EXECUTION_HELD");return result;},
+  async issueCode({assignmentId,user,action}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");const booking=a.parcelBooking||a.rideBooking;const ownerId=a.parcelBooking?booking.senderId:booking.passengerId;if(user.id!==ownerId)throw new ForbiddenError("Only the booking owner can request a verification code.");const code=String(randomInt(0,1000000)).padStart(6,"0");const result=await repository.issueCode({assignment:a,action,tokenHash:createHash("sha256").update(code).digest("hex"),expiresAt:new Date(clock().getTime()+10*60_000),now:clock()});if(!result)throw new ConflictError("Assignment is no longer active.");if(result.held)throw new ConflictError("This assignment is under an Admin safety hold. Verification codes are disabled until operations resolves the hold.","ASSIGNMENT_EXECUTION_HELD");if(result.conflict)throw new ConflictError("The driver must arrive at the relevant stop before a code can be issued.","ASSIGNMENT_STATE_CONFLICT");return {assignmentId,action,code,expiresInSeconds:600,note:"Share this one-time code only with your assigned driver."};},
+  async verifyCode({assignmentId,userId,action,code}){const result=await repository.verifyCode({assignmentId,driverUserId:userId,action,tokenHash:createHash("sha256").update(code).digest("hex"),now:clock()});if(!result)throw new NotFoundError("Assignment not found.");if(result.forbidden)throw new ForbiddenError();if(result.ineligible)throw new ConflictError(result.ineligible.message,result.ineligible.code);if(result.held)throw new ConflictError("This assignment is under an Admin safety hold. Verification is blocked until operations resolves the hold.","ASSIGNMENT_EXECUTION_HELD");if(result.invalid)throw new ConflictError("The verification code is invalid or expired.","INVALID_VERIFICATION_CODE");if(result.conflict)throw new ConflictError("Assignment is not in the state required for this verification.","ASSIGNMENT_STATE_CONFLICT");return result;},
   async location({assignmentId,user}){const a=await repository.findAssignment(assignmentId);if(!a)throw new NotFoundError("Assignment not found.");const booking=a.parcelBooking||a.rideBooking;const ownerId=a.parcelBooking?booking.senderId:booking.passengerId;if(user.id!==ownerId&&!["ADMIN","SUPPORT"].includes(user.role))throw new ForbiddenError();if(!["ACCEPTED","ARRIVED_AT_PICKUP","PICKUP_CONFIRMED","IN_PROGRESS","ARRIVED_AT_DESTINATION"].includes(a.status))throw new ConflictError("Driver location is visible only during an active, paid assignment.","TRACKING_NOT_AVAILABLE");const loc=await repository.findOwnerLocation({assignment:a,now:clock()});return loc?{latitude:loc.latitude.toString(),longitude:loc.longitude.toString(),accuracyMeters:loc.accuracyMeters?.toString()??null,recordedAt:loc.recordedAt}:null;},
  };
 }
