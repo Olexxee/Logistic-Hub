@@ -3,7 +3,8 @@
 ## Geography and serviceability
 
 - [GEO-01 Service-Zone Operations Audit](docs/geo-01-service-zone-operations-audit.md) — verified geography/service-zone foundation and GEO roadmap.
-- [GEO-03 Coordinate-to-Service-Zone Resolution](docs/geo-03-coordinate-service-zone-resolution.md) — server-authoritative point-in-polygon rules, fail-closed behavior, environment requirements and rollout gates.
+- [GEO-03 Coordinate-to-Service-Zone Resolution](docs/geo-03-coordinate-service-zone-resolution.md) — server-authoritative point-in-polygon rules and fail-closed booking resolution.
+- [GEO-04 Service-Zone Readiness Audit](docs/geo-04-service-zone-readiness-audit.md) — Admin preflight for zone boundaries, availability, pricing, configured driver coverage and active overlaps.
 
 ## Identity and workspace authorization
 
