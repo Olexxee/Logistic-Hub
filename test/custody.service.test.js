@@ -1004,3 +1004,26 @@ test("generic custody confirmation cannot release a recovery intake on an unappr
   );
   assert.equal(intakeUpdates, 0);
 });
+
+
+test("generic hub handover initiation cannot bypass a recovery disposition", async () => {
+  const { db } = tx({
+    hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
+    driverAssignmentHubRecovery: { findFirst: async () => ({ id: "hub-recovery-record-1" }) },
+    hubIntakeDisposition: {
+      findUnique: async () => ({ id: "disposition-1", status: "HELD", nextDeliveryLegId: null }),
+    },
+    hubIntakeRecord: { findFirst: async () => ({ id: "intake-recovery-1" }) },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.createHandover({
+    parcelBookingId: "booking-1",
+    deliveryLegId: "leg-1",
+    fromPartyType: "HUB",
+    fromPartyId: "hub-1",
+    toPartyType: "DRIVER",
+    toPartyId: "driver-1",
+    conditionAtRelease: "Parcel sealed and ready for onward movement.",
+  }, "hub-operator-1");
+  assert.equal(result.blocker, "HUB_RECOVERY_DISPOSITION_REQUIRED");
+});
