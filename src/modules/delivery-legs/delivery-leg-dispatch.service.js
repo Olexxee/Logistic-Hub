@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { env } from "../../config/env.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 import { createDeliveryLegDispatchRepository } from "./delivery-leg-dispatch.repository.js";
+import { activeDriverCapabilityWhere, activeDriverDocumentWhere, activeServiceZoneWhere, eligibleVehicleWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = [
   "AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED",
@@ -25,9 +26,9 @@ function conflict(code, message) {
 }
 function assertEligibleDriver(driver, leg, now) {
   if (!driver || driver.verificationStatus !== "VERIFIED" || driver.suspendedAt || !(driver.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && driver.kycTier === "TEST_LIMITED")) || !driver.isOnline || !driver.isAvailable) return false;
-  if (!driver.lastLocationAt || driver.lastLocationAt > now || driver.lastLocationAt < new Date(now.getTime() - 5 * 60_000)) return false;
+  if (!driver.lastLocationAt || driver.lastLocationAt > now || driver.lastLocationAt < new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000)) return false;
   const location = driver.locations?.[0];
-  if (!location || location.recordedAt > now || location.recordedAt < new Date(now.getTime() - 5 * 60_000)) return false;
+  if (!location || location.recordedAt > now || location.recordedAt < new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000)) return false;
   const originLat = Number(leg.originLatitude);
   const originLon = Number(leg.originLongitude);
   if (!Number.isFinite(originLat) || !Number.isFinite(originLon)) return false;
@@ -100,6 +101,11 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         if (leg.status !== "READY_FOR_ASSIGNMENT") {
           throw conflict("DELIVERY_LEG_NOT_READY", "Driver offers can only be requested for a leg that is ready for assignment.");
         }
+        const activeZones = await db.findActiveServiceZones(tx, leg, now);
+        const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
+        if (activeZones.length !== requiredZoneCount) {
+          throw conflict("SERVICE_ZONE_UNAVAILABLE", "The origin and destination zones must be active and available for parcel delivery.");
+        }
         const existing = await db.listActiveOffers(tx, leg.id, now);
         if (existing.length) {
           return { deliveryLegId: leg.id, status: leg.status, offersCreated: existing.length, replay: true };
@@ -156,16 +162,23 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             if (offer.proposalPayloadHash !== proposalHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
             return { offerId, proposedFareMinor: offer.proposedFareMinor.toString(), currency: offer.currency, status: offer.status, replay: true };
           }
-          if (profile.verificationStatus !== "VERIFIED" || !profile.isOnline || !profile.isAvailable) {
+          if (profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || !(profile.kycTier === "FULL" || (env.DRIVER_KYC_MODE === "TEST" && profile.kycTier === "TEST_LIMITED")) || !profile.isOnline || !profile.isAvailable) {
             throw new ForbiddenError("A verified, online and available driver profile is required.");
           }
           if (offer.status !== "OFFERED" || offer.proposedFareMinor != null
             || offer.expiresAt <= now || offer.deliveryLeg.status !== "READY_FOR_ASSIGNMENT") {
             throw conflict("OFFER_NO_LONGER_AVAILABLE", "This delivery-leg offer is no longer available for a fare proposal.");
           }
+          const capability = parcelCapabilityForLegType(offer.deliveryLeg.type);
+          const driverGrant = capability && await tx.driverCapabilityGrant.findFirst({
+            where: { driverProfileId: profile.id, capability, status: "APPROVED" },
+            select: { id: true },
+          });
+          if (!driverGrant) throw conflict("DRIVER_CAPABILITY_NOT_APPROVED", "Your capability for this delivery service is not approved.");
+          const vehicleWhere = eligibleVehicleWhere({ driverProfileId: profile.id, capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" });
           const eligibleVehicles = vehicleId
-            ? await tx.vehicle.findMany({ where: { id: vehicleId, driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 })
-            : await tx.vehicle.findMany({ where: { driverProfileId: profile.id, isActive: true, verificationStatus: "VERIFIED" }, select: { id: true }, take: 2 });
+            ? await tx.vehicle.findMany({ where: { id: vehicleId, ...vehicleWhere }, select: { id: true }, take: 2 })
+            : await tx.vehicle.findMany({ where: vehicleWhere, select: { id: true }, take: 2 });
           if (!eligibleVehicles.length) throw conflict("VEHICLE_NOT_ELIGIBLE", "Select one of your active, verified vehicles before proposing a fare.");
           if (eligibleVehicles.length > 1) throw conflict("VEHICLE_SELECTION_REQUIRED", "Select the vehicle you will use for this delivery.");
           const vehicle = eligibleVehicles[0];
@@ -252,11 +265,6 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw conflict("OFFER_NO_LONGER_AVAILABLE", "The selected driver fare is invalid or expired.");
           }
           if (!offer.vehicleId) throw conflict("VEHICLE_NOT_SELECTED", "The driver has not selected a vehicle for this offer.");
-          const selectedVehicle = await tx.vehicle.findFirst({
-            where: { id: offer.vehicleId, driverProfileId: offer.driverProfileId, isActive: true, verificationStatus: "VERIFIED" },
-            select: { id: true },
-          });
-          if (!selectedVehicle) throw conflict("VEHICLE_NO_LONGER_ELIGIBLE", "The selected vehicle is no longer active and verified.");
           if (offer.acceptanceIdempotencyKey === idempotencyKey) {
             if (offer.acceptancePayloadHash !== acceptanceHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare acceptance.");
             const assignment = await tx.driverAssignment.findFirst({
@@ -272,16 +280,30 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               currency: offer.currency, paymentRequired: true, paymentEnabled: false, replay: true,
             };
           }
+          const capability = parcelCapabilityForLegType(leg.type);
+          const selectedVehicle = await tx.vehicle.findFirst({
+            where: { id: offer.vehicleId, ...eligibleVehicleWhere({ driverProfileId: offer.driverProfileId, capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) },
+            select: { id: true },
+          });
+          if (!selectedVehicle) throw conflict("VEHICLE_NO_LONGER_ELIGIBLE", "The selected vehicle is no longer approved for this delivery service.");
+          const driverGrant = await tx.driverCapabilityGrant.findFirst({
+            where: { driverProfileId: offer.driverProfileId, capability, status: "APPROVED" },
+            select: { id: true },
+          });
+          if (!driverGrant) throw conflict("DRIVER_CAPABILITY_NO_LONGER_APPROVED", "The selected driver is no longer approved for this delivery service.");
+          const activeZones = await db.findActiveServiceZones(tx, leg, now);
+          const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
+          if (activeZones.length !== requiredZoneCount) throw conflict("SERVICE_ZONE_UNAVAILABLE", "The origin or destination zone is no longer active and available.");
           const driverSnapshot = await tx.driverProfile.findFirst({
             where: {
               id: offer.driverProfileId,
               verificationStatus: "VERIFIED",
               isOnline: true,
               isAvailable: true,
-              lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
+              lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
             },
             select: {
-              id: true, verificationStatus: true, isOnline: true, isAvailable: true,
+              id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true,
               serviceRadiusMeters: true, lastLocationAt: true,
               locations: {
                 orderBy: { recordedAt: "desc" }, take: 1,
@@ -296,12 +318,14 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             where: {
               id: offer.driverProfileId,
               verificationStatus: "VERIFIED", kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] }, suspendedAt: null, isOnline: true, isAvailable: true,
-              lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
+              lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
               user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
-              vehicles: { some: { id: offer.vehicleId, isActive: true, verificationStatus: "VERIFIED" } },
+              ...activeDriverCapabilityWhere(capability),
+              ...activeDriverDocumentWhere(now, env.DRIVER_KYC_MODE === "STRICT"),
+              vehicles: { some: { id: offer.vehicleId, ...eligibleVehicleWhere({ capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) } },
               AND: [
-                { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
-                { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+                { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
+                { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
               ],
               assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
             },

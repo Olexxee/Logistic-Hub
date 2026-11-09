@@ -47,6 +47,7 @@ function createApp({ canDispatch = true } = {}) {
       createMany: async ({ data }) => { state.createdOffers.push(...data); return { count: data.length }; },
     },
     driverProfile: { findMany: async () => [driver] },
+    serviceZone: { findMany: async () => [{ id: "zone-1" }] },
     bookingEvent: { create: async ({ data }) => { state.events.push(data); return data; } },
   };
   const prismaClient = { $transaction: callback => callback(tx) };

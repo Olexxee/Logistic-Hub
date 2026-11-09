@@ -97,6 +97,8 @@ test("parcel matching creates offers only for fresh, nearby eligible drivers", a
   assert.deepEqual(zoneQuery.select, { id: true, stateId: true });
   assert.deepEqual(driverQuery.where.kycTier.in, ["FULL", "TEST_LIMITED"]);
   assert.equal(driverQuery.where.suspendedAt, null);
+  assert.deepEqual(driverQuery.where.capabilities.some, { capability: "LOCAL_DISPATCH", status: "APPROVED" });
+  assert.deepEqual(driverQuery.where.vehicles.some.serviceCapabilities.some, { capability: "LOCAL_DISPATCH", status: "APPROVED" });
   assert.equal(zoneQuery.where.availability.some.serviceType, "PARCEL_DELIVERY");
   assert.equal(zoneQuery.where.availability.some.isEnabled, true);
   assert.deepEqual(driverQuery.where.lastLocationAt, {
@@ -199,6 +201,8 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
     status: "MATCHING",
     pickupServiceZoneId: "zone_pickup",
     destinationServiceZoneId: "zone_destination",
+    pickupLatitude: 6.5244,
+    pickupLongitude: 3.3792,
     connectionFeeMinor: 300n,
     otherChargesMinor: 50n,
     currency: "NGN",
@@ -223,9 +227,12 @@ test("customer fare acceptance locks the agreed price and creates a temporary as
       updateMany: async (args) => { writes.push(["offer", args]); return { count: 1 }; },
     },
     driverProfile: {
+      findFirst: async () => driver("driver_profile_2"),
       updateMany: async (args) => { writes.push(["driver", args]); return { count: 1 }; },
     },
     vehicle: { findFirst: async () => ({ id: "vehicle_2" }) },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
+    serviceZone: { findMany: async () => [{ id: "zone_pickup", stateId: "state_1" }, { id: "zone_destination", stateId: "state_1" }] },
     deliveryLeg: {
       create: async (args) => { writes.push(["deliveryLeg", args]); return { id: "delivery_leg_2" }; },
     },
@@ -286,6 +293,7 @@ test("driver fare proposal requires an owned active verified vehicle and stores 
       findUnique: async () => offer,
       updateMany: async ({ data }) => { offerUpdate = data; return { count: 1 }; },
     },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
     vehicle: { findMany: async () => [{ id: "vehicle-verified" }] },
     bookingEvent: { create: async ({ data }) => { event = data; return data; } },
   };
@@ -315,6 +323,7 @@ test("legacy fare proposal without vehicleId is rejected when multiple verified 
   const tx = {
     driverProfile: { findUnique: async () => ({ id: "driver_profile_multi", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }) },
     driverOffer: { findUnique: async () => offer, updateMany: async () => { offerWasUpdated = true; return { count: 1 }; } },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
     vehicle: { findMany: async () => [{ id: "vehicle-1" }, { id: "vehicle-2" }] },
   };
   const service = createDispatchService({ prismaClient: { $transaction: callback => callback(tx) }, clock: () => now });

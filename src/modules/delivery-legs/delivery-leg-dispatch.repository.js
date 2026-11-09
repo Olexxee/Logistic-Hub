@@ -1,4 +1,5 @@
 import { env } from "../../config/env.js";
+import { activeServiceZoneWhere, eligibleParcelDriverWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = [
   "AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED",
@@ -32,25 +33,28 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
       });
     },
     findEligibleDrivers(tx, leg, now) {
+      const capability = parcelCapabilityForLegType(leg.type);
+      if (!capability) return Promise.resolve([]);
       return tx.driverProfile.findMany({
         where: {
-          verificationStatus: "VERIFIED",
-          kycTier: { in: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"] },
-          suspendedAt: null,
-          isOnline: true,
-          isAvailable: true,
-          lastLocationAt: { gte: new Date(now.getTime() - 5 * 60_000), lte: now },
-          user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
-          vehicles: { some: { isActive: true, verificationStatus: "VERIFIED" } },
+          ...eligibleParcelDriverWhere({
+            capability,
+            now,
+            strictMode: env.DRIVER_KYC_MODE === "STRICT",
+            kycTiers: env.DRIVER_KYC_MODE === "TEST" ? ["FULL", "TEST_LIMITED"] : ["FULL"],
+          }),
+          lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
           AND: [
-            { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
-            { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true } } },
+            { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
+            { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
           ],
           assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
         },
         select: {
           id: true,
           verificationStatus: true,
+          kycTier: true,
+          suspendedAt: true,
           isOnline: true,
           isAvailable: true,
           serviceRadiusMeters: true,
@@ -61,6 +65,13 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
             select: { latitude: true, longitude: true, recordedAt: true },
           },
         },
+      });
+    },
+    findActiveServiceZones(tx, leg, now) {
+      const ids = [...new Set([leg.originServiceZoneId, leg.destinationServiceZoneId])];
+      return tx.serviceZone.findMany({
+        where: { id: { in: ids }, ...activeServiceZoneWhere(now) },
+        select: { id: true },
       });
     },
     listActiveOffers(tx, legId, now) {
