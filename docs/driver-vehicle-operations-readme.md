@@ -333,6 +333,26 @@ DRV-05B is merged in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125)
 
 DRV-05C is split into execution-hold primitive, controlled custody recovery, and operational alerting/acceptance. PR #127 is merged into PR #126's branch; PR #126 itself remains open against `main`. DRV-05C-B creates a separate recovery record and only creates a replacement assignment after evidenced release and replacement-driver receipt. Recovery assignments are flagged for manual payout review. The first B slice is driver-to-driver; hub inventory recovery remains a separate extension. See [DRV-05C implementation notes](./driver-safety-holds-drv-05c.md) for the transaction, audit, role and staging gates.
 
+
+
+### DRV-05C-C — Pre-pickup eligibility change alerting
+
+**Status:** Backend implementation in progress on `feat/drv-05c-c-eligibility-change-alerting`.
+
+**Implemented in this slice:**
+
+- Added an embedded server worker that scans paid, active parcel assignments before physical pickup and reuses the DRV-05B execution eligibility evaluator (no duplicate eligibility policy).
+- Detects missing/inactive route zones, inactive hubs, invalid driver approval/KYC/capability/evidence, missing vehicle binding, and vehicle approval/verification changes.
+- Creates one HIGH-priority `ROUTE_DISRUPTION` operational case per assignment/reason and notifies the assigned driver plus active verified Admin/Support recipients.
+- Notification delivery keys provide idempotency across repeated scans; operational case creation and recipient notifications are transactional.
+- Writes an operational audit event for alert creation.
+- Worker runs inside the existing API process, polls every 60 seconds, uses bounded batches, logs failures, backs off, and shuts down gracefully. No separate Render worker service or schema migration is introduced.
+- Added worker tests for alert creation and duplicate scan suppression.
+
+**Safety boundary:** This worker only alerts for pre-pickup parcel assignments (`ACCEPTED`, `ARRIVED_AT_PICKUP` with no pickup timestamp). It does not automatically hold, reassign, cancel, release, or alter custody/payment state. Existing execution-time checks remain authoritative. Post-pickup recovery remains DRV-05C-B's controlled workflow.
+
+**Remaining before PR review:** run the complete repository CI, resolve any failures, update OpenAPI if needed (no new HTTP endpoint in this slice), and inspect the worker's case/notification privacy and operational queue consumption. This is not merged or deployed.
+
 ### DRV-06 — Reporting, audit and operational controls
 
 **Goal:** Make driver and fleet operations observable and accountable.
