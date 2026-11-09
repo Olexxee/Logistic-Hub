@@ -1,5 +1,6 @@
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 export function createAssignmentsController(service){return {
+ listCustodyRecoveries:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listCustodyRecoveries(req.validated.query)})),
  initiateCustodyRecovery:asyncWrapper(async(req,res)=>{
   const result=await service.initiateCustodyRecovery({
    assignmentId:req.params.assignmentId,
