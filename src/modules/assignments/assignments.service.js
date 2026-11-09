@@ -14,7 +14,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     const heldAt=clock();
     const operationalCase=await repository.createSafetyHoldCase({
      publicReference:`OPS-${randomUUID().replaceAll("-","").slice(0,12).toUpperCase()}`,
-     type:"OTHER",status:"OPEN",priority:"CRITICAL",
+     type:"SAFETY_INCIDENT",status:"OPEN",priority:"CRITICAL",
      parcelBookingId:assignment.parcelBookingId,
      ...(assignment.deliveryLegId?{deliveryLegId:assignment.deliveryLegId}:{}),
      reportedByUserId:actorUserId,
