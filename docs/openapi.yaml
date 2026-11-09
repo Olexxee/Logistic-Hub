@@ -1941,8 +1941,7 @@ paths:
       operationId: createParcelBooking
       summary: Create a draft parcel booking
       description: |
-        The server validates both service zones and current parcel-service availability.
-        The client cannot set status, payment status, price snapshots or driver assignment.
+        The server resolves pickup and destination coordinates independently against active Nigerian parcel-zone boundaries and current parcel-service availability. Optional zone IDs are compatibility hints only and must match the server resolution. The client cannot select authoritative zones or set status, payment status, price snapshots or driver assignment.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -1956,8 +1955,6 @@ paths:
               type: object
               additionalProperties: false
               required:
-                - pickupServiceZoneId
-                - destinationServiceZoneId
                 - pickupAddress
                 - pickup
                 - destinationAddress
@@ -1970,9 +1967,11 @@ paths:
                 pickupServiceZoneId:
                   type: string
                   minLength: 1
+                  description: Optional legacy hint; the server resolves the zone from pickup coordinates and rejects mismatches.
                 destinationServiceZoneId:
                   type: string
                   minLength: 1
+                  description: Optional legacy hint; the server resolves the zone from destination coordinates and rejects mismatches.
                 pickupAddress:
                   type: string
                   minLength: 3
@@ -2030,7 +2029,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Idempotency conflict or requested service zone is unavailable.
+          description: Idempotency conflict, no matching service zone, ambiguous overlapping zones, invalid stored boundary, stale zone hint, or missing service coverage.
           content:
             application/json:
               schema:
