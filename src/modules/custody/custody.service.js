@@ -322,9 +322,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       return repo.transaction(async tx => {
         await requireActiveUser(tx, userId);
         await repo.lockDeliveryLeg(input.deliveryLegId, tx);
+        const driverPartyId = input.fromPartyType === "DRIVER" ? input.fromPartyId : input.toPartyType === "DRIVER" ? input.toPartyId : null;
+        if (driverPartyId) await repo.lockDriverAssignmentForLeg(input.deliveryLegId, driverPartyId, tx);
         const leg = await repo.findBookingLeg(input.deliveryLegId, tx);
         if (!leg || leg.parcelBookingId !== input.parcelBookingId) return { notFound: true };
-        const driverPartyId = input.fromPartyType === "DRIVER" ? input.fromPartyId : input.toPartyType === "DRIVER" ? input.toPartyId : null;
         const heldDriverAssignment = driverPartyId ? leg.assignments.find(item => item.driverProfileId === driverPartyId && item.executionHoldAt) : null;
         if (heldDriverAssignment) throw fail(409, "ASSIGNMENT_EXECUTION_HELD", "A safety-held assignment cannot initiate or receive an ordinary custody handover. Admin operations must resolve the hold.");
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
@@ -398,8 +399,9 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         const handover = await repo.findHandover(handoverId, tx);
         if (!handover) return { notFound: true };
         await repo.lockDeliveryLeg(handover.deliveryLegId, tx);
-        const handoverLeg = await repo.findBookingLeg(handover.deliveryLegId, tx);
         const handoverDriverPartyId = handover.fromPartyType === "DRIVER" ? handover.fromPartyId : handover.toPartyType === "DRIVER" ? handover.toPartyId : null;
+        if (handoverDriverPartyId) await repo.lockDriverAssignmentForLeg(handover.deliveryLegId, handoverDriverPartyId, tx);
+        const handoverLeg = await repo.findBookingLeg(handover.deliveryLegId, tx);
         const heldHandoverAssignment = handoverDriverPartyId ? handoverLeg?.assignments.find(item => item.driverProfileId === handoverDriverPartyId && item.executionHoldAt) : null;
         if (heldHandoverAssignment) throw fail(409, "ASSIGNMENT_EXECUTION_HELD", "A safety-held assignment cannot confirm an ordinary custody handover. Admin operations must resolve the hold.");
         if (handover.status !== "PENDING_CONFIRMATION") return { blocker: "HANDOVER_NOT_PENDING" };
