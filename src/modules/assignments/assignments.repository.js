@@ -30,14 +30,13 @@ async function findParcelExecutionEligibility(tx, assignment, now) {
  const strictMode = env.DRIVER_KYC_MODE === "STRICT";
  const booking = assignment.parcelBooking;
  const leg = assignment.deliveryLeg;
- const requiredServiceZoneIds = [...new Set([
-  leg?.originServiceZoneId ?? booking?.pickupServiceZoneId,
-  leg?.destinationServiceZoneId ?? booking?.destinationServiceZoneId,
- ].filter(Boolean))];
- if (requiredServiceZoneIds.length !== 2) return {
+ const originServiceZoneId = leg?.originServiceZoneId ?? booking?.pickupServiceZoneId;
+ const destinationServiceZoneId = leg?.destinationServiceZoneId ?? booking?.destinationServiceZoneId;
+ if (!originServiceZoneId || !destinationServiceZoneId) return {
   code: "SERVICE_ZONE_UNAVAILABLE",
   message: "The assignment does not have a complete origin and destination service-zone route.",
  };
+ const requiredServiceZoneIds = [...new Set([originServiceZoneId, destinationServiceZoneId])];
  const activeZones = await tx.serviceZone.findMany({
   where: { id: { in: requiredServiceZoneIds }, ...activeServiceZoneWhere(now) },
   select: { id: true },
