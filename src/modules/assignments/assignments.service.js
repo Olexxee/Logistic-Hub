@@ -12,6 +12,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
  return {
   async placeExecutionHold({assignmentId,actorUserId,reason}) {
    return serializableTransaction(prismaClient, async tx => {
+    await repository.lockAssignment(assignmentId,tx);
     const assignment = await repository.findAssignmentForAdminHold(assignmentId, tx);
     if (!assignment) return {notFound:true};
     if (!assignment.parcelBookingId) return {blocker:"PARCEL_ASSIGNMENT_REQUIRED"};
