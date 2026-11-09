@@ -52,6 +52,13 @@ test("rotates refresh tokens and rejects replay of the previous token", async ()
   const issued = await service.issue(user);
   const rotated = await service.refresh(issued.refreshToken);
   assert.notEqual(rotated.refreshToken, issued.refreshToken);
+  assert.deepEqual(rotated.user, {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+  });
   assert.equal(rows.get("session-1").tokenHash, hashOpaqueToken(rotated.refreshToken));
   const rotatedClaims = verifyAccessToken(rotated.accessToken, secret);
   assert.equal(rotatedClaims.sid, "session-1");
