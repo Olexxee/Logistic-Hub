@@ -308,7 +308,7 @@ export function createCustodyRepository({ prismaClient }) {
           hubPoint: { select: { id: true, name: true } },
           driverAssignmentHubRecovery: { select: { id: true, status: true, operationalCaseId: true } },
           disposition: { select: {
-            id: true, decision: true, status: true, reason: true,
+            id: true, decision: true, status: true,
             destinationServiceZoneId: true, destinationHubPointId: true,
             nextDeliveryLegId: true, approvedAt: true, releasedAt: true,
           } },
