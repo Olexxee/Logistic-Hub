@@ -354,6 +354,13 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (input.fromPartyType === "HUB") {
           const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, input.fromPartyId, tx);
           if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
+          const recovery = await repo.findHubRecoveryForIntake(intake.id, tx);
+          if (recovery) {
+            const disposition = await repo.findHubIntakeDisposition(intake.id, tx);
+            if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== leg.id) {
+              return { blocker: "HUB_RECOVERY_DISPOSITION_REQUIRED" };
+            }
+          }
         }
         if (input.fromPartyType === "HUB") {
           const blockingCase = await repo.findBlockingHubOperationalCase(leg.id, tx);
