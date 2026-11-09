@@ -306,6 +306,12 @@ export function createCustodyRepository({ prismaClient }) {
           parcelBooking: { select: { publicReference: true, status: true, parcelCategory: true, parcelSize: true } },
           deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
           hubPoint: { select: { id: true, name: true } },
+          driverAssignmentHubRecovery: { select: { id: true, status: true, operationalCaseId: true } },
+          disposition: { select: {
+            id: true, decision: true, status: true, reason: true,
+            destinationServiceZoneId: true, destinationHubPointId: true,
+            nextDeliveryLegId: true, approvedAt: true, releasedAt: true,
+          } },
         },
       });
     },
@@ -405,6 +411,12 @@ export function createCustodyRepository({ prismaClient }) {
           parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true } },
           deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
           hubPoint: { select: { id: true, name: true, address: true } },
+          driverAssignmentHubRecovery: { select: { id: true, status: true, operationalCaseId: true } },
+          disposition: { select: {
+            id: true, decision: true, status: true, reason: true,
+            destinationServiceZoneId: true, destinationHubPointId: true,
+            nextDeliveryLegId: true, approvedAt: true, releasedAt: true,
+          } },
         },
       });
     },
