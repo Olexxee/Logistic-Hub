@@ -6,8 +6,9 @@ const coordinatesSchema = z.object({
 }).strict();
 
 export const createParcelBookingSchema = z.object({
-  pickupServiceZoneId: z.string().trim().min(1).max(128),
-  destinationServiceZoneId: z.string().trim().min(1).max(128),
+  // Optional compatibility hints only; the backend resolves authoritative zones from coordinates.
+  pickupServiceZoneId: z.string().trim().min(1).max(128).optional(),
+  destinationServiceZoneId: z.string().trim().min(1).max(128).optional(),
   pickupAddress: z.string().trim().min(3).max(500),
   pickup: coordinatesSchema,
   pickupInstructions: z.string().trim().max(1000).optional(),
