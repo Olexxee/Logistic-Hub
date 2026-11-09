@@ -155,6 +155,16 @@ const receiveHubRecoverySchema = z.object({
 const cancelHubRecoverySchema = z.object({
   reason: z.string().trim().min(5).max(1000),
 }).strict();
+const hubIntakeDispositionSchema = z.object({
+  decision: z.enum(["HOLD_FOR_INVESTIGATION", "CONTINUE_DELIVERY"]),
+  reason: z.string().trim().min(5).max(1000),
+  destinationServiceZoneId: id.optional(),
+  destinationHubPointId: id.optional(),
+}).strict().refine(value => value.decision === "HOLD_FOR_INVESTIGATION"
+  ? !value.destinationServiceZoneId && !value.destinationHubPointId
+  : Boolean(value.destinationServiceZoneId), {
+  message: "A continuation requires a destination service zone; a hold must not include route fields.",
+});
 
 function validate(schema) {
   return (req, res, next) => {
@@ -198,6 +208,7 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
   router.get("/admin/assignments/hub-recoveries", authMiddleware, admin, validateQuery(adminHubRecoveriesQuerySchema), asyncWrapper(controller.listAdminHubRecoveries));
   router.post("/admin/assignments/:assignmentId/hub-recoveries", authMiddleware, admin, validateParams, validate(initiateHubRecoverySchema), asyncWrapper(controller.initiateAdminHubRecovery));
   router.post("/admin/hub-recoveries/:recoveryId/cancel", authMiddleware, admin, validateParams, validate(cancelHubRecoverySchema), asyncWrapper(controller.cancelAdminHubRecovery));
+  router.post("/admin/hub-intakes/:intakeRecordId/disposition", authMiddleware, admin, validateParams, validate(hubIntakeDispositionSchema), asyncWrapper(controller.setAdminHubIntakeDisposition));
   router.post("/hub-operations/hub-recoveries/:recoveryId/receive", authMiddleware, validateParams, validate(receiveHubRecoverySchema), asyncWrapper(controller.receiveAdminHubRecovery));
   router.patch("/admin/users/:userId/phone-verification", authMiddleware, admin, validateParams, validate(phoneVerificationSchema), asyncWrapper(controller.setRecipientPhoneVerification));
   router.get("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, (req, res, next) => {
