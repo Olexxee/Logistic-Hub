@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createDeliveryLegDispatchRepository } from "../src/modules/delivery-legs/delivery-leg-dispatch.repository.js";
-import { env } from "../src/config/env.js";
 
 test("delivery-leg matching excludes suspended and TEST_LIMITED drivers",async()=>{
   let query;
