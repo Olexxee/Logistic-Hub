@@ -96,7 +96,6 @@ export function createDriverEligibilityAlertWorker({ prismaClient, clock = () =>
           parcelBookingId: { not: null },
           status: { in: PRE_CUSTODY_STATUSES },
           executionHoldAt: null,
-          pickupAt: null,
           parcelBooking: { is: { paymentStatus: "SUCCEEDED" } },
         },
         orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
@@ -121,7 +120,7 @@ export function createDriverEligibilityAlertWorker({ prismaClient, clock = () =>
             },
           });
           if (!assignment || !PRE_CUSTODY_STATUSES.includes(assignment.status)
-            || assignment.pickupAt || assignment.executionHoldAt
+            || assignment.executionHoldAt
             || !assignment.parcelBookingId
             || assignment.parcelBooking?.paymentStatus !== "SUCCEEDED") return false;
           const issue = await findParcelExecutionEligibility(tx, assignment, now);
