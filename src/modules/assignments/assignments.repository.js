@@ -14,6 +14,16 @@ export function isAllowedAssignmentTransition(currentStatus, nextStatus) {
  return (ASSIGNMENT_TRANSITIONS[currentStatus] ?? []).includes(nextStatus);
 }
 
+async function serializableTransaction(prismaClient, callback) {
+ for (let attempt = 0; ; attempt += 1) {
+  try {
+   return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" });
+  } catch (error) {
+   if (error?.code !== "P2034" || attempt >= 2) throw error;
+  }
+ }
+}
+
 export const MAX_VERIFICATION_CODE_ATTEMPTS = 5;
 
 async function findParcelExecutionEligibility(tx, assignment, now) {
@@ -134,7 +144,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    });
   },
   transition({assignmentId,driverUserId,nextStatus,now}) {
-   return prismaClient.$transaction(async tx=>{
+   return serializableTransaction(prismaClient, async tx=>{
     const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
@@ -164,7 +174,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    });
   },
   verifyCode({assignmentId,driverUserId,action,tokenHash,now}) {
-   return prismaClient.$transaction(async tx=>{
+   return serializableTransaction(prismaClient, async tx=>{
     const a=await tx.driverAssignment.findUnique({where:{id:assignmentId},include:{driverProfile:true,parcelBooking:true,rideBooking:true,deliveryLeg:true}});
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId)return {forbidden:true};
