@@ -211,6 +211,20 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     return {recovery:updated,replay:false};
    });
   },
+  async listMyCustodyRecoveries({userId,page=1,limit=20}) {
+   const result=await repository.listMyAssignmentRecoveries({userId,skip:(page-1)*limit,take:limit});
+   return {
+    items:result.items.map(recovery=>({
+     id:recovery.id,
+     status:recovery.status,
+     createdAt:recovery.createdAt,
+     sourceAssignment:recovery.sourceAssignment,
+     replacementVehicle:recovery.replacementVehicle,
+     nextAction:recovery.status==="PENDING_RECEIPT"?"CONFIRM_PHYSICAL_RECEIPT":"WAIT_FOR_SOURCE_RELEASE",
+    })),
+    pagination:{page,limit,total:result.total,totalPages:Math.ceil(result.total/limit)},
+   };
+  },
   async listCustodyRecoveries({page=1,limit=25,status}) {
    const result=await repository.listAssignmentRecoveries({status,skip:(page-1)*limit,take:limit});
    return {
@@ -301,6 +315,7 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
      completedAt:assignment.completedAt,
      failureReason:assignment.failureReason,
      executionHeld:Boolean(assignment.executionHoldAt),
+     payoutReviewRequired:Boolean(assignment.payoutReviewRequired),
      vehicle:assignment.vehicle?{id:assignment.vehicle.id,type:assignment.vehicle.type,make:assignment.vehicle.make,model:assignment.vehicle.model,registrationPlate:assignment.vehicle.registrationPlate}:null,
      createdAt:assignment.createdAt,
      updatedAt:assignment.updatedAt,
