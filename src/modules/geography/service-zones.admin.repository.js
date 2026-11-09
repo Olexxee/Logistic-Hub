@@ -21,6 +21,13 @@ export function createServiceZonesAdminRepository({ prismaClient }) {
         },
       },
     }),
+    listGlobalPricingRules: ({ serviceType, now }) => prismaClient.pricingRule.findMany({
+      where: {
+        serviceZoneId: null, serviceType, isActive: true, effectiveFrom: { lte: now },
+        AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }] }],
+      },
+      select: { id: true },
+    }),
     findById: (id) => prismaClient.serviceZone.findUnique({
       where: { id },
       include: { state: { include: { country: true } }, lga: true, availability: true },
