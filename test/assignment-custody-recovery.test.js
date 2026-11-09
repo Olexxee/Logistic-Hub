@@ -146,11 +146,23 @@ test("replacement driver can list only their pending custody recovery work", asy
 
   const result = await service.listMyCustodyRecoveries({ userId: "replacement_user", page: 1, limit: 20 });
 
-  assert.equal(state.recoveryListQuery.where.replacementDriverProfile.userId, "replacement_user");
+  assert.equal(state.recoveryListQuery.where.OR[0].replacementDriverProfile.userId, "replacement_user");
+  assert.equal(state.recoveryListQuery.where.OR[1].sourceAssignment.driverProfile.userId, "replacement_user");
   assert.equal(result.items[0].id, "recovery_1");
+  assert.equal(result.items[0].party, "REPLACEMENT_DRIVER");
   assert.equal(result.items[0].nextAction, "CONFIRM_PHYSICAL_RECEIPT");
   assert.equal(result.items[0].sourceAssignment.parcelBooking.publicReference, "LH-RECOVERY-1");
   assert.equal(result.pagination.total, 1);
+});
+
+test("current custodian sees the release action in the same recovery inbox", async () => {
+  const { client } = makeClient({ recovery: { ...recoverySeed, status: "PENDING_RELEASE" } });
+  const service = createAssignmentsService({ prismaClient: client, clock: () => now });
+
+  const result = await service.listMyCustodyRecoveries({ userId: "source_user", page: 1, limit: 20 });
+
+  assert.equal(result.items[0].party, "CURRENT_CUSTODIAN");
+  assert.equal(result.items[0].nextAction, "CONFIRM_PHYSICAL_RELEASE");
 });
 
 test("Admin initiates recovery only for a held in-custody parcel and an eligible replacement pair", async () => {
