@@ -18,6 +18,7 @@
 
 - The connected Render workspace currently exposes one Logistic Hub web service on the `main` branch. No separate Logistic Hub staging web service or preview service was found.
 - The Render workspace contains no Render-managed PostgreSQL instance.
+- The Prisma workspace contains a `logistic-hub` project with one PostgreSQL database and only a `main` branch marked `production`; no preview/staging branch or separate staging database exists.
 - Application logs identify the database provider as Prisma-hosted PostgreSQL (`pooled.db.prisma.io`). Render's read-only Postgres query facility cannot query this external database.
 - No staging database connection or authorized staging Admin session/token was available during this audit.
 - The readiness endpoint is Admin-authenticated: `GET /api/v1/service-zones/admin/readiness?serviceType=PARCEL_DELIVERY`. The route's authorization middleware is present in the deployed source, but this audit did not execute an authenticated readiness request.
