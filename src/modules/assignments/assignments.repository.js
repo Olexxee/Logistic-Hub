@@ -138,7 +138,10 @@ export function createAssignmentsRepository(prismaClient = prisma) {
   },
   listMyAssignmentRecoveries({ userId, skip = 0, take = 25 } = {}, tx = prismaClient) {
    const where = {
-    replacementDriverProfile: { userId },
+    OR: [
+     { replacementDriverProfile: { userId } },
+     { sourceAssignment: { driverProfile: { userId } } },
+    ],
     status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] },
    };
    return Promise.all([
@@ -149,10 +152,12 @@ export function createAssignmentsRepository(prismaClient = prisma) {
       sourceAssignment: {
        select: {
         id: true, status: true, pickupAt: true,
+        driverProfile: { select: { userId: true } },
         parcelBooking: { select: { publicReference: true, pickupAddress: true, destinationAddress: true, recipientName: true, recipientPhone: true } },
         deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
        },
       },
+      replacementDriverProfile: { select: { userId: true } },
       replacementVehicle: { select: { id: true, type: true, make: true, model: true, registrationPlate: true } },
      },
     }),
