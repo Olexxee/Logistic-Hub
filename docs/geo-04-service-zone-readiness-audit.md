@@ -1,6 +1,6 @@
 # GEO-04 — Service-zone readiness and overlap audit
 
-**Status:** Backend diagnostic endpoint implemented; frontend Admin presentation and live staging verification remain outstanding.
+**Status:** Backend endpoint and frontend Admin panel are merged. Code is deployed on the main Render service; staging/data acceptance remains blocked pending an isolated staging environment and authorized read-only access to its database.
 **Dependency:** GEO-03 coordinate resolution is merged in backend PR #138 and customer booking integration is merged in frontend PR #60.
 
 ## Purpose
