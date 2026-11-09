@@ -56,6 +56,9 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     reason: z.string().trim().min(5).max(1000),
     evidence: recoveryEvidenceSchema,
   }).strict();
+  const recoveryCancelSchema = z.object({
+    reason: z.string().trim().min(10).max(1000),
+  }).strict();
   const recoveryExceptionSchema = z.object({
     reason: z.string().trim().min(10).max(1000),
     evidence: recoveryEvidenceSchema,
@@ -75,6 +78,12 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     requireAuth, requireRole("ADMIN"),
     validate(idSchema, "params"), validate(initiateRecoverySchema),
     controller.initiateCustodyRecovery,
+  );
+  router.post(
+    "/admin/recoveries/:recoveryId/cancel",
+    requireAuth, requireRole("ADMIN"),
+    validate(recoveryIdSchema, "params"), validate(recoveryCancelSchema),
+    controller.cancelCustodyRecovery,
   );
   router.post(
     "/admin/recoveries/:recoveryId/release-exception",
