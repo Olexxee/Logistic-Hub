@@ -23,6 +23,7 @@ const assignment = {
 function makeClient() {
   const state = { assignment: { ...assignment }, cases: [], audits: [], revoked: 0 };
   const tx = {
+    $queryRaw: async () => [],
     driverAssignment: {
       findUnique: async () => state.assignment,
       update: async ({ data }) => { Object.assign(state.assignment, data); return state.assignment; },
