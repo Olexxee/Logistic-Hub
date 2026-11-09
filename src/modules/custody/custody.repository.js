@@ -218,7 +218,7 @@ export function createCustodyRepository({ prismaClient }) {
     },
     failRecoveredSourceLeg(id, tx = prismaClient) {
       return tx.deliveryLeg.updateMany({
-        where: { id, status: { in: ["PLANNED", "READY_FOR_ASSIGNMENT", "ASSIGNED", "PICKUP_VERIFICATION_PENDING", "IN_TRANSIT"] } },
+        where: { id, status: { in: ["PLANNED", "READY_FOR_ASSIGNMENT", "ASSIGNED", "PICKUP_VERIFICATION_PENDING", "IN_TRANSIT", "DELIVERY_VERIFICATION_PENDING"] } },
         data: { status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED" },
       });
     },
