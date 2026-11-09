@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 through DRV-07 roadmap. DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, and DRV-05C-C pre-pickup eligibility alerting are merged. DRV-05C-D1 controlled hub custody recovery backend is implemented on `feat/drv-05c-d-hub-custody-recovery`; schema, migration, APIs, transactional capacity enforcement and tests are pushed. CI and staging acceptance remain release gates. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md). CI and staging acceptance remain release gates.
+**Status:** DRV-00 through DRV-07 roadmap. DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, and DRV-05C-C pre-pickup eligibility alerting are merged. DRV-05C-D1 controlled hub custody recovery backend is implemented on `feat/drv-05c-d-hub-custody-recovery`; schema, migration, APIs, transactional capacity enforcement and tests are pushed. CI passed on the current implementation (634 passed, 1 skipped, 0 failed); staging acceptance remains pending. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md). CI and staging acceptance remain release gates.
 
 ## 1. Objective
 
