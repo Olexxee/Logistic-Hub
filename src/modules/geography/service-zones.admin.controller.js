@@ -4,8 +4,8 @@ import {
   serviceAvailabilityAdminSchema,
   serviceZoneStatusAdminSchema,
   updateServiceZoneAdminSchema,
-  serviceZoneReadinessQuerySchema,
 } from "./service-zones.admin.validators.js";
+import { serviceZoneReadinessQuerySchema } from "./service-zones.schemas.js";
 
 function invalid(res, issues) {
   return res.status(400).json({ success: false, error: {
