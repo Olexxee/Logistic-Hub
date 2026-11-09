@@ -23,7 +23,10 @@ export function createServiceZonesAdminService({ prismaClient, clock = () => new
     list: () => read.list(),
     async listReadiness(serviceType = "PARCEL_DELIVERY") {
       const now = clock();
-      const zones = await read.listReadiness({ serviceType, now });
+      const [zones, globalPricingRules] = await Promise.all([
+        read.listReadiness({ serviceType, now }),
+        read.listGlobalPricingRules({ serviceType, now }),
+      ]);
       const assessed = zones.map(zone => {
         let boundary;
         if (zone.boundaryGeoJson == null) {
@@ -35,7 +38,7 @@ export function createServiceZonesAdminService({ prismaClient, clock = () => new
         const availability = zone.availability[0] ?? null;
         const availabilityEffective = availabilityIsEffective(availability, now);
         const geographyActive = Boolean(zone.state?.isActive && zone.state?.country?.isActive);
-        const pricingConfigured = zone.pricingRules.length > 0;
+        const pricingConfigured = zone.pricingRules.length > 0 || globalPricingRules.length > 0;
         const enabledDriverCoverageCount = zone.coverage.length;
         const blockers = [];
         if (!zone.isActive) blockers.push("ZONE_INACTIVE");
