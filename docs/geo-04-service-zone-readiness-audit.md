@@ -16,7 +16,7 @@ Give Admin a read-only operational audit before enabling parcel service in a zon
 
 ## Readiness semantics
 
-- `bookingReady` requires an active zone, active state/country, valid boundary, currently effective availability for the requested service, and at least one effective pricing rule.
+- `bookingReady` requires an active zone, active state/country, valid boundary, currently effective availability for the requested service, and at least one effective zone-specific or global fallback pricing rule.
 - Missing and invalid boundaries are separate blockers.
 - Overlap/touching between active, geographically active boundaries is reported as a warning when the two zones are not both currently available for the requested service.
 - An overlap is a blocking issue for both zones when both currently have effective availability for the requested service. This reflects GEO-03 booking-time ambiguity behavior.
@@ -48,7 +48,7 @@ Before production readiness is claimed:
 
 ## Known limitations
 
-- Pairwise overlap analysis is O(n²) in the number of candidate active zones, and current geometry helpers revalidate boundaries during pair checks. Measure latency and zone counts before scaling to large zone inventories.
+- Pairwise overlap analysis is O(n²) in the number of candidate active zones. Each boundary is validated once per report before pair checks. Measure latency and zone counts before scaling to large zone inventories.
 - The audit does not yet check whether enabled coverage records belong to currently eligible drivers or whether vehicles are available.
 - The audit does not infer or normalize a booking address from Google components. GEO-03 resolves canonical zone relations through boundary containment.
 - It does not test every point in the boundary or prove that all of the polygon is geographically correct. Admin must still review boundary quality.
