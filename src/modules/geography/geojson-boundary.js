@@ -197,9 +197,7 @@ export const serviceZoneBoundaryPositionLimit = MAX_BOUNDARY_POSITIONS;
  * Polygon edges are inclusive and reported separately so overlapping zone edges
  * can be treated as ambiguous by the caller.
  */
-export function classifyPointInServiceZoneBoundary(boundary, point) {
-  const validation = validateServiceZoneBoundary(boundary);
-  if (!validation.valid) return "invalid";
+export function classifyPointInValidatedServiceZoneBoundary(boundary, point) {
   if (!Array.isArray(point) || point.length !== 2 ||
       !Number.isFinite(point[0]) || !Number.isFinite(point[1]) ||
       point[0] < -180 || point[0] > 180 || point[1] < -90 || point[1] > 90) return "invalid";
@@ -211,4 +209,10 @@ export function classifyPointInServiceZoneBoundary(boundary, point) {
     if (result === 0) onBoundary = true;
   }
   return onBoundary ? "boundary" : "outside";
+}
+
+export function classifyPointInServiceZoneBoundary(boundary, point) {
+  const validation = validateServiceZoneBoundary(boundary);
+  if (!validation.valid) return "invalid";
+  return classifyPointInValidatedServiceZoneBoundary(boundary, point);
 }
