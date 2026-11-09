@@ -69,6 +69,12 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     const source=await repository.findAssignmentForRecovery(recovery.sourceAssignmentId,tx);
     if(!source||source.driverProfile.userId!==userId)return {forbidden:true};
     if(!source.executionHoldAt||!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status))return {blocker:"SOURCE_ASSIGNMENT_NOT_RECOVERABLE"};
+    await repository.lockRecoveryCandidate(recovery.replacementDriverProfileId,recovery.replacementVehicleId,tx);
+    const candidate=await repository.checkRecoveryCandidate(tx,{
+     sourceAssignment:source,replacementDriverProfileId:recovery.replacementDriverProfileId,
+     replacementVehicleId:recovery.replacementVehicleId,now:clock(),
+    });
+    if(!candidate.eligible)return candidate;
     const now=clock();
     const updated=await repository.updateAssignmentRecovery(recoveryId,{
      status:"PENDING_RECEIPT",releaseConfirmedByUserId:userId,releaseConfirmedAt:now,
@@ -93,6 +99,12 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     await repository.lockAssignment(recovery.sourceAssignmentId,tx);
     const source=await repository.findAssignmentForRecovery(recovery.sourceAssignmentId,tx);
     if(!source||!source.executionHoldAt||!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status))return {blocker:"SOURCE_ASSIGNMENT_NOT_RECOVERABLE"};
+    await repository.lockRecoveryCandidate(recovery.replacementDriverProfileId,recovery.replacementVehicleId,tx);
+    const candidate=await repository.checkRecoveryCandidate(tx,{
+     sourceAssignment:source,replacementDriverProfileId:recovery.replacementDriverProfileId,
+     replacementVehicleId:recovery.replacementVehicleId,now:clock(),
+    });
+    if(!candidate.eligible)return candidate;
     const now=clock();
     const updated=await repository.updateAssignmentRecovery(recoveryId,{
      status:"PENDING_RECEIPT",exceptionAuthorizedByUserId:actorUserId,
