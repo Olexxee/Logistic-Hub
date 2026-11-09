@@ -38,7 +38,6 @@ export function createAuthSessionsService({ prismaClient, secret, clock = () => 
           fullName: rotated.user.fullName,
           email: rotated.user.email,
           role: rotated.user.role,
-          status: rotated.user.status,
         },
       };
     },
