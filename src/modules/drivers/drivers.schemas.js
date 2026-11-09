@@ -39,4 +39,5 @@ export const driverCoverageSchema = z.object({
   serviceZoneId: z.string().trim().min(1).max(128),
   serviceType: z.enum(["PARCEL_DELIVERY", "PASSENGER_RIDE", "HUB_POINT", "BUSINESS_LOGISTICS"]),
   isEnabled: z.boolean(),
+  reason: z.string().trim().min(10).max(500),
 }).strict();
