@@ -115,12 +115,14 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
 - Admin must nominate an exact replacement driver profile and exact vehicle. Candidate checks reuse the DRV-05B execution eligibility policy and revalidate active account, KYC, identity evidence, capability, vehicle suitability, service-zone availability, hub availability, online/available state, and conflicting driver/vehicle assignments.
 - Current driver confirms physical release with a reason and evidence. If the current custodian is unavailable or unsafe, an Admin can authorize a separate release exception with a reason and evidence. The exception is explicitly recorded; it does not impersonate driver confirmation.
 - Replacement driver must separately confirm physical receipt with condition and evidence. Eligibility is revalidated inside the final serializable transaction.
+- Successful recovery emits `DRIVER_ASSIGNMENT_CUSTODY_RECOVERED`; integration-owned shipments project this as `shipment.driver_reassigned`.
 - Only after receipt confirmation does the system create a new `IN_PROGRESS` assignment with the exact replacement driver/vehicle, mark the source assignment `FAILED` with a recovery reference, clear its active execution hold, and record booking/audit events atomically.
 - The source assignment and its original driver/vehicle binding remain intact as historical evidence. The replacement assignment is a new record; there is no in-place driver or vehicle overwrite.
 - Recovered assignment payout is flagged for manual review. Automatic driver payout creation is suppressed for that assignment in both verification-code completion and hub-receipt completion paths. No refund, customer payment, seller settlement, or automatic payout adjustment is made.
 
 ### API
 
+- `GET /api/v1/assignments/admin/recoveries` — paginated Admin recovery queue.
 - `POST /api/v1/assignments/admin/:assignmentId/recoveries` — Admin initiates recovery.
 - `POST /api/v1/assignments/recoveries/:recoveryId/release` — source driver confirms physical release.
 - `POST /api/v1/assignments/admin/recoveries/:recoveryId/release-exception` — Admin authorizes an evidenced release exception.
