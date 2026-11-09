@@ -126,6 +126,9 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    return {items,total};
   },
   findAssignment(id) { return prismaClient.driverAssignment.findUnique({where:{id},include:{driverProfile:{select:{id:true,userId:true,verificationStatus:true,kycTier:true,suspendedAt:true}},vehicle:{select:{id:true,type:true,make:true,model:true,registrationPlate:true}},parcelBooking:true,rideBooking:true}}); },
+  lockAssignment(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${id} FOR UPDATE`;
+  },
   findAssignmentForAdminHold(id, tx = prismaClient) {
    return tx.driverAssignment.findUnique({where:{id},include:{parcelBooking:{select:{id:true,publicReference:true}},deliveryLeg:{select:{id:true,sequence:true}},driverProfile:{select:{id:true,userId:true}},vehicle:{select:{id:true}}}});
   },
@@ -152,7 +155,8 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    return prismaClient.driverLocation.findFirst({where:{driverProfileId:assignment.driverProfileId,recordedAt:{gte:new Date(now.getTime()-2*60*1000)}},orderBy:{recordedAt:"desc"},select:{latitude:true,longitude:true,accuracyMeters:true,recordedAt:true}});
   },
   issueCode({assignment,action,tokenHash,expiresAt,now}) {
-   return prismaClient.$transaction(async tx=>{
+   return serializableTransaction(prismaClient, async tx=>{
+    await tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${assignment.id} FOR UPDATE`;
     const fresh=await tx.driverAssignment.findUnique({where:{id:assignment.id},include:{parcelBooking:true,rideBooking:true}});
     if(!fresh||fresh.status==="COMPLETED"||fresh.status==="CANCELLED")return null;
     if(fresh.executionHoldAt) return {held:true,holdAt:fresh.executionHoldAt};
