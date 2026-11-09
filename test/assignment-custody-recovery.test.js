@@ -213,6 +213,25 @@ test("only the source driver can confirm physical release", async () => {
   assert.equal(state.audits.length, 0);
 });
 
+test("source driver cannot release custody to a replacement that has become ineligible", async () => {
+  const { client, state } = makeClient({
+    candidateEligible: false,
+    recovery: { ...recoverySeed },
+  });
+  const service = createAssignmentsService({ prismaClient: client, clock: () => now });
+
+  const result = await service.confirmCustodyRecoveryRelease({
+    recoveryId: "recovery_1",
+    userId: "source_user",
+    reason: "Attempted release to the nominated replacement.",
+    evidence: [{ uri: "https://media.example/release.jpg", type: "IMAGE" }],
+  });
+
+  assert.equal(result.ineligible.code, "DRIVER_EXECUTION_ELIGIBILITY_CHANGED");
+  assert.equal(state.recovery.status, "PENDING_RELEASE");
+  assert.equal(state.audits.length, 0);
+});
+
 test("Admin release exception records reason and evidence without pretending the source driver confirmed", async () => {
   const { client, state } = makeClient({ recovery: { ...recoverySeed } });
   const service = createAssignmentsService({ prismaClient: client, clock: () => now });
