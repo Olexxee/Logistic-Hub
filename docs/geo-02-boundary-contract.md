@@ -41,6 +41,10 @@ This increment establishes a strict backend contract for service-zone boundary w
 
 Validation uses planar segment/ring predicates over longitude/latitude coordinates. It catches malformed rings, zero-area rings, self-intersections, invalid holes, and overlapping/touching MultiPolygon components. It does not calculate geodesic area, infer missing vertices, snap coordinates, repair polygons, or validate overlaps between separate service zones. Zone-to-zone overlap policy and boundary-edge assignment semantics must be decided before GEO-03 resolution.
 
+## Driver coverage governance correction
+
+The existing Admin assignment endpoint was tightened in this increment: the request requires a reason, the eligibility read/check/upsert runs in a Serializable transaction, and the change records an actor-attributed operational audit event with before/after snapshots. Disabling an existing assignment remains possible even when the zone is no longer eligible for new assignments. The frontend assignment workflow is a separate follow-up.
+
 ## Explicitly deferred
 
 1. Admin map drawing/editing and boundary preview.
