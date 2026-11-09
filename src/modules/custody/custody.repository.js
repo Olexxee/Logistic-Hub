@@ -298,6 +298,9 @@ export function createCustodyRepository({ prismaClient }) {
         select: { id: true, type: true, status: true },
       });
     },
+    findAnyReceivedHubIntake(parcelBookingId, tx = prismaClient) {
+      return tx.hubIntakeRecord.findFirst({ where: { parcelBookingId, status: "RECEIVED" } });
+    },
     findReceivedHubIntake(parcelBookingId, hubPointId, tx = prismaClient) {
       return tx.hubIntakeRecord.findFirst({
         where: { parcelBookingId, hubPointId, status: "RECEIVED" },
