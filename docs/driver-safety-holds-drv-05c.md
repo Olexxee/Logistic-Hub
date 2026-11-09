@@ -86,7 +86,7 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
   - Both require a reason (5–1000 characters).
 - Hold placement is a serializable transaction with retry on Prisma `P2034`: creates the case, writes hold metadata, revokes active booking verification tokens, and records `OperationalAuditEvent` together.
 - Hold/release are idempotent where appropriate. Repeated hold returns the existing hold/case without duplicate case/audit. Release clears active hold metadata but keeps the incident case and audit history.
-- Assignment driver transitions, pickup/delivery verification, and verification-code issuance reject held assignments with `ASSIGNMENT_EXECUTION_HELD`. Hold check happens before token lookup/consumption, so a held parcel cannot be picked up or delivered through the ordinary verification path.
+- Assignment driver transitions, pickup/delivery verification, and verification-code issuance reject held assignments with `ASSIGNMENT_EXECUTION_HELD`. Hold check happens before token lookup/consumption, so a held parcel cannot be picked up or delivered through the ordinary verification path.- Ordinary custody handover creation and confirmation are also blocked when either involved driver assignment is safety-held, including a pending handover created before the hold. Verification-code issuance is serialized with the hold transaction using an assignment row lock, preventing a code from being minted after a hold commits.
 - Driver assignment list exposes only a boolean `executionHeld`; it does not leak the Admin's incident reason.
 - Operations overview now counts `heldParcelAssignments`.
 - Safety holds are parcel-only in this initial slice. Ride assignments are explicitly excluded.
