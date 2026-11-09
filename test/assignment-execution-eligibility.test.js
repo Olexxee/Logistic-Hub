@@ -335,3 +335,89 @@ test("delivery verification completes existing parcel custody and records an eli
   assert.equal(exception.metadata.policy, "ALLOW_EXISTING_CUSTODY_COMPLETION");
   assert.equal(exception.metadata.reasonCode, "DRIVER_EXECUTION_ELIGIBILITY_CHANGED");
 });
+
+
+test("Admin safety hold blocks driver assignment transitions before any lifecycle mutation", async () => {
+  const assignment = baseAssignment({
+    executionHoldAt: new Date("2026-11-09T09:59:00.000Z"),
+    executionHoldReason: "Incident review",
+  });
+  let writes = 0;
+  const tx = {
+    driverAssignment: {
+      findUnique: async () => assignment,
+      updateMany: async () => { writes += 1; return { count: 1 }; },
+    },
+  };
+  const repository = createAssignmentsRepository({ $transaction: callback => callback(tx) });
+
+  const result = await repository.transition({
+    assignmentId: assignment.id,
+    driverUserId: "driver_user_1",
+    nextStatus: "IN_PROGRESS",
+    now,
+  });
+
+  assert.equal(result.held, true);
+  assert.equal(result.holdAt.toISOString(), assignment.executionHoldAt.toISOString());
+  assert.equal(writes, 0);
+});
+
+test("Admin safety hold blocks pickup and delivery verification before reading or consuming codes", async () => {
+  for (const action of ["PICKUP", "DELIVERY"]) {
+    const assignment = baseAssignment({
+      status: action === "PICKUP" ? "ARRIVED_AT_PICKUP" : "ARRIVED_AT_DESTINATION",
+      executionHoldAt: new Date("2026-11-09T09:59:00.000Z"),
+    });
+    let tokenReads = 0;
+    let tokenWrites = 0;
+    const tx = {
+      driverAssignment: { findUnique: async () => assignment },
+      verificationToken: {
+        findFirst: async () => { tokenReads += 1; return { id: "token_1", failedAttempts: 0, tokenHash: "valid_hash" }; },
+        updateMany: async () => { tokenWrites += 1; return { count: 1 }; },
+      },
+    };
+    const repository = createAssignmentsRepository({ $transaction: callback => callback(tx) });
+
+    const result = await repository.verifyCode({
+      assignmentId: assignment.id,
+      driverUserId: "driver_user_1",
+      action,
+      tokenHash: "valid_hash",
+      now,
+    });
+
+    assert.equal(result.held, true);
+    assert.equal(tokenReads, 0);
+    assert.equal(tokenWrites, 0);
+  }
+});
+
+test("verification code issuance is blocked while assignment is on safety hold", async () => {
+  const assignment = baseAssignment({
+    status: "ARRIVED_AT_PICKUP",
+    executionHoldAt: new Date("2026-11-09T09:59:00.000Z"),
+  });
+  let tokenWrites = 0;
+  const tx = {
+    $queryRaw: async () => [],
+    driverAssignment: { findUnique: async () => assignment },
+    verificationToken: {
+      updateMany: async () => { tokenWrites += 1; return { count: 1 }; },
+      create: async () => { tokenWrites += 1; return {}; },
+    },
+  };
+  const repository = createAssignmentsRepository({ $transaction: callback => callback(tx) });
+
+  const result = await repository.issueCode({
+    assignment,
+    action: "PICKUP",
+    tokenHash: "hash",
+    expiresAt: new Date(now.getTime() + 60000),
+    now,
+  });
+
+  assert.equal(result.held, true);
+  assert.equal(tokenWrites, 0);
+});

@@ -31,6 +31,33 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
   }).strict();
+  const idSchema = z.object({
+    assignmentId: z.string().trim().min(1).max(128),
+  });
+  const adminHoldSchema = z.object({reason:z.string().trim().min(5).max(1000)}).strict();
+  router.get(
+    "/admin/execution-holds",
+    requireAuth,
+    requireRole("ADMIN"),
+    validate(listQuerySchema, "query"),
+    controller.listExecutionHolds,
+  );
+  router.post(
+    "/admin/:assignmentId/execution-hold",
+    requireAuth,
+    requireRole("ADMIN"),
+    validate(idSchema, "params"),
+    validate(adminHoldSchema),
+    controller.placeExecutionHold,
+  );
+  router.post(
+    "/admin/:assignmentId/execution-hold/release",
+    requireAuth,
+    requireRole("ADMIN"),
+    validate(idSchema, "params"),
+    validate(adminHoldSchema),
+    controller.releaseExecutionHold,
+  );
   router.get(
     "/mine",
     requireAuth,
@@ -38,9 +65,6 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     validate(listQuerySchema, "query"),
     controller.listMine,
   );
-  const idSchema = z.object({
-    assignmentId: z.string().trim().min(1).max(128),
-  });
   router.post(
     "/:assignmentId/arrived",
     requireAuth,

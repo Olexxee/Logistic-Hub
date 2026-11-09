@@ -2615,6 +2615,101 @@ paths:
       responses:
         '200': { description: All sessions revoked. }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /assignments/admin/execution-holds:
+    get:
+      tags: [Admin]
+      operationId: listAdminAssignmentExecutionHolds
+      summary: List parcel assignments currently held for safety review
+      description: ADMIN-only paginated queue. Incident and assignment context is restricted to authorized administrators.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Paginated safety-hold queue.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ADMIN role required.
+  /assignments/admin/{assignmentId}/execution-hold:
+    post:
+      tags: [Admin]
+      operationId: placeAdminAssignmentExecutionHold
+      summary: Place an execution safety hold on a parcel assignment
+      description: ADMIN-only. Creates or reuses the linked safety incident case, revokes active verification tokens, and records the hold and audit event atomically. Does not cancel or reassign the parcel or alter payment/settlement.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200':
+          description: Safety hold placed or existing active hold returned idempotently.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ADMIN role required.
+        '404':
+          description: Parcel assignment not found.
+        '409':
+          description: Assignment is not eligible for a safety hold.
+  /assignments/admin/{assignmentId}/execution-hold/release:
+    post:
+      tags: [Admin]
+      operationId: releaseAdminAssignmentExecutionHold
+      summary: Release an Admin safety hold from a parcel assignment
+      description: ADMIN-only. Requires a reason, clears active hold metadata, and retains the incident case and audit history. Does not perform custody recovery or reassignment.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200':
+          description: Active execution hold released.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ADMIN role required.
+        '404':
+          description: Assignment or active hold not found.
   /assignments/{assignmentId}/verification-codes:
     post:
       tags: [Assignments]

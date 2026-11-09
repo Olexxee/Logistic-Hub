@@ -24,6 +24,7 @@ function prismaWithCounts(counts = {}) {
     hubIntakeRecord: model("hubIntakeRecord"),
     operationalCase: model("operationalCase"),
     partnerDeliveryAssignment: model("partnerDeliveryAssignment"),
+    driverAssignment: model("driverAssignment"),
   };
   return client;
 }
@@ -36,6 +37,7 @@ test("operations overview returns bounded aggregate metrics without exposing shi
     hubIntakeRecord: 2,
     operationalCase: 5,
     partnerDeliveryAssignment: 4,
+    driverAssignment: 6,
   });
   const service = createOperationsControlService({ prismaClient, clock: () => now });
   const result = await service.getOverview();
@@ -51,8 +53,9 @@ test("operations overview returns bounded aggregate metrics without exposing shi
     criticalOperationalCases: 5,
     unassignedOperationalCases: 5,
     activePartnerAssignments: 4,
+    heldParcelAssignments: 6,
   });
-  assert.equal(prismaClient.calls.length, 9);
+  assert.equal(prismaClient.calls.length, 10);
   assert.deepEqual(prismaClient.transactionOptions, { isolationLevel: "RepeatableRead" });
   assert.equal(prismaClient.calls.some(call => call.model === "parcelBooking" && call.args.where.status.in.includes("DRAFT")), false);
   assert.equal(prismaClient.calls.some(call => call.model === "deliveryLeg" && call.args.where.status === "FAILED"), true);

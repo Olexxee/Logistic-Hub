@@ -126,14 +126,56 @@ export function createAssignmentsRepository(prismaClient = prisma) {
    return {items,total};
   },
   findAssignment(id) { return prismaClient.driverAssignment.findUnique({where:{id},include:{driverProfile:{select:{id:true,userId:true,verificationStatus:true,kycTier:true,suspendedAt:true}},vehicle:{select:{id:true,type:true,make:true,model:true,registrationPlate:true}},parcelBooking:true,rideBooking:true}}); },
+  lockAssignment(id, tx = prismaClient) {
+   return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${id} FOR UPDATE`;
+  },
+  listExecutionHolds({skip=0,take=25}={},tx=prismaClient) {
+   const where={parcelBookingId:{not:null},executionHoldAt:{not:null},status:{notIn:["COMPLETED","CANCELLED","FAILED"]}};
+   return Promise.all([
+    tx.driverAssignment.findMany({
+     where,skip,take,
+     orderBy:[{executionHoldAt:"desc"},{id:"desc"}],
+     include:{
+      parcelBooking:{select:{id:true,publicReference:true,status:true}},
+      deliveryLeg:{select:{id:true,sequence:true,type:true,status:true}},
+      driverProfile:{select:{id:true,userId:true,user:{select:{fullName:true,email:true,phone:true}}}},
+      vehicle:{select:{id:true,type:true,make:true,model:true,registrationPlate:true}},
+     },
+    }),
+    tx.driverAssignment.count({where}),
+   ]).then(([items,total])=>({items,total}));
+  },
+  findAssignmentForAdminHold(id, tx = prismaClient) {
+   return tx.driverAssignment.findUnique({where:{id},include:{parcelBooking:{select:{id:true,publicReference:true}},deliveryLeg:{select:{id:true,sequence:true}},driverProfile:{select:{id:true,userId:true}},vehicle:{select:{id:true}}}});
+  },
+  updateExecutionHold(id, data, tx = prismaClient) {
+   return tx.driverAssignment.update({where:{id},data});
+  },
+  createSafetyHoldCase(data, tx = prismaClient) {
+   return tx.operationalCase.create({data});
+  },
+  createOperationalAudit(data, tx = prismaClient) {
+   return tx.operationalAuditEvent.create({data});
+  },
+  revokeAssignmentVerificationCodes(assignment, tx = prismaClient) {
+   return tx.verificationToken.updateMany({
+    where:{...(assignment.parcelBookingId?{parcelBookingId:assignment.parcelBookingId}:{}),...(assignment.deliveryLegId?{deliveryLegId:assignment.deliveryLegId}:{}),status:"ACTIVE"},
+    data:{status:"REVOKED"},
+   });
+  },
+  createAssignmentBookingEvent(data, tx = prismaClient) {
+   return tx.bookingEvent.create({data});
+  },
   findOwnerLocation({assignment,now}) {
    const booking=assignment.parcelBooking||assignment.rideBooking;
    return prismaClient.driverLocation.findFirst({where:{driverProfileId:assignment.driverProfileId,recordedAt:{gte:new Date(now.getTime()-2*60*1000)}},orderBy:{recordedAt:"desc"},select:{latitude:true,longitude:true,accuracyMeters:true,recordedAt:true}});
   },
   issueCode({assignment,action,tokenHash,expiresAt,now}) {
-   return prismaClient.$transaction(async tx=>{
+   return serializableTransaction(prismaClient, async tx=>{
+    await tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${assignment.id} FOR UPDATE`;
     const fresh=await tx.driverAssignment.findUnique({where:{id:assignment.id},include:{parcelBooking:true,rideBooking:true}});
     if(!fresh||fresh.status==="COMPLETED"||fresh.status==="CANCELLED")return null;
+    if(fresh.executionHoldAt) return {held:true,holdAt:fresh.executionHoldAt};
     const booking=fresh.parcelBooking||fresh.rideBooking;
     const ownerId=fresh.parcelBooking?booking.senderId:booking.passengerId;
     if(action==="PICKUP"&&fresh.status!=="ARRIVED_AT_PICKUP")return {conflict:true};
@@ -149,6 +191,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId) return {forbidden:true};
     if(!a.parcelBookingId && !a.rideBookingId) return {forbidden:true};
+    if(a.executionHoldAt) return {held:true,holdAt:a.executionHoldAt};
     if(a.rideBookingId && (a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
     if(!isAllowedAssignmentTransition(a.status,nextStatus))return {conflict:true,status:a.status};
     if(a.parcelBookingId && nextStatus==="ARRIVED_AT_PICKUP") {
@@ -180,6 +223,7 @@ export function createAssignmentsRepository(prismaClient = prisma) {
     if(!a)return null;
     if(a.driverProfile.userId!==driverUserId)return {forbidden:true};
     if(!a.parcelBookingId && !a.rideBookingId) return {forbidden:true};
+    if(a.executionHoldAt) return {held:true,holdAt:a.executionHoldAt};
     const isParcel=Boolean(a.parcelBookingId);const booking=a.parcelBooking||a.rideBooking;
     if(!isParcel && (a.driverProfile.verificationStatus!=="VERIFIED" || a.driverProfile.suspendedAt || a.driverProfile.kycTier!=="FULL")) return {forbidden:true};
     const eligibilityIssue = isParcel

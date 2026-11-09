@@ -87,6 +87,9 @@ export function createCustodyRepository({ prismaClient }) {
     lockDeliveryLeg(deliveryLegId, tx = prismaClient) {
       return tx.$queryRaw`SELECT "id" FROM "delivery_legs" WHERE "id" = ${deliveryLegId} FOR UPDATE`;
     },
+    lockDriverAssignmentForLeg(deliveryLegId, driverProfileId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "deliveryLegId" = ${deliveryLegId} AND "driverProfileId" = ${driverProfileId} AND "status" NOT IN ('COMPLETED', 'FAILED', 'CANCELLED') FOR UPDATE`;
+    },
     lockHandover(handoverId, tx = prismaClient) {
       return tx.$queryRaw`SELECT "id" FROM "custody_handovers" WHERE "id" = ${handoverId} FOR UPDATE`;
     },
