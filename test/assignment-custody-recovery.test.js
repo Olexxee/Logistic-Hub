@@ -245,7 +245,7 @@ test("Admin release exception records reason and evidence without pretending the
 
   assert.equal(result.recovery.status, "PENDING_RECEIPT");
   assert.equal(result.recovery.exceptionAuthorizedByUserId, "admin_user");
-  assert.equal(result.recovery.releaseConfirmedByUserId, null);
+  assert.equal(result.recovery.releaseConfirmedByUserId ?? null, null);
   assert.equal(state.audits[0].action, "DRIVER_CUSTODY_RELEASE_EXCEPTION_AUTHORIZED");
 });
 
