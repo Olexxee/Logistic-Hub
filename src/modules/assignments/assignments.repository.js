@@ -129,6 +129,22 @@ export function createAssignmentsRepository(prismaClient = prisma) {
   lockAssignment(id, tx = prismaClient) {
    return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${id} FOR UPDATE`;
   },
+  listExecutionHolds({skip=0,take=25}={},tx=prismaClient) {
+   const where={parcelBookingId:{not:null},executionHoldAt:{not:null},status:{notIn:["COMPLETED","CANCELLED","FAILED"]}};
+   return Promise.all([
+    tx.driverAssignment.findMany({
+     where,skip,take,
+     orderBy:[{executionHoldAt:"desc"},{id:"desc"}],
+     include:{
+      parcelBooking:{select:{id:true,publicReference:true,status:true}},
+      deliveryLeg:{select:{id:true,sequence:true,type:true,status:true}},
+      driverProfile:{select:{id:true,userId:true,user:{select:{fullName:true,email:true,phone:true}}}},
+      vehicle:{select:{id:true,type:true,make:true,model:true,registrationPlate:true}},
+     },
+    }),
+    tx.driverAssignment.count({where}),
+   ]).then(([items,total])=>({items,total}));
+  },
   findAssignmentForAdminHold(id, tx = prismaClient) {
    return tx.driverAssignment.findUnique({where:{id},include:{parcelBooking:{select:{id:true,publicReference:true}},deliveryLeg:{select:{id:true,sequence:true}},driverProfile:{select:{id:true,userId:true}},vehicle:{select:{id:true}}}});
   },
