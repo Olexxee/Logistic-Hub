@@ -130,6 +130,32 @@ const adminIntakesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
 
+const adminHubRecoveriesQuerySchema = z.object({
+  status: z.enum(["PENDING_RECEIPT", "CONFIRMED", "CANCELLED"]).optional(),
+  hubPointId: id.optional(),
+  cursor: id.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
+const initiateHubRecoverySchema = z.object({
+  hubPointId: id,
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+const receiveHubRecoverySchema = z.object({
+  conditionAtReceipt: z.string().trim().min(2).max(500),
+  weightGrams: z.number().int().positive().max(100000000),
+  lengthMm: z.number().int().positive().max(1000000).optional(),
+  widthMm: z.number().int().positive().max(1000000).optional(),
+  heightMm: z.number().int().positive().max(1000000).optional(),
+  evidence: evidenceSchema,
+}).strict().refine(value => {
+  const any = [value.lengthMm, value.widthMm, value.heightMm].some(item => item !== undefined);
+  const all = [value.lengthMm, value.widthMm, value.heightMm].every(item => item !== undefined);
+  return !any || all;
+}, { message: "Provide all parcel dimensions or none." });
+const cancelHubRecoverySchema = z.object({
+  reason: z.string().trim().min(5).max(1000),
+}).strict();
+
 function validate(schema) {
   return (req, res, next) => {
     const parsed = schema.safeParse(req.body);
@@ -168,6 +194,11 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
 
   router.get("/admin/custody-handovers", authMiddleware, admin, validateQuery(adminCustodyQuerySchema), asyncWrapper(controller.listAdminCustodyHandovers));
   router.get("/admin/hub-intakes", authMiddleware, admin, validateQuery(adminIntakesQuerySchema), asyncWrapper(controller.listAdminHubIntakes));
+
+  router.get("/admin/assignments/hub-recoveries", authMiddleware, admin, validateQuery(adminHubRecoveriesQuerySchema), asyncWrapper(controller.listAdminHubRecoveries));
+  router.post("/admin/assignments/:assignmentId/hub-recoveries", authMiddleware, admin, validateParams, validate(initiateHubRecoverySchema), asyncWrapper(controller.initiateAdminHubRecovery));
+  router.post("/admin/hub-recoveries/:recoveryId/cancel", authMiddleware, admin, validateParams, validate(cancelHubRecoverySchema), asyncWrapper(controller.cancelAdminHubRecovery));
+  router.post("/hub-operations/hub-recoveries/:recoveryId/receive", authMiddleware, validateParams, validate(receiveHubRecoverySchema), asyncWrapper(controller.receiveAdminHubRecovery));
   router.patch("/admin/users/:userId/phone-verification", authMiddleware, admin, validateParams, validate(phoneVerificationSchema), asyncWrapper(controller.setRecipientPhoneVerification));
   router.get("/admin/hub-points/:hubPointId/operators", authMiddleware, admin, validateParams, (req, res, next) => {
     const parsed = hubOperatorsQuerySchema.safeParse(req.query);
