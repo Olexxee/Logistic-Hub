@@ -58,6 +58,26 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     return {assignmentId,releasedAt:clock(),caseId:assignment.executionHoldOperationalCaseId,replay:false};
    });
   },
+  async listExecutionHolds({page=1,limit=25}) {
+   const result=await repository.listExecutionHolds({skip:(page-1)*limit,take:limit});
+   return {
+    items:result.items.map(assignment=>({
+     assignmentId:assignment.id,
+     status:assignment.status,
+     heldAt:assignment.executionHoldAt,
+     reason:assignment.executionHoldReason,
+     heldByUserId:assignment.executionHoldActorUserId,
+     operationalCaseId:assignment.executionHoldOperationalCaseId,
+     booking:assignment.parcelBooking,
+     deliveryLeg:assignment.deliveryLeg,
+     driver:{id:assignment.driverProfile.id,userId:assignment.driverProfile.userId,user:assignment.driverProfile.user},
+     vehicle:assignment.vehicle,
+     createdAt:assignment.createdAt,
+     updatedAt:assignment.updatedAt,
+    })),
+    pagination:{page,limit,total:result.total,totalPages:Math.ceil(result.total/limit)},
+   };
+  },
   async listMine({userId,page=1,limit=20}){
    const result=await repository.listDriverAssignments({userId,skip:(page-1)*limit,take:limit});
    return {
