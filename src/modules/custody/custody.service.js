@@ -1064,7 +1064,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           parcelBookingId: intake.parcelBookingId,
           sequence,
           type: nextLegType,
-          status: "READY_FOR_ASSIGNMENT",
+          status: "PLANNED",
           originServiceZoneId: intake.hubPoint.serviceZoneId,
           destinationServiceZoneId,
           originHubPointId: intake.hubPointId,
