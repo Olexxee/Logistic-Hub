@@ -214,14 +214,27 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
   async listMyCustodyRecoveries({userId,page=1,limit=20}) {
    const result=await repository.listMyAssignmentRecoveries({userId,skip:(page-1)*limit,take:limit});
    return {
-    items:result.items.map(recovery=>({
-     id:recovery.id,
-     status:recovery.status,
-     createdAt:recovery.createdAt,
-     sourceAssignment:recovery.sourceAssignment,
-     replacementVehicle:recovery.replacementVehicle,
-     nextAction:recovery.status==="PENDING_RECEIPT"?"CONFIRM_PHYSICAL_RECEIPT":"WAIT_FOR_SOURCE_RELEASE",
-    })),
+    items:result.items.map(recovery=>{
+     const isReplacementDriver=recovery.replacementDriverProfile?.userId===userId;
+     const nextAction=isReplacementDriver
+      ? recovery.status==="PENDING_RECEIPT"?"CONFIRM_PHYSICAL_RECEIPT":"WAIT_FOR_SOURCE_RELEASE"
+      : recovery.status==="PENDING_RELEASE"?"CONFIRM_PHYSICAL_RELEASE":"WAIT_FOR_REPLACEMENT_RECEIPT";
+     return {
+      id:recovery.id,
+      status:recovery.status,
+      party:isReplacementDriver?"REPLACEMENT_DRIVER":"CURRENT_CUSTODIAN",
+      createdAt:recovery.createdAt,
+      sourceAssignment:{
+       id:recovery.sourceAssignment.id,
+       status:recovery.sourceAssignment.status,
+       pickupAt:recovery.sourceAssignment.pickupAt,
+       parcelBooking:recovery.sourceAssignment.parcelBooking,
+       deliveryLeg:recovery.sourceAssignment.deliveryLeg,
+      },
+      replacementVehicle:recovery.replacementVehicle,
+      nextAction,
+     };
+    }),
     pagination:{page,limit,total:result.total,totalPages:Math.ceil(result.total/limit)},
    };
   },
