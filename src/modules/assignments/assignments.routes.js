@@ -32,6 +32,13 @@ export function createAssignmentsRouter({ prismaClient = prisma } = {}) {
     limit: z.coerce.number().int().min(1).max(100).default(20),
   }).strict();
   const adminHoldSchema = z.object({reason:z.string().trim().min(5).max(1000)}).strict();
+  router.get(
+    "/admin/execution-holds",
+    requireAuth,
+    requireRole("ADMIN"),
+    validate(listQuerySchema, "query"),
+    controller.listExecutionHolds,
+  );
   router.post(
     "/admin/:assignmentId/execution-hold",
     requireAuth,
