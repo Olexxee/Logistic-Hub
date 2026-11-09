@@ -222,8 +222,7 @@ export function classifyPointInServiceZoneBoundary(boundary, point) {
  * in intersection checks. This is an operational warning, not a replacement
  * for booking-time ambiguity detection.
  */
-export function serviceZoneBoundariesOverlap(first, second) {
-  if (!validateServiceZoneBoundary(first).valid || !validateServiceZoneBoundary(second).valid) return false;
+export function serviceZoneBoundariesOverlapValidated(first, second) {
   const firstPolygons = first.type === "Polygon" ? [first.coordinates] : first.coordinates;
   const secondPolygons = second.type === "Polygon" ? [second.coordinates] : second.coordinates;
   for (const a of firstPolygons) {
@@ -232,4 +231,9 @@ export function serviceZoneBoundariesOverlap(first, second) {
     }
   }
   return false;
+}
+
+export function serviceZoneBoundariesOverlap(first, second) {
+  if (!validateServiceZoneBoundary(first).valid || !validateServiceZoneBoundary(second).valid) return false;
+  return serviceZoneBoundariesOverlapValidated(first, second);
 }
