@@ -729,9 +729,17 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     async initiateAdminHubRecovery({ assignmentId, hubPointId, reason, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         await requireActiveUser(tx, actorUserId);
+        const initialAssignment = await repo.findHubRecoveryAssignment(assignmentId, tx);
+        if (!initialAssignment) return { notFound: true };
+        if (!initialAssignment.deliveryLegId) return { blocker: "PARCEL_ASSIGNMENT_REQUIRED" };
+        // Match custody handover lock ordering: delivery leg first, then assignment.
+        await repo.lockDeliveryLeg(initialAssignment.deliveryLegId, tx);
         await repo.lockDriverAssignment(assignmentId, tx);
         const assignment = await repo.findHubRecoveryAssignment(assignmentId, tx);
         if (!assignment) return { notFound: true };
+        if (assignment.deliveryLegId !== initialAssignment.deliveryLegId) {
+          return { blocker: "SOURCE_ASSIGNMENT_RECOVERY_STATE_CHANGED" };
+        }
         if (!assignment.parcelBookingId || !assignment.deliveryLegId || !assignment.parcelBooking || !assignment.deliveryLeg) {
           return { blocker: "PARCEL_ASSIGNMENT_REQUIRED" };
         }
@@ -805,6 +813,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (recovery.status === "CONFIRMED") return { recovery, replay: true };
         if (recovery.status !== "PENDING_RECEIPT") return { blocker: "HUB_RECOVERY_NOT_RECEIVABLE" };
 
+        // Keep the same leg -> assignment lock order used by normal custody handovers.
+        await repo.lockDeliveryLeg(recovery.deliveryLegId, tx);
         await repo.lockDriverAssignment(recovery.sourceAssignmentId, tx);
         const assignment = await repo.findHubRecoveryAssignment(recovery.sourceAssignmentId, tx);
         if (!assignment || assignment.id !== recovery.sourceAssignmentId) return { blocker: "SOURCE_ASSIGNMENT_UNAVAILABLE" };
