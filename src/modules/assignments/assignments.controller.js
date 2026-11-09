@@ -13,6 +13,7 @@ export function createAssignmentsController(service){return {
   if(result.blocker==="ASSIGNMENT_NOT_HELD")return res.status(409).json({success:false,error:{code:result.blocker,message:"Assignment does not have an active execution hold."}});
   return res.status(200).json({success:true,data:result});
  }),
+ listExecutionHolds:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listExecutionHolds({page:req.validated.query.page,limit:req.validated.query.limit})})),
  listMine:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.listMine({userId:req.user.id,page:req.validated.query.page,limit:req.validated.query.limit})})),
  arrived:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.markArrived({assignmentId:req.params.assignmentId,userId:req.user.id})})),
  start:asyncWrapper(async(req,res)=>res.status(200).json({success:true,data:await service.startTrip({assignmentId:req.params.assignmentId,userId:req.user.id})})),
