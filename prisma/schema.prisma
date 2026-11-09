@@ -372,7 +372,15 @@ enum CustodyHandoverStatus {
   EXPIRED
 }
 
+enum DriverAssignmentRecoveryStatus {
+  PENDING_RELEASE
+  PENDING_RECEIPT
+  CONFIRMED
+  CANCELLED
+}
+
 enum OperationalCaseType {
+  SAFETY_INCIDENT
   FAILED_HANDOVER
   DAMAGED_PARCEL
   MISSING_PARCEL
@@ -444,6 +452,11 @@ model User {
   updatedAt       DateTime   @updatedAt
 
   operationalAuditEvents OperationalAuditEvent[] @relation("OperationalAuditActor")
+  initiatedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryInitiator")
+  releasedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReleaser")
+  receivedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReceiver")
+  authorizedAssignmentRecoveryExceptions DriverAssignmentRecovery[] @relation("AssignmentRecoveryExceptionAuthorizer")
+  cancelledAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryCanceller")
   partnerMemberships TransportPartnerMember[]
   submittedHubApplications HubApplication[] @relation("HubApplicationApplicant")
   reviewedHubApplications HubApplication[] @relation("HubApplicationReviewer")
@@ -564,6 +577,7 @@ model DriverProfile {
   offers             DriverOffer[]
   deliveryLegOffers  DeliveryLegOffer[]
   assignments        DriverAssignment[]
+  replacementAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReplacementDriver")
   payouts            DriverPayout[]
   settlementAccounts DriverSettlementAccount[]
 
@@ -609,6 +623,7 @@ model Vehicle {
   verificationDocuments DriverVerificationDocument[]
   serviceCapabilities   VehicleServiceCapability[]
   assignments           DriverAssignment[]
+  replacementAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReplacementVehicle")
   parcelOffers          DriverOffer[]
   deliveryLegOffers     DeliveryLegOffer[]
 
@@ -971,6 +986,7 @@ model ParcelBooking {
   destinationServiceZone ServiceZone       @relation("ParcelDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   offers                 DriverOffer[]
   assignments            DriverAssignment[]
+  assignmentRecoveries    DriverAssignmentRecovery[]
   paymentAttempts        PaymentAttempt[]
   verificationTokens     VerificationToken[]
   events                 BookingEvent[]
@@ -1105,6 +1121,56 @@ model DriverOffer {
   @@map("driver_offers")
 }
 
+model DriverAssignmentRecovery {
+  id                           String                          @id @default(cuid())
+  parcelBookingId              String
+  deliveryLegId                String
+  sourceAssignmentId           String
+  replacementAssignmentId      String?                         @unique
+  replacementDriverProfileId   String
+  replacementVehicleId         String
+  operationalCaseId            String
+  initiatedByUserId            String
+  status                       DriverAssignmentRecoveryStatus   @default(PENDING_RELEASE)
+  reason                       String
+  releaseConfirmedByUserId     String?
+  releaseConfirmedAt           DateTime?
+  releaseReason                String?
+  releaseEvidence              Json?
+  exceptionAuthorizedByUserId  String?
+  exceptionAuthorizedAt        DateTime?
+  exceptionReason              String?
+  exceptionEvidence            Json?
+  receiptConfirmedByUserId     String?
+  receiptConfirmedAt           DateTime?
+  receiptCondition             String?
+  receiptEvidence              Json?
+  cancelledByUserId             String?
+  cancelledAt                   DateTime?
+  cancellationReason            String?
+  createdAt                    DateTime                          @default(now())
+  updatedAt                    DateTime                          @updatedAt
+
+  parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  deliveryLeg DeliveryLeg @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  sourceAssignment DriverAssignment @relation("RecoverySourceAssignment", fields: [sourceAssignmentId], references: [id], onDelete: Restrict)
+  replacementAssignment DriverAssignment? @relation("RecoveryReplacementAssignment", fields: [replacementAssignmentId], references: [id], onDelete: Restrict)
+  replacementDriverProfile DriverProfile @relation("AssignmentRecoveryReplacementDriver", fields: [replacementDriverProfileId], references: [id], onDelete: Restrict)
+  replacementVehicle Vehicle @relation("AssignmentRecoveryReplacementVehicle", fields: [replacementVehicleId], references: [id], onDelete: Restrict)
+  operationalCase OperationalCase @relation(fields: [operationalCaseId], references: [id], onDelete: Restrict)
+  initiatedBy User @relation("AssignmentRecoveryInitiator", fields: [initiatedByUserId], references: [id], onDelete: Restrict)
+  releaseConfirmedBy User? @relation("AssignmentRecoveryReleaser", fields: [releaseConfirmedByUserId], references: [id], onDelete: Restrict)
+  exceptionAuthorizedBy User? @relation("AssignmentRecoveryExceptionAuthorizer", fields: [exceptionAuthorizedByUserId], references: [id], onDelete: Restrict)
+  receiptConfirmedBy User? @relation("AssignmentRecoveryReceiver", fields: [receiptConfirmedByUserId], references: [id], onDelete: Restrict)
+  cancelledBy User? @relation("AssignmentRecoveryCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+
+  @@index([sourceAssignmentId, status, createdAt])
+  @@index([deliveryLegId, status, createdAt])
+  @@index([replacementDriverProfileId, status])
+  @@index([operationalCaseId, createdAt])
+  @@map("driver_assignment_recoveries")
+}
+
 model DriverAssignment {
   id               String           @id @default(cuid())
   parcelBookingId  String?
@@ -1124,6 +1190,11 @@ model DriverAssignment {
   completedAt      DateTime?
   cancelledAt      DateTime?
   failureReason    String?
+  payoutReviewRequired Boolean @default(false)
+  executionHoldAt  DateTime?
+  executionHoldReason String?
+  executionHoldActorUserId String?
+  executionHoldOperationalCaseId String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -1133,12 +1204,15 @@ model DriverAssignment {
   vehicle       Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   assignedBy    User?          @relation(fields: [assignedByUserId], references: [id], onDelete: SetNull)
   deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  sourceRecoveries DriverAssignmentRecovery[] @relation("RecoverySourceAssignment")
+  replacementForRecovery DriverAssignmentRecovery? @relation("RecoveryReplacementAssignment")
 
   @@index([driverProfileId, status, reservedAt])
   @@index([parcelBookingId, status])
   @@index([rideBookingId, status])
   @@index([deliveryLegId, status])
   @@index([vehicleId, status])
+  @@index([executionHoldAt])
   @@map("driver_assignments")
 }
 
@@ -1173,6 +1247,7 @@ model DeliveryLeg {
   originHubPoint HubPoint? @relation("DeliveryLegOriginHub", fields: [originHubPointId], references: [id], onDelete: Restrict)
   destinationHubPoint HubPoint? @relation("DeliveryLegDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
   assignments       DriverAssignment[]
+  assignmentRecoveries DriverAssignmentRecovery[]
   offers             DeliveryLegOffer[]
   verificationTokens VerificationToken[]
   partnerAssignments PartnerDeliveryAssignment[]
@@ -1857,6 +1932,7 @@ model OperationalCase {
   hubPoint        HubPoint?        @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
   reportedBy      User             @relation("OperationalCaseReporter", fields: [reportedByUserId], references: [id], onDelete: Restrict)
   assignedTo      User?            @relation("OperationalCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: Restrict)
+  assignmentRecoveries DriverAssignmentRecovery[]
 
   @@index([status, priority, createdAt])
   @@index([parcelBookingId, status])

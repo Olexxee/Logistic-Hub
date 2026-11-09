@@ -15,6 +15,7 @@ export function createOperationsControlRepository({ prismaClient }) {
         criticalOperationalCases,
         unassignedOperationalCases,
         activePartnerAssignments,
+        heldParcelAssignments,
       ] = await Promise.all([
         tx.parcelBooking.count({
           where: { status: { in: [
@@ -32,6 +33,7 @@ export function createOperationsControlRepository({ prismaClient }) {
         tx.operationalCase.count({ where: { ...activeCaseWhere, priority: "CRITICAL" } }),
         tx.operationalCase.count({ where: { ...activeCaseWhere, assignedToUserId: null } }),
         tx.partnerDeliveryAssignment.count({ where: { status: { in: ["ASSIGNED", "ACCEPTED", "IN_TRANSIT"] } } }),
+        tx.driverAssignment.count({ where: { parcelBookingId: { not: null }, executionHoldAt: { not: null }, status: { notIn: ["COMPLETED", "CANCELLED", "FAILED"] } } }),
       ]);
 
       return {
@@ -44,6 +46,7 @@ export function createOperationsControlRepository({ prismaClient }) {
         criticalOperationalCases,
         unassignedOperationalCases,
         activePartnerAssignments,
+        heldParcelAssignments,
       };
       }, { isolationLevel: "RepeatableRead" });
     },

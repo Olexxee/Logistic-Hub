@@ -13,6 +13,7 @@ async function serve(role, run) {
     hubIntakeRecord: { count: async () => 1 },
     operationalCase: { count: async ({ where }) => where.priority === "CRITICAL" ? 1 : where.assignedToUserId === null ? 2 : 4 },
     partnerDeliveryAssignment: { count: async () => 5 },
+    driverAssignment: { count: async () => 6 },
   };
   const app = express();
   app.use("/api/v1", createOperationsControlRouter({
@@ -53,6 +54,7 @@ test("ADMIN receives aggregate operational metrics without record-level data", a
         criticalOperationalCases: 1,
         unassignedOperationalCases: 2,
         activePartnerAssignments: 5,
+        heldParcelAssignments: 6,
       },
     });
     assert.equal(JSON.stringify(body).includes("pickupAddress"), false);

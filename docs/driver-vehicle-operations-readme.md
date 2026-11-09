@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A parcel-dispatch eligibility enforcement is merged in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124). DRV-05B assignment execution eligibility is implemented in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125); CI passed on head `4737c98dc13e8d71bb1a3f219202bbaafcfc295e`. Staging acceptance is pending. Admin safety-hold/recovery and partner authorization remain open.
+**Status:** DRV-00 through DRV-02 backend contracts are merged; DRV-03 Admin workspace and DRV-04 driver self-service workspace are merged in the frontend. DRV-05A is merged in [PR #124](https://github.com/Olexxee/Logistic-Hub/pull/124); DRV-05B is merged in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125). DRV-05C-A is implemented in [PR #127](https://github.com/Olexxee/Logistic-Hub/pull/127), merged into the still-open documentation/foundation PR #126 branch. DRV-05C-B controlled driver-to-driver custody recovery is under implementation on `feat/drv-05c-b-controlled-custody-recovery`, stacked on PR #126. Staging acceptance remains pending.
 
 ## 1. Objective
 
@@ -325,6 +325,13 @@ Each phase should be a focused PR or a small set of reviewable PRs. Backend/API 
 **DRV-05A status:** merged in backend PR #124. See [DRV-05A implementation notes](./driver-dispatch-drv-05a.md).
 
 **DRV-05B status:** implemented in [backend PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125); CI passed on head `4737c98dc13e8d71bb1a3f219202bbaafcfc295e`. See [DRV-05B assignment execution notes](./driver-assignment-execution-drv-05b.md). Pre-custody execution checks and post-custody continuity/audit are implemented. Admin safety-hold/recovery and staging acceptance remain open.
+
+
+## DRV-05C — Admin Safety Holds and Custody Recovery
+
+DRV-05B is merged in [PR #125](https://github.com/Olexxee/Logistic-Hub/pull/125) (merge commit `834465ed2cd4833a32c1e8982c6216c35b7f3c4b`). DRV-05C is now opened on branch `feat/drv-05c-admin-safety-holds-custody-recovery`. Implementation slice A is in [PR #127](https://github.com/Olexxee/Logistic-Hub/pull/127), stacked on PR #126; merge #126 first, then #127 after CI. The source audit and safety contract are recorded in [DRV-05C implementation notes](./driver-safety-holds-drv-05c.md). This first slice is contract/audit only; no schema/API behavior has been changed yet.
+
+DRV-05C is split into execution-hold primitive, controlled custody recovery, and operational alerting/acceptance. PR #127 is merged into PR #126's branch; PR #126 itself remains open against `main`. DRV-05C-B creates a separate recovery record and only creates a replacement assignment after evidenced release and replacement-driver receipt. Recovery assignments are flagged for manual payout review. The first B slice is driver-to-driver; hub inventory recovery remains a separate extension. See [DRV-05C implementation notes](./driver-safety-holds-drv-05c.md) for the transaction, audit, role and staging gates.
 
 ### DRV-06 — Reporting, audit and operational controls
 
