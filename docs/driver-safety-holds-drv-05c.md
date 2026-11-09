@@ -123,7 +123,7 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
 ### API
 
 - `GET /api/v1/assignments/admin/recoveries` — paginated Admin recovery queue.
-- `POST /api/v1/assignments/admin/recoveries/:recoveryId/cancel` — Admin cancels a pending recovery without releasing the source safety hold.
+- `POST /api/v1/assignments/admin/recoveries/:recoveryId/cancel` — Admin cancels a recovery only before physical release; the source safety hold remains active.
 - `POST /api/v1/assignments/admin/:assignmentId/recoveries` — Admin initiates recovery.
 - `POST /api/v1/assignments/recoveries/:recoveryId/release` — source driver confirms physical release.
 - `POST /api/v1/assignments/admin/recoveries/:recoveryId/release-exception` — Admin authorizes an evidenced release exception.
@@ -131,7 +131,7 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
 
 ### Deliberate scope boundary
 
-This first B slice implements **driver-to-driver recovery**. It does not use the generic custody endpoint to bypass safety holds and does not yet implement recovery into hub inventory. A hub fallback needs an explicit intake/capacity workflow, hub operator receipt authority, and a defined next-leg dispatch state; it must be designed as a separate extension rather than treating a hub ID as a replacement driver.
+Admin can cancel and replace a candidate only while recovery is still awaiting source-driver release. Once physical release or an Admin release exception is recorded, cancellation is blocked so the parcel cannot be left in an untracked custody state. This first B slice implements **driver-to-driver recovery**. It does not use the generic custody endpoint to bypass safety holds and does not yet implement recovery into hub inventory. A hub fallback needs an explicit intake/capacity workflow, hub operator receipt authority, and a defined next-leg dispatch state; it must be designed as a separate extension rather than treating a hub ID as a replacement driver.
 
 ### Validation still required
 
