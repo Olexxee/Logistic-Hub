@@ -248,7 +248,7 @@ test("completing a non-final leg activates only the next leg and keeps the booki
     },
     parcelBooking: { update: async ({ data }) => { bookingUpdate = data; return {}; } },
     bookingEvent: { create: async ({ data }) => { bookingEvent = data; return {}; } },
-    driverProfile: { update: async () => ({}) },
+    driverProfile: { findFirst: async () => ({ id: "driver_profile_first" }), update: async () => ({}) },
     driverPayout: { upsert: async () => ({}) },
   };
   const repository = createAssignmentsRepository({ $transaction: (callback) => callback(tx) });
