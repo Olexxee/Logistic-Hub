@@ -456,6 +456,7 @@ model User {
   releasedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReleaser")
   receivedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReceiver")
   authorizedAssignmentRecoveryExceptions DriverAssignmentRecovery[] @relation("AssignmentRecoveryExceptionAuthorizer")
+  cancelledAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryCanceller")
   partnerMemberships TransportPartnerMember[]
   submittedHubApplications HubApplication[] @relation("HubApplicationApplicant")
   reviewedHubApplications HubApplication[] @relation("HubApplicationReviewer")
@@ -1158,6 +1159,7 @@ model DriverAssignmentRecovery {
   releaseConfirmedBy User? @relation("AssignmentRecoveryReleaser", fields: [releaseConfirmedByUserId], references: [id], onDelete: Restrict)
   exceptionAuthorizedBy User? @relation("AssignmentRecoveryExceptionAuthorizer", fields: [exceptionAuthorizedByUserId], references: [id], onDelete: Restrict)
   receiptConfirmedBy User? @relation("AssignmentRecoveryReceiver", fields: [receiptConfirmedByUserId], references: [id], onDelete: Restrict)
+  cancelledBy User? @relation("AssignmentRecoveryCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
 
   @@index([sourceAssignmentId, status, createdAt])
   @@index([deliveryLegId, status, createdAt])
