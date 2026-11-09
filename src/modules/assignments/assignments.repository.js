@@ -1,6 +1,6 @@
 import { prisma } from "../../db/prisma.js";
 import { env } from "../../config/env.js";
-import { eligibleParcelAssignmentDriverWhere, eligibleVehicleWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
+import { activeServiceZoneWhere, eligibleParcelAssignmentDriverWhere, eligibleVehicleWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
 
 const ASSIGNMENT_TRANSITIONS = Object.freeze({
  ACCEPTED: ["ARRIVED_AT_PICKUP"],
@@ -28,12 +28,44 @@ async function findParcelExecutionEligibility(tx, assignment, now) {
   message: "This assignment has no selected operating vehicle. Operations must review it before pickup.",
  };
  const strictMode = env.DRIVER_KYC_MODE === "STRICT";
+ const booking = assignment.parcelBooking;
+ const leg = assignment.deliveryLeg;
+ const requiredServiceZoneIds = [...new Set([
+  leg?.originServiceZoneId ?? booking?.pickupServiceZoneId,
+  leg?.destinationServiceZoneId ?? booking?.destinationServiceZoneId,
+ ].filter(Boolean))];
+ if (requiredServiceZoneIds.length !== 2) return {
+  code: "SERVICE_ZONE_UNAVAILABLE",
+  message: "The assignment does not have a complete origin and destination service-zone route.",
+ };
+ const activeZones = await tx.serviceZone.findMany({
+  where: { id: { in: requiredServiceZoneIds }, ...activeServiceZoneWhere(now) },
+  select: { id: true },
+ });
+ if (activeZones.length !== requiredServiceZoneIds.length) return {
+  code: "SERVICE_ZONE_UNAVAILABLE",
+  message: "The origin or destination service zone is no longer active for parcel delivery.",
+ };
+ const hubIds = [...new Set([
+  leg?.originHubPointId,
+  leg?.destinationHubPointId,
+ ].filter(Boolean))];
+ if (hubIds.length) {
+  const activeHubs = await tx.hubPoint.findMany({
+   where: { id: { in: hubIds }, status: "ACTIVE" },
+   select: { id: true },
+  });
+  if (activeHubs.length !== hubIds.length) return {
+   code: "HUB_UNAVAILABLE",
+   message: "An origin or destination hub on this assignment is no longer active.",
+  };
+ }
  const kycTiers = env.DRIVER_KYC_MODE === "TEST" && capability === "LOCAL_DISPATCH"
   ? ["FULL", "TEST_LIMITED"]
   : ["FULL"];
  const driver = await tx.driverProfile.findFirst({
   where: eligibleParcelAssignmentDriverWhere({
-   driverProfileId: assignment.driverProfileId, capability, now, strictMode, kycTiers,
+   driverProfileId: assignment.driverProfileId, capability, now, strictMode, kycTiers, requiredServiceZoneIds,
   }),
   select: { id: true },
  });
