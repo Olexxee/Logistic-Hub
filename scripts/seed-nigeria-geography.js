@@ -261,14 +261,25 @@ async function applyNigeriaGeography(client) {
 
     const persistedStates = await tx.state.findMany({
       where: { countryId: country.id },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
+    const activeStateCount = persistedStates.filter((state) => state.isActive).length;
     const persistedLgaCount = await tx.lGA.count({
       where: { stateId: { in: persistedStates.map((state) => state.id) } },
     });
 
-    if (persistedStates.length !== EXPECTED_STATE_COUNT || persistedLgaCount !== EXPECTED_LGA_COUNT) {
-      fail("Post-seed verification failed: found " + persistedStates.length + " states and " + persistedLgaCount + " LGAs.");
+    if (
+      !country.isActive
+      || persistedStates.length !== EXPECTED_STATE_COUNT
+      || activeStateCount !== EXPECTED_STATE_COUNT
+      || persistedLgaCount !== EXPECTED_LGA_COUNT
+    ) {
+      fail(
+        "Post-seed verification failed: country active=" + country.isActive
+        + "; states=" + persistedStates.length
+        + "; active states=" + activeStateCount
+        + "; LGAs=" + persistedLgaCount + ".",
+      );
     }
 
     return {
@@ -280,6 +291,7 @@ async function applyNigeriaGeography(client) {
       lgasCreated: createdLgaCount,
       lgasMatched: plan.matchedLgaCount,
       totalStates: persistedStates.length,
+      activeStates: activeStateCount,
       totalLgas: persistedLgaCount,
     };
   }, {
