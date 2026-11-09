@@ -1983,6 +1983,7 @@ model OperationalCase {
   reportedBy      User             @relation("OperationalCaseReporter", fields: [reportedByUserId], references: [id], onDelete: Restrict)
   assignedTo      User?            @relation("OperationalCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: Restrict)
   assignmentRecoveries DriverAssignmentRecovery[]
+  hubCustodyRecoveries DriverAssignmentHubRecovery[]
 
   @@index([status, priority, createdAt])
   @@index([parcelBookingId, status])
