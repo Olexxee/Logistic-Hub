@@ -125,7 +125,7 @@ function makeClient({ candidateEligible = true, recovery = null } = {}) {
     integrationShipmentEvent: { findUnique: async () => null },
     parcelBooking: { findUnique: async () => ({ id: "booking_recovery", integrationClientId: null, senderId: "sender_1" }) },
   };
-  return { state, client: { $transaction: async callback => callback(tx) } };
+  return { state, client: { $transaction: async callback => callback(tx), driverAssignmentRecovery: tx.driverAssignmentRecovery } };
 }
 
 test("replacement driver can list only their pending custody recovery work", async () => {
