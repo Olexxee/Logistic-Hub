@@ -122,7 +122,7 @@ Implementation is now in the stacked branch `feat/drv-05c-a-assignment-safety-ho
 
 ### API
 
-- `GET /api/v1/assignments/recoveries/mine` — replacement-driver inbox for pending release/receipt work.
+- `GET /api/v1/assignments/recoveries/mine` — driver inbox for pending release/receipt work, visible to both the current custodian and selected replacement driver.
 - `GET /api/v1/assignments/admin/recoveries` — paginated Admin recovery queue.
 - `POST /api/v1/assignments/admin/recoveries/:recoveryId/cancel` — Admin cancels a recovery only before physical release; the source safety hold remains active.
 - `POST /api/v1/assignments/admin/:assignmentId/recoveries` — Admin initiates recovery.
