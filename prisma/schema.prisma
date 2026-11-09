@@ -475,6 +475,7 @@ model User {
   cancelledHubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoveryCanceller")
   createdHubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionCreator")
   releasedHubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionReleaser")
+  approvedHubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionApprover")
   releasedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReleaser")
   receivedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryReceiver")
   authorizedAssignmentRecoveryExceptions DriverAssignmentRecovery[] @relation("AssignmentRecoveryExceptionAuthorizer")
@@ -1917,6 +1918,7 @@ model HubIntakeDisposition {
   destinationHubPointId   String?
   nextDeliveryLegId       String?                        @unique
   createdByUserId         String
+  approvedByUserId        String?
   approvedAt              DateTime?
   releasedAt              DateTime?
   releasedByUserId        String?
@@ -1932,6 +1934,7 @@ model HubIntakeDisposition {
   destinationServiceZone ServiceZone? @relation("HubIntakeDispositionDestinationZone", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
   destinationHubPoint HubPoint? @relation("HubIntakeDispositionDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
   createdBy User @relation("HubIntakeDispositionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedBy User? @relation("HubIntakeDispositionApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
   releasedBy User? @relation("HubIntakeDispositionReleaser", fields: [releasedByUserId], references: [id], onDelete: Restrict)
 
   @@index([hubPointId, status, createdAt])
