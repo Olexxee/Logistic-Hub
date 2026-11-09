@@ -4,12 +4,14 @@ import { prisma } from "./db/prisma.js";
 import { emailService } from "./shared/email/email.service.js";
 import { createOutboxWorker } from "./shared/jobs/outbox-worker.service.js";
 import { createDriverAssignmentExpiryWorker } from "./shared/jobs/driver-assignment-expiry.service.js";
+import { createDriverEligibilityAlertWorker } from "./shared/jobs/driver-eligibility-alert-worker.service.js";
 import { createIntegrationWebhookDeliveryWorker } from "./shared/jobs/integration-webhook-delivery-worker.service.js";
 
 const startedAt = Date.now();
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const OUTBOX_POLL_INTERVAL_MS = 1_000;
 const ASSIGNMENT_EXPIRY_POLL_INTERVAL_MS = 30_000;
+const DRIVER_ELIGIBILITY_ALERT_POLL_INTERVAL_MS = 60_000;
 const WEBHOOK_DELIVERY_POLL_INTERVAL_MS = 1_000;
 let shutdownPromise;
 let outboxWorker;
@@ -22,6 +24,11 @@ let assignmentExpiryTimer;
 let assignmentExpiryPoll;
 let assignmentExpiryStopping = false;
 let assignmentExpiryFailures = 0;
+let driverEligibilityAlertWorker;
+let driverEligibilityAlertTimer;
+let driverEligibilityAlertPoll;
+let driverEligibilityAlertStopping = false;
+let driverEligibilityAlertFailures = 0;
 let webhookDeliveryWorker;
 let webhookDeliveryTimer;
 let webhookDeliveryPoll;
@@ -166,6 +173,53 @@ async function stopWebhookDeliveryWorker(signal) {
       signal,
     });
   }
+}
+
+
+function startDriverEligibilityAlertWorker() {
+  if (driverEligibilityAlertWorker || driverEligibilityAlertStopping) return;
+  driverEligibilityAlertWorker = createDriverEligibilityAlertWorker({ prismaClient: prisma });
+  log("info", "driver.eligibility_alert_worker.started", {
+    pollIntervalMs: DRIVER_ELIGIBILITY_ALERT_POLL_INTERVAL_MS,
+    mode: "embedded",
+  });
+  void pollDriverEligibilityAlerts();
+}
+
+async function pollDriverEligibilityAlerts() {
+  if (driverEligibilityAlertStopping || !driverEligibilityAlertWorker) return;
+  driverEligibilityAlertPoll = (async () => {
+    try {
+      const result = await driverEligibilityAlertWorker.runOnce();
+      driverEligibilityAlertFailures = 0;
+      if (result.alertsCreated > 0) log("warn", "driver.eligibility_alerts.created", result);
+    } catch (error) {
+      driverEligibilityAlertFailures += 1;
+      log("error", "driver.eligibility_alert.poll.failed", {
+        errorName: error?.name,
+        errorCode: error?.code ?? "DRIVER_ELIGIBILITY_ALERT_WORKER_ERROR",
+        message: error?.message,
+        consecutiveFailures: driverEligibilityAlertFailures,
+      });
+    }
+  })();
+  await driverEligibilityAlertPoll;
+  driverEligibilityAlertPoll = undefined;
+  if (!driverEligibilityAlertStopping) {
+    const delayMs = driverEligibilityAlertFailures
+      ? Math.min(5 * 60_000, DRIVER_ELIGIBILITY_ALERT_POLL_INTERVAL_MS * (2 ** Math.min(driverEligibilityAlertFailures, 4)))
+      : DRIVER_ELIGIBILITY_ALERT_POLL_INTERVAL_MS;
+    driverEligibilityAlertTimer = setTimeout(() => void pollDriverEligibilityAlerts(), delayMs);
+    driverEligibilityAlertTimer.unref?.();
+  }
+}
+
+async function stopDriverEligibilityAlertWorker(signal) {
+  driverEligibilityAlertStopping = true;
+  if (driverEligibilityAlertTimer) clearTimeout(driverEligibilityAlertTimer);
+  driverEligibilityAlertTimer = undefined;
+  if (driverEligibilityAlertPoll) await driverEligibilityAlertPoll;
+  if (driverEligibilityAlertWorker) log("info", "driver.eligibility_alert_worker.stopped", { signal });
 }
 
 function startDriverAssignmentExpiryWorker() {
