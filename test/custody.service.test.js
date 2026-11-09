@@ -941,13 +941,11 @@ test("cross-state hub continuation creates an interstate partner leg", async () 
 test("recovered hub intake cannot be released on a leg other than its approved continuation", async () => {
   const { db } = tx({
     hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
-    driverAssignmentHubRecovery: { findFirst: async () => ({ id: "hub-recovery-record-1" }) },
-    hubIntakeDisposition: {
-      findUnique: async () => ({
-        id: "disposition-1", status: "ROUTE_APPROVED", nextDeliveryLegId: "different-leg",
-      }),
-    },
-    hubIntakeRecord: { findFirst: async () => ({ id: "intake-recovery-1" }) },
+    hubIntakeRecord: { findFirst: async () => ({
+      id: "intake-recovery-1",
+      driverAssignmentHubRecovery: { id: "hub-recovery-record-1" },
+      disposition: { id: "disposition-1", status: "ROUTE_APPROVED", nextDeliveryLegId: "different-leg" },
+    }) },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   const result = await service.createHubHandover({
@@ -986,14 +984,12 @@ test("generic custody confirmation cannot release a recovery intake on an unappr
       findUnique: async () => ({ id: "driver-1", userId: "driver-user-1", verificationStatus: "VERIFIED" }),
     },
     operationalCase: { findFirst: async () => null },
-    driverAssignmentHubRecovery: { findFirst: async () => ({ id: "hub-recovery-record-1" }) },
-    hubIntakeDisposition: {
-      findUnique: async () => ({
-        id: "disposition-1", status: "ROUTE_APPROVED", nextDeliveryLegId: "different-leg",
-      }),
-    },
     hubIntakeRecord: {
-      findFirst: async () => ({ id: "intake-recovery-1" }),
+      findFirst: async () => ({
+        id: "intake-recovery-1",
+        driverAssignmentHubRecovery: { id: "hub-recovery-record-1" },
+        disposition: { id: "disposition-1", status: "ROUTE_APPROVED", nextDeliveryLegId: "different-leg" },
+      }),
       update: async () => { intakeUpdates += 1; return {}; },
     },
   });
@@ -1009,11 +1005,17 @@ test("generic custody confirmation cannot release a recovery intake on an unappr
 test("generic hub handover initiation cannot bypass a recovery disposition", async () => {
   const { db } = tx({
     hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
-    driverAssignmentHubRecovery: { findFirst: async () => ({ id: "hub-recovery-record-1" }) },
-    hubIntakeDisposition: {
-      findUnique: async () => ({ id: "disposition-1", status: "HELD", nextDeliveryLegId: null }),
+    deliveryLeg: {
+      findUnique: async () => ({
+        ...leg,
+        assignments: [{ driverProfileId: "driver-1", status: "ARRIVED_AT_PICKUP", driverProfile: { id: "driver-1", userId: "driver-user-1" } }],
+      }),
     },
-    hubIntakeRecord: { findFirst: async () => ({ id: "intake-recovery-1" }) },
+    hubIntakeRecord: { findFirst: async () => ({
+      id: "intake-recovery-1",
+      driverAssignmentHubRecovery: { id: "hub-recovery-record-1" },
+      disposition: { id: "disposition-1", status: "HELD", nextDeliveryLegId: null },
+    }) },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
   const result = await service.createHandover({
