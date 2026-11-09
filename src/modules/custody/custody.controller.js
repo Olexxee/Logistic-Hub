@@ -98,6 +98,35 @@ export function createCustodyController(service) {
       if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "The custody handover is no longer awaiting confirmation." } });
       return res.status(200).json({ success: true, data: result });
     },
+    initiateAdminHubRecovery: async (req, res) => {
+      const result = await service.initiateAdminHubRecovery({
+        ...req.body, assignmentId: req.params.assignmentId, actorUserId: req.user.id,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "ASSIGNMENT_NOT_FOUND", message: "Driver assignment not found." } });
+      if (result.hubNotFound) return res.status(404).json({ success: false, error: { code: "HUB_NOT_FOUND", message: "Hub point not found." } });
+      if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "This assignment cannot be authorized for hub custody recovery in its current state." } });
+      return res.status(result.replay ? 200 : 201).json({ success: true, data: { recovery: result.recovery, replay: Boolean(result.replay) } });
+    },
+    receiveAdminHubRecovery: async (req, res) => {
+      const result = await service.receiveAdminHubRecovery({
+        ...req.body, recoveryId: req.params.recoveryId, userId: req.user.id,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_RECOVERY_NOT_FOUND", message: "Hub custody recovery not found." } });
+      if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "The hub cannot confirm recovery receipt in the current state." } });
+      return res.status(200).json({ success: true, data: result });
+    },
+    cancelAdminHubRecovery: async (req, res) => {
+      const result = await service.cancelAdminHubRecovery({
+        ...req.body, recoveryId: req.params.recoveryId, actorUserId: req.user.id,
+      });
+      if (result.notFound) return res.status(404).json({ success: false, error: { code: "HUB_RECOVERY_NOT_FOUND", message: "Hub custody recovery not found." } });
+      if (result.blocker) return res.status(409).json({ success: false, error: { code: result.blocker, message: "A hub recovery can only be cancelled before physical receipt." } });
+      return res.status(200).json({ success: true, data: { recovery: result.recovery, replay: Boolean(result.replay) } });
+    },
+    listAdminHubRecoveries: async (req, res) => {
+      const result = await service.listAdminHubRecoveries(req.validatedQuery);
+      return res.status(200).json({ success: true, data: result });
+    },
     listAdminCustodyHandovers: async (req, res) => {
       const result = await service.listAdminCustodyHandovers(req.validatedQuery);
       return res.status(200).json({ success: true, data: result });

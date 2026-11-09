@@ -578,3 +578,215 @@ test("deactivating a hub membership does not demote the user's global account ro
   assert.equal(calls.audits[0].before.isActive, true);
   assert.equal(calls.audits[0].after.isActive, false);
 });
+
+
+const hubRecoveryAssignment = {
+  id: "assignment-safety-1",
+  parcelBookingId: "booking-1",
+  deliveryLegId: "leg-1",
+  status: "IN_PROGRESS",
+  pickupAt: now,
+  executionHoldAt: now,
+  executionHoldReason: "Reported safety incident",
+  executionHoldActorUserId: "admin-1",
+  executionHoldOperationalCaseId: "case-safety-1",
+  parcelBooking: { ...booking, parcelCategory: "DOCUMENT", publicReference: "LH-RECOVERY-1" },
+  deliveryLeg: {
+    id: "leg-1", parcelBookingId: "booking-1", status: "IN_TRANSIT", type: "DIRECT",
+    originServiceZoneId: "zone-1", destinationServiceZoneId: "zone-2",
+  },
+};
+const hubSafetyCase = {
+  id: "case-safety-1", type: "SAFETY_INCIDENT", status: "IN_PROGRESS",
+  parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+};
+const hubRecoveryConfig = {
+  id: "hub-recovery-1", status: "ACTIVE", serviceZoneId: "zone-2",
+  acceptedParcelTypes: ["DOCUMENT"],
+  capacityConfig: { maxParcels: 5, maxWeightGrams: 50000 },
+};
+
+test("admin authorizes hub custody recovery only for a paid, held parcel assignment already in custody", async () => {
+  const calls = { recoveries: [], audits: [], assignmentUpdates: [] };
+  const { db } = tx({
+    driverAssignment: {
+      findUnique: async () => hubRecoveryAssignment,
+      updateMany: async args => { calls.assignmentUpdates.push(args); return { count: 1 }; },
+    },
+    driverAssignmentRecovery: { findFirst: async () => null },
+    driverAssignmentHubRecovery: {
+      findFirst: async () => null,
+      create: async ({ data }) => { const recovery = { id: "hub-recovery-1", ...data }; calls.recoveries.push(recovery); return recovery; },
+    },
+    hubIntakeRecord: { findFirst: async () => null },
+    operationalCase: { findUnique: async () => hubSafetyCase },
+    hubPoint: { findUnique: async () => hubRecoveryConfig },
+    operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.initiateAdminHubRecovery({
+    assignmentId: "assignment-safety-1",
+    hubPointId: "hub-recovery-1",
+    reason: "Move parcel to a secure hub pending safety investigation.",
+    actorUserId: "admin-1",
+  });
+  assert.equal(result.recovery.status, "PENDING_RECEIPT");
+  assert.equal(result.recovery.operationalCaseId, "case-safety-1");
+  assert.equal(calls.recoveries.length, 1);
+  assert.equal(calls.assignmentUpdates.length, 0);
+  assert.equal(calls.audits[0].action, "DRIVER_ASSIGNMENT_HUB_RECOVERY_AUTHORIZED");
+});
+
+test("admin cannot authorize hub recovery for a pre-pickup assignment", async () => {
+  const { db } = tx({
+    driverAssignment: { findUnique: async () => ({ ...hubRecoveryAssignment, pickupAt: null }) },
+    operationalCase: { findUnique: async () => hubSafetyCase },
+    driverAssignmentRecovery: { findFirst: async () => null },
+    driverAssignmentHubRecovery: { findFirst: async () => null },
+    hubIntakeRecord: { findFirst: async () => null },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.initiateAdminHubRecovery({
+    assignmentId: "assignment-safety-1", hubPointId: "hub-recovery-1",
+    reason: "Secure parcel pending investigation.", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "ASSIGNMENT_NOT_IN_CUSTODY");
+});
+
+test("admin cannot select a hub outside both service zones of the source leg", async () => {
+  const { db } = tx({
+    driverAssignment: { findUnique: async () => hubRecoveryAssignment },
+    operationalCase: { findUnique: async () => hubSafetyCase },
+    driverAssignmentRecovery: { findFirst: async () => null },
+    driverAssignmentHubRecovery: { findFirst: async () => null },
+    hubIntakeRecord: { findFirst: async () => null },
+    hubPoint: { findUnique: async () => ({ ...hubRecoveryConfig, serviceZoneId: "zone-elsewhere" }) },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.initiateAdminHubRecovery({
+    assignmentId: "assignment-safety-1", hubPointId: "hub-recovery-1",
+    reason: "Secure parcel pending investigation.", actorUserId: "admin-1",
+  });
+  assert.equal(result.blocker, "HUB_OUTSIDE_LEG_SERVICE_ZONES");
+});
+
+test("hub operator receipt creates intake and retires the held assignment without completing its leg", async () => {
+  const recovery = {
+    id: "hub-recovery-1", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    sourceAssignmentId: "assignment-safety-1", hubPointId: "hub-recovery-1",
+    operationalCaseId: "case-safety-1", status: "PENDING_RECEIPT",
+    reason: "Move parcel to a secure hub pending safety investigation.",
+    hubIntakeRecord: null,
+  };
+  const calls = { intakes: [], assignmentUpdates: [], recoveryUpdates: [], audits: [], legUpdates: [], bookingUpdates: [] };
+  const { db } = tx({
+    driverAssignment: {
+      findUnique: async () => hubRecoveryAssignment,
+      updateMany: async args => { calls.assignmentUpdates.push(args); return { count: 1 }; },
+    },
+    driverAssignmentHubRecovery: {
+      findUnique: async () => recovery,
+      update: async ({ where, data }) => { calls.recoveryUpdates.push({ where, data }); return { ...recovery, ...data }; },
+    },
+    operationalCase: { findUnique: async () => hubSafetyCase },
+    hubPointOperator: { findUnique: async () => ({ hubPointId: "hub-recovery-1", userId: "hub-operator-1", isActive: true }) },
+    hubPoint: { findUnique: async () => hubRecoveryConfig },
+    hubIntakeRecord: {
+      findFirst: async () => null,
+      count: async () => 0,
+      aggregate: async () => ({ _sum: { weightGrams: 0, volumeCm3: 0 } }),
+      create: async ({ data }) => { const intake = { id: "intake-recovery-1", ...data }; calls.intakes.push(intake); return intake; },
+    },
+    operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+    deliveryLeg: {
+      findUnique: async () => leg,
+      findFirst: async () => null,
+      updateMany: async args => { calls.legUpdates.push(args); return { count: 1 }; },
+    },
+    parcelBooking: { findUnique: async () => booking, update: async args => { calls.bookingUpdates.push(args); return {}; } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.receiveAdminHubRecovery({
+    recoveryId: "hub-recovery-1",
+    userId: "hub-operator-1",
+    conditionAtReceipt: "Parcel sealed; no visible damage.",
+    weightGrams: 850,
+  });
+  assert.equal(result.recovery.status, "CONFIRMED");
+  assert.equal(result.intake.status, "RECEIVED");
+  assert.equal(calls.assignmentUpdates[0].data.status, "FAILED");
+  assert.equal(calls.assignmentUpdates[0].data.payoutReviewRequired, true);
+  assert.equal(calls.assignmentUpdates[0].data.executionHoldAt, null);
+  assert.equal(calls.recoveryUpdates[0].data.hubIntakeRecordId, "intake-recovery-1");
+  assert.equal(calls.legUpdates.length, 0);
+  assert.equal(calls.bookingUpdates.length, 0);
+  assert.equal(calls.audits.some(item => item.action === "DRIVER_ASSIGNMENT_HUB_RECOVERY_RECEIVED"), true);
+});
+
+test("hub recovery receipt rejects partial dimensions before creating intake", async () => {
+  const recovery = {
+    id: "hub-recovery-1", parcelBookingId: "booking-1", deliveryLegId: "leg-1",
+    sourceAssignmentId: "assignment-safety-1", hubPointId: "hub-recovery-1",
+    operationalCaseId: "case-safety-1", status: "PENDING_RECEIPT",
+    reason: "Move parcel to a secure hub pending safety investigation.",
+  };
+  let intakeCreates = 0;
+  const { db } = tx({
+    driverAssignment: { findUnique: async () => hubRecoveryAssignment },
+    driverAssignmentHubRecovery: { findUnique: async () => recovery },
+    operationalCase: { findUnique: async () => hubSafetyCase },
+    hubPointOperator: { findUnique: async () => ({ isActive: true }) },
+    hubPoint: { findUnique: async () => hubRecoveryConfig },
+    hubIntakeRecord: { findFirst: async () => null, create: async () => { intakeCreates += 1; return {}; } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(service.receiveAdminHubRecovery({
+    recoveryId: "hub-recovery-1", userId: "hub-operator-1",
+    conditionAtReceipt: "Parcel sealed.", weightGrams: 850, lengthMm: 100,
+  }), error => error.code === "HUB_INTAKE_DIMENSIONS_INCOMPLETE");
+  assert.equal(intakeCreates, 0);
+});
+
+test("cancelling pending hub recovery does not release the source assignment safety hold", async () => {
+  const recovery = {
+    id: "hub-recovery-1", status: "PENDING_RECEIPT", hubIntakeRecordId: null,
+    sourceAssignment: { id: "assignment-safety-1", executionHoldAt: now },
+  };
+  const calls = { updates: [], audits: [] };
+  const { db } = tx({
+    driverAssignmentHubRecovery: {
+      findUnique: async () => recovery,
+      update: async ({ where, data }) => { calls.updates.push({ where, data }); return { ...recovery, ...data }; },
+    },
+    operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.cancelAdminHubRecovery({
+    recoveryId: "hub-recovery-1", actorUserId: "admin-1",
+    reason: "Selected hub cannot safely store this parcel.",
+  });
+  assert.equal(result.recovery.status, "CANCELLED");
+  assert.equal(calls.updates.length, 1);
+  assert.equal(calls.audits[0].action, "DRIVER_ASSIGNMENT_HUB_RECOVERY_CANCELLED");
+});
+
+
+test("confirmed hub recovery replay remains restricted to an active member of that hub", async () => {
+  const { db } = tx({
+    driverAssignmentHubRecovery: {
+      findUnique: async () => ({
+        id: "hub-recovery-1", hubPointId: "hub-recovery-1", status: "CONFIRMED",
+        hubIntakeRecord: { id: "intake-recovery-1" },
+      }),
+    },
+    hubPointOperator: { findUnique: async () => null },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.receiveAdminHubRecovery({
+      recoveryId: "hub-recovery-1", userId: "unaffiliated-user",
+      conditionAtReceipt: "Parcel sealed.", weightGrams: 850,
+    }),
+    error => error.statusCode === 403,
+  );
+});

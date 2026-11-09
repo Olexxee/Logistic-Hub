@@ -726,6 +726,256 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
+    async initiateAdminHubRecovery({ assignmentId, hubPointId, reason, actorUserId }) {
+      return serializableTransaction(prismaClient, async tx => {
+        await requireActiveUser(tx, actorUserId);
+        const initialAssignment = await repo.findHubRecoveryAssignment(assignmentId, tx);
+        if (!initialAssignment) return { notFound: true };
+        if (!initialAssignment.deliveryLegId) return { blocker: "PARCEL_ASSIGNMENT_REQUIRED" };
+        // Match custody handover lock ordering: delivery leg first, then assignment.
+        await repo.lockDeliveryLeg(initialAssignment.deliveryLegId, tx);
+        await repo.lockDriverAssignment(assignmentId, tx);
+        const assignment = await repo.findHubRecoveryAssignment(assignmentId, tx);
+        if (!assignment) return { notFound: true };
+        if (assignment.deliveryLegId !== initialAssignment.deliveryLegId) {
+          return { blocker: "SOURCE_ASSIGNMENT_RECOVERY_STATE_CHANGED" };
+        }
+        if (!assignment.parcelBookingId || !assignment.deliveryLegId || !assignment.parcelBooking || !assignment.deliveryLeg) {
+          return { blocker: "PARCEL_ASSIGNMENT_REQUIRED" };
+        }
+        if (assignment.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
+        if (!assignment.pickupAt || !["PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"].includes(assignment.status)) {
+          return { blocker: "ASSIGNMENT_NOT_IN_CUSTODY" };
+        }
+        if (["COMPLETED", "FAILED", "CANCELLED"].includes(assignment.deliveryLeg.status)) return { blocker: "DELIVERY_LEG_TERMINAL" };
+        if (await repo.findPendingHandover(assignment.deliveryLegId, tx)) return { blocker: "PENDING_CUSTODY_HANDOVER_EXISTS" };
+        if (await repo.findAnyReceivedHubIntake(assignment.parcelBookingId, tx)) return { blocker: "PARCEL_ALREADY_IN_HUB_CUSTODY" };
+        if (!assignment.executionHoldAt || !assignment.executionHoldOperationalCaseId) {
+          return { blocker: "ACTIVE_SAFETY_HOLD_REQUIRED" };
+        }
+        const safetyCase = await tx.operationalCase.findUnique({
+          where: { id: assignment.executionHoldOperationalCaseId },
+        });
+        if (!safetyCase || safetyCase.type !== "SAFETY_INCIDENT"
+          || !["OPEN", "TRIAGED", "IN_PROGRESS"].includes(safetyCase.status)
+          || safetyCase.parcelBookingId !== assignment.parcelBookingId
+          || safetyCase.deliveryLegId !== assignment.deliveryLegId) {
+          return { blocker: "ACTIVE_SAFETY_CASE_REQUIRED" };
+        }
+        const existingDriverRecovery = await repo.findActiveDriverRecovery(assignmentId, tx);
+        if (existingDriverRecovery) return { blocker: "DRIVER_RECOVERY_ALREADY_ACTIVE" };
+        const activeRecovery = await repo.findActiveHubRecovery(assignmentId, tx);
+        if (activeRecovery) {
+          if (activeRecovery.hubPointId !== hubPointId) return { blocker: "HUB_RECOVERY_ALREADY_ACTIVE" };
+          return { recovery: activeRecovery, replay: true };
+        }
+        const hub = await repo.findHubIntakeConfig(hubPointId, tx);
+        if (!hub) return { hubNotFound: true };
+        if (hub.status !== "ACTIVE") return { blocker: "HUB_NOT_ACTIVE" };
+        if (![assignment.deliveryLeg.originServiceZoneId, assignment.deliveryLeg.destinationServiceZoneId].includes(hub.serviceZoneId)) {
+          return { blocker: "HUB_OUTSIDE_LEG_SERVICE_ZONES" };
+        }
+        const recovery = await repo.createHubRecovery({
+          parcelBookingId: assignment.parcelBookingId,
+          deliveryLegId: assignment.deliveryLegId,
+          sourceAssignmentId: assignment.id,
+          hubPointId,
+          operationalCaseId: safetyCase.id,
+          initiatedByUserId: actorUserId,
+          status: "PENDING_RECEIPT",
+          reason,
+        }, tx);
+        await repo.createAudit({
+          actorUserId,
+          entityType: "DRIVER_ASSIGNMENT_HUB_RECOVERY",
+          entityId: recovery.id,
+          action: "DRIVER_ASSIGNMENT_HUB_RECOVERY_AUTHORIZED",
+          reason,
+          before: { assignmentStatus: assignment.status, executionHoldAt: assignment.executionHoldAt },
+          after: {
+            status: recovery.status, sourceAssignmentId: assignment.id,
+            parcelBookingId: assignment.parcelBookingId, deliveryLegId: assignment.deliveryLegId,
+            hubPointId, operationalCaseId: safetyCase.id,
+          },
+        }, tx);
+        return { recovery, replay: false };
+      });
+    },
+
+    async receiveAdminHubRecovery({ recoveryId, userId, conditionAtReceipt, weightGrams, lengthMm, widthMm, heightMm, evidence }) {
+      return serializableTransaction(prismaClient, async tx => {
+        await requireActiveUser(tx, userId);
+        await repo.lockHubRecovery(recoveryId, tx);
+        const recovery = await repo.findHubRecovery(recoveryId, tx);
+        if (!recovery) return { notFound: true };
+        const membership = await repo.findHubOperator(recovery.hubPointId, userId, tx);
+        if (!membership?.isActive) throw forbidden();
+        if (recovery.status === "CONFIRMED") return { recovery, replay: true };
+        if (recovery.status !== "PENDING_RECEIPT") return { blocker: "HUB_RECOVERY_NOT_RECEIVABLE" };
+
+        // Keep the same leg -> assignment lock order used by normal custody handovers.
+        await repo.lockDeliveryLeg(recovery.deliveryLegId, tx);
+        await repo.lockDriverAssignment(recovery.sourceAssignmentId, tx);
+        const assignment = await repo.findHubRecoveryAssignment(recovery.sourceAssignmentId, tx);
+        if (!assignment || assignment.id !== recovery.sourceAssignmentId) return { blocker: "SOURCE_ASSIGNMENT_UNAVAILABLE" };
+        if (assignment.parcelBookingId !== recovery.parcelBookingId
+          || assignment.deliveryLegId !== recovery.deliveryLegId
+          || !assignment.pickupAt
+          || !["PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"].includes(assignment.status)
+          || !assignment.executionHoldAt
+          || assignment.executionHoldOperationalCaseId !== recovery.operationalCaseId) {
+          return { blocker: "SOURCE_ASSIGNMENT_RECOVERY_STATE_CHANGED" };
+        }
+        if (assignment.parcelBooking?.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
+        if (["COMPLETED", "FAILED", "CANCELLED"].includes(assignment.deliveryLeg.status)) return { blocker: "DELIVERY_LEG_TERMINAL" };
+        if (await repo.findPendingHandover(assignment.deliveryLegId, tx)) return { blocker: "PENDING_CUSTODY_HANDOVER_EXISTS" };
+        const activeIntake = await repo.findAnyReceivedHubIntake(recovery.parcelBookingId, tx);
+        if (activeIntake) return { blocker: "PARCEL_ALREADY_IN_HUB_CUSTODY" };
+        const safetyCase = await tx.operationalCase.findUnique({ where: { id: recovery.operationalCaseId } });
+        if (!safetyCase || safetyCase.type !== "SAFETY_INCIDENT"
+          || !["OPEN", "TRIAGED", "IN_PROGRESS"].includes(safetyCase.status)
+          || safetyCase.parcelBookingId !== recovery.parcelBookingId
+          || safetyCase.deliveryLegId !== recovery.deliveryLegId) {
+          return { blocker: "ACTIVE_SAFETY_CASE_REQUIRED" };
+        }
+        if (!Number.isInteger(weightGrams) || weightGrams <= 0) {
+          throw fail(400, "HUB_INTAKE_WEIGHT_REQUIRED", "A positive measured parcel weight in grams is required.");
+        }
+        const hasAnyDimension = [lengthMm, widthMm, heightMm].some(value => value !== undefined);
+        const hasAllDimensions = [lengthMm, widthMm, heightMm].every(value => Number.isInteger(value) && value > 0);
+        if (hasAnyDimension && !hasAllDimensions) {
+          throw fail(400, "HUB_INTAKE_DIMENSIONS_INCOMPLETE", "Provide all three positive parcel dimensions, or leave all dimensions blank.");
+        }
+
+        await repo.lockHubCapacity(recovery.hubPointId, tx);
+        const hub = await repo.findHubIntakeConfig(recovery.hubPointId, tx);
+        if (!hub || hub.status !== "ACTIVE") return { blocker: "HUB_NOT_ACTIVE" };
+        if (![assignment.deliveryLeg.originServiceZoneId, assignment.deliveryLeg.destinationServiceZoneId].includes(hub.serviceZoneId)) {
+          return { blocker: "HUB_OUTSIDE_LEG_SERVICE_ZONES" };
+        }
+        const acceptedTypes = Array.isArray(hub.acceptedParcelTypes) ? hub.acceptedParcelTypes : [];
+        if (acceptedTypes.length && !acceptedTypes.includes(assignment.parcelBooking.parcelCategory)) {
+          return { blocker: "HUB_PARCEL_TYPE_NOT_ACCEPTED" };
+        }
+        const existingIntake = await repo.findReceivedHubIntake(recovery.parcelBookingId, recovery.hubPointId, tx);
+        if (existingIntake) return { blocker: "HUB_INTAKE_ALREADY_ACTIVE" };
+
+        const capacity = hub.capacityConfig && typeof hub.capacityConfig === "object" ? hub.capacityConfig : {};
+        const currentCount = await repo.countReceivedHubIntakes(hub.id, tx);
+        if (Number.isInteger(capacity.maxParcels) && currentCount >= capacity.maxParcels) {
+          return { blocker: "HUB_PARCEL_CAPACITY_EXCEEDED" };
+        }
+        const totals = await repo.aggregateReceivedHubIntakes(hub.id, tx);
+        const currentWeight = Number(totals._sum.weightGrams ?? 0);
+        if (Number.isInteger(capacity.maxWeightGrams) && currentWeight + weightGrams > capacity.maxWeightGrams) {
+          return { blocker: "HUB_WEIGHT_CAPACITY_EXCEEDED" };
+        }
+        let volumeCm3 = null;
+        if (hasAllDimensions) {
+          const volumeCm3BigInt = (BigInt(lengthMm) * BigInt(widthMm) * BigInt(heightMm) + 999n) / 1000n;
+          if (volumeCm3BigInt > 2147483647n) {
+            throw fail(400, "HUB_INTAKE_DIMENSIONS_OUT_OF_RANGE", "The measured parcel volume exceeds the supported hub intake range.");
+          }
+          volumeCm3 = Number(volumeCm3BigInt);
+        }
+        if (Number.isInteger(capacity.maxVolumeCm3)) {
+          if (volumeCm3 === null) return { blocker: "HUB_INTAKE_DIMENSIONS_REQUIRED" };
+          const currentVolume = Number(totals._sum.volumeCm3 ?? 0);
+          if (currentVolume + volumeCm3 > capacity.maxVolumeCm3) return { blocker: "HUB_VOLUME_CAPACITY_EXCEEDED" };
+        }
+
+        const intake = await repo.createHubIntakeRecord({
+          parcelBookingId: recovery.parcelBookingId,
+          deliveryLegId: recovery.deliveryLegId,
+          hubPointId: recovery.hubPointId,
+          receivedByUserId: userId,
+          status: "RECEIVED",
+          weightGrams,
+          ...(hasAllDimensions ? { lengthMm, widthMm, heightMm, volumeCm3 } : {}),
+          conditionAtReceipt,
+          evidence: evidence ?? undefined,
+        }, tx);
+        const retired = await tx.driverAssignment.updateMany({
+          where: {
+            id: assignment.id,
+            status: { in: ["PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"] },
+            pickupAt: { not: null },
+            executionHoldAt: { not: null },
+            executionHoldOperationalCaseId: recovery.operationalCaseId,
+          },
+          data: {
+            status: "FAILED",
+            failureReason: "HUB_CUSTODY_RECOVERY_RECEIVED",
+            payoutReviewRequired: true,
+            executionHoldAt: null,
+          },
+        });
+        if (retired.count !== 1) throw conflict("SOURCE_ASSIGNMENT_RECOVERY_STATE_CHANGED", "The held source assignment changed before hub receipt could be committed.");
+        const updated = await repo.updateHubRecovery(recovery.id, {
+          status: "CONFIRMED",
+          hubIntakeRecordId: intake.id,
+          receivedByUserId: userId,
+          receivedAt: clock(),
+        }, tx);
+        await repo.createAudit({
+          actorUserId: userId,
+          entityType: "DRIVER_ASSIGNMENT_HUB_RECOVERY",
+          entityId: recovery.id,
+          action: "DRIVER_ASSIGNMENT_HUB_RECOVERY_RECEIVED",
+          reason: recovery.reason,
+          before: { status: recovery.status, assignmentStatus: assignment.status, executionHoldAt: assignment.executionHoldAt },
+          after: { status: updated.status, hubIntakeRecordId: intake.id, receivedByUserId: userId, assignmentStatus: "FAILED", payoutReviewRequired: true },
+          metadata: { weightGrams, lengthMm: lengthMm ?? null, widthMm: widthMm ?? null, heightMm: heightMm ?? null, conditionAtReceipt },
+        }, tx);
+        await repo.createAudit({
+          actorUserId: userId,
+          entityType: "DRIVER_ASSIGNMENT",
+          entityId: assignment.id,
+          action: "DRIVER_ASSIGNMENT_RETIRED_AFTER_HUB_CUSTODY_RECOVERY",
+          reason: recovery.reason,
+          before: { status: assignment.status, executionHoldAt: assignment.executionHoldAt },
+          after: { status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_RECEIVED", executionHoldAt: null, executionHoldOperationalCaseId: recovery.operationalCaseId },
+        }, tx);
+        return { recovery: updated, intake, assignmentStatus: "FAILED", replay: false };
+      });
+    },
+
+    async cancelAdminHubRecovery({ recoveryId, reason, actorUserId }) {
+      return serializableTransaction(prismaClient, async tx => {
+        await requireActiveUser(tx, actorUserId);
+        await repo.lockHubRecovery(recoveryId, tx);
+        const recovery = await repo.findHubRecovery(recoveryId, tx);
+        if (!recovery) return { notFound: true };
+        if (recovery.status === "CANCELLED") return { recovery, replay: true };
+        if (recovery.status !== "PENDING_RECEIPT" || recovery.hubIntakeRecordId) {
+          return { blocker: "HUB_RECOVERY_ALREADY_RECEIVED" };
+        }
+        const updated = await repo.updateHubRecovery(recovery.id, {
+          status: "CANCELLED",
+          cancelledByUserId: actorUserId,
+          cancelledAt: clock(),
+          cancellationReason: reason,
+        }, tx);
+        await repo.createAudit({
+          actorUserId,
+          entityType: "DRIVER_ASSIGNMENT_HUB_RECOVERY",
+          entityId: recovery.id,
+          action: "DRIVER_ASSIGNMENT_HUB_RECOVERY_CANCELLED",
+          reason,
+          before: { status: recovery.status },
+          after: { status: updated.status, cancelledByUserId: actorUserId, cancellationReason: reason },
+        }, tx);
+        return { recovery: updated, replay: false };
+      });
+    },
+
+    async listAdminHubRecoveries({ status, hubPointId, cursor, limit = 25 } = {}) {
+      const rows = await repo.listAdminHubRecoveries({ status, hubPointId, cursor, limit });
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      return { items, nextCursor: hasMore ? items.at(-1).id : null };
+    },
+
     async listAdminCustodyHandovers({ status, hubPointId, q, cursor, limit = 25 }) {
       const rows = await repo.listAdminCustodyHandovers({ status, hubPointId, q, cursor, limit });
       const hasMore = rows.length > limit;

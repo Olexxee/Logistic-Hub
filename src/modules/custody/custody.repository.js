@@ -74,6 +74,81 @@ export function createCustodyRepository({ prismaClient }) {
     findPartnerMembership(partnerId, userId, tx = prismaClient) {
       return tx.transportPartnerMember.findUnique({ where: { partnerId_userId: { partnerId, userId } } });
     },
+    lockDriverAssignment(assignmentId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "driver_assignments" WHERE "id" = ${assignmentId} FOR UPDATE`;
+    },
+    lockHubRecovery(recoveryId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "driver_assignment_hub_recoveries" WHERE "id" = ${recoveryId} FOR UPDATE`;
+    },
+    findHubRecoveryAssignment(assignmentId, tx = prismaClient) {
+      return tx.driverAssignment.findUnique({
+        where: { id: assignmentId },
+        include: {
+          parcelBooking: { select: { id: true, paymentStatus: true, parcelCategory: true, publicReference: true } },
+          deliveryLeg: {
+            select: {
+              id: true, parcelBookingId: true, status: true, type: true,
+              originServiceZoneId: true, destinationServiceZoneId: true,
+            },
+          },
+        },
+      });
+    },
+    findActiveDriverRecovery(assignmentId, tx = prismaClient) {
+      return tx.driverAssignmentRecovery.findFirst({
+        where: { sourceAssignmentId: assignmentId, status: { in: ["PENDING_RELEASE", "PENDING_RECEIPT"] } },
+        select: { id: true, status: true },
+      });
+    },
+    findActiveHubRecovery(assignmentId, tx = prismaClient) {
+      return tx.driverAssignmentHubRecovery.findFirst({
+        where: { sourceAssignmentId: assignmentId, status: "PENDING_RECEIPT" },
+        include: { hubIntakeRecord: true },
+      });
+    },
+    createHubRecovery(data, tx = prismaClient) {
+      return tx.driverAssignmentHubRecovery.create({ data });
+    },
+    findHubRecovery(recoveryId, tx = prismaClient) {
+      return tx.driverAssignmentHubRecovery.findUnique({
+        where: { id: recoveryId },
+        include: {
+          hubIntakeRecord: true,
+          sourceAssignment: {
+            select: {
+              id: true, status: true, pickupAt: true, executionHoldAt: true,
+              executionHoldReason: true, executionHoldOperationalCaseId: true,
+              parcelBookingId: true, deliveryLegId: true,
+            },
+          },
+          operationalCase: { select: { id: true, type: true, status: true } },
+        },
+      });
+    },
+    listAdminHubRecoveries({ status, hubPointId, cursor, limit = 25 } = {}, tx = prismaClient) {
+      return tx.driverAssignmentHubRecovery.findMany({
+        where: { ...(status ? { status } : {}), ...(hubPointId ? { hubPointId } : {}) },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        include: {
+          hubPoint: { select: { id: true, name: true, address: true, status: true } },
+          sourceAssignment: {
+            select: {
+              id: true, status: true, pickupAt: true, failureReason: true,
+              driverProfile: { select: { id: true, user: { select: { fullName: true } } } },
+            },
+          },
+          parcelBooking: { select: { id: true, publicReference: true, status: true } },
+          deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
+          operationalCase: { select: { id: true, publicReference: true, status: true, priority: true } },
+          hubIntakeRecord: true,
+        },
+      });
+    },
+    updateHubRecovery(id, data, tx = prismaClient) {
+      return tx.driverAssignmentHubRecovery.update({ where: { id }, data });
+    },
     findDriverAssignmentForCustody(assignmentId, tx = prismaClient) {
       return tx.driverAssignment.findUnique({
         where: { id: assignmentId },
@@ -186,7 +261,7 @@ export function createCustodyRepository({ prismaClient }) {
     findHubIntakeConfig(hubPointId, tx = prismaClient) {
       return tx.hubPoint.findUnique({
         where: { id: hubPointId },
-        select: { id: true, status: true, acceptedParcelTypes: true, capacityConfig: true },
+        select: { id: true, status: true, serviceZoneId: true, acceptedParcelTypes: true, capacityConfig: true },
       });
     },
     countReceivedHubIntakes(hubPointId, tx = prismaClient) {
@@ -222,6 +297,9 @@ export function createCustodyRepository({ prismaClient }) {
         },
         select: { id: true, type: true, status: true },
       });
+    },
+    findAnyReceivedHubIntake(parcelBookingId, tx = prismaClient) {
+      return tx.hubIntakeRecord.findFirst({ where: { parcelBookingId, status: "RECEIVED" } });
     },
     findReceivedHubIntake(parcelBookingId, hubPointId, tx = prismaClient) {
       return tx.hubIntakeRecord.findFirst({
