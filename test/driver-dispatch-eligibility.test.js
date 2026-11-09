@@ -96,4 +96,9 @@ test("parcel assignment execution rechecks driver capability, active account, KY
   assert.equal(where.verificationDocuments.some.documentType, "IDENTITY");
   assert.equal("isAvailable" in where, false);
   assert.equal("isOnline" in where, false);
+  const withCoverage = eligibleParcelAssignmentDriverWhere({
+    driverProfileId: "driver_1", capability: "PICKUP_COLLECTION", now,
+    requiredServiceZoneIds: ["zone_origin", "zone_destination"],
+  });
+  assert.deepEqual(withCoverage.AND.map(item => item.coverage.some.serviceZoneId), ["zone_origin", "zone_destination"]);
 });
