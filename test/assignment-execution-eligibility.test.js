@@ -207,7 +207,7 @@ test("delivery verification completes existing parcel custody and records an eli
       kycTier: "FULL",
       suspendedAt: new Date("2026-11-09T09:59:00.000Z"),
     },
-    parcelBooking: { id: "booking_1", senderId: "sender_1", status: "DELIVERY_VERIFICATION_PENDING" },
+    parcelBooking: { id: "booking_1", senderId: "sender_1", pickupServiceZoneId: "zone_origin", destinationServiceZoneId: "zone_destination", status: "DELIVERY_VERIFICATION_PENDING" },
   });
   const events = [];
   let assignmentStatus;
