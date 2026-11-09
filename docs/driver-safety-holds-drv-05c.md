@@ -1,0 +1,74 @@
+# DRV-05C — Admin Safety Holds and Custody Recovery
+
+**Status:** Phase opened on `feat/drv-05c-admin-safety-holds-custody-recovery`. This document records the source audit and acceptance contract before changing assignment/custody state. No API, schema, or migration is included in this planning commit.
+
+## Why this phase exists
+
+DRV-05B deliberately allows the same assigned driver to finish delivery after eligibility changes post-pickup, to avoid stranding parcels. That continuity rule is appropriate for routine eligibility drift (for example, a document expiring while en route), but it is not an adequate response to a credible safety/security incident. Admins need an explicit execution hold and a controlled recovery path.
+
+## Existing source contracts verified on `main`
+
+- `DriverAssignment` binds a driver profile, optional exact vehicle, parcel/ride booking and optional delivery leg. Assignment statuses do not include a hold status.
+- `OperationalCase` already supports critical priority, parcel booking, delivery-leg, custody-handover links, assignment to Admin/Support, and case audit events.
+- `OperationalAuditEvent` records actor, entity, action, reason, before/after and metadata.
+- Assignment execution checks run in serializable transactions at pickup arrival and pickup verification. Post-pickup progression currently follows the DRV-05B continuity rule.
+- Custody handovers support sender/driver/hub/partner/recipient parties, but a driver party must be verified and have an active assignment on the leg. Existing custody handover creation does not itself reassign a driver assignment.
+- Admin operational cases can be listed and updated, but there is no dedicated assignment execution hold or recovery operation.
+- The existing operations-control overview counts active/critical/unassigned operational cases; it does not expose held assignments.
+
+## Non-negotiable safety rules
+
+1. **Hold is distinct from assignment status.** Do not overload `AssignmentStatus` with `ON_HOLD`; retain the assignment's lifecycle status and model the hold explicitly.
+2. **No silent reassignment.** Never replace `driverProfileId` or `vehicleId` behind the driver's/customer's back, and never infer a substitute vehicle.
+3. **No custody teleportation.** Reassignment cannot by itself claim the new driver has the parcel. Require an auditable physical custody handover (or an authorized recovery exception with evidence and reason).
+4. **No unsafe completion bypass.** A safety hold must not be bypassed by DRV-05B's ordinary in-custody continuity exception.
+5. **No stranding.** A post-pickup hold must create/attach a critical operational case and expose a recovery-required state. It must not automatically cancel the booking or release the parcel to matching.
+6. **Idempotent admin actions.** Repeated hold/release requests must not create duplicate state transitions or audit records.
+7. **Reason and actor are mandatory.** Hold, release, recovery, and reassignment require an authenticated Admin, a meaningful reason, and an audit event in the same transaction as the mutation.
+8. **Least privilege.** First release is Admin-only. SUPPORT may triage/assign cases but cannot place/release safety holds or authorize custody recovery unless a separate explicit permission is approved.
+9. **No customer money side effects.** This phase must not auto-refund, cancel seller payout, adjust fare, or settle a dispute. Financial decisions remain in their own workflows.
+10. **No production deployment or migration from this branch.** Schema changes, if justified by implementation, require a reviewable migration and normal CI/staging acceptance.
+
+## Planned implementation slices
+
+### DRV-05C-A — Execution hold primitive
+- Admin can place a hold on a specific active parcel assignment.
+- Hold reason, actor, timestamp and linked operational case are persisted.
+- Hold creation and critical operational-case linkage are atomic.
+- Driver arrival/start/destination progression and pickup/delivery verification must respect the hold consistently.
+- If a hold is applied after pickup, the assignment is flagged as recovery-required; ordinary DRV-05B delivery completion cannot override it.
+- Repeated hold is idempotent; release requires explicit reason and Admin authority.
+- List/detail APIs and operational overview expose held/recovery-required work.
+- Driver-facing response uses stable error code `ASSIGNMENT_EXECUTION_HELD`; client UI must explain that Admin operations are handling the shipment, without exposing internal incident details.
+
+### DRV-05C-B — Controlled custody recovery
+- Admin opens/updates a recovery case and identifies a qualified replacement driver/vehicle.
+- Replacement eligibility is revalidated against DRV-05A/05B contracts, route coverage, KYC, capability, vehicle suitability and service zones.
+- Existing driver assignment is not simply overwritten. Model the handoff explicitly and preserve the original assignment history.
+- A physical custody handover is required between the actual custody holder and replacement operator, with condition/evidence and two-party confirmation where feasible.
+- If the current holder is unavailable or unsafe, define a separate Admin-authorized exception with mandatory evidence, reason, incident case and audit trail; do not pretend two-party confirmation occurred.
+- Only after custody recovery is confirmed may the replacement assignment become executable.
+- Ensure booking/leg state and customer tracking remain coherent and no double-active driver assignment exists.
+
+### DRV-05C-C — Alerting and operational acceptance
+- Detect assignments that become ineligible before pickup and create/attach operational cases without duplicate case spam.
+- Notify Admin/Support through existing notification/outbox mechanisms, with severity and safe metadata.
+- Add Admin queue filters for held/recovery-required assignments and case-linked actions.
+- Staging scenarios cover normal eligibility drift, serious incident hold, hold before pickup, hold after pickup, duplicate admin calls, failed handover, recovery completion, unavailable current holder, and audit review.
+
+## Acceptance gates
+
+- A hold cannot be applied to completed/cancelled assignments.
+- A held assignment cannot progress through driver actions or verification code consumption.
+- A pickup hold prevents custody transfer.
+- A post-pickup hold blocks ordinary driver progression/completion until recovery is explicitly resolved.
+- Hold/release/recovery transitions are transactional, serializable where concurrent assignment/custody mutations are possible, and audited.
+- Customer-facing status remains truthful; no fabricated handover, driver, or delivery timestamp.
+- Existing DRV-05B continuity behavior remains unchanged for assignments without a safety hold.
+- Existing ride assignment behavior remains unchanged.
+- No payment, refund, payout, or seller settlement behavior changes.
+- CI and migration checks pass; staging acceptance is required before production use.
+
+## Open engineering decision
+
+The source audit confirms that the existing custody handover model is not itself a driver reassignment mechanism. The implementation must preserve this distinction. DRV-05C-B will not be considered complete until it proves how the assignment history, active driver reservation, vehicle binding, and physical custody handover move together without creating a window in which two drivers can claim the parcel.
