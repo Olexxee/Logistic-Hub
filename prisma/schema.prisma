@@ -997,6 +997,7 @@ model ParcelBooking {
   offers                 DriverOffer[]
   assignments            DriverAssignment[]
   assignmentRecoveries    DriverAssignmentRecovery[]
+  hubCustodyRecoveries    DriverAssignmentHubRecovery[]
   paymentAttempts        PaymentAttempt[]
   verificationTokens     VerificationToken[]
   events                 BookingEvent[]
@@ -1216,6 +1217,7 @@ model DriverAssignment {
   deliveryLeg   DeliveryLeg?   @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
   sourceRecoveries DriverAssignmentRecovery[] @relation("RecoverySourceAssignment")
   replacementForRecovery DriverAssignmentRecovery? @relation("RecoveryReplacementAssignment")
+  hubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoverySourceAssignment")
 
   @@index([driverProfileId, status, reservedAt])
   @@index([parcelBookingId, status])
@@ -1259,11 +1261,6 @@ model DeliveryLeg {
   assignments       DriverAssignment[]
   assignmentRecoveries DriverAssignmentRecovery[]
   hubCustodyRecoveries DriverAssignmentHubRecovery[]
-  hubCustodyRecoveries DriverAssignmentHubRecovery[]
-  hubCustodyRecoveries DriverAssignmentHubRecovery[]
-  hubCustodyRecoveries DriverAssignmentHubRecovery[]
-  hubCustodyRecoveries DriverAssignmentHubRecovery[]
-  hubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoverySourceAssignment")
   offers             DeliveryLegOffer[]
   verificationTokens VerificationToken[]
   partnerAssignments PartnerDeliveryAssignment[]
@@ -1986,7 +1983,6 @@ model OperationalCase {
   reportedBy      User             @relation("OperationalCaseReporter", fields: [reportedByUserId], references: [id], onDelete: Restrict)
   assignedTo      User?            @relation("OperationalCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: Restrict)
   assignmentRecoveries DriverAssignmentRecovery[]
-  hubCustodyRecoveries DriverAssignmentHubRecovery[]
 
   @@index([status, priority, createdAt])
   @@index([parcelBookingId, status])
