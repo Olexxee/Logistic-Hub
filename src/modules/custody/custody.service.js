@@ -354,9 +354,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (input.fromPartyType === "HUB") {
           const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, input.fromPartyId, tx);
           if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
-          const recovery = await repo.findHubRecoveryForIntake(intake.id, tx);
-          if (recovery) {
-            const disposition = await repo.findHubIntakeDisposition(intake.id, tx);
+          if (intake.driverAssignmentHubRecovery) {
+            const disposition = intake.disposition;
             if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== leg.id) {
               return { blocker: "HUB_RECOVERY_DISPOSITION_REQUIRED" };
             }
@@ -513,9 +512,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           if (blockingCase) throw fail(409, "HUB_OPERATIONAL_CASE_OPEN", "This parcel has an unresolved operational exception. Resolve or close the case before releasing custody.");
           const intake = await repo.findReceivedHubIntake(handover.parcelBookingId, handover.fromPartyId, tx);
           if (!intake) throw fail(409, "HUB_INTAKE_REQUIRED", "The hub cannot release a parcel that has no active intake record.");
-          const recovery = await repo.findHubRecoveryForIntake(intake.id, tx);
-          if (recovery) {
-            const disposition = await repo.findHubIntakeDisposition(intake.id, tx);
+          if (intake.driverAssignmentHubRecovery) {
+            const disposition = intake.disposition;
             if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== handover.deliveryLegId) {
               throw fail(409, "HUB_RECOVERY_DISPOSITION_REQUIRED", "A safety-recovered parcel can only be released on its explicitly approved continuation leg.");
             }
@@ -1252,9 +1250,8 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       if (leg.originHubPointId !== hubPointId) return { blocker: "HUB_NOT_LEG_ORIGIN" };
       const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, hubPointId);
       if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
-      const recovery = await repo.findHubRecoveryForIntake(intake.id);
-      if (recovery) {
-        const disposition = await repo.findHubIntakeDisposition(intake.id);
+      if (intake.driverAssignmentHubRecovery) {
+        const disposition = intake.disposition;
         if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== leg.id) {
           return { blocker: "HUB_RECOVERY_DISPOSITION_REQUIRED" };
         }
