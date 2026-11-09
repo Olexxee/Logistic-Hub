@@ -92,7 +92,7 @@ function makeClient({ candidateEligible = true, recovery = null } = {}) {
       },
     },
     driverAssignmentRecovery: {
-      findFirst: async () => null,
+      findFirst: async () => state.recovery && ["PENDING_RELEASE", "PENDING_RECEIPT"].includes(state.recovery.status) ? state.recovery : null,
       findUnique: async () => state.recovery,
       create: async ({ data }) => {
         state.recovery = { id: "recovery_1", ...data };
@@ -144,6 +144,41 @@ test("Admin initiates recovery only for a held in-custody parcel and an eligible
   assert.equal(state.audits[0].action, "DRIVER_ASSIGNMENT_RECOVERY_INITIATED");
 });
 
+test("repeated initiation for the same replacement pair is idempotent", async () => {
+  const { client, state } = makeClient();
+  const service = createAssignmentsService({ prismaClient: client, clock: () => now });
+  const input = {
+    assignmentId: sourceAssignment.id,
+    replacementDriverProfileId: "driver_replacement",
+    replacementVehicleId: "vehicle_replacement",
+    actorUserId: "admin_user",
+    reason: "Current driver reported a credible safety threat.",
+  };
+
+  const first = await service.initiateCustodyRecovery(input);
+  const second = await service.initiateCustodyRecovery(input);
+
+  assert.equal(first.replay, false);
+  assert.equal(second.replay, true);
+  assert.equal(second.recovery.id, first.recovery.id);
+  assert.equal(state.audits.length, 1);
+});
+
+test("a different replacement cannot overwrite an active recovery", async () => {
+  const { client } = makeClient({ recovery: { ...recoverySeed } });
+  const service = createAssignmentsService({ prismaClient: client, clock: () => now });
+
+  const result = await service.initiateCustodyRecovery({
+    assignmentId: sourceAssignment.id,
+    replacementDriverProfileId: "another_driver",
+    replacementVehicleId: "another_vehicle",
+    actorUserId: "admin_user",
+    reason: "Choose a different replacement after review.",
+  });
+
+  assert.equal(result.blocker, "RECOVERY_ALREADY_ACTIVE");
+});
+
 test("current driver release records evidence but does not create or activate a replacement assignment", async () => {
   const { client, state } = makeClient({ recovery: { ...recoverySeed } });
   const service = createAssignmentsService({ prismaClient: client, clock: () => now });
@@ -160,6 +195,22 @@ test("current driver release records evidence but does not create or activate a 
   assert.equal(state.replacementAssignment, null);
   assert.equal(state.source.status, "IN_PROGRESS");
   assert.equal(state.audits[0].action, "DRIVER_CUSTODY_RELEASE_CONFIRMED");
+});
+
+test("only the source driver can confirm physical release", async () => {
+  const { client, state } = makeClient({ recovery: { ...recoverySeed } });
+  const service = createAssignmentsService({ prismaClient: client, clock: () => now });
+
+  const result = await service.confirmCustodyRecoveryRelease({
+    recoveryId: "recovery_1",
+    userId: "someone_else",
+    reason: "Attempted unauthorized release.",
+    evidence: [{ uri: "https://media.example/release.jpg", type: "IMAGE" }],
+  });
+
+  assert.equal(result.forbidden, true);
+  assert.equal(state.recovery.status, "PENDING_RELEASE");
+  assert.equal(state.audits.length, 0);
 });
 
 test("Admin release exception records reason and evidence without pretending the source driver confirmed", async () => {
