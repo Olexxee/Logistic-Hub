@@ -894,7 +894,7 @@ test("Admin continuation creates a same-state final-mile leg and fails the super
   });
   assert.equal(result.disposition.status, "ROUTE_APPROVED");
   assert.equal(result.nextDeliveryLeg.type, "FINAL_MILE");
-  assert.equal(result.nextDeliveryLeg.status, "READY_FOR_ASSIGNMENT");
+  assert.equal(result.nextDeliveryLeg.status, "PLANNED");
   assert.equal(result.nextDeliveryLeg.originHubPointId, "hub-recovery-1");
   assert.equal(calls.legUpdates[0].data.status, "FAILED");
   assert.equal(calls.legUpdates[0].data.failureReason, "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED");
