@@ -354,6 +354,12 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
         if (input.fromPartyType === "HUB") {
           const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, input.fromPartyId, tx);
           if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
+          if (intake.driverAssignmentHubRecovery) {
+            const disposition = intake.disposition;
+            if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== leg.id) {
+              return { blocker: "HUB_RECOVERY_DISPOSITION_REQUIRED" };
+            }
+          }
         }
         if (input.fromPartyType === "HUB") {
           const blockingCase = await repo.findBlockingHubOperationalCase(leg.id, tx);
@@ -506,6 +512,15 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
           if (blockingCase) throw fail(409, "HUB_OPERATIONAL_CASE_OPEN", "This parcel has an unresolved operational exception. Resolve or close the case before releasing custody.");
           const intake = await repo.findReceivedHubIntake(handover.parcelBookingId, handover.fromPartyId, tx);
           if (!intake) throw fail(409, "HUB_INTAKE_REQUIRED", "The hub cannot release a parcel that has no active intake record.");
+          if (intake.driverAssignmentHubRecovery) {
+            const disposition = intake.disposition;
+            if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== handover.deliveryLegId) {
+              throw fail(409, "HUB_RECOVERY_DISPOSITION_REQUIRED", "A safety-recovered parcel can only be released on its explicitly approved continuation leg.");
+            }
+            await repo.updateHubIntakeDisposition(disposition.id, {
+              status: "RELEASED", releasedAt: clock(), releasedByUserId: handover.initiatedByUserId,
+            }, tx);
+          }
           await repo.updateHubIntakeRecord(intake.id, { status: "RELEASED", releasedAt: clock() }, tx);
         }
 
@@ -940,6 +955,169 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       });
     },
 
+    async setAdminHubIntakeDisposition({
+      intakeRecordId, decision, reason, destinationServiceZoneId, destinationHubPointId, actorUserId,
+    }) {
+      return serializableTransaction(prismaClient, async tx => {
+        await requireActiveUser(tx, actorUserId);
+        const initialIntake = await repo.findHubIntakeDispositionContext(intakeRecordId, tx);
+        if (!initialIntake) return { notFound: true };
+        await repo.lockDeliveryLeg(initialIntake.deliveryLegId, tx);
+        await repo.lockHubIntake(intakeRecordId, tx);
+        await repo.lockHubCapacity(initialIntake.hubPointId, tx);
+        const intake = await repo.findHubIntakeDispositionContext(intakeRecordId, tx);
+        if (!intake) return { notFound: true };
+        if (intake.deliveryLegId !== initialIntake.deliveryLegId
+          || intake.hubPointId !== initialIntake.hubPointId) {
+          return { blocker: "HUB_INTAKE_STATE_CHANGED" };
+        }
+        if (intake.status !== "RECEIVED") return { blocker: "HUB_INTAKE_NOT_ACTIVE" };
+        if (!intake.driverAssignmentHubRecovery
+          || intake.driverAssignmentHubRecovery.status !== "CONFIRMED") {
+          return { blocker: "HUB_RECOVERY_INTAKE_REQUIRED" };
+        }
+        if (intake.parcelBooking.paymentStatus !== "SUCCEEDED"
+          || intake.parcelBooking.status !== "IN_TRANSIT") {
+          return { blocker: "BOOKING_NOT_IN_TRANSIT" };
+        }
+        if (intake.hubPoint.status !== "ACTIVE") return { blocker: "HUB_NOT_ACTIVE" };
+        if (await repo.findPendingHandover(intake.deliveryLegId, tx)) {
+          return { blocker: "PENDING_CUSTODY_HANDOVER_EXISTS" };
+        }
+        const activeIntake = await repo.findAnyReceivedHubIntake(intake.parcelBookingId, tx);
+        if (activeIntake?.id !== intake.id) return { blocker: "PARCEL_CUSTODY_LOCATION_CONFLICT" };
+
+        const existing = intake.disposition;
+        if (existing?.status === "RELEASED") return { blocker: "HUB_INTAKE_ALREADY_RELEASED" };
+        if (decision === "HOLD_FOR_INVESTIGATION") {
+          if (existing?.status === "ROUTE_APPROVED") return { blocker: "HUB_DISPOSITION_ALREADY_APPROVED" };
+          const disposition = existing
+            ? await repo.updateHubIntakeDisposition(existing.id, {
+              decision, status: "HELD", reason, destinationServiceZoneId: null,
+              destinationHubPointId: null, nextDeliveryLegId: null, approvedAt: null,
+            }, tx)
+            : await repo.createHubIntakeDisposition({
+              intakeRecordId, hubRecoveryId: intake.driverAssignmentHubRecovery.id,
+              parcelBookingId: intake.parcelBookingId, sourceDeliveryLegId: intake.deliveryLegId,
+              hubPointId: intake.hubPointId, decision, status: "HELD", reason, createdByUserId: actorUserId,
+            }, tx);
+          await repo.createAudit({
+            actorUserId, entityType: "HUB_INTAKE_DISPOSITION", entityId: disposition.id,
+            action: "HUB_RECOVERED_PARCEL_HELD_FOR_INVESTIGATION", reason,
+            before: existing ? { decision: existing.decision, status: existing.status } : null,
+            after: { decision, status: disposition.status, intakeRecordId, hubRecoveryId: intake.driverAssignmentHubRecovery.id },
+          }, tx);
+          return { disposition, replay: false };
+        }
+
+        if (!destinationServiceZoneId) return { blocker: "CONTINUATION_DESTINATION_REQUIRED" };
+        if (existing?.status === "ROUTE_APPROVED") {
+          if (existing.destinationServiceZoneId === destinationServiceZoneId
+            && (existing.destinationHubPointId ?? null) === (destinationHubPointId ?? null)) {
+            const approvedDisposition = await repo.findHubIntakeDisposition(intakeRecordId, tx);
+            return { disposition: approvedDisposition, nextDeliveryLeg: approvedDisposition?.nextDeliveryLeg ?? null, replay: true };
+          }
+          return { blocker: "HUB_DISPOSITION_ALREADY_APPROVED" };
+        }
+
+        const sourceLeg = intake.deliveryLeg;
+        const latestLeg = await repo.findLatestDeliveryLeg(intake.parcelBookingId, tx);
+        if (latestLeg && latestLeg.sequence > sourceLeg.sequence) {
+          return { blocker: "EXISTING_FUTURE_LEGS_REQUIRE_REPLAN" };
+        }
+        const blockingCase = await repo.findBlockingHubOperationalCase(sourceLeg.id, tx);
+        if (blockingCase) return { blocker: "OPERATIONAL_CASE_REQUIRES_REVIEW" };
+        const originZone = await repo.findServiceZoneForContinuation(intake.hubPoint.serviceZoneId, tx);
+        const destinationZone = await repo.findServiceZoneForContinuation(destinationServiceZoneId, tx);
+        const zoneIsActive = zone => Boolean(zone?.isActive && zone.state?.isActive && zone.state?.country?.isActive);
+        if (!zoneIsActive(originZone) || !zoneIsActive(destinationZone)) {
+          return { blocker: "CONTINUATION_SERVICE_ZONE_UNAVAILABLE" };
+        }
+
+        let nextLegType;
+        let destinationHub = null;
+        let destinationLatitude = intake.parcelBooking.destinationLatitude;
+        let destinationLongitude = intake.parcelBooking.destinationLongitude;
+        if (destinationHubPointId) {
+          destinationHub = await repo.findHubForContinuation(destinationHubPointId, tx);
+          if (!destinationHub || destinationHub.status !== "ACTIVE"
+            || destinationHub.serviceZoneId !== destinationServiceZoneId
+            || destinationHub.id === intake.hubPointId) {
+            return { blocker: "CONTINUATION_DESTINATION_HUB_INVALID" };
+          }
+          const acceptedTypes = Array.isArray(destinationHub.acceptedParcelTypes) ? destinationHub.acceptedParcelTypes : [];
+          if (acceptedTypes.length && !acceptedTypes.includes(intake.parcelBooking.parcelCategory)) {
+            return { blocker: "CONTINUATION_DESTINATION_HUB_REJECTS_PARCEL" };
+          }
+          nextLegType = originZone.state.id === destinationZone.state.id ? "HUB_TRANSFER" : "INTERSTATE_TRANSPORT";
+          destinationLatitude = destinationHub.latitude;
+          destinationLongitude = destinationHub.longitude;
+        } else {
+          if (originZone.state.id !== destinationZone.state.id) {
+            return { blocker: "CONTINUATION_DESTINATION_HUB_REQUIRED" };
+          }
+          if (destinationServiceZoneId !== intake.parcelBooking.destinationServiceZoneId) {
+            return { blocker: "CONTINUATION_DESTINATION_HUB_REQUIRED" };
+          }
+          nextLegType = "FINAL_MILE";
+        }
+
+        const sourceLegChanged = await repo.failRecoveredSourceLeg(sourceLeg.id, tx);
+        if (sourceLegChanged.count !== 1) return { blocker: "SOURCE_DELIVERY_LEG_STATE_CHANGED" };
+        const sequence = (latestLeg?.sequence ?? sourceLeg.sequence) + 1;
+        const nextDeliveryLeg = await repo.createContinuationLeg({
+          parcelBookingId: intake.parcelBookingId,
+          sequence,
+          type: nextLegType,
+          status: "PLANNED",
+          originServiceZoneId: intake.hubPoint.serviceZoneId,
+          destinationServiceZoneId,
+          originHubPointId: intake.hubPointId,
+          destinationHubPointId: destinationHub?.id ?? null,
+          originLatitude: intake.hubPoint.latitude,
+          originLongitude: intake.hubPoint.longitude,
+          destinationLatitude,
+          destinationLongitude,
+          metadata: {
+            source: "DRV-05C-D2_HUB_RECOVERY",
+            sourceIntakeRecordId: intakeRecordId,
+            sourceDeliveryLegId: sourceLeg.id,
+            hubRecoveryId: intake.driverAssignmentHubRecovery.id,
+          },
+        }, tx);
+        const dispositionData = {
+          decision: "CONTINUE_DELIVERY",
+          status: "ROUTE_APPROVED",
+          reason,
+          destinationServiceZoneId,
+          destinationHubPointId: destinationHub?.id ?? null,
+          nextDeliveryLegId: nextDeliveryLeg.id,
+          approvedAt: clock(),
+          approvedByUserId: actorUserId,
+        };
+        const disposition = existing
+          ? await repo.updateHubIntakeDisposition(existing.id, dispositionData, tx)
+          : await repo.createHubIntakeDisposition({
+            intakeRecordId, hubRecoveryId: intake.driverAssignmentHubRecovery.id,
+            parcelBookingId: intake.parcelBookingId, sourceDeliveryLegId: sourceLeg.id,
+            hubPointId: intake.hubPointId, createdByUserId: actorUserId,
+            ...dispositionData,
+          }, tx);
+        await repo.createAudit({
+          actorUserId, entityType: "HUB_INTAKE_DISPOSITION", entityId: disposition.id,
+          action: "HUB_RECOVERED_PARCEL_ROUTE_APPROVED", reason,
+          before: existing ? { decision: existing.decision, status: existing.status } : null,
+          after: {
+            decision: disposition.decision, status: disposition.status,
+            sourceDeliveryLegId: sourceLeg.id, nextDeliveryLegId: nextDeliveryLeg.id,
+            nextLegType, originHubPointId: intake.hubPointId,
+            destinationServiceZoneId, destinationHubPointId: destinationHub?.id ?? null,
+          },
+        }, tx);
+        return { disposition, nextDeliveryLeg, replay: false };
+      });
+    },
+
     async cancelAdminHubRecovery({ recoveryId, reason, actorUserId }) {
       return serializableTransaction(prismaClient, async tx => {
         await requireActiveUser(tx, actorUserId);
@@ -1072,6 +1250,12 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       if (leg.originHubPointId !== hubPointId) return { blocker: "HUB_NOT_LEG_ORIGIN" };
       const intake = await repo.findReceivedHubIntake(leg.parcelBookingId, hubPointId);
       if (!intake) return { blocker: "HUB_INTAKE_REQUIRED" };
+      if (intake.driverAssignmentHubRecovery) {
+        const disposition = intake.disposition;
+        if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== leg.id) {
+          return { blocker: "HUB_RECOVERY_DISPOSITION_REQUIRED" };
+        }
+      }
       if (toPartyType === "DRIVER") {
         const assignment = leg.assignments.find(item => item.driverProfileId === toPartyId && item.status === "ARRIVED_AT_PICKUP");
         if (!assignment) return { blocker: "DRIVER_NOT_ARRIVED_AT_HUB" };

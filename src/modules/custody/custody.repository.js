@@ -146,6 +146,82 @@ export function createCustodyRepository({ prismaClient }) {
         },
       });
     },
+    lockHubIntake(intakeRecordId, tx = prismaClient) {
+      return tx.$queryRaw`SELECT "id" FROM "hub_intake_records" WHERE "id" = ${intakeRecordId} FOR UPDATE`;
+    },
+    findHubIntakeDispositionContext(intakeRecordId, tx = prismaClient) {
+      return tx.hubIntakeRecord.findUnique({
+        where: { id: intakeRecordId },
+        include: {
+          parcelBooking: {
+            select: {
+              id: true, status: true, paymentStatus: true, parcelCategory: true,
+              destinationServiceZoneId: true, destinationAddress: true,
+              destinationLatitude: true, destinationLongitude: true,
+            },
+          },
+          deliveryLeg: {
+            select: {
+              id: true, sequence: true, status: true, type: true,
+              originServiceZoneId: true, destinationServiceZoneId: true,
+            },
+          },
+          hubPoint: {
+            select: {
+              id: true, name: true, status: true, serviceZoneId: true,
+              latitude: true, longitude: true, acceptedParcelTypes: true,
+            },
+          },
+          driverAssignmentHubRecovery: {
+            select: { id: true, status: true, operationalCaseId: true },
+          },
+          disposition: true,
+        },
+      });
+    },
+    findHubIntakeDisposition(intakeRecordId, tx = prismaClient) {
+      return tx.hubIntakeDisposition.findUnique({
+        where: { intakeRecordId },
+        include: { nextDeliveryLeg: true },
+      });
+    },
+    createHubIntakeDisposition(data, tx = prismaClient) {
+      return tx.hubIntakeDisposition.create({ data });
+    },
+    updateHubIntakeDisposition(id, data, tx = prismaClient) {
+      return tx.hubIntakeDisposition.update({ where: { id }, data });
+    },
+    findServiceZoneForContinuation(serviceZoneId, tx = prismaClient) {
+      return tx.serviceZone.findUnique({
+        where: { id: serviceZoneId },
+        select: {
+          id: true, isActive: true,
+          state: { select: { id: true, isActive: true, country: { select: { isActive: true } } } },
+        },
+      });
+    },
+    findHubForContinuation(hubPointId, tx = prismaClient) {
+      return tx.hubPoint.findUnique({
+        where: { id: hubPointId },
+        select: { id: true, name: true, status: true, serviceZoneId: true, latitude: true, longitude: true, acceptedParcelTypes: true },
+      });
+    },
+    findLatestDeliveryLeg(parcelBookingId, tx = prismaClient) {
+      return tx.deliveryLeg.findFirst({
+        where: { parcelBookingId },
+        orderBy: [{ sequence: "desc" }, { id: "desc" }],
+        select: { id: true, sequence: true },
+      });
+    },
+    createContinuationLeg(data, tx = prismaClient) {
+      return tx.deliveryLeg.create({ data });
+    },
+    failRecoveredSourceLeg(id, tx = prismaClient) {
+      return tx.deliveryLeg.updateMany({
+        where: { id, status: { in: ["PLANNED", "READY_FOR_ASSIGNMENT", "ASSIGNED", "PICKUP_VERIFICATION_PENDING", "IN_TRANSIT", "DELIVERY_VERIFICATION_PENDING"] } },
+        data: { status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED" },
+      });
+    },
     updateHubRecovery(id, data, tx = prismaClient) {
       return tx.driverAssignmentHubRecovery.update({ where: { id }, data });
     },
@@ -224,6 +300,12 @@ export function createCustodyRepository({ prismaClient }) {
           parcelBooking: { select: { publicReference: true, status: true, parcelCategory: true, parcelSize: true } },
           deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
           hubPoint: { select: { id: true, name: true } },
+          driverAssignmentHubRecovery: { select: { id: true, status: true, operationalCaseId: true } },
+          disposition: { select: {
+            id: true, decision: true, status: true,
+            destinationServiceZoneId: true, destinationHubPointId: true,
+            nextDeliveryLegId: true, approvedAt: true, releasedAt: true,
+          } },
         },
       });
     },
@@ -305,6 +387,10 @@ export function createCustodyRepository({ prismaClient }) {
       return tx.hubIntakeRecord.findFirst({
         where: { parcelBookingId, hubPointId, status: "RECEIVED" },
         orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        include: {
+          driverAssignmentHubRecovery: { select: { id: true } },
+          disposition: { select: { id: true, status: true, nextDeliveryLegId: true } },
+        },
       });
     },
     updateHubIntakeRecord(id, data, tx = prismaClient) {
@@ -323,6 +409,12 @@ export function createCustodyRepository({ prismaClient }) {
           parcelBooking: { select: { publicReference: true, parcelCategory: true, parcelSize: true, handlingInstructions: true } },
           deliveryLeg: { select: { id: true, sequence: true, type: true, status: true } },
           hubPoint: { select: { id: true, name: true, address: true } },
+          driverAssignmentHubRecovery: { select: { id: true, status: true, operationalCaseId: true } },
+          disposition: { select: {
+            id: true, decision: true, status: true, reason: true,
+            destinationServiceZoneId: true, destinationHubPointId: true,
+            nextDeliveryLegId: true, approvedAt: true, releasedAt: true,
+          } },
         },
       });
     },
