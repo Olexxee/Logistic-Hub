@@ -768,3 +768,24 @@ test("cancelling pending hub recovery does not release the source assignment saf
   assert.equal(calls.updates.length, 1);
   assert.equal(calls.audits[0].action, "DRIVER_ASSIGNMENT_HUB_RECOVERY_CANCELLED");
 });
+
+
+test("confirmed hub recovery replay remains restricted to an active member of that hub", async () => {
+  const { db } = tx({
+    driverAssignmentHubRecovery: {
+      findUnique: async () => ({
+        id: "hub-recovery-1", hubPointId: "hub-recovery-1", status: "CONFIRMED",
+        hubIntakeRecord: { id: "intake-recovery-1" },
+      }),
+    },
+    hubPointOperator: { findUnique: async () => null },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.receiveAdminHubRecovery({
+      recoveryId: "hub-recovery-1", userId: "unaffiliated-user",
+      conditionAtReceipt: "Parcel sealed.", weightGrams: 850,
+    }),
+    error => error.statusCode === 403,
+  );
+});
