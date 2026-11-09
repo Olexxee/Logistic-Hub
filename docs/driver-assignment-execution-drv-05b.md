@@ -19,8 +19,9 @@ Before a parcel driver can mark arrival at pickup or consume the pickup verifica
    - Direct parcel: `LOCAL_DISPATCH`
    - `LOCAL_PICKUP`: `PICKUP_COLLECTION`
    - `FINAL_MILE`: `FINAL_MILE_DELIVERY`
-4. The assignment has an exact selected `vehicleId`; the vehicle still belongs to the driver, is active and verified, and has the matching approved service suitability.
-5. In STRICT KYC mode, identity, driver licence and vehicle-registration evidence remain approved and non-expired, subject to the existing bicycle exemption.
+4. The origin and destination service zones remain active with current parcel availability; the driver still has enabled parcel coverage in both zones. Any hub on the delivery leg must remain active.
+5. The assignment has an exact selected `vehicleId`; the vehicle still belongs to the driver, is active and verified, and has the matching approved service suitability.
+6. In STRICT KYC mode, identity, driver licence and vehicle-registration evidence remain approved and non-expired, subject to the existing bicycle exemption.
 
 A missing legacy vehicle binding is not guessed. It returns `VEHICLE_NOT_BOUND` and requires operations review before pickup. A driver assignment for a partner-only leg is rejected by the driver eligibility predicate.
 
@@ -46,6 +47,8 @@ This is a continuity policy, not a blanket permission to ignore a security incid
 - `VEHICLE_EXECUTION_ELIGIBILITY_CHANGED`
 - `VEHICLE_NOT_BOUND`
 - `LEG_REQUIRES_PARTNER_EXECUTION`
+- `SERVICE_ZONE_UNAVAILABLE`
+- `HUB_UNAVAILABLE`
 
 The service maps these to HTTP 409 conflict responses. Ownership failures remain 403; invalid/expired verification codes retain their existing code.
 
@@ -67,7 +70,7 @@ The service maps these to HTTP 409 conflict responses. Ownership failures remain
 
 ## Validation
 
-- Predicate tests prove the assignment execution query requires active account, driver capability, exact vehicle suitability and strict-mode evidence without incorrectly requiring online/available state.
+- Predicate tests prove the assignment execution query requires active account, driver capability, exact vehicle suitability, active route coverage and strict-mode evidence without incorrectly requiring online/available state.
 - Repository tests prove eligibility changes block pre-custody arrival and pickup verification.
 - Repository tests prove post-pickup continuation is preserved and an eligibility exception is audited at delivery completion.
 - Full `npm test`, Prisma validation/generation and API contract validation in CI.
