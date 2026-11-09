@@ -25,7 +25,6 @@ export function createAssignmentsService({prismaClient,clock=()=>new Date()}){
     if(!["PICKUP_CONFIRMED","IN_PROGRESS"].includes(source.status)||!source.pickupAt)return {blocker:"ASSIGNMENT_NOT_IN_CUSTODY"};
     if(source.driverProfileId===replacementDriverProfileId)return {blocker:"REPLACEMENT_DRIVER_MUST_DIFFER"};
     if(source.vehicleId===replacementVehicleId)return {blocker:"REPLACEMENT_VEHICLE_MUST_DIFFER"};
-    await repository.lockDeliveryLeg(source.deliveryLegId,tx);
     const existing=await repository.findActiveRecoveryForSource(source.id,tx);
     if(existing) {
      if(existing.replacementDriverProfileId===replacementDriverProfileId&&existing.replacementVehicleId===replacementVehicleId)return {recovery:existing,replay:true};
