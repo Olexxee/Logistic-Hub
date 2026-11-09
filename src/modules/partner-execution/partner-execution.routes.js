@@ -64,15 +64,16 @@ export function createPartnerExecutionRouter({ prismaClient = prisma, authMiddle
   const service = createPartnerExecutionService({ prismaClient });
   const controller = createPartnerExecutionController(service);
   const admin = roleMiddleware("ADMIN");
+  const partnerOperator = roleMiddleware("PARTNER_OPERATOR");
 
   router.get("/admin/transport-partners/:partnerId/members", authMiddleware, admin, validateId, validate(memberListSchema, "query"), asyncWrapper(controller.listMembers));
   router.post("/admin/transport-partners/:partnerId/members", authMiddleware, admin, validateId, validate(memberSchema), asyncWrapper(controller.addMember));
   router.patch("/admin/transport-partners/:partnerId/members/:memberId", authMiddleware, admin, validateId, validate(memberStatusSchema), asyncWrapper(controller.setMemberStatus));
   router.post("/admin/delivery-legs/:legId/partner-assignment", authMiddleware, admin, validateId, validate(assignmentSchema), requireIdempotencyKey, asyncWrapper(controller.assignLeg));
 
-  router.get("/partner/assignments", authMiddleware, validate(listSchema, "query"), asyncWrapper(controller.listMyAssignments));
-  router.post("/partner/assignments/:assignmentId/accept", authMiddleware, validateId, asyncWrapper(controller.acceptAssignment));
-  router.post("/partner/assignments/:assignmentId/start", authMiddleware, validateId, asyncWrapper(controller.startAssignment));
+  router.get("/partner/assignments", authMiddleware, partnerOperator, validate(listSchema, "query"), asyncWrapper(controller.listMyAssignments));
+  router.post("/partner/assignments/:assignmentId/accept", authMiddleware, partnerOperator, validateId, asyncWrapper(controller.acceptAssignment));
+  router.post("/partner/assignments/:assignmentId/start", authMiddleware, partnerOperator, validateId, asyncWrapper(controller.startAssignment));
 
   return router;
 }
