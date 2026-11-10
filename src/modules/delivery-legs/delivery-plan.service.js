@@ -20,7 +20,12 @@ function legData({
     destinationLatitude,
     destinationLongitude,
     plannedAt: now,
-    metadata: { quoteId, routePlanVersion: 1 },
+    metadata: {
+      quoteId,
+      routePlanVersion: 1,
+      driverPayoutMinor: quote?.inputSnapshot?.driverPayoutMinor ?? null,
+      pricingSource: quote?.inputSnapshot?.driverPayoutMinor != null ? "PLATFORM_ROUTE_RATE" : "CONTRACTED_PARTNER_RATE",
+    },
   };
 }
 
