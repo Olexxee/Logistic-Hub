@@ -9,7 +9,7 @@ const EXPECTED_DATABASE_NAME = "postgres";
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export function parseBootstrapArguments(args = []) {
-  const allowed = new Set(["--apply"]);
+  const allowed = new Set(["--apply", "--confirm-admin-email-control"]);
   for (const arg of args) {
     if (allowed.has(arg) || arg.startsWith("--confirm-staging-database=")) continue;
     throw new Error("Unknown argument: " + arg);
@@ -18,14 +18,16 @@ export function parseBootstrapArguments(args = []) {
   const confirmations = args.filter((arg) => arg.startsWith("--confirm-staging-database="));
   if (confirmations.length > 1) throw new Error("Provide --confirm-staging-database only once.");
   const confirmation = confirmations[0]?.slice("--confirm-staging-database=".length) ?? null;
+  const emailControlConfirmed = args.includes("--confirm-admin-email-control");
 
-  if (confirmation && !args.includes("--apply")) {
-    throw new Error("--confirm-staging-database is only valid with --apply.");
+  if ((confirmation || emailControlConfirmed) && !args.includes("--apply")) {
+    throw new Error("Confirmation flags are only valid with --apply.");
   }
 
   return {
     apply: args.includes("--apply"),
     confirmedDatabase: confirmation,
+    emailControlConfirmed,
   };
 }
 
@@ -78,6 +80,9 @@ export function validateStagingAdminBootstrapConfig(environment = process.env, a
   if (options.apply && options.confirmedDatabase !== databaseName) {
     throw new Error("Apply requires --confirm-staging-database=" + databaseName + " to confirm the exact staging target.");
   }
+  if (options.apply && !options.emailControlConfirmed) {
+    throw new Error("Apply requires --confirm-admin-email-control to attest that you control the Admin email address.");
+  }
 
   return {
     ...options,
@@ -109,7 +114,7 @@ export async function runStagingAdminBootstrap(args = process.argv.slice(2), dep
         existingUsers: existingUserCount,
         admin: { email: config.admin.email, role: "ADMIN", status: "PENDING" },
         writesPerformed: false,
-        nextStep: "Pass --apply --confirm-staging-database=postgres to create the first staging Admin.",
+        nextStep: "Pass --apply --confirm-staging-database=postgres --confirm-admin-email-control to create the first staging Admin.",
       }, null, 2));
       return;
     }
@@ -150,13 +155,14 @@ export async function runStagingAdminBootstrap(args = process.argv.slice(2), dep
           entityType: "USER",
           entityId: user.id,
           action: "STAGING_ADMIN_BOOTSTRAPPED",
-          reason: "Initial staging administrator provisioned through the guarded one-time bootstrap.",
+          reason: "Initial staging administrator provisioned through the guarded one-time bootstrap after operator attestation of email control.",
           after: { email: user.email, role: user.role, status: user.status },
           metadata: {
             source: "staging-admin-bootstrap",
             appStage: "staging",
             databaseName: config.database.name,
             emailVerificationRequired: true,
+            adminEmailControlAttested: true,
           },
         },
       });
