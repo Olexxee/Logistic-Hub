@@ -416,9 +416,22 @@ test("driver fixed-payout acceptance creates an accepted assignment at the immut
     platformRouteAvailability: { findFirst: async () => ({ id: "route_availability_1" }) },
     vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
     driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
-    parcelBooking: { updateMany: async args => { bookingUpdate = args; return { count: 1 }; } },
+    parcelBooking: {
+      updateMany: async args => { bookingUpdate = args; return { count: 1 }; },
+      findUnique: async () => ({
+        id: platformLeg.parcelBooking.id, integrationClientId: "integration_client_1",
+        senderId: null, publicReference: "LH-PLATFORM-1", status: "DRIVER_ASSIGNED",
+      }),
+      update: async () => ({ integrationEventSequence: 1 }),
+    },
     driverAssignment: { create: async args => { assignment = args; return { id: "assignment_fixed_1" }; } },
-    bookingEvent: { create: async () => ({}) },
+    bookingEvent: { create: async args => ({ id: "event_fixed_1", createdAt: now, ...args.data }) },
+    integrationShipmentEvent: {
+      findUnique: async () => null,
+      create: async args => ({ id: "external_event_1", sequence: args.data.sequence, eventType: args.data.eventType }),
+    },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
   };
   const repository = {
     findOfferByAcceptanceKey: async () => null,
@@ -436,6 +449,7 @@ test("driver fixed-payout acceptance creates an accepted assignment at the immut
   assert.equal(assignment.data.agreedFareMinor, 3500n);
   assert.equal(assignment.data.assignedByUserId, "driver_user_1");
   assert.equal(bookingUpdate.data.status, "DRIVER_ASSIGNED");
+  assert.equal(result.status, "ACCEPTED");
 });
 
 test("fixed-payout driver offers expose the payout but never customer charge", async () => {
