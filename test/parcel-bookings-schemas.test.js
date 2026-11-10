@@ -36,3 +36,36 @@ test("idempotency key requires a safe bounded value", () => {
   assert.equal(idempotencyKeySchema.safeParse("bad key").success, false);
   assert.equal(idempotencyKeySchema.safeParse("short").success, false);
 });
+
+test("canonical package payload accepts multiple declared packages with measurements", () => {
+  const { parcelCategory, parcelDescription, parcelSize, ...base } = validBooking;
+  const parsed = createParcelBookingSchema.safeParse({
+    ...base,
+    packages: [
+      { packageCategory: "electronics", weightGrams: 1250, lengthMm: 240, widthMm: 180, heightMm: 90, declaredValueMinor: "250000" },
+      { packageCategory: "documents", weightGrams: 300 },
+    ],
+  });
+  assert.equal(parsed.success, true);
+});
+
+test("package dimensions are all-or-none and customer cannot set assessment metadata", () => {
+  const { parcelCategory, parcelDescription, parcelSize, ...base } = validBooking;
+  assert.equal(createParcelBookingSchema.safeParse({
+    ...base,
+    packages: [{ packageCategory: "electronics", lengthMm: 20 }],
+  }).success, false);
+  assert.equal(createParcelBookingSchema.safeParse({
+    ...base,
+    packages: [{ packageCategory: "electronics", assessmentStatus: "MEASURED" }],
+  }).success, false);
+});
+
+test("legacy single-package booking remains compatible and can include measurements", () => {
+  assert.equal(createParcelBookingSchema.safeParse({
+    ...validBooking, weightGrams: 500, lengthMm: 200, widthMm: 150, heightMm: 80,
+  }).success, true);
+  assert.equal(createParcelBookingSchema.safeParse({
+    ...validBooking, weightGrams: 500, lengthMm: 200,
+  }).success, false);
+});

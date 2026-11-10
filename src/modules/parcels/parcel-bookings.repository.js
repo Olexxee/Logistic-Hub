@@ -11,7 +11,7 @@ export function createParcelBookingsRepository({ prismaClient }) {
   if (!prismaClient) throw new Error("A Prisma client is required.");
   return {
     findByIdempotencyKey(key) {
-      return prismaClient.parcelBooking.findUnique({ where: { idempotencyKey: key } });
+      return prismaClient.parcelBooking.findUnique({ where: { idempotencyKey: key }, include: { parcelPackages: { orderBy: { packageSequence: "asc" } } } });
     },
     findServiceableParcelZones(now) {
       return prismaClient.serviceZone.findMany({
@@ -49,9 +49,12 @@ export function createParcelBookingsRepository({ prismaClient }) {
         orderBy: { effectiveFrom: "desc" },
       });
     },
-    createWithEvent(data, { actorUserId, metadata }) {
+    createWithEvent(data, { actorUserId, metadata, packages = [] }) {
       return prismaClient.$transaction(async (tx) => {
-        const created = await tx.parcelBooking.create({ data });
+        const created = await tx.parcelBooking.create({
+          data: { ...data, parcelPackages: { create: packages } },
+          include: { parcelPackages: { orderBy: { packageSequence: "asc" } } },
+        });
         await tx.bookingEvent.create({
           data: {
             parcelBookingId: created.id, actorUserId,
@@ -62,7 +65,7 @@ export function createParcelBookingsRepository({ prismaClient }) {
       });
     },
     findById(id) {
-      return prismaClient.parcelBooking.findUnique({ where: { id } });
+      return prismaClient.parcelBooking.findUnique({ where: { id }, include: { parcelPackages: { orderBy: { packageSequence: "asc" } } } });
     },
     findDeliveryLegsByBookingId(parcelBookingId) {
       return prismaClient.deliveryLeg.findMany({
@@ -100,6 +103,7 @@ export function createParcelBookingsRepository({ prismaClient }) {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           skip,
           take,
+          include: { parcelPackages: { orderBy: { packageSequence: "asc" } } },
         }),
         prismaClient.parcelBooking.count({ where }),
       ]).then(([items, total]) => ({ items, total }));
