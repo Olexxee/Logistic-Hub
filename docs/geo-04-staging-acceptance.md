@@ -1,7 +1,7 @@
 # GEO-05 — Staging acceptance and live-data audit
 
 **Audit date:** 2026-11-10  
-**Status:** Staging infrastructure is live and isolated; data and authenticated acceptance remain blocked.  
+**Status:** Staging infrastructure is live and isolated; Nigeria geography is seeded and verified; Admin bootstrap and browser acceptance remain outstanding.  
 **Scope:** Staging-only provisioning and read-only verification. Production database, production environment variables, production service, and production deployment remain untouched.
 
 ## 1. Environment inventory
@@ -51,7 +51,7 @@ A read-only SQL baseline query was approved and executed against the dedicated s
 
 This confirms the staging database was empty at baseline. It does not imply that any geography or operational records have since been seeded.
 
-## 4. Nigeria geography seed — approved, not yet executed
+## 4. Nigeria geography seed — applied and independently verified
 
 The existing `scripts/seed-nigeria-geography.js` was inspected in full.
 
@@ -62,9 +62,9 @@ Its safeguards include:
 - Applies writes in a Serializable transaction and verifies final country/state/LGA counts.
 - Does not create or modify service zones, availability, hubs, partners, pricing, driver coverage, or bookings.
 
-The user explicitly authorized running this script against the empty staging database. The script has **not** been executed. The available connected execution interfaces do not provide a one-off shell/command runner for the existing Render service, and the Prisma SQL interface is not an appropriate substitute for executing this validated application seed script. No hand-written SQL replacement, recurring cron job, or temporary unauthenticated seed endpoint was introduced.
+The user explicitly authorized running this script against the empty staging database. The existing script was executed locally against the dedicated staging connection using the explicit `--apply --confirm-database=postgres` confirmation. It reported one Nigeria country created, 37 states created and active, and 774 LGAs/Area Councils created, including six FCT Area Councils. No existing geography records were matched or activated.
 
-**Required next step:** execute the existing script once against the dedicated staging `DATABASE_URL`, using the exact confirmation for the actual database name. Keep the connection string out of shell history, logs, PRs, and chat. Then run a read-only verification query for country/state/LGA counts and active flags. Stop if the database identity does not match the dedicated staging target.
+An independent read-only SQL query against the staging Prisma database confirmed: Nigeria country = 1; active Nigeria country = 1; states = 37; active states = 37; LGAs = 774; users = 0; service zones = 0. No service zones, availability, hubs, partners, pricing, driver coverage, bookings, or other operational records were created or modified by the seed.
 
 ## 5. Acceptance matrix
 
@@ -80,9 +80,10 @@ The user explicitly authorized running this script against the empty staging dat
 | Dedicated readiness endpoint | NOT VERIFIED | No direct successful HTTP result recorded |
 | Secure staging refresh-cookie code | PASS | PR #141 merged; unit tests included |
 | Secure staging cookie deployed | PENDING | Staging deploy for merge commit was still building |
-| Nigeria geography seed | APPROVED / NOT EXECUTED | Safe one-off execution mechanism not available through connected tools |
-| Geography post-seed verification | NOT RUN | Depends on seed execution |
-| Staging Admin account | NOT PROVISIONED | Controlled bootstrap path still required |
+| Nigeria geography seed | PASS | Existing guarded script applied to dedicated staging DB; 37 states and 774 LGAs created |
+| Geography post-seed verification | PASS | Read-only SQL: Nigeria 1 active; states 37/37 active; LGAs 774; users 0; service zones 0 |
+| Staging Admin bootstrap path | IMPLEMENTED IN GEO-06 PR | Guarded one-time CLI; dry-run by default; pending email verification; transactional audit event |
+| Staging Admin account | NOT YET PROVISIONED | Run GEO-06 bootstrap after its PR is merged |
 | Staging frontend deployment | NOT PROVISIONED | Separate frontend origin required |
 | Browser CORS/auth acceptance | BLOCKED | `CORS_ORIGINS` empty; no staging frontend origin |
 | Email verification flow | BLOCKED | Staging email provider is disabled |
@@ -113,7 +114,7 @@ After geography and Admin access are available:
 - Production database: untouched.
 - Production environment variables: untouched.
 - Production deployment: not triggered by GEO-05.
-- Staging database: only the approved read-only baseline query was run; geography seed remains unexecuted.
+- Staging database: approved Nigeria geography seed was applied; independent verification confirmed the expected geography counts. No Admin account has been provisioned yet.
 - No service zones, availability, pricing, driver coverage, bookings, hubs, or partner records were created or activated.
 
-**Release decision:** staging infrastructure exists and is isolated, but GEO-05 acceptance remains blocked on geography seed execution, controlled Admin provisioning, staging frontend/CORS, and end-to-end acceptance. Do not activate any service zone as part of these setup steps.
+**Release decision:** staging infrastructure exists and is isolated; geography seed is complete and verified. GEO-05/GEO-06 staging acceptance remains blocked on merging and executing the controlled Admin bootstrap, provisioning a staging frontend, configuring exact-origin CORS, and completing end-to-end acceptance. Do not activate any service zone as part of these setup steps.
