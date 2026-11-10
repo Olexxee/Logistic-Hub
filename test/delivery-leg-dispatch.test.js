@@ -380,6 +380,7 @@ test("admin dispatch creates fixed-payout offers only for paid and released plat
 test("driver fixed-payout acceptance creates an accepted assignment at the immutable payout", async () => {
   let assignment;
   let bookingUpdate;
+  let projectedEvent;
   const platformLeg = {
     ...leg,
     type: "LOCAL_PICKUP",
@@ -428,7 +429,10 @@ test("driver fixed-payout acceptance creates an accepted assignment at the immut
     bookingEvent: { create: async args => ({ id: "event_fixed_1", createdAt: now, ...args.data }) },
     integrationShipmentEvent: {
       findUnique: async () => null,
-      create: async args => ({ id: "external_event_1", sequence: args.data.sequence, eventType: args.data.eventType }),
+      create: async args => {
+        projectedEvent = args.data;
+        return { id: "external_event_1", sequence: args.data.sequence, eventType: args.data.eventType };
+      },
     },
     integrationWebhookEndpoint: { findMany: async () => [] },
     integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
@@ -450,6 +454,8 @@ test("driver fixed-payout acceptance creates an accepted assignment at the immut
   assert.equal(assignment.data.assignedByUserId, "driver_user_1");
   assert.equal(bookingUpdate.data.status, "DRIVER_ASSIGNED");
   assert.equal(result.status, "ACCEPTED");
+  assert.equal(projectedEvent.eventType, "shipment.driver_assigned");
+  assert.equal(projectedEvent.payload.status, "DRIVER_ASSIGNED");
 });
 
 test("fixed-payout driver offers expose the payout but never customer charge", async () => {
