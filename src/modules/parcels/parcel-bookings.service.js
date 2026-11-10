@@ -56,6 +56,21 @@ function serializeBooking(booking) {
     parcelCategory: booking.parcelCategory,
     parcelDescription: booking.parcelDescription,
     parcelSize: booking.parcelSize,
+    packages: (booking.parcelPackages ?? []).map(pkg => ({
+      id: pkg.id,
+      packageSequence: pkg.packageSequence,
+      externalPackageRef: pkg.externalPackageRef,
+      packageCategory: pkg.packageCategory,
+      description: pkg.description,
+      weightGrams: pkg.weightGrams,
+      lengthMm: pkg.lengthMm,
+      widthMm: pkg.widthMm,
+      heightMm: pkg.heightMm,
+      declaredValueMinor: pkg.declaredValueMinor == null ? null : pkg.declaredValueMinor.toString(),
+      assessmentStatus: pkg.assessmentStatus,
+      assessmentSource: pkg.assessmentSource,
+      assessedAt: pkg.assessedAt,
+    })),
     declaredValueMinor: booking.declaredValueMinor == null ? null : booking.declaredValueMinor.toString(),
     handlingInstructions: booking.handlingInstructions,
     driverFareMinor: booking.driverFareMinor == null ? null : booking.driverFareMinor.toString(),
@@ -114,6 +129,27 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         ?? pricingRules.find((rule) => rule.serviceZoneId == null);
       if (!pricingRule) throw new ConflictError("Parcel pricing is not configured for the pickup zone.", "PRICING_UNAVAILABLE");
 
+      const packages = (input.packages ?? [{
+        packageCategory: input.parcelCategory,
+        description: input.parcelDescription ?? input.parcelSize,
+        weightGrams: input.weightGrams,
+        lengthMm: input.lengthMm,
+        widthMm: input.widthMm,
+        heightMm: input.heightMm,
+        declaredValueMinor: input.declaredValueMinor,
+      }]).map((pkg, index) => ({
+        packageSequence: index + 1,
+        externalPackageRef: pkg.externalPackageRef,
+        packageCategory: pkg.packageCategory,
+        description: pkg.description,
+        weightGrams: pkg.weightGrams ?? null,
+        lengthMm: pkg.lengthMm ?? null,
+        widthMm: pkg.widthMm ?? null,
+        heightMm: pkg.heightMm ?? null,
+        declaredValueMinor: pkg.declaredValueMinor == null ? null : BigInt(pkg.declaredValueMinor),
+        assessmentStatus: pkg.weightGrams == null ? "REQUIRES_MEASUREMENT" : "DECLARED",
+        assessmentSource: "CUSTOMER_DECLARED",
+      }));
       const bookingData = {
         publicReference: publicReference(),
         idempotencyKey,
@@ -133,9 +169,9 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         destinationLongitude: input.destination.longitude,
         recipientName: input.recipientName,
         recipientPhone: input.recipientPhone,
-        parcelCategory: input.parcelCategory,
-        parcelDescription: input.parcelDescription,
-        parcelSize: input.parcelSize,
+        parcelCategory: input.packages ? null : input.parcelCategory,
+        parcelDescription: input.packages ? null : input.parcelDescription,
+        parcelSize: input.packages ? null : input.parcelSize,
         declaredValueMinor: input.declaredValueMinor == null ? undefined : BigInt(input.declaredValueMinor),
         handlingInstructions: input.handlingInstructions,
         driverFareMinor: null,
@@ -156,7 +192,8 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
       try {
         const booking = await db.createWithEvent(bookingData, {
           actorUserId: senderId,
-          metadata: { publicReference: bookingData.publicReference, pricingRuleId: pricingRule.id },
+          metadata: { publicReference: bookingData.publicReference, pricingRuleId: pricingRule.id, packageCount: packages.length },
+          packages,
         });
         return { booking: serializeBooking(booking), replay: false };
       } catch (error) {
