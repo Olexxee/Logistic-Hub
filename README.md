@@ -25,6 +25,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 - [Admin & Hub Management backend contract audit](docs/admin-hub-management-audit.md) — AH-0 source audit, API contracts, role taxonomy, authorization boundaries and implementation blockers.
 - [AH-5 Partner & Geography contract audit](docs/ah-5-contract-audit.md) — AH-5.0 source-verified partner, membership, agreement, rate-card, geography, service-zone and hub integration readiness.
 - [Nigeria geography reference data](docs/nigeria-geography-reference-data.md) — source attribution, 37 state-level units, 774 LGAs/Area Councils and the safe dry-run/apply seed workflow.
+- [GEO-06 Staging Admin bootstrap](docs/staging-admin-bootstrap.md) — guarded, one-time staging-only Admin provisioning with email verification and audit evidence.
 
 ### Admin & Hub Management progress
 
@@ -71,7 +72,7 @@ The platform Admin workspace is implemented in the frontend main branch through 
 - Admin booking/quote/leg oversight and custody/hub-intake visibility are read-only operational views; Admin does not perform customer booking, driver dispatch, partner assignment or hub custody actions through customer/operator workflows.
 - Admin finance and support controls include refund review/reconciliation and support management. Payment checkout remains disabled; external payouts are not available.
 - Audit-log search, filters, pagination and read-only event detail/snapshots are implemented.
-- Staging role/permission acceptance and deployment verification remain outstanding. Owner governance and a typed Admin settings editor remain deliberately deferred.
+- Staging role/permission acceptance and deployment verification remain outstanding. The approved staging Nigeria geography seed has now been applied and independently verified; GEO-06 introduces the guarded first-Admin bootstrap path. Owner governance and a typed Admin settings editor remain deliberately deferred.
 
 ### Launch scope and operating principles
 
