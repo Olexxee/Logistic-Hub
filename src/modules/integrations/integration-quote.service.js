@@ -44,14 +44,6 @@ function optionView(option) {
     expiresAt: option.expiresAt,
   };
 }
-function rateFitsPackage(rate, pkg) {
-  if (pkg.weightGrams == null || pkg.weightGrams < rate.minWeightGrams) return false;
-  if (rate.maxWeightGrams != null && pkg.weightGrams > rate.maxWeightGrams) return false;
-  for (const [dimension, limit] of [["lengthMm", rate.maxLengthMm], ["widthMm", rate.maxWidthMm], ["heightMm", rate.maxHeightMm]]) {
-    if (limit != null && (pkg[dimension] == null || pkg[dimension] > limit)) return false;
-  }
-  return true;
-}
 async function serializableTransaction(prismaClient, work) {
   for (let attempt = 0; ; attempt += 1) {
     try { return await prismaClient.$transaction(work, { isolationLevel: "Serializable" }); }
