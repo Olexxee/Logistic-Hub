@@ -336,29 +336,30 @@ export function createPartnerPricingRouter({
           }
           return { conflict: true };
         }
-        const requiredZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
-        const activeZones = await tx.serviceZone.findMany({
-          where: {
-            id: { in: requiredZoneIds },
-            isActive: true,
-            state: { isActive: true, country: { isActive: true } },
-            availability: {
-              some: {
-                serviceType: "PARCEL_DELIVERY",
-                isEnabled: true,
-                AND: [
-                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-                  { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
-                ],
-              },
-            },
-          },
-          select: { id: true },
-        });
-        if (activeZones.length !== requiredZoneIds.length) return { conflict: true, stalePricing: true };
-
         const isPlatformRouteQuote = quote.inputSnapshot?.source === "PLATFORM_ROUTE_RATE";
         const isPartnerRouteQuote = quote.inputSnapshot?.source === "PARTNER_RATE_CARD";
+        if (isPlatformRouteQuote || isPartnerRouteQuote) {
+          const requiredZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
+          const activeZones = await tx.serviceZone.findMany({
+            where: {
+              id: { in: requiredZoneIds },
+              isActive: true,
+              state: { isActive: true, country: { isActive: true } },
+              availability: {
+                some: {
+                  serviceType: "PARCEL_DELIVERY",
+                  isEnabled: true,
+                  AND: [
+                    { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                    { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+                  ],
+                },
+              },
+            },
+            select: { id: true },
+          });
+          if (activeZones.length !== requiredZoneIds.length) return { conflict: true, stalePricing: true };
+        }
         if (isPartnerRouteQuote) {
           const packages = (booking.parcelPackages ?? []).map(pkg => ({
             id: pkg.id,
