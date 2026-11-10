@@ -2371,8 +2371,9 @@ model IntegrationQuoteOption {
   quoteSessionId            String
   optionCode                String
   status                    IntegrationQuoteOptionStatus @default(AVAILABLE)
-  partnerAgreementId        String
-  partnerRateCardId         String
+  partnerAgreementId        String?
+  partnerRateCardId         String?
+  driverPayoutMinor         BigInt?
   currency                  String                         @default("NGN")
   logisticsCostMinor        BigInt
   platformChargeMinor       BigInt
@@ -2388,8 +2389,8 @@ model IntegrationQuoteOption {
   updatedAt                 DateTime                       @updatedAt
 
   quoteSession     IntegrationQuoteSession @relation(fields: [quoteSessionId], references: [id], onDelete: Restrict)
-  partnerAgreement PartnerAgreement        @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
-  partnerRateCard  PartnerRateCard         @relation(fields: [partnerRateCardId], references: [id], onDelete: Restrict)
+  partnerAgreement PartnerAgreement?       @relation(fields: [partnerAgreementId], references: [id], onDelete: Restrict)
+  partnerRateCard  PartnerRateCard?          @relation(fields: [partnerRateCardId], references: [id], onDelete: Restrict)
   paymentAttestations IntegrationPaymentAttestation[]
 
   @@unique([quoteSessionId, optionCode])
