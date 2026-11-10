@@ -58,7 +58,7 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
       data: legData({
         parcelBookingId: booking.id,
         quoteId: quote.id,
-        driverPayoutMinor: quote.inputSnapshot?.driverPayoutMinor == null ? null : BigInt(quote.inputSnapshot.driverPayoutMinor),
+        driverPayoutMinor: quote.inputSnapshot?.driverPayoutMinor ?? null,
         now,
         ...definition,
       }),
