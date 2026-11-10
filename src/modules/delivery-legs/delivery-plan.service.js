@@ -4,7 +4,7 @@ function legData({
   parcelBookingId, sequence, type, status, originServiceZoneId, destinationServiceZoneId,
   originHubPointId = null, destinationHubPointId = null,
   originLatitude, originLongitude, destinationLatitude, destinationLongitude,
-  quoteId, now,
+  quoteId, driverPayoutMinor = null, now,
 }) {
   return {
     parcelBookingId,
@@ -23,8 +23,8 @@ function legData({
     metadata: {
       quoteId,
       routePlanVersion: 1,
-      driverPayoutMinor: quote?.inputSnapshot?.driverPayoutMinor ?? null,
-      pricingSource: quote?.inputSnapshot?.driverPayoutMinor != null ? "PLATFORM_ROUTE_RATE" : "CONTRACTED_PARTNER_RATE",
+      driverPayoutMinor,
+      pricingSource: driverPayoutMinor != null ? "PLATFORM_ROUTE_RATE" : "CONTRACTED_PARTNER_RATE",
     },
   };
 }
@@ -58,6 +58,7 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
       data: legData({
         parcelBookingId: booking.id,
         quoteId: quote.id,
+        driverPayoutMinor: quote.inputSnapshot?.driverPayoutMinor == null ? null : BigInt(quote.inputSnapshot.driverPayoutMinor),
         now,
         ...definition,
       }),
