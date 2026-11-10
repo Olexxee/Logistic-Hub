@@ -131,7 +131,7 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
 
       const packages = (input.packages ?? [{
         packageCategory: input.parcelCategory,
-        description: input.parcelDescription ?? input.parcelSize,
+        description: input.parcelDescription,
         weightGrams: input.weightGrams,
         lengthMm: input.lengthMm,
         widthMm: input.widthMm,
