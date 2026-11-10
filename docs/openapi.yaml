@@ -4328,7 +4328,7 @@ paths:
           schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
         '202': { description: Driver matching request accepted. }
-        '400': { description: Invalid delivery leg identifier. }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { description: Authentication required. }
         '403': { description: Administrator access required or shipment not released for platform dispatch. }
         '404': { description: Delivery leg not found. }
@@ -4363,7 +4363,7 @@ paths:
                 vehicleId: { type: string, minLength: 1, maxLength: 128 }
       responses:
         '200': { description: Fixed-payout driver assignment accepted; idempotent replay returns the original assignment. }
-        '400': { description: Invalid offer, vehicle, or idempotency key. }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { description: Authentication required. }
         '403': { description: Driver role and eligibility required. }
         '404': { description: Delivery-leg offer not found. }
