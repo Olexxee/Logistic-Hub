@@ -134,10 +134,11 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
       if (!session.packages.length || snapshots.length !== session.packages.length) {
         throw new ConflictError("The platform tariff snapshot is incomplete.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
       }
-      const rateIds = snapshots.map(item => item?.rateId);
-      if (rateIds.some(id => typeof id !== "string") || new Set(rateIds).size !== rateIds.length) {
+      const snapshotRateIds = snapshots.map(item => item?.rateId);
+      if (snapshotRateIds.some(id => typeof id !== "string")) {
         throw new ConflictError("The platform tariff snapshot contains invalid rate references.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
       }
+      const rateIds = [...new Set(snapshotRateIds)];
       const platformRates = await tx.platformRouteRate.findMany({
         where: {
           id: { in: rateIds }, originServiceZoneId: session.pickupServiceZoneId,
