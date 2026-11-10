@@ -356,7 +356,9 @@ test("admin dispatch creates fixed-payout offers only for paid and released plat
     metadata: { pricingSource: "PLATFORM_ROUTE_RATE", driverPayoutMinor: "3500" },
   };
   const repository = {
-    transaction: callback => callback({}),
+    transaction: callback => callback({
+      platformRouteAvailability: { findFirst: async () => ({ id: "route_availability_1" }) },
+    }),
     findLeg: async () => platformLeg,
     findActiveServiceZones: async () => [{ id: "zone_ikeja" }],
     listActiveOffers: async () => [],
