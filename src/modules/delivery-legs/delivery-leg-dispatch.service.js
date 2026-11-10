@@ -299,6 +299,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             || offer.proposedFareMinor != null || leg.status !== "READY_FOR_ASSIGNMENT"
             || leg.type !== "LOCAL_PICKUP" || leg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
             || leg.metadata?.driverPayoutMinor !== payout.toString()
+            || booking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
             || !booking.integrationClientId || !booking.integrationDispatchAuthorizedAt
             || booking.paymentStatus !== "SUCCEEDED" || booking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
             throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "This fixed-payout offer is no longer authorized or available.");
@@ -312,6 +313,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           if (!lockedLeg || lockedLeg.status !== "READY_FOR_ASSIGNMENT"
             || lockedLeg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
             || lockedLeg.metadata?.driverPayoutMinor !== payout.toString()
+            || lockedLeg.parcelBooking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
             || !lockedLeg.parcelBooking.integrationDispatchAuthorizedAt
             || lockedLeg.parcelBooking.paymentStatus !== "SUCCEEDED"
             || lockedLeg.parcelBooking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
