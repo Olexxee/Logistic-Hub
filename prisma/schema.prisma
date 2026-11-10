@@ -838,10 +838,10 @@ model PlatformRouteAvailability {
   endsAt                   DateTime?
   createdAt                DateTime    @default(now())
   updatedAt                DateTime    @updatedAt
-  originServiceZone        ServiceZone @relation("PlatformRouteOrigin", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
-  destinationServiceZone   ServiceZone @relation("PlatformRouteDestination", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
-  @@unique([originServiceZoneId, destinationServiceZoneId, serviceType])
-  @@index([serviceType, isEnabled, startsAt, endsAt])
+  originServiceZone        ServiceZone @relation("PlatformRouteOrigin", fields: [originServiceZoneId], references: [id], onDelete: Restrict, map: "platform_route_availability_origin_fkey")
+  destinationServiceZone   ServiceZone @relation("PlatformRouteDestination", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict, map: "platform_route_availability_destination_fkey")
+  @@unique([originServiceZoneId, destinationServiceZoneId, serviceType], map: "platform_route_availability_route_service_key")
+  @@index([serviceType, isEnabled, startsAt, endsAt], map: "platform_route_availability_effective_idx")
   @@map("platform_route_availability")
 }
 
@@ -1717,7 +1717,7 @@ model PartnerAgreement {
   payables PartnerPayable[]
 
   @@index([partnerId, status, effectiveFrom])
-  @@index([status, effectiveFrom, effectiveUntil])
+  @@index([status, effectiveFrom, effectiveUntil], map: "platform_route_rates_effective_idx")
   @@map("partner_agreements")
 }
 
@@ -1794,9 +1794,9 @@ model PlatformRouteRate {
   createdByUserId             String?
   createdAt                   DateTime                @default(now())
   updatedAt                   DateTime                @updatedAt
-  originServiceZone           ServiceZone @relation("PlatformRateOrigin", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
-  destinationServiceZone      ServiceZone @relation("PlatformRateDestination", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
-  @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, status])
+  originServiceZone           ServiceZone @relation("PlatformRateOrigin", fields: [originServiceZoneId], references: [id], onDelete: Restrict, map: "platform_route_rates_origin_fkey")
+  destinationServiceZone      ServiceZone @relation("PlatformRateDestination", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict, map: "platform_route_rates_destination_fkey")
+  @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, status], map: "platform_route_rates_route_package_status_idx")
   @@index([status, effectiveFrom, effectiveUntil])
   @@map("platform_route_rates")
 }
