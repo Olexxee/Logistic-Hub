@@ -115,7 +115,12 @@ test("cross-state quote falls back to an end-to-end leg when hub coverage is inc
   assert.equal(created[0].status, "READY_FOR_ASSIGNMENT");
   assert.equal(created[0].originHubPointId, null);
   assert.equal(created[0].destinationHubPointId, null);
-  assert.deepEqual(created[0].metadata, { quoteId: "quote_2", routePlanVersion: 1 });
+  assert.deepEqual(created[0].metadata, {
+    quoteId: "quote_2",
+    routePlanVersion: 1,
+    driverPayoutMinor: null,
+    pricingSource: "CONTRACTED_PARTNER_RATE",
+  });
 });
 
 

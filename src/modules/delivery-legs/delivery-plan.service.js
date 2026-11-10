@@ -4,7 +4,7 @@ function legData({
   parcelBookingId, sequence, type, status, originServiceZoneId, destinationServiceZoneId,
   originHubPointId = null, destinationHubPointId = null,
   originLatitude, originLongitude, destinationLatitude, destinationLongitude,
-  quoteId, now,
+  quoteId, driverPayoutMinor = null, now,
 }) {
   return {
     parcelBookingId,
@@ -20,7 +20,12 @@ function legData({
     destinationLatitude,
     destinationLongitude,
     plannedAt: now,
-    metadata: { quoteId, routePlanVersion: 1 },
+    metadata: {
+      quoteId,
+      routePlanVersion: 1,
+      driverPayoutMinor,
+      pricingSource: driverPayoutMinor != null ? "PLATFORM_ROUTE_RATE" : "CONTRACTED_PARTNER_RATE",
+    },
   };
 }
 
@@ -39,11 +44,21 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
   });
 
   const legs = [];
-  for (const definition of plan.legs) {
+  const definitions = quoteRoute?.routeMode === "LOCAL_DIRECT"
+    ? [{
+      sequence: 1, type: "LOCAL_PICKUP", status: "READY_FOR_ASSIGNMENT",
+      originServiceZoneId: booking.pickupServiceZoneId,
+      destinationServiceZoneId: booking.destinationServiceZoneId,
+      originLatitude: booking.pickupLatitude, originLongitude: booking.pickupLongitude,
+      destinationLatitude: booking.destinationLatitude, destinationLongitude: booking.destinationLongitude,
+    }]
+    : plan.legs;
+  for (const definition of definitions) {
     const leg = await tx.deliveryLeg.create({
       data: legData({
         parcelBookingId: booking.id,
         quoteId: quote.id,
+        driverPayoutMinor: quote.inputSnapshot?.driverPayoutMinor ?? null,
         now,
         ...definition,
       }),

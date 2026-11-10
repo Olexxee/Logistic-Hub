@@ -24,9 +24,14 @@ All endpoints require authenticated ADMIN access.
 
 Money is represented as integer minor-unit strings (kobo for NGN), never floating point. Availability body requires route IDs, isEnabled and reason. Rate body requires route IDs, parcelCategory, customerTransportChargeMinor, platformChargeMinor, driverPayoutMinor, optional package limits/effective dates and reason.
 
-## Quote integration boundary
+## Quote integration
 
-This migration and Admin API establish the route tariff source of truth. They do not create prices for unconfigured routes and do not change partner rate cards. Quote generation must consume these rates only for platform-operated direct routes, snapshot the selected rate and driver payout, and revalidate route availability and package fit at acceptance. Hub-assisted topology requires pricing for its actual pickup, hub handling, transport and final-mile legs; this direct tariff must not be applied to it. Dispatch must pass the independent driver payout into the existing driver-fare/payout workflow.
+- LOCAL_DIRECT integration quotes now require explicit directed route availability and exactly one active matching platform tariff per package. No default price or partner-rate fallback is used.
+- The quote snapshots every tariff ID/version and its customer transport charge, platform charge and driver payout. The customer response excludes driver payout.
+- Shipment creation revalidates the directed availability, active tariff versions, package constraints and all totals. The accepted payout is copied into the internal booking pricing snapshot and legacy driver-fare amount; it is not recalculated from the customer charge.
+- A LOCAL_DIRECT shipment receives one LOCAL_PICKUP delivery leg. The existing END_TO_END partner quote path remains unchanged.
+- HUB_ASSISTED remains unavailable until its actual pickup, transport, hub-handling and final-mile legs each have complete pricing.
+- **Dispatch limitation:** fixed-payout driver acceptance and settlement execution are not yet enabled by this integration. A platform-priced quote is not proof of driver capacity or permission to dispatch. Do not activate a corridor for customer booking until the fixed-payout dispatch/settlement workflow and operational driver capacity are verified.
 
 ## Osun rollout
 
