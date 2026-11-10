@@ -406,7 +406,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         }
         const routeMode = booking.pricingSnapshot?.routeSnapshot?.routeMode;
         const expectedLegType = routeMode === "LOCAL_DIRECT" ? "LOCAL_PICKUP" : "INTERSTATE_TRANSPORT";
-        if (!["LOCAL_DIRECT", "END_TO_END"].includes(routeMode)
+        if ((routeMode != null && !["LOCAL_DIRECT", "END_TO_END"].includes(routeMode))
           || !booking.deliveryLegs.length || booking.deliveryLegs.some(leg =>
             leg.type !== expectedLegType || leg.status !== "READY_FOR_ASSIGNMENT"
           )) {
