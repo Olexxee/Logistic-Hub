@@ -310,6 +310,12 @@ enum PartnerRateCardStatus {
   RETIRED
 }
 
+enum PlatformRouteRateStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
 enum ShipmentQuoteStatus {
   OFFERED
   ACCEPTED
@@ -808,6 +814,10 @@ model ServiceZone {
   originDeliveryLegs       DeliveryLeg[] @relation("DeliveryLegOriginZone")
   destinationDeliveryLegs  DeliveryLeg[] @relation("DeliveryLegDestinationZone")
   pricingRules             PricingRule[]
+  platformRouteOrigins     PlatformRouteAvailability[] @relation("PlatformRouteOrigin")
+  platformRouteDestinations PlatformRouteAvailability[] @relation("PlatformRouteDestination")
+  platformRatesAsOrigin    PlatformRouteRate[] @relation("PlatformRateOrigin")
+  platformRatesAsDestination PlatformRouteRate[] @relation("PlatformRateDestination")
   partnerRateOrigins       PartnerRate[] @relation("PartnerRateOriginZone")
   partnerRateDestinations  PartnerRate[] @relation("PartnerRateDestinationZone")
   hubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionDestinationZone")
@@ -816,6 +826,23 @@ model ServiceZone {
   @@index([stateId, isActive])
   @@index([lgaId])
   @@map("service_zones")
+}
+
+model PlatformRouteAvailability {
+  id                       String      @id @default(cuid())
+  originServiceZoneId      String
+  destinationServiceZoneId String
+  serviceType              ServiceType @default(PARCEL_DELIVERY)
+  isEnabled                Boolean     @default(false)
+  startsAt                 DateTime?
+  endsAt                   DateTime?
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+  originServiceZone        ServiceZone @relation("PlatformRouteOrigin", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
+  destinationServiceZone   ServiceZone @relation("PlatformRouteDestination", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
+  @@unique([originServiceZoneId, destinationServiceZoneId, serviceType])
+  @@index([serviceType, isEnabled, startsAt, endsAt])
+  @@map("platform_route_availability")
 }
 
 model ServiceAvailability {
@@ -1741,6 +1768,37 @@ model PartnerRate {
   @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, isActive], map: "partner_rates_originServiceZoneId_destinationServiceZoneId_serv")
   @@index([rateCardId, isActive])
   @@map("partner_rates")
+}
+
+model PlatformRouteRate {
+  id                          String                  @id @default(cuid())
+  originServiceZoneId         String
+  destinationServiceZoneId    String
+  serviceType                 ServiceType             @default(PARCEL_DELIVERY)
+  parcelCategory              String
+  minWeightGrams              Int                     @default(0)
+  maxWeightGrams              Int?
+  maxLengthMm                 Int?
+  maxWidthMm                  Int?
+  maxHeightMm                 Int?
+  currency                    String                  @default("NGN")
+  customerTransportChargeMinor BigInt
+  platformChargeMinor         BigInt                  @default(0)
+  driverPayoutMinor           BigInt
+  estimatedTransitMinutes     Int?
+  version                     Int                     @default(1)
+  status                      PlatformRouteRateStatus @default(DRAFT)
+  effectiveFrom               DateTime                @default(now())
+  effectiveUntil              DateTime?
+  publishedAt                 DateTime?
+  createdByUserId             String?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
+  originServiceZone           ServiceZone @relation("PlatformRateOrigin", fields: [originServiceZoneId], references: [id], onDelete: Restrict)
+  destinationServiceZone      ServiceZone @relation("PlatformRateDestination", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict)
+  @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, status])
+  @@index([status, effectiveFrom, effectiveUntil])
+  @@map("platform_route_rates")
 }
 
 model ShipmentQuote {
