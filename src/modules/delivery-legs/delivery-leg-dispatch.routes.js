@@ -6,7 +6,7 @@ import { createDeliveryLegDispatchService } from "./delivery-leg-dispatch.servic
 import { createDeliveryLegDispatchController } from "./delivery-leg-dispatch.controller.js";
 import {
   validateLegId, validateOfferId, validateBookingLegIds, validateHubDispatchParams,
-  validateLegFareProposal, validateLegFareAcceptance, validateLegIdempotencyKey,
+  validateLegFareProposal, validateLegFareAcceptance, validateFixedPayoutAcceptance, validateLegIdempotencyKey,
 } from "./delivery-leg-dispatch.validators.js";
 
 export function createDeliveryLegDispatchRouter({
@@ -22,6 +22,8 @@ export function createDeliveryLegDispatchRouter({
   router.post("/delivery-legs/:legId/request-matching", authMiddleware, validateLegId, asyncWrapper(controller.requestOffers));
   router.post("/hub-operations/hubs/:hubPointId/delivery-legs/:legId/request-matching", authMiddleware, validateHubDispatchParams, asyncWrapper(controller.requestOffersFromHub));
   router.get("/driver/delivery-leg-offers", authMiddleware, requireDriver, asyncWrapper(controller.listDriverOffers));
+  router.post("/admin/delivery-legs/:legId/request-matching", authMiddleware, roleMiddleware("ADMIN"), validateLegId, asyncWrapper(controller.requestOffers));
+  router.post("/driver/delivery-leg-offers/:offerId/accept-fixed-payout", authMiddleware, requireDriver, validateOfferId, validateFixedPayoutAcceptance, validateLegIdempotencyKey, asyncWrapper(controller.acceptFixedPayout));
   router.post("/driver/delivery-leg-offers/:offerId/propose-fare", authMiddleware, requireDriver, validateOfferId, validateLegFareProposal, validateLegIdempotencyKey, asyncWrapper(controller.proposeFare));
   router.get("/parcel-bookings/:bookingId/delivery-legs/:legId/offers", authMiddleware, validateBookingLegIds, asyncWrapper(controller.listCustomerOffers));
   router.post("/parcel-bookings/:bookingId/delivery-legs/:legId/accept-fare", authMiddleware, validateBookingLegIds, validateLegFareAcceptance, validateLegIdempotencyKey, asyncWrapper(controller.acceptFare));
