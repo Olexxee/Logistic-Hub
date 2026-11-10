@@ -13,3 +13,12 @@ export function getRefreshCookieConfig({ NODE_ENV = "development", APP_STAGE = "
     },
   };
 }
+
+export function setRefreshCookie(res, token, { cookieName, cookieOptions }) {
+  res.cookie(cookieName, token, cookieOptions);
+}
+
+export function clearRefreshCookie(res, { cookieName, cookieOptions }) {
+  const { maxAge: _maxAge, ...options } = cookieOptions;
+  res.clearCookie(cookieName, options);
+}
