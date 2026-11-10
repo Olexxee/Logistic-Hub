@@ -774,7 +774,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
               parcelDescription: null,
               parcelSize: null,
               declaredValueMinor: null,
-              driverFareMinor: null,
+              driverFareMinor: option.routeMode === "LOCAL_DIRECT" ? option.driverPayoutMinor : null,
               connectionFeeMinor: option.platformChargeMinor,
               otherChargesMinor: option.otherChargesMinor,
               customerPayableMinor: option.customerChargeMinor,
@@ -791,6 +791,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
                 platformChargeMinor: option.platformChargeMinor.toString(),
                 otherChargesMinor: option.otherChargesMinor.toString(),
                 customerChargeMinor: option.customerChargeMinor.toString(),
+                driverPayoutMinor: option.driverPayoutMinor?.toString() ?? null,
                 paymentCollection: "EXTERNAL_PLATFORM",
                 routeSnapshot: option.routeSnapshot,
                 packageRateSnapshot: option.packageRateSnapshot,
@@ -808,7 +809,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
               version: 1,
               status: "ACCEPTED",
               partnerAgreementId: option.partnerAgreementId,
-              partnerRateId: rateIds.length === 1 ? rateIds[0] : null,
+              partnerRateId: option.routeMode === "END_TO_END" && rateIds.length === 1 ? rateIds[0] : null,
               currency: option.currency,
               transportChargeMinor: option.logisticsCostMinor,
               platformChargeMinor: option.platformChargeMinor,
@@ -832,6 +833,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
                 billingModel: billingAgreement.billingModel,
                 routeSnapshot: option.routeSnapshot,
                 packageRateSnapshot: option.packageRateSnapshot,
+                driverPayoutMinor: option.driverPayoutMinor?.toString() ?? null,
                 packages: session.packages.map(pkg => ({
                   externalPackageRef: pkg.externalPackageRef,
                   packageCategory: pkg.packageCategory,
@@ -856,10 +858,14 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
             quote,
             now,
           });
-          if (plan.routeMode !== "END_TO_END" || plan.legs.length !== 1
-            || plan.legs[0].type !== "INTERSTATE_TRANSPORT"
-            || plan.legs[0].status !== "READY_FOR_ASSIGNMENT") {
-            throw new ConflictError("The operational delivery plan does not match the accepted end-to-end quote.", "INTEGRATION_ROUTE_PLAN_MISMATCH");
+          const validEndToEndPlan = plan.routeMode === "END_TO_END" && plan.legs.length === 1
+            && plan.legs[0].type === "INTERSTATE_TRANSPORT"
+            && plan.legs[0].status === "READY_FOR_ASSIGNMENT";
+          const validLocalDirectPlan = plan.routeMode === "LOCAL_DIRECT" && plan.legs.length === 1
+            && plan.legs[0].type === "LOCAL_PICKUP"
+            && plan.legs[0].status === "READY_FOR_ASSIGNMENT";
+          if (!validEndToEndPlan && !validLocalDirectPlan) {
+            throw new ConflictError("The operational delivery plan does not match the accepted quote topology.", "INTEGRATION_ROUTE_PLAN_MISMATCH");
           }
 
           await tx.integrationPaymentAttestation.create({
