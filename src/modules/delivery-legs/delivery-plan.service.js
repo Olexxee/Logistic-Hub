@@ -91,8 +91,12 @@ export async function getExistingDeliveryRoutePlan({ tx, bookingId }) {
   if (legs.length === 0) return { routeMode: "LOCAL_DIRECT", originHub: null, destinationHub: null, legs: [] };
   const hubAssisted = legs.some((leg) => leg.type === "LOCAL_PICKUP")
     && legs.some((leg) => leg.type === "FINAL_MILE");
+  const localDirect = legs.length === 1
+    && legs[0].type === "LOCAL_PICKUP"
+    && !legs[0].originHubPointId
+    && !legs[0].destinationHubPointId;
   return {
-    routeMode: hubAssisted ? "HUB_ASSISTED" : "END_TO_END",
+    routeMode: localDirect ? "LOCAL_DIRECT" : hubAssisted ? "HUB_ASSISTED" : "END_TO_END",
     originHub: legs.find((leg) => leg.type === "LOCAL_PICKUP")?.destinationHubPoint
       ?? legs.find((leg) => leg.originHubPoint)?.originHubPoint
       ?? null,
