@@ -1332,6 +1332,7 @@ model DeliveryLegOffer {
   vehicleId                  String?
   status                     OfferStatus @default(OFFERED)
   proposedFareMinor          BigInt?
+  fixedPayoutMinor           BigInt?
   proposalIdempotencyKey     String?     @unique
   proposalPayloadHash        String?
   acceptanceIdempotencyKey   String?     @unique
