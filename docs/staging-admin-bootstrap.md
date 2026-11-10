@@ -1,11 +1,12 @@
 # GEO-06 — Staging Admin bootstrap
 
-**Status:** Initial bootstrap implementation merged and deployed; email-control attestation hardening in review.  
+**Status:** Bootstrap and email-control attestation hardening merged and deployed to the isolated staging backend.  
 **Scope:** One-time first Admin provisioning in the isolated Logistic Hub staging database.  
 **Production impact:** None; production remains untouched.
 
-**Merged commit:** `60984b5556e969e495d1fdf7c491cf8d2343f7f0`  
-**Staging Render deployment:** `dep-dbph1ap5efls73b8rbf0` — LIVE on 10 November 2026.
+**Initial bootstrap commit:** `60984b5556e969e495d1fdf7c491cf8d2343f7f0`  
+**Email-control attestation commit:** `f1668d4d9f220188073b695b25673790795f2467`  
+**Latest staging Render deployment:** `dep-dbph47dg1s2s73cen3o0` — LIVE on 10 November 2026.
 
 ## Why a bootstrap script
 
