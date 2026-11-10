@@ -250,9 +250,13 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
 
     async acceptFixedPayout({ offerId, userId, vehicleId, idempotencyKey }) {
       const now = clock();
-      const payloadHash = hash({ offerId, vehicleId });
+      const payloadHash = hash({ offerId, vehicleId, userId });
       const prior = await db.findOfferByAcceptanceKey(idempotencyKey);
       if (prior) {
+        const callerProfile = await db.findDriverProfile(userId);
+        if (!callerProfile || prior.driverProfileId !== callerProfile.id) {
+          throw new NotFoundError("Delivery-leg offer not found.");
+        }
         if (prior.id !== offerId || prior.acceptancePayloadHash !== payloadHash) {
           throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used for a different fixed-payout acceptance.");
         }
@@ -438,7 +442,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
       } catch (error) {
         if (error.code !== "P2002") throw error;
         const existing = await db.findOfferByAcceptanceKey(idempotencyKey);
-        if (!existing || existing.id !== offerId || existing.acceptancePayloadHash !== payloadHash) {
+        const callerProfile = await db.findDriverProfile(userId);
+        if (!callerProfile || existing?.driverProfileId !== callerProfile.id
+          || !existing || existing.id !== offerId || existing.acceptancePayloadHash !== payloadHash) {
           throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used for a different fixed-payout acceptance.");
         }
         const assignment = await prismaClient.driverAssignment.findFirst({
