@@ -37,6 +37,22 @@ if (!parsed.success) {
   throw new Error(`Invalid environment configuration: ${details}`);
 }
 
+const configuredCorsOrigins = parsed.data.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean);
+for (const origin of configuredCorsOrigins) {
+  let parsedOrigin;
+  try {
+    parsedOrigin = new URL(origin);
+  } catch {
+    throw new Error("CORS_ORIGINS must be a comma-separated list of valid origins.");
+  }
+  if (parsedOrigin.origin !== origin || parsedOrigin.username || parsedOrigin.password || parsedOrigin.pathname !== "/" || parsedOrigin.search || parsedOrigin.hash) {
+    throw new Error("Each CORS_ORIGINS entry must be an origin only (scheme and host, with optional port); paths and credentials are not allowed.");
+  }
+  if (parsed.data.NODE_ENV === "production" && parsedOrigin.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(parsedOrigin.hostname)) {
+    throw new Error("Production CORS_ORIGINS entries must use HTTPS.");
+  }
+}
+
 if (parsed.data.MAPS_PROVIDER === "google" && !parsed.data.GOOGLE_MAPS_API_KEY.trim()) {
   throw new Error("GOOGLE_MAPS_API_KEY is required when MAPS_PROVIDER=google.");
 }
