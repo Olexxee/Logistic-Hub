@@ -352,6 +352,7 @@ test("admin dispatch creates fixed-payout offers only for paid and released plat
       integrationClientId: "integration_client_1",
       integrationDispatchAuthorizedAt: now,
       paymentStatus: "SUCCEEDED",
+      pricingSnapshot: { driverPayoutMinor: "3500" },
     },
     metadata: { pricingSource: "PLATFORM_ROUTE_RATE", driverPayoutMinor: "3500" },
   };
