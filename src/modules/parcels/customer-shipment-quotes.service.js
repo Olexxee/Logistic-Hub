@@ -240,6 +240,38 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
         const packages = packageFacts(booking);
         if (!packages.length) return conflict("PACKAGE_FACTS_REQUIRED", "Package facts are required before a delivery quote can be assessed.");
 
+        const requiredZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
+        const activeZones = await tx.serviceZone.findMany({
+          where: {
+            id: { in: requiredZoneIds },
+            isActive: true,
+            state: { isActive: true, country: { isActive: true } },
+            availability: {
+              some: {
+                serviceType: "PARCEL_DELIVERY",
+                isEnabled: true,
+                AND: [
+                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                  { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+                ],
+              },
+            },
+          },
+          select: { id: true },
+        });
+        if (activeZones.length !== requiredZoneIds.length) {
+          return {
+            assessment: {
+              status: "SERVICE_UNAVAILABLE",
+              routeMode: null,
+              packageCount: packages.length,
+              reason: "Pickup and destination zones must both retain active parcel-delivery availability before a quote can be issued.",
+              assessedAt: now.toISOString(),
+            },
+            quote: null,
+          };
+        }
+
         const lock = await tx.parcelBooking.updateMany({
           where: { id: booking.id, senderId: userId, status: "DRAFT" },
           data: { updatedAt: now },
