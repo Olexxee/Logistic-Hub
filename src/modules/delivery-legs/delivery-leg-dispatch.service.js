@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { projectIntegrationShipmentEvent } from "../integrations/integration-shipment-events.projector.js";
 import { env } from "../../config/env.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 import { createDeliveryLegDispatchRepository } from "./delivery-leg-dispatch.repository.js";
@@ -418,7 +419,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             },
             select: { id: true },
           });
-          await tx.bookingEvent.create({
+          const sourceEvent = await tx.bookingEvent.create({
             data: {
               parcelBookingId: booking.id, actorUserId: userId,
               eventType: "PLATFORM_FIXED_PAYOUT_DRIVER_ACCEPTED",
@@ -430,6 +431,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               },
             },
           });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: booking.id, sourceEvent });
           return { offerId, assignmentId: assignment.id, status: "ACCEPTED",
             fixedPayoutMinor: payout.toString(), currency: offer.currency, replay: false };
         });
