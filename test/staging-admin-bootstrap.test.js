@@ -18,17 +18,24 @@ test("staging Admin bootstrap defaults to dry-run", () => {
   assert.deepEqual(parseBootstrapArguments([]), {
     apply: false,
     confirmedDatabase: null,
+    emailControlConfirmed: false,
   });
 });
 
-test("staging Admin bootstrap requires explicit apply and exact database confirmation", () => {
-  assert.deepEqual(parseBootstrapArguments(["--apply", "--confirm-staging-database=postgres"]), {
+test("staging Admin bootstrap requires explicit apply and both confirmations", () => {
+  const args = ["--apply", "--confirm-staging-database=postgres", "--confirm-admin-email-control"];
+  assert.deepEqual(parseBootstrapArguments(args), {
     apply: true,
     confirmedDatabase: "postgres",
+    emailControlConfirmed: true,
   });
   assert.throws(
-    () => validateStagingAdminBootstrapConfig(validEnvironment(), ["--apply"]),
-    /requires --confirm-staging-database=postgres/,
+    () => validateStagingAdminBootstrapConfig(validEnvironment(), ["--apply", "--confirm-staging-database=postgres"]),
+    /confirm-admin-email-control/,
+  );
+  assert.throws(
+    () => validateStagingAdminBootstrapConfig(validEnvironment(), ["--apply", "--confirm-admin-email-control"]),
+    /confirm-staging-database=postgres/,
   );
 });
 
