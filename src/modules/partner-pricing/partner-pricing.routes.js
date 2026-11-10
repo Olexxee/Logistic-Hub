@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createMultiLegPlan, getExistingDeliveryRoutePlan } from "../delivery-legs/delivery-plan.service.js";
-import { assessPlatformRouteTariffs } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
+import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
 import { createCustomerShipmentQuotesService, customerQuoteView } from "../parcels/customer-shipment-quotes.service.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { z } from "zod";
@@ -78,6 +78,67 @@ function invalid(res, issues) {
     details: issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
   } });
 }
+async function partnerRouteQuoteStillValid(tx, booking, quote, packages, now) {
+  const snapshot = quote.inputSnapshot ?? {};
+  const rateSnapshots = snapshot.partnerRateSnapshots ?? [];
+  if (snapshot.source !== "PARTNER_RATE_CARD" || !rateSnapshots.length) return false;
+
+  const pricingRule = await tx.pricingRule.findUnique({ where: { id: snapshot.pricingRuleId } });
+  if (
+    !pricingRule
+    || !pricingRule.isActive
+    || pricingRule.version !== snapshot.pricingRuleVersion
+    || pricingRule.currency !== quote.currency
+    || pricingRule.fixedConnectionFeeMinor.toString() !== quote.platformChargeMinor.toString()
+    || pricingRule.effectiveFrom > now
+    || (pricingRule.effectiveUntil && pricingRule.effectiveUntil <= now)
+  ) return false;
+
+  const rates = await tx.partnerRate.findMany({
+    where: {
+      id: { in: rateSnapshots.map(item => item.rateId) },
+      isActive: true,
+      originServiceZoneId: booking.pickupServiceZoneId,
+      destinationServiceZoneId: booking.destinationServiceZoneId,
+      serviceType: "PARCEL_DELIVERY",
+      rateCard: {
+        status: "ACTIVE",
+        currency: quote.currency,
+        version: snapshot.partnerRateCardVersion,
+        effectiveFrom: { lte: now },
+        AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
+        agreement: {
+          id: quote.partnerAgreementId,
+          status: "ACTIVE",
+          currency: quote.currency,
+          effectiveFrom: { lte: now },
+          AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
+          partner: { status: "ACTIVE", verificationStatus: "VERIFIED" },
+        },
+      },
+    },
+    include: { rateCard: { include: { agreement: { include: { partner: { select: { id: true } } } } } } },
+  });
+  if (rates.length !== rateSnapshots.length) return false;
+
+  const byId = new Map(rates.map(rate => [rate.id, rate]));
+  let transportTotal = 0n;
+  for (const item of rateSnapshots) {
+    const pkg = packages.find(value => value.id === item.packageId);
+    const rate = byId.get(item.rateId);
+    if (
+      !pkg
+      || !rate
+      || rate.parcelCategory !== pkg.packageCategory
+      || !rateFitsPackage(rate, pkg)
+      || rate.transportChargeMinor.toString() !== item.transportChargeMinor
+      || rate.rateCard.agreementId !== quote.partnerAgreementId
+    ) return false;
+    transportTotal += rate.transportChargeMinor;
+  }
+  return transportTotal.toString() === quote.transportChargeMinor.toString();
+}
+
 function quoteView(q) {
   return {
     id: q.id, parcelBookingId: q.parcelBookingId, version: q.version, status: q.status,
@@ -275,7 +336,42 @@ export function createPartnerPricingRouter({
           }
           return { conflict: true };
         }
+        const requiredZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
+        const activeZones = await tx.serviceZone.findMany({
+          where: {
+            id: { in: requiredZoneIds },
+            isActive: true,
+            state: { isActive: true, country: { isActive: true } },
+            availability: {
+              some: {
+                serviceType: "PARCEL_DELIVERY",
+                isEnabled: true,
+                AND: [
+                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                  { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+                ],
+              },
+            },
+          },
+          select: { id: true },
+        });
+        if (activeZones.length !== requiredZoneIds.length) return { conflict: true, stalePricing: true };
+
         const isPlatformRouteQuote = quote.inputSnapshot?.source === "PLATFORM_ROUTE_RATE";
+        const isPartnerRouteQuote = quote.inputSnapshot?.source === "PARTNER_RATE_CARD";
+        if (isPartnerRouteQuote) {
+          const packages = (booking.parcelPackages ?? []).map(pkg => ({
+            id: pkg.id,
+            packageCategory: pkg.packageCategory,
+            weightGrams: pkg.weightGrams,
+            lengthMm: pkg.lengthMm,
+            widthMm: pkg.widthMm,
+            heightMm: pkg.heightMm,
+          }));
+          if (!await partnerRouteQuoteStillValid(tx, booking, quote, packages, now)) {
+            return { conflict: true, stalePricing: true };
+          }
+        }
         if (isPlatformRouteQuote) {
           const packages = (booking.parcelPackages ?? []).map(pkg => ({
             id: pkg.id,
