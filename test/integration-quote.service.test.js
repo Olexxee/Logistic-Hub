@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createIntegrationQuoteService } from "../src/modules/integrations/integration-quote.service.js";
 
-function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState = false } = {}) {
+function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState = false, platformAvailability = null, platformRates = [] } = {}) {
   const state = { idempotency: [], sessions: [], packages: [], options: [], externalRefs: [] };
   const agreement = {
     id: "billing_1", reference: "marketplace-default", version: 1, status: "ACTIVE",
@@ -41,6 +41,8 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
       { id: "zone_b", code: "B", name: "Zone B", stateId: sameState ? "state_a" : "state_b", isActive: true },
     ].filter(z => where.id.in.includes(z.id)) },
     hubPoint: { findMany: async () => hubs },
+    platformRouteAvailability: { findFirst: async () => platformAvailability },
+    platformRouteRate: { findMany: async () => platformRates },
     pricingRule: { findMany: async () => [{ id: "pricing_1", serviceZoneId: "zone_a", currency: "NGN", fixedConnectionFeeMinor: 500n }] },
     partnerRate: { findMany: async () => rates },
     integrationQuoteSession: {
@@ -140,16 +142,42 @@ test("hub-assisted routes require fixed local pickup and final-mile pricing befo
   assert.equal(state.options.length, 0);
 });
 
-test("local direct routes require fixed driver pricing before quote options are offered", async () => {
-  const { prismaClient, state } = mockPrisma({ sameState: true });
+test("local direct routes use one active platform tariff per package and keep driver payout private", async () => {
+  const platformRates = [
+    { id: "platform_rate_box", version: 2, parcelCategory: "box", minWeightGrams: 0, maxWeightGrams: 10000,
+      maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, customerTransportChargeMinor: 2500n,
+      platformChargeMinor: 300n, driverPayoutMinor: 1800n, estimatedTransitMinutes: 60 },
+    { id: "platform_rate_carton", version: 1, parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
+      maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, customerTransportChargeMinor: 4000n,
+      platformChargeMinor: 400n, driverPayoutMinor: 2800n, estimatedTransitMinutes: 90 },
+  ];
+  const { prismaClient, state } = mockPrisma({
+    sameState: true, platformAvailability: { id: "availability_1", isEnabled: true }, platformRates,
+  });
   const service = createIntegrationQuoteService({ prismaClient });
   const result = await service.createQuote({
     client, idempotencyKey: "quote-local-pricing-001",
     input: { ...baseInput, externalReference: "order-local-1" },
   });
+  assert.equal(result.body.quoteSession.status, "QUOTED");
+  assert.equal(result.body.options.length, 1);
+  assert.equal(result.body.options[0].logisticsCostMinor, "6500");
+  assert.equal(result.body.options[0].platformChargeMinor, "700");
+  assert.equal(result.body.options[0].customerChargeMinor, "7200");
+  assert.equal(result.body.options[0].routeMode, "LOCAL_DIRECT");
+  assert.equal(Object.hasOwn(result.body.options[0], "driverPayoutMinor"), false);
+  assert.equal(state.options[0].driverPayoutMinor, 4600n);
+  assert.equal(state.options[0].packageRateSnapshot.length, 2);
+});
 
+test("local direct route without explicit corridor approval remains unavailable", async () => {
+  const { prismaClient, state } = mockPrisma({ sameState: true });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const result = await service.createQuote({
+    client, idempotencyKey: "quote-local-pricing-002",
+    input: { ...baseInput, externalReference: "order-local-2" },
+  });
   assert.equal(result.body.quoteSession.status, "REQUIRES_OPERATIONAL_PRICING");
-  assert.equal(result.body.quoteSession.assessment.routeMode, "LOCAL_DIRECT");
   assert.equal(result.body.options.length, 0);
   assert.equal(state.options.length, 0);
 });
