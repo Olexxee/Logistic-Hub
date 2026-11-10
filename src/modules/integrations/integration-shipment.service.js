@@ -404,10 +404,16 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
         if (booking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
           throw new ConflictError("Dispatch authorization is only available before partner assignment.", "INTEGRATION_SHIPMENT_NOT_AWAITING_ASSIGNMENT");
         }
-        if (!booking.deliveryLegs.length || booking.deliveryLegs.some(leg =>
-          leg.type !== "INTERSTATE_TRANSPORT" || leg.status !== "READY_FOR_ASSIGNMENT"
-        )) {
-          throw new ConflictError("Every partner-executed delivery leg must still be ready for assignment.", "INTEGRATION_SHIPMENT_ASSIGNMENT_ALREADY_STARTED");
+        const routeMode = booking.pricingSnapshot?.routeSnapshot?.routeMode;
+        const expectedLegType = routeMode === "LOCAL_DIRECT" ? "LOCAL_PICKUP" : "INTERSTATE_TRANSPORT";
+        if (!["LOCAL_DIRECT", "END_TO_END"].includes(routeMode)
+          || !booking.deliveryLegs.length || booking.deliveryLegs.some(leg =>
+            leg.type !== expectedLegType || leg.status !== "READY_FOR_ASSIGNMENT"
+          )) {
+          throw new ConflictError("Every delivery leg must match the accepted quote topology and remain ready for assignment.", "INTEGRATION_SHIPMENT_ASSIGNMENT_ALREADY_STARTED");
+        }
+        if (routeMode === "LOCAL_DIRECT" && !booking.integrationPackingEvidenceFrozenAt) {
+          throw new ConflictError("Packing evidence must be frozen before a platform-operated local shipment can be released to dispatch.", "INTEGRATION_PACKING_EVIDENCE_NOT_FROZEN");
         }
 
         if (booking.integrationDispatchAuthorizedAt) {
@@ -448,6 +454,7 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
               integrationClientId: client.id,
               externalFulfillmentReference,
               reason,
+              routeMode,
               authorizedAt: now.toISOString(),
             },
           },
