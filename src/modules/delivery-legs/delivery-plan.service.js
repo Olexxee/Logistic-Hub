@@ -39,7 +39,16 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
   });
 
   const legs = [];
-  for (const definition of plan.legs) {
+  const definitions = quoteRoute?.routeMode === "LOCAL_DIRECT"
+    ? [{
+      sequence: 1, type: "LOCAL_PICKUP", status: "READY_FOR_ASSIGNMENT",
+      originServiceZoneId: booking.pickupServiceZoneId,
+      destinationServiceZoneId: booking.destinationServiceZoneId,
+      originLatitude: booking.pickupLatitude, originLongitude: booking.pickupLongitude,
+      destinationLatitude: booking.destinationLatitude, destinationLongitude: booking.destinationLongitude,
+    }]
+    : plan.legs;
+  for (const definition of definitions) {
     const leg = await tx.deliveryLeg.create({
       data: legData({
         parcelBookingId: booking.id,
