@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { createMultiLegPlan, getExistingDeliveryRoutePlan } from "../delivery-legs/delivery-plan.service.js";
 import { assessPlatformRouteTariffs } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
-import { createCustomerShipmentQuotesService } from "../parcels/customer-shipment-quotes.service.js";
+import { createCustomerShipmentQuotesService, customerQuoteView } from "../parcels/customer-shipment-quotes.service.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
@@ -243,7 +243,7 @@ export function createPartnerPricingRouter({
       const quotes = await prismaClient.shipmentQuote.findMany({
         where: { parcelBookingId: booking.id }, orderBy: { version: "desc" },
       });
-      return res.status(200).json({ success: true, data: { items: quotes.map(quoteView) } });
+      return res.status(200).json({ success: true, data: { items: quotes.map(customerQuoteView) } });
     } catch (error) { return next(error); }
   });
 
@@ -379,7 +379,7 @@ export function createPartnerPricingRouter({
         message: result.stalePricing ? "Route availability or tariff terms changed after this quote was issued. Request a fresh quote." : "This quote is no longer available or has expired.",
       } });
       return res.status(200).json({ success: true, data: {
-        quote: quoteView(result.quote),
+        quote: customerQuoteView(result.quote),
         routePlan: result.routePlan ?? null,
         replay: result.replay === true,
       } });
