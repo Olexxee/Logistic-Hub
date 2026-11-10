@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { resolveDeliveryRoute } from "../delivery-legs/delivery-route-planner.js";
+import { assessPlatformRouteTariffs } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
 import { ConflictError, NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 
 function stable(value) {
@@ -158,77 +159,16 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
     };
 
     if (route.routeMode === "LOCAL_DIRECT") {
-      const availability = await tx.platformRouteAvailability.findFirst({
-        where: {
-          originServiceZoneId: input.pickupServiceZoneId,
-          destinationServiceZoneId: input.destinationServiceZoneId,
-          serviceType: "PARCEL_DELIVERY",
-          isEnabled: true,
-          AND: [
-            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-            { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
-          ],
-        },
+      return assessPlatformRouteTariffs({
+        tx,
+        originServiceZoneId: input.pickupServiceZoneId,
+        destinationServiceZoneId: input.destinationServiceZoneId,
+        packages,
+        currency: agreement.currency,
+        now,
+        routeSnapshot,
+        expiresAt,
       });
-      if (!availability) return {
-        status: "REQUIRES_OPERATIONAL_PRICING", options: [],
-        assessment: { status: "REQUIRES_OPERATIONAL_PRICING", packageCount: packages.length,
-          routeMode: route.routeMode, reason: "This directed local corridor has not been approved for parcel delivery.",
-          routeSnapshot, assessedAt: now.toISOString() },
-      };
-
-      const rates = await tx.platformRouteRate.findMany({
-        where: {
-          originServiceZoneId: input.pickupServiceZoneId,
-          destinationServiceZoneId: input.destinationServiceZoneId,
-          serviceType: "PARCEL_DELIVERY",
-          parcelCategory: { in: [...new Set(packages.map(pkg => pkg.packageCategory))] },
-          currency: agreement.currency, status: "ACTIVE",
-          effectiveFrom: { lte: now },
-          AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
-        },
-        orderBy: [{ parcelCategory: "asc" }, { version: "desc" }, { id: "asc" }],
-      });
-      const packageMatches = [];
-      for (const pkg of packages) {
-        const matches = rates.filter(rate => rate.parcelCategory === pkg.packageCategory && rateFitsPackage(rate, pkg));
-        if (matches.length !== 1) return {
-          status: matches.length > 1 ? "PRICING_AMBIGUOUS" : "NO_COVERAGE", options: [],
-          assessment: { status: matches.length > 1 ? "PRICING_AMBIGUOUS" : "NO_COVERAGE",
-            packageCount: packages.length, routeMode: route.routeMode,
-            reason: matches.length > 1
-              ? "More than one active platform tariff matches a package. Admin must resolve overlapping tariff bands."
-              : "No active platform tariff matches every package on this directed corridor.",
-            routeSnapshot, assessedAt: now.toISOString() },
-        };
-        packageMatches.push({ pkg, rate: matches[0] });
-      }
-      const logisticsCost = packageMatches.reduce((sum, item) => sum + item.rate.customerTransportChargeMinor, 0n);
-      const platformCharge = packageMatches.reduce((sum, item) => sum + item.rate.platformChargeMinor, 0n);
-      const driverPayout = packageMatches.reduce((sum, item) => sum + item.rate.driverPayoutMinor, 0n);
-      const transit = packageMatches.map(item => item.rate.estimatedTransitMinutes).filter(Number.isInteger);
-      return {
-        status: "QUOTED",
-        assessment: { status: "DECLARED", packageCount: packages.length, source: "PLATFORM_ROUTE_RATE",
-          operationalPlanStatus: "FULLY_PRICED", routeSnapshot, assessedAt: now.toISOString() },
-        options: [{
-          agreementId: null, rateCardId: null, currency: agreement.currency, logisticsCost,
-          platformCharge, customerCharge: logisticsCost + platformCharge, driverPayout,
-          estimatedTransitMinutes: transit.length ? Math.max(...transit) : null,
-          rateSnapshot: packageMatches.map(({ pkg, rate }, index) => ({
-            packageRef: pkg.externalPackageRef ?? `package-${index + 1}`,
-            externalPackageRef: pkg.externalPackageRef ?? null,
-            rateId: rate.id, rateVersion: rate.version,
-            customerTransportChargeMinor: rate.customerTransportChargeMinor.toString(),
-            platformChargeMinor: rate.platformChargeMinor.toString(),
-            driverPayoutMinor: rate.driverPayoutMinor.toString(),
-            minWeightGrams: rate.minWeightGrams, maxWeightGrams: rate.maxWeightGrams,
-            maxLengthMm: rate.maxLengthMm, maxWidthMm: rate.maxWidthMm, maxHeightMm: rate.maxHeightMm,
-            estimatedTransitMinutes: rate.estimatedTransitMinutes,
-          })),
-          optionCode: "OPTION-01", routeSnapshot, expiresAt,
-        }],
-      };
     }
 
     // Hub-assisted routes require separate tariffs for every operational leg.
