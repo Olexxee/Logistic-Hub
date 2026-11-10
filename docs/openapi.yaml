@@ -25,6 +25,7 @@ tags:
   - name: Hub points
   - name: Notifications
   - name: Webhooks
+  - name: Platform route pricing
 paths:
   /health:
     get:
@@ -7990,6 +7991,156 @@ paths:
                 reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '200': { description: Billing agreement lifecycle status updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/platform-route-pricing/rates:
+    get:
+      tags: [Platform route pricing]
+      operationId: listPlatformRouteRates
+      summary: List platform-operated route tariffs
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: originServiceZoneId
+          schema: { type: string }
+        - in: query
+          name: destinationServiceZoneId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [DRAFT, ACTIVE, RETIRED] }
+      responses:
+        '200': { description: Route tariffs returned. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Platform route pricing]
+      operationId: createPlatformRouteRate
+      summary: Create a draft platform-operated route tariff
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [originServiceZoneId, destinationServiceZoneId, parcelCategory, customerTransportChargeMinor, driverPayoutMinor, reason]
+              properties:
+                originServiceZoneId: { type: string }
+                destinationServiceZoneId: { type: string }
+                serviceType: { type: string, const: PARCEL_DELIVERY }
+                parcelCategory: { type: string }
+                minWeightGrams: { type: integer, minimum: 0 }
+                maxWeightGrams: { type: integer, minimum: 1 }
+                maxLengthMm: { type: integer, minimum: 1 }
+                maxWidthMm: { type: integer, minimum: 1 }
+                maxHeightMm: { type: integer, minimum: 1 }
+                currency: { type: string, minLength: 3, maxLength: 3 }
+                customerTransportChargeMinor: { type: string, pattern: '^[1-9][0-9]{0,14}$' }
+                platformChargeMinor: { type: string, pattern: '^(0|[1-9][0-9]{0,14})$' }
+                driverPayoutMinor: { type: string, pattern: '^[1-9][0-9]{0,14}$' }
+                estimatedTransitMinutes: { type: integer, minimum: 1 }
+                effectiveFrom: { type: string, format: date-time }
+                effectiveUntil: { type: string, format: date-time }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '201': { description: Draft route tariff created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/platform-route-pricing/availability:
+    post:
+      tags: [Platform route pricing]
+      operationId: setPlatformRouteAvailability
+      summary: Enable or disable a directed platform-operated route
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [originServiceZoneId, destinationServiceZoneId, isEnabled, reason]
+              properties:
+                originServiceZoneId: { type: string }
+                destinationServiceZoneId: { type: string }
+                serviceType: { type: string, const: PARCEL_DELIVERY }
+                isEnabled: { type: boolean }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Directed route availability updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/platform-route-pricing/rates/{rateId}/publish:
+    post:
+      tags: [Platform route pricing]
+      operationId: publishPlatformRouteRate
+      summary: Publish a draft platform-operated route tariff
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: rateId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Route tariff published. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/platform-route-pricing/rates/{rateId}/retire:
+    post:
+      tags: [Platform route pricing]
+      operationId: retirePlatformRouteRate
+      summary: Retire an active platform-operated route tariff
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: rateId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Route tariff retired. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }

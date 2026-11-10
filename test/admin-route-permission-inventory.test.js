@@ -30,6 +30,7 @@ const inventoriedAdminRouteFiles = [
   "src/modules/partner-pricing/partner-pricing.routes.js",
   "src/modules/partner-settlement/partner-settlement.routes.js",
   "src/modules/payments/financial.routes.js",
+  "src/modules/platform-route-pricing/platform-route-pricing.routes.js",
   "src/modules/support/support.routes.js",
 ].sort();
 
