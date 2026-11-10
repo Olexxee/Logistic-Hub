@@ -20,7 +20,8 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
           parcelBooking: {
             select: {
               id: true, senderId: true, publicReference: true, status: true,
-              currency: true, parcelCategory: true, parcelSize: true,
+              currency: true, paymentStatus: true, integrationClientId: true,
+              integrationDispatchAuthorizedAt: true, parcelCategory: true, parcelSize: true,
               pickupLatitude: true, pickupLongitude: true,
               destinationLatitude: true, destinationLongitude: true,
             },
@@ -99,7 +100,7 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
         where: {
           driverProfileId: profileId,
           status: "OFFERED",
-          proposedFareMinor: null,
+          OR: [{ proposedFareMinor: null }, { fixedPayoutMinor: { not: null } }],
           expiresAt: { gt: now },
           deliveryLeg: { is: { status: "READY_FOR_ASSIGNMENT" } },
         },

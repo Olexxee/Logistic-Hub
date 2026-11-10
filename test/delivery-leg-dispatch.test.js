@@ -339,3 +339,140 @@ test("TEST_LIMITED drivers cannot receive pickup-leg offers without an approvabl
     error=>error.code==="NO_ELIGIBLE_DRIVERS"&&error.statusCode===409,
   );
 });
+
+
+test("admin dispatch creates fixed-payout offers only for paid and released platform local shipments", async () => {
+  let offers;
+  const platformLeg = {
+    ...leg,
+    type: "LOCAL_PICKUP",
+    parcelBooking: {
+      ...leg.parcelBooking,
+      senderId: null,
+      integrationClientId: "integration_client_1",
+      integrationDispatchAuthorizedAt: now,
+      paymentStatus: "SUCCEEDED",
+      pricingSnapshot: { driverPayoutMinor: "3500" },
+      pricingSnapshot: { driverPayoutMinor: "3500" },
+    },
+    metadata: { pricingSource: "PLATFORM_ROUTE_RATE", driverPayoutMinor: "3500" },
+  };
+  const repository = {
+    transaction: callback => callback({
+      platformRouteAvailability: { findFirst: async () => ({ id: "route_availability_1" }) },
+    }),
+    findLeg: async () => platformLeg,
+    findActiveServiceZones: async () => [{ id: "zone_ikeja" }],
+    listActiveOffers: async () => [],
+    findEligibleDrivers: async () => [validDriver("platform_driver_1")],
+    createOffers: async (_tx, data) => { offers = data; return { count: data.length }; },
+    recordEvent: async () => {},
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  const result = await service.requestOffers({
+    legId: platformLeg.id, user: { id: "admin_1", role: "ADMIN" },
+  });
+  assert.equal(result.offersCreated, 1);
+  assert.equal(offers[0].fixedPayoutMinor, 3500n);
+  assert.equal("proposedFareMinor" in offers[0], false);
+});
+
+test("driver fixed-payout acceptance creates an accepted assignment at the immutable payout", async () => {
+  let assignment;
+  let bookingUpdate;
+  let projectedEvent;
+  const platformLeg = {
+    ...leg,
+    type: "LOCAL_PICKUP",
+    status: "READY_FOR_ASSIGNMENT",
+    metadata: { pricingSource: "PLATFORM_ROUTE_RATE", driverPayoutMinor: "3500" },
+    parcelBooking: {
+      ...leg.parcelBooking,
+      senderId: null,
+      integrationClientId: "integration_client_1",
+      integrationDispatchAuthorizedAt: now,
+      paymentStatus: "SUCCEEDED",
+      pricingSnapshot: { driverPayoutMinor: "3500" },
+      status: "AWAITING_PARTNER_ASSIGNMENT",
+    },
+  };
+  const offer = {
+    id: "fixed_offer_1", deliveryLegId: platformLeg.id, driverProfileId: "profile_1",
+    status: "OFFERED", proposedFareMinor: null, fixedPayoutMinor: 3500n,
+    vehicleId: null, currency: "NGN", expiresAt: new Date(now.getTime() + 60_000),
+    deliveryLeg: platformLeg,
+  };
+  const tx = {
+    $queryRaw: async () => [],
+    driverProfile: {
+      findUnique: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }),
+      findFirst: async () => validDriver("profile_1"),
+      updateMany: async () => ({ count: 1 }),
+    },
+    deliveryLeg: {
+      findUnique: async () => platformLeg,
+      updateMany: async () => ({ count: 1 }),
+    },
+    deliveryLegOffer: { findUnique: async () => offer, updateMany: async () => ({ count: 1 }) },
+    platformRouteAvailability: { findFirst: async () => ({ id: "route_availability_1" }) },
+    vehicle: { findFirst: async () => ({ id: "vehicle_1" }) },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "grant_1" }) },
+    parcelBooking: {
+      updateMany: async args => { bookingUpdate = args; return { count: 1 }; },
+      findUnique: async () => ({
+        id: platformLeg.parcelBooking.id, integrationClientId: "integration_client_1",
+        senderId: null, publicReference: "LH-PLATFORM-1", status: "DRIVER_ASSIGNED",
+      }),
+      update: async () => ({ integrationEventSequence: 1 }),
+    },
+    driverAssignment: { create: async args => { assignment = args; return { id: "assignment_fixed_1" }; } },
+    bookingEvent: { create: async args => ({ id: "event_fixed_1", createdAt: now, ...args.data }) },
+    integrationShipmentEvent: {
+      findUnique: async () => null,
+      create: async args => {
+        projectedEvent = args.data;
+        return { id: "external_event_1", sequence: args.data.sequence, eventType: args.data.eventType };
+      },
+    },
+    integrationWebhookEndpoint: { findMany: async () => [] },
+    integrationWebhookDelivery: { createMany: async () => ({ count: 0 }) },
+  };
+  const repository = {
+    findOfferByAcceptanceKey: async () => null,
+    acceptOfferTransaction: callback => callback(tx),
+    findActiveServiceZones: async () => [{ id: "zone_ikeja" }],
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  const result = await service.acceptFixedPayout({
+    offerId: offer.id, userId: "driver_user_1", vehicleId: "vehicle_1",
+    idempotencyKey: "fixed-payout-acceptance-0001",
+  });
+  assert.equal(result.assignmentId, "assignment_fixed_1");
+  assert.equal(result.fixedPayoutMinor, "3500");
+  assert.equal(assignment.data.status, "ACCEPTED");
+  assert.equal(assignment.data.agreedFareMinor, 3500n);
+  assert.equal(assignment.data.assignedByUserId, "driver_user_1");
+  assert.equal(bookingUpdate.data.status, "DRIVER_ASSIGNED");
+  assert.equal(result.status, "ACCEPTED");
+  assert.equal(projectedEvent.eventType, "shipment.driver_assigned");
+  assert.equal(projectedEvent.payload.status, "DRIVER_ASSIGNED");
+});
+
+test("fixed-payout driver offers expose the payout but never customer charge", async () => {
+  const repository = {
+    findDriverProfile: async () => ({ id: "profile_1", verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null, isOnline: true, isAvailable: true }),
+    findDriverOffers: async () => [{
+      id: "fixed_offer_1", currency: "NGN", fixedPayoutMinor: 3500n, expiresAt: now, createdAt: now,
+      deliveryLeg: {
+        id: "leg_fixed", sequence: 1, type: "LOCAL_PICKUP",
+        originServiceZone: { name: "Ikeja" }, destinationServiceZone: { name: "Ikeja" },
+        originHubPoint: null, destinationHubPoint: null,
+        parcelBooking: { publicReference: "LH-PLATFORM-1", parcelCategory: null, parcelSize: null, customerPayableMinor: 9000n },
+      },
+    }],
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  const [offer] = await service.listDriverOffers({ userId: "driver_user_1" });
+  assert.equal(offer.fixedPayoutMinor, "3500");
+  assert.equal("customerPayableMinor" in offer.deliveryLeg.booking, false);
+});

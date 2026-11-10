@@ -498,6 +498,9 @@ function actionFixture({
   assignments = [],
   custodyHandovers = [],
   pendingHandovers = [],
+  routeMode = "END_TO_END",
+  legType = "INTERSTATE_TRANSPORT",
+  packingEvidenceFrozenAt = null,
 } = {}) {
   const state = {
     booking: {
@@ -507,7 +510,10 @@ function actionFixture({
       publicReference: "LH-PCL-ACTION",
       status: bookingStatus,
       paymentStatus: "SUCCEEDED",
-      deliveryLegs: [{ id: "leg-action-1", status: legStatus }],
+      integrationPackingEvidenceFrozenAt: packingEvidenceFrozenAt,
+      integrationDispatchAuthorizedAt: null,
+      pricingSnapshot: { routeSnapshot: { routeMode } },
+      deliveryLegs: [{ id: "leg-action-1", type: legType, status: legStatus }],
       custodyHandovers: [...structuredClone(custodyHandovers), ...structuredClone(pendingHandovers)],
     },
     assignments: structuredClone(assignments),
@@ -741,4 +747,43 @@ test("an in-transit partner assignment is sufficient evidence for a return reque
   assert.equal(result.statusCode, 202);
   assert.equal(result.body.status, "RETURN_REQUESTED");
   assert.equal(state.booking.status, "DRIVER_ASSIGNED");
+});
+
+
+test("integration dispatch authorization accepts a paid local-direct shipment only after packing evidence is frozen", async () => {
+  const { state, prismaClient } = actionFixture({
+    routeMode: "LOCAL_DIRECT",
+    legType: "LOCAL_PICKUP",
+    packingEvidenceFrozenAt: now,
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  const result = await service.authorizeDispatch({
+    client: { id: "client_1" },
+    idempotencyKey: "authorize-local-direct-001",
+    externalFulfillmentReference: "MARKETIQ-ORDER-100",
+    reason: "Packing review completed",
+  });
+  assert.equal(result.statusCode, 200);
+  assert.equal(state.booking.integrationDispatchAuthorizedAt.toISOString(), now.toISOString());
+  assert.equal(state.bookingEvents[0].eventType, "INTEGRATION_DISPATCH_AUTHORIZED");
+  assert.equal(state.bookingEvents[0].metadata.routeMode, "LOCAL_DIRECT");
+});
+
+test("integration dispatch authorization blocks local-direct shipments until packing evidence is frozen", async () => {
+  const { state, prismaClient } = actionFixture({
+    routeMode: "LOCAL_DIRECT",
+    legType: "LOCAL_PICKUP",
+  });
+  const service = createIntegrationShipmentService({ prismaClient, clock: () => now });
+  await assert.rejects(
+    service.authorizeDispatch({
+      client: { id: "client_1" },
+      idempotencyKey: "authorize-local-direct-unfrozen",
+      externalFulfillmentReference: "MARKETIQ-ORDER-100",
+      reason: "Attempt before packing review",
+    }),
+    error => error.code === "INTEGRATION_PACKING_EVIDENCE_NOT_FROZEN",
+  );
+  assert.equal(state.booking.integrationDispatchAuthorizedAt, null);
+  assert.equal(state.bookingEvents.length, 0);
 });

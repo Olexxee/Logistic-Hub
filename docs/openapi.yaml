@@ -4312,6 +4312,62 @@ paths:
         '403': { description: Administrator access required. }
         '404': { description: Membership not found. }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/delivery-legs/{legId}/request-matching:
+    post:
+      tags: [Dispatch, Admin]
+      operationId: requestPlatformLocalDriverMatching
+      summary: Request driver matching for a released platform-priced local shipment
+      description: Admin-only dispatch for paid integration shipments with explicit dispatch authorization and a published fixed driver payout. The route and payout snapshot are revalidated by the service.
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: legId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202': { description: Driver matching request accepted. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { description: Authentication required. }
+        '403': { description: Administrator access required or shipment not released for platform dispatch. }
+        '404': { description: Delivery leg not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /driver/delivery-leg-offers/{offerId}/accept-fixed-payout:
+    post:
+      tags: [Dispatch, Driver]
+      operationId: acceptFixedPayoutDeliveryLegOffer
+      summary: Accept a platform-fixed driver payout offer
+      description: Accepts an eligible driver offer at the exact fixed payout from the accepted platform tariff snapshot. No counter-offer is permitted. The operation is idempotent.
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: offerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [vehicleId]
+              properties:
+                vehicleId: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Fixed-payout driver assignment accepted; idempotent replay returns the original assignment. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { description: Authentication required. }
+        '403': { description: Driver role and eligibility required. }
+        '404': { description: Delivery-leg offer not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/delivery-legs/{legId}/partner-assignment:
     post:
       tags: [Partner execution, Admin]

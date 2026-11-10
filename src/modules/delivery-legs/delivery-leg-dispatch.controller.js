@@ -18,6 +18,15 @@ export function createDeliveryLegDispatchController(service) {
       success: true,
       data: await service.listDriverOffers({ userId: req.user.id }),
     }),
+    acceptFixedPayout: async (req, res) => res.status(200).json({
+      success: true,
+      data: await service.acceptFixedPayout({
+        offerId: req.validated.params.offerId,
+        userId: req.user.id,
+        vehicleId: req.validated.body.vehicleId,
+        idempotencyKey: req.validated.idempotencyKey,
+      }),
+    }),
     proposeFare: async (req, res) => res.status(200).json({
       success: true,
       data: await service.proposeFare({

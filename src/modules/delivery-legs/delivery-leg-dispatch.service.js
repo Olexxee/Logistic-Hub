@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { projectIntegrationShipmentEvent } from "../integrations/integration-shipment-events.projector.js";
 import { env } from "../../config/env.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 import { createDeliveryLegDispatchRepository } from "./delivery-leg-dispatch.repository.js";
@@ -40,6 +41,7 @@ function serializeDriverOffer(offer) {
   return {
     id: offer.id,
     currency: offer.currency,
+    ...(offer.fixedPayoutMinor != null ? { fixedPayoutMinor: offer.fixedPayoutMinor.toString() } : {}),
     expiresAt: offer.expiresAt,
     createdAt: offer.createdAt,
     deliveryLeg: {
@@ -92,6 +94,18 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           if (hub?.status !== "ACTIVE" || !membership?.isActive || !membership.canDispatch) {
             throw new ForbiddenError("An active hub dispatch permission is required.");
           }
+        } else if (user.role === "ADMIN") {
+          const fixedPayout = leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE"
+            && leg.type === "LOCAL_PICKUP"
+            && leg.metadata?.driverPayoutMinor != null
+            && BigInt(leg.metadata.driverPayoutMinor) > 0n;
+          if (!fixedPayout
+            || leg.parcelBooking.pricingSnapshot?.driverPayoutMinor !== leg.metadata.driverPayoutMinor
+            || !leg.parcelBooking.integrationClientId
+            || !leg.parcelBooking.integrationDispatchAuthorizedAt
+            || leg.parcelBooking.paymentStatus !== "SUCCEEDED") {
+            throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Admin dispatch requires a paid, released platform-priced local shipment with a positive fixed driver payout.");
+          }
         } else if (leg.parcelBooking.senderId !== user.id) {
           throw new ForbiddenError();
         }
@@ -100,6 +114,21 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         }
         if (leg.status !== "READY_FOR_ASSIGNMENT") {
           throw conflict("DELIVERY_LEG_NOT_READY", "Driver offers can only be requested for a leg that is ready for assignment.");
+        }
+        if (user.role === "ADMIN") {
+          const routeAvailability = await tx.platformRouteAvailability.findFirst({
+            where: {
+              originServiceZoneId: leg.originServiceZoneId,
+              destinationServiceZoneId: leg.destinationServiceZoneId,
+              serviceType: "PARCEL_DELIVERY", isEnabled: true,
+              AND: [
+                { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+              ],
+            },
+            select: { id: true },
+          });
+          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
         }
         const activeZones = await db.findActiveServiceZones(tx, leg, now);
         const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
@@ -121,6 +150,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           driverProfileId: driver.id,
           status: "OFFERED",
           currency: leg.parcelBooking.currency,
+          ...(leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE"
+            ? { fixedPayoutMinor: BigInt(leg.metadata.driverPayoutMinor) }
+            : {}),
           expiresAt,
         })));
         await db.recordEvent(tx, {
@@ -164,6 +196,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           }
           if (profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || profile.kycTier !== "FULL" || !profile.isOnline || !profile.isAvailable) {
             throw new ForbiddenError("A verified, online and available driver profile is required.");
+          }
+          if (offer.fixedPayoutMinor != null) {
+            throw conflict("FIXED_PAYOUT_ACCEPTANCE_REQUIRED", "This offer has a platform-fixed payout and cannot receive a fare proposal.");
           }
           if (offer.status !== "OFFERED" || offer.proposedFareMinor != null
             || offer.expiresAt <= now || offer.deliveryLeg.status !== "READY_FOR_ASSIGNMENT") {
@@ -210,6 +245,215 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used with a different fare proposal.");
         }
         return { offerId, vehicleId: existing.vehicleId, proposedFareMinor: existing.proposedFareMinor.toString(), currency: existing.currency, status: existing.status, replay: true };
+      }
+    },
+
+    async acceptFixedPayout({ offerId, userId, vehicleId, idempotencyKey }) {
+      const now = clock();
+      const payloadHash = hash({ offerId, vehicleId, userId });
+      const prior = await db.findOfferByAcceptanceKey(idempotencyKey);
+      if (prior) {
+        const callerProfile = await db.findDriverProfile(userId);
+        if (!callerProfile || prior.driverProfileId !== callerProfile.id) {
+          throw new NotFoundError("Delivery-leg offer not found.");
+        }
+        if (prior.id !== offerId || prior.acceptancePayloadHash !== payloadHash) {
+          throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used for a different fixed-payout acceptance.");
+        }
+        const assignment = await prismaClient.driverAssignment.findFirst({
+          where: { deliveryLegId: prior.deliveryLegId, driverProfileId: prior.driverProfileId },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, status: true, agreedFareMinor: true },
+        });
+        return {
+          offerId, assignmentId: assignment?.id ?? null, status: assignment?.status ?? "ACCEPTED",
+          fixedPayoutMinor: assignment?.agreedFareMinor?.toString() ?? prior.fixedPayoutMinor.toString(),
+          currency: prior.currency, replay: true,
+        };
+      }
+
+      try {
+        return await db.acceptOfferTransaction(async (tx) => {
+          const profile = await tx.driverProfile.findUnique({
+            where: { userId },
+            select: { id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true },
+          });
+          if (!profile || profile.verificationStatus !== "VERIFIED" || profile.kycTier !== "FULL"
+            || profile.suspendedAt || !profile.isOnline || !profile.isAvailable) {
+            throw new ForbiddenError("A verified, online and available driver profile is required.");
+          }
+
+          const offer = await tx.deliveryLegOffer.findUnique({
+            where: { id: offerId },
+            include: { deliveryLeg: { include: { parcelBooking: true } } },
+          });
+          if (!offer || offer.driverProfileId !== profile.id) throw new NotFoundError("Delivery-leg offer not found.");
+          if (offer.acceptanceIdempotencyKey === idempotencyKey) {
+            if (offer.acceptancePayloadHash !== payloadHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used for a different fixed-payout acceptance.");
+            const assignment = await tx.driverAssignment.findFirst({
+              where: { deliveryLegId: offer.deliveryLegId, driverProfileId: profile.id },
+              orderBy: { createdAt: "desc" }, select: { id: true, status: true, agreedFareMinor: true },
+            });
+            return { offerId, assignmentId: assignment?.id ?? null, status: assignment?.status ?? "ACCEPTED",
+              fixedPayoutMinor: assignment?.agreedFareMinor?.toString() ?? offer.fixedPayoutMinor.toString(),
+              currency: offer.currency, replay: true };
+          }
+
+          const leg = offer.deliveryLeg;
+          const booking = leg.parcelBooking;
+          const payout = offer.fixedPayoutMinor;
+          if (offer.status !== "OFFERED" || offer.expiresAt <= now || payout == null || payout <= 0n
+            || offer.proposedFareMinor != null || leg.status !== "READY_FOR_ASSIGNMENT"
+            || leg.type !== "LOCAL_PICKUP" || leg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
+            || leg.metadata?.driverPayoutMinor !== payout.toString()
+            || booking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
+            || !booking.integrationClientId || !booking.integrationDispatchAuthorizedAt
+            || booking.paymentStatus !== "SUCCEEDED" || booking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
+            throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "This fixed-payout offer is no longer authorized or available.");
+          }
+
+          await tx.$queryRaw`SELECT "id" FROM "driver_profiles" WHERE "id" = ${profile.id} FOR UPDATE`;
+          await tx.$queryRaw`SELECT "id" FROM "delivery_legs" WHERE "id" = ${leg.id} FOR UPDATE`;
+          const lockedLeg = await tx.deliveryLeg.findUnique({
+            where: { id: leg.id }, include: { parcelBooking: true },
+          });
+          if (!lockedLeg || lockedLeg.status !== "READY_FOR_ASSIGNMENT"
+            || lockedLeg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
+            || lockedLeg.metadata?.driverPayoutMinor !== payout.toString()
+            || lockedLeg.parcelBooking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
+            || !lockedLeg.parcelBooking.integrationDispatchAuthorizedAt
+            || lockedLeg.parcelBooking.paymentStatus !== "SUCCEEDED"
+            || lockedLeg.parcelBooking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
+            throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "The shipment is no longer released for driver assignment.");
+          }
+
+          const routeAvailability = await tx.platformRouteAvailability.findFirst({
+            where: {
+              originServiceZoneId: leg.originServiceZoneId,
+              destinationServiceZoneId: leg.destinationServiceZoneId,
+              serviceType: "PARCEL_DELIVERY", isEnabled: true,
+              AND: [
+                { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+              ],
+            },
+            select: { id: true },
+          });
+          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+
+          const capability = parcelCapabilityForLegType(leg.type);
+          const vehicle = await tx.vehicle.findFirst({
+            where: { id: vehicleId, ...eligibleVehicleWhere({
+              driverProfileId: profile.id, capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT",
+            }) },
+            select: { id: true },
+          });
+          if (!vehicle) throw conflict("VEHICLE_NOT_ELIGIBLE", "Select an active, verified vehicle approved for this delivery service.");
+          const grant = await tx.driverCapabilityGrant.findFirst({
+            where: { driverProfileId: profile.id, capability, status: "APPROVED" }, select: { id: true },
+          });
+          if (!grant) throw conflict("DRIVER_CAPABILITY_NOT_APPROVED", "Your capability for this delivery service is not approved.");
+
+          const driver = await tx.driverProfile.findFirst({
+            where: {
+              id: profile.id, verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null,
+              isOnline: true, isAvailable: true,
+              lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
+            },
+            select: {
+              id: true, verificationStatus: true, kycTier: true, suspendedAt: true, isOnline: true, isAvailable: true,
+              serviceRadiusMeters: true, lastLocationAt: true,
+              locations: { orderBy: { recordedAt: "desc" }, take: 1, select: { latitude: true, longitude: true, recordedAt: true } },
+            },
+          });
+          if (!assertEligibleDriver(driver, leg, now)) throw conflict("DRIVER_NO_LONGER_AVAILABLE", "Your current location is no longer eligible for this pickup.");
+          const activeZones = await db.findActiveServiceZones(tx, leg, now);
+          const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
+          if (activeZones.length !== requiredZoneCount) throw conflict("SERVICE_ZONE_UNAVAILABLE", "The origin or destination zone is no longer active.");
+
+          const reserved = await tx.driverProfile.updateMany({
+            where: {
+              id: profile.id, verificationStatus: "VERIFIED", kycTier: "FULL", suspendedAt: null,
+              isOnline: true, isAvailable: true,
+              lastLocationAt: { gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000), lte: now },
+              user: { is: { role: "DRIVER", status: "ACTIVE", emailVerifiedAt: { not: null } } },
+              ...activeDriverCapabilityWhere(capability),
+              ...activeDriverDocumentWhere(now, env.DRIVER_KYC_MODE === "STRICT"),
+              vehicles: { some: { id: vehicle.id, ...eligibleVehicleWhere({ capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }) } },
+              AND: [
+                { coverage: { some: { serviceZoneId: leg.originServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
+                { coverage: { some: { serviceZoneId: leg.destinationServiceZoneId, serviceType: "PARCEL_DELIVERY", isEnabled: true, serviceZone: { is: activeServiceZoneWhere(now) } } } },
+              ],
+              assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
+            },
+            data: { isAvailable: false },
+          });
+          if (reserved.count !== 1) throw conflict("DRIVER_NO_LONGER_AVAILABLE", "This driver is no longer available for assignment.");
+
+          const accepted = await tx.deliveryLegOffer.updateMany({
+            where: { id: offer.id, driverProfileId: profile.id, status: "OFFERED", fixedPayoutMinor: payout, expiresAt: { gt: now } },
+            data: {
+              status: "ACCEPTED", vehicleId: vehicle.id, respondedAt: now,
+              acceptanceIdempotencyKey: idempotencyKey, acceptancePayloadHash: payloadHash,
+            },
+          });
+          if (accepted.count !== 1) throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "This fixed-payout offer was accepted by another process.");
+          await tx.deliveryLegOffer.updateMany({
+            where: { deliveryLegId: leg.id, id: { not: offer.id }, status: "OFFERED" },
+            data: { status: "WITHDRAWN", respondedAt: now },
+          });
+          const legChanged = await tx.deliveryLeg.updateMany({
+            where: { id: leg.id, status: "READY_FOR_ASSIGNMENT" }, data: { status: "ASSIGNED", assignedAt: now },
+          });
+          if (legChanged.count !== 1) throw conflict("DELIVERY_LEG_STATE_CONFLICT", "The delivery leg changed during driver acceptance.");
+          const bookingChanged = await tx.parcelBooking.updateMany({
+            where: {
+              id: booking.id, status: "AWAITING_PARTNER_ASSIGNMENT", paymentStatus: "SUCCEEDED",
+              integrationDispatchAuthorizedAt: { not: null },
+            },
+            data: { status: "DRIVER_ASSIGNED" },
+          });
+          if (bookingChanged.count !== 1) throw conflict("SHIPMENT_STATE_CONFLICT", "The shipment changed during driver acceptance.");
+
+          const assignment = await tx.driverAssignment.create({
+            data: {
+              parcelBookingId: booking.id, deliveryLegId: leg.id, driverProfileId: profile.id,
+              vehicleId: vehicle.id, assignedByUserId: userId, status: "ACCEPTED",
+              agreedFareMinor: payout, currency: offer.currency, reservedAt: now, acceptedAt: now,
+            },
+            select: { id: true },
+          });
+          const sourceEvent = await tx.bookingEvent.create({
+            data: {
+              parcelBookingId: booking.id, actorUserId: userId,
+              eventType: "PLATFORM_FIXED_PAYOUT_DRIVER_ACCEPTED",
+              fromStatus: "AWAITING_PARTNER_ASSIGNMENT", toStatus: "DRIVER_ASSIGNED",
+              metadata: {
+                deliveryLegId: leg.id, offerId, assignmentId: assignment.id, driverProfileId: profile.id,
+                vehicleId: vehicle.id, fixedPayoutMinor: payout.toString(), currency: offer.currency,
+                pricingSource: "PLATFORM_ROUTE_RATE",
+              },
+            },
+          });
+          await projectIntegrationShipmentEvent({ tx, parcelBookingId: booking.id, sourceEvent });
+          return { offerId, assignmentId: assignment.id, status: "ACCEPTED",
+            fixedPayoutMinor: payout.toString(), currency: offer.currency, replay: false };
+        });
+      } catch (error) {
+        if (error.code !== "P2002") throw error;
+        const existing = await db.findOfferByAcceptanceKey(idempotencyKey);
+        const callerProfile = await db.findDriverProfile(userId);
+        if (!callerProfile || existing?.driverProfileId !== callerProfile.id
+          || !existing || existing.id !== offerId || existing.acceptancePayloadHash !== payloadHash) {
+          throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used for a different fixed-payout acceptance.");
+        }
+        const assignment = await prismaClient.driverAssignment.findFirst({
+          where: { deliveryLegId: existing.deliveryLegId, driverProfileId: existing.driverProfileId },
+          orderBy: { createdAt: "desc" }, select: { id: true, status: true, agreedFareMinor: true },
+        });
+        return { offerId, assignmentId: assignment?.id ?? null, status: assignment?.status ?? "ACCEPTED",
+          fixedPayoutMinor: assignment?.agreedFareMinor?.toString() ?? existing.fixedPayoutMinor.toString(),
+          currency: existing.currency, replay: true };
       }
     },
 
