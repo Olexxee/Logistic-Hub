@@ -179,15 +179,19 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         connectionFeeMinor: pricingRule?.fixedConnectionFeeMinor ?? 0n,
         otherChargesMinor: 0n,
         customerPayableMinor: null,
-        pricingRuleId: pricingRule.id,
-        pricingSnapshot: {
+        pricingRuleId: pricingRule?.id ?? null,
+        pricingSnapshot: pricingRule ? {
           pricingRuleId: pricingRule.id,
           version: pricingRule.version,
           serviceType: "PARCEL_DELIVERY",
-          currency: pricingRule?.currency ?? "NGN",
+          currency: pricingRule.currency,
           fixedConnectionFeeMinor: pricingRule.fixedConnectionFeeMinor.toString(),
           minimumDriverFareMinor: pricingRule.minimumDriverFareMinor.toString(),
-          calculation: "The driver fare is proposed separately and must be accepted by the sender before payment.",
+          calculation: "Legacy negotiated-fare pricing snapshot. New route quotes are assessed separately.",
+        } : {
+          status: "AWAITING_ROUTE_QUOTE",
+          source: "NO_LEGACY_ZONE_RULE",
+          currency: "NGN",
         },
       };
       try {
