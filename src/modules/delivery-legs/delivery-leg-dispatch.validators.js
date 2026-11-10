@@ -12,6 +12,7 @@ const schemas = {
   },
   proposeFare: z.object({ vehicleId: id.optional(), proposedFareMinor: z.string().regex(/^[1-9][0-9]{0,14}$/) }).strict(),
   acceptFare: z.object({ offerId: id }).strict(),
+  acceptFixedPayout: z.object({ vehicleId: id }).strict(),
 };
 
 function validate(schema, source, key, message) {
@@ -35,4 +36,5 @@ export const validateBookingLegIds = validate(schemas.params.bookingLeg, "params
 export const validateHubDispatchParams = validate(schemas.params.hubDispatch, "params", "params", "The hub or delivery leg ID is invalid.");
 export const validateLegFareProposal = validate(schemas.proposeFare, "body", "body");
 export const validateLegFareAcceptance = validate(schemas.acceptFare, "body", "body");
+export const validateFixedPayoutAcceptance = validate(schemas.acceptFixedPayout, "body", "body");
 export const validateLegIdempotencyKey = validate(idempotencyKeySchema, "header", "idempotencyKey", "A valid Idempotency-Key header is required.");
