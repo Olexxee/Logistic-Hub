@@ -97,7 +97,8 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
     if (!option || option.status !== "SELECTED" || option.expiresAt <= now) {
       throw new ConflictError("The selected quote option is no longer valid.", "INTEGRATION_QUOTE_OPTION_UNAVAILABLE");
     }
-    if (option.routeMode !== "END_TO_END" || option.routeSnapshot?.routeMode !== "END_TO_END") {
+    if (!["END_TO_END", "LOCAL_DIRECT"].includes(option.routeMode)
+      || option.routeSnapshot?.routeMode !== option.routeMode) {
       throw new ConflictError("This quote route is not enabled for integration shipment creation.", "INTEGRATION_ROUTE_NOT_SUPPORTED");
     }
 
@@ -114,6 +115,83 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
     });
     if (!billingAgreement) {
       throw new ConflictError("The billing agreement is no longer active for shipment creation.", "INTEGRATION_BILLING_AGREEMENT_INACTIVE");
+    }
+
+    if (option.routeMode === "LOCAL_DIRECT") {
+      const availability = await tx.platformRouteAvailability.findFirst({
+        where: {
+          originServiceZoneId: session.pickupServiceZoneId,
+          destinationServiceZoneId: session.destinationServiceZoneId,
+          serviceType: "PARCEL_DELIVERY", isEnabled: true,
+          AND: [
+            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+            { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+          ],
+        },
+      });
+      if (!availability) throw new ConflictError("The directed platform route is no longer available.", "PLATFORM_ROUTE_UNAVAILABLE");
+      const snapshots = Array.isArray(option.packageRateSnapshot) ? option.packageRateSnapshot : [];
+      if (!session.packages.length || snapshots.length !== session.packages.length) {
+        throw new ConflictError("The platform tariff snapshot is incomplete.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
+      }
+      const rateIds = snapshots.map(item => item?.rateId);
+      if (rateIds.some(id => typeof id !== "string") || new Set(rateIds).size !== rateIds.length) {
+        throw new ConflictError("The platform tariff snapshot contains invalid rate references.", "INTEGRATION_QUOTE_SNAPSHOT_INVALID");
+      }
+      const platformRates = await tx.platformRouteRate.findMany({
+        where: {
+          id: { in: rateIds }, originServiceZoneId: session.pickupServiceZoneId,
+          destinationServiceZoneId: session.destinationServiceZoneId,
+          serviceType: "PARCEL_DELIVERY", status: "ACTIVE", currency: option.currency,
+          ...activeAt(now),
+        },
+      });
+      const platformRatesById = new Map(platformRates.map(rate => [rate.id, rate]));
+      if (platformRatesById.size !== rateIds.length) {
+        throw new ConflictError("A platform tariff used by this quote is no longer active.", "PLATFORM_ROUTE_RATE_INACTIVE");
+      }
+      let transportTotal = 0n;
+      let platformTotal = 0n;
+      let driverPayoutTotal = 0n;
+      for (let index = 0; index < session.packages.length; index += 1) {
+        const pkg = session.packages[index];
+        const snapshot = snapshots[index];
+        const expectedRef = pkg.externalPackageRef ?? `package-${pkg.packageSequence + 1}`;
+        const rate = platformRatesById.get(snapshot.rateId);
+        if (snapshot.packageRef !== expectedRef
+          || (snapshot.externalPackageRef ?? null) !== (pkg.externalPackageRef ?? null)
+          || !rate || !packageRateFits(rate, pkg)
+          || rate.version !== snapshot.rateVersion
+          || rate.customerTransportChargeMinor.toString() !== snapshot.customerTransportChargeMinor
+          || rate.platformChargeMinor.toString() !== snapshot.platformChargeMinor
+          || rate.driverPayoutMinor.toString() !== snapshot.driverPayoutMinor) {
+          throw new ConflictError("A platform tariff no longer matches the immutable quote snapshot.", "PLATFORM_ROUTE_RATE_INACTIVE");
+        }
+        transportTotal += rate.customerTransportChargeMinor;
+        platformTotal += rate.platformChargeMinor;
+        driverPayoutTotal += rate.driverPayoutMinor;
+      }
+      if (transportTotal !== option.logisticsCostMinor || platformTotal !== option.platformChargeMinor
+        || option.driverPayoutMinor !== driverPayoutTotal
+        || transportTotal + platformTotal + option.otherChargesMinor !== option.customerChargeMinor) {
+        throw new ConflictError("The platform quote totals do not reconcile with the accepted tariff snapshots.", "INTEGRATION_QUOTE_TOTAL_MISMATCH");
+      }
+      const zoneIds = [...new Set([session.pickupServiceZoneId, session.destinationServiceZoneId])];
+      const activeZones = await tx.serviceZone.findMany({
+        where: {
+          id: { in: zoneIds }, isActive: true,
+          state: { isActive: true, country: { isActive: true } },
+          availability: { some: { serviceType: "PARCEL_DELIVERY", isEnabled: true, AND: [
+            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+          ] } },
+        },
+        select: { id: true },
+      });
+      if (activeZones.length !== zoneIds.length) {
+        throw new ConflictError("One or both shipment zones are no longer active for parcel delivery.", "SERVICE_ZONE_UNAVAILABLE");
+      }
+      return { session, option, billingAgreement, rateCard: null, packageRates: snapshots, ratesById: new Map() };
     }
 
     const rateCard = await tx.partnerRateCard.findFirst({
