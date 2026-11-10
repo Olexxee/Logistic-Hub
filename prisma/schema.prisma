@@ -1717,7 +1717,7 @@ model PartnerAgreement {
   payables PartnerPayable[]
 
   @@index([partnerId, status, effectiveFrom])
-  @@index([status, effectiveFrom, effectiveUntil], map: "platform_route_rates_effective_idx")
+  @@index([status, effectiveFrom, effectiveUntil])
   @@map("partner_agreements")
 }
 
@@ -1797,7 +1797,7 @@ model PlatformRouteRate {
   originServiceZone           ServiceZone @relation("PlatformRateOrigin", fields: [originServiceZoneId], references: [id], onDelete: Restrict, map: "platform_route_rates_origin_fkey")
   destinationServiceZone      ServiceZone @relation("PlatformRateDestination", fields: [destinationServiceZoneId], references: [id], onDelete: Restrict, map: "platform_route_rates_destination_fkey")
   @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, status], map: "platform_route_rates_route_package_status_idx")
-  @@index([status, effectiveFrom, effectiveUntil])
+  @@index([status, effectiveFrom, effectiveUntil], map: "platform_route_rates_effective_idx")
   @@map("platform_route_rates")
 }
 
