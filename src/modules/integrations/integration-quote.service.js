@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { resolveDeliveryRoute } from "../delivery-legs/delivery-route-planner.js";
-import { assessPlatformRouteTariffs } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
+import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
 import { ConflictError, NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 
 function stable(value) {
