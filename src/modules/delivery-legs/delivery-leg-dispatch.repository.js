@@ -20,7 +20,8 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
           parcelBooking: {
             select: {
               id: true, senderId: true, publicReference: true, status: true,
-              currency: true, parcelCategory: true, parcelSize: true,
+              currency: true, paymentStatus: true, integrationClientId: true,
+              integrationDispatchAuthorizedAt: true, parcelCategory: true, parcelSize: true,
               pickupLatitude: true, pickupLongitude: true,
               destinationLatitude: true, destinationLongitude: true,
             },
