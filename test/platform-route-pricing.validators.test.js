@@ -7,7 +7,7 @@ test("platform route rate requires independent customer and driver amounts in mi
  assert.equal(rateSchema.safeParse(base).success,true);
  assert.equal(rateSchema.safeParse({...base,driverPayoutMinor:undefined}).success,false);
  assert.equal(rateSchema.safeParse({...base,customerTransportChargeMinor:"2500.50"}).success,false);
- assert.equal(rateSchema.safeParse({...base,originServiceZoneId:"zone-a"}).success,false);
+ assert.equal(rateSchema.safeParse({...base,destinationServiceZoneId:"zone-a"}).success,false);
 });
 
 test("route availability requires explicit directed route and valid effective window",()=>{
