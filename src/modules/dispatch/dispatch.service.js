@@ -99,6 +99,10 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           throw conflict("BOOKING_STATE_CONFLICT", "Only a draft booking can request driver offers.");
         }
 
+        if (!booking.pricingRuleId) {
+          throw conflict("ROUTE_QUOTE_REQUIRED", "This booking must receive and accept a route-aware customer quote before legacy driver matching can begin.");
+        }
+
         const requestedZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
         const activeZones = await tx.serviceZone.findMany({
           where: {
