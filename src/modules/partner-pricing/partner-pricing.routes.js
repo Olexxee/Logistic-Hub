@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { createMultiLegPlan, getExistingDeliveryRoutePlan } from "../delivery-legs/delivery-plan.service.js";
 import { assessPlatformRouteTariffs } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
-import { createCustomerShipmentQuotesService, customerQuoteView } from "../parcels/customer-shipment-quotes.service.js";
+import { createCustomerShipmentQuotesService } from "../parcels/customer-shipment-quotes.service.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
