@@ -112,6 +112,21 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         if (leg.status !== "READY_FOR_ASSIGNMENT") {
           throw conflict("DELIVERY_LEG_NOT_READY", "Driver offers can only be requested for a leg that is ready for assignment.");
         }
+        if (user.role === "ADMIN") {
+          const routeAvailability = await tx.platformRouteAvailability.findFirst({
+            where: {
+              originServiceZoneId: leg.originServiceZoneId,
+              destinationServiceZoneId: leg.destinationServiceZoneId,
+              serviceType: "PARCEL_DELIVERY", isEnabled: true,
+              AND: [
+                { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+              ],
+            },
+            select: { id: true },
+          });
+          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+        }
         const activeZones = await db.findActiveServiceZones(tx, leg, now);
         const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
         if (activeZones.length !== requiredZoneCount) {
