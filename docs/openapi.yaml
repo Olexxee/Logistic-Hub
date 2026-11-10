@@ -3944,8 +3944,8 @@ paths:
                         type: object
                         required: [status, packageCount, reason, assessedAt]
                         properties:
-                          status: { type: string, enum: [REQUIRES_MEASUREMENT, REQUIRES_OPERATIONAL_PRICING, NO_COVERAGE, PRICING_AMBIGUOUS] }
-                          routeMode: { type: string }
+                          status: { type: string, enum: [REQUIRES_MEASUREMENT, REQUIRES_OPERATIONAL_PRICING, NO_COVERAGE, PRICING_AMBIGUOUS, SERVICE_UNAVAILABLE] }
+                          routeMode: { type: [string, 'null'] }
                           packageCount: { type: integer, minimum: 1 }
                           reason: { type: string }
                           assessedAt: { type: string, format: date-time }
