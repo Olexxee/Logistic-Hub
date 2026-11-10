@@ -423,7 +423,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             data: {
               parcelBookingId: booking.id, actorUserId: userId,
               eventType: "PLATFORM_FIXED_PAYOUT_DRIVER_ACCEPTED",
-              fromStatus: "READY_FOR_ASSIGNMENT", toStatus: "ASSIGNED",
+              fromStatus: "AWAITING_PARTNER_ASSIGNMENT", toStatus: "DRIVER_ASSIGNED",
               metadata: {
                 deliveryLegId: leg.id, offerId, assignmentId: assignment.id, driverProfileId: profile.id,
                 vehicleId: vehicle.id, fixedPayoutMinor: payout.toString(), currency: offer.currency,
