@@ -98,7 +98,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             && leg.type === "LOCAL_PICKUP"
             && leg.metadata?.driverPayoutMinor != null
             && BigInt(leg.metadata.driverPayoutMinor) > 0n;
-          if (!fixedPayout || !leg.parcelBooking.integrationClientId
+          if (!fixedPayout
+            || leg.parcelBooking.pricingSnapshot?.driverPayoutMinor !== leg.metadata.driverPayoutMinor
+            || !leg.parcelBooking.integrationClientId
             || !leg.parcelBooking.integrationDispatchAuthorizedAt
             || leg.parcelBooking.paymentStatus !== "SUCCEEDED") {
             throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Admin dispatch requires a paid, released platform-priced local shipment with a positive fixed driver payout.");
