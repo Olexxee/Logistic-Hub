@@ -40,3 +40,24 @@ No availability or rates are seeded by this migration. Osun remains non-bookable
 ## Deployment
 
 Apply the migration through the reviewed deployment pipeline and regenerate Prisma Client. This change does not alter Render environment variables or production serviceability/pricing records.
+
+
+## Fixed-payout local driver execution
+
+Platform-operated `LOCAL_DIRECT` shipments now use the accepted tariff's immutable `driverPayoutMinor` as the fixed driver offer amount. Admin dispatch is available only after the integration client has confirmed payment, frozen the required packing evidence, and explicitly authorized dispatch. The admin dispatch endpoint is:
+
+- `POST /api/v1/admin/delivery-legs/:legId/request-matching`
+
+It is restricted to platform-priced `LOCAL_PICKUP` legs whose booking has an integration client, `paymentStatus=SUCCEEDED`, and `integrationDispatchAuthorizedAt`. It does not make partner-executed or ordinary customer bookings eligible for this fixed-payout flow.
+
+Eligible drivers see the fixed payout on their offer and accept it with a selected eligible vehicle:
+
+- `POST /api/v1/driver/delivery-leg-offers/:offerId/accept-fixed-payout`
+- Required body: `vehicleId`
+- Required header: `Idempotency-Key`
+
+The fixed payout is not negotiable, is not derived from the customer charge, and is not included in customer-facing quote/offer responses. The driver acceptance transaction rechecks driver KYC/capability/documents, vehicle eligibility, live availability/location, zone coverage, route availability, shipment payment/release state, and the offer's payout snapshot. It reserves the driver, withdraws competing offers, creates an `ACCEPTED` assignment with `agreedFareMinor` equal to the fixed payout, and advances the leg and booking to assigned states.
+
+Delivery verification uses the existing assignment completion path. On successful final delivery verification, the existing idempotent `DriverPayout` creation records the assignment's `agreedFareMinor` under `completion-<assignmentId>`. This creates a pending payout record; it does not itself initiate a bank transfer or mark the payout paid. Existing payout operations and reconciliation remain separate.
+
+A published route tariff and an authorized shipment still do not guarantee capacity. Matching fails closed when no eligible driver is available. Production route activation remains blocked until operational driver coverage, pickup capacity, and the payout operations workflow are validated.
