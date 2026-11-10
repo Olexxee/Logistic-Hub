@@ -10,3 +10,4 @@ build/
 npm-debug.log*
 prisma/generated/
 read.txt
+.env.staging.local
