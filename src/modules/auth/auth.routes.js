@@ -13,7 +13,11 @@ import { createAuthMiddleware } from "./auth.middleware.js";
 import { createAuthSessionsService } from "./auth-sessions.service.js";
 import { createWorkspaceResolver } from "./workspace-resolver.service.js";
 import { createPersistentRateLimit } from "../../shared/http/rate-limit.middleware.js";
-import { getRefreshCookieConfig } from "./auth-cookie.js";
+import {
+  clearRefreshCookie as clearRefreshCookieResponse,
+  getRefreshCookieConfig,
+  setRefreshCookie as setRefreshCookieResponse,
+} from "./auth-cookie.js";
 
 const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(160),
@@ -30,7 +34,8 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
 }).strict();
 const resetPasswordSchema = emailTokenSchema.extend({ password: z.string().min(10).max(128) }).strict();
-const { cookieName: REFRESH_COOKIE_NAME, cookieOptions: refreshCookieOptions } = getRefreshCookieConfig(env);
+const refreshCookieConfig = getRefreshCookieConfig(env);
+const REFRESH_COOKIE_NAME = refreshCookieConfig.cookieName;
 
 function readRefreshCookie(req) {
   const header = req.headers.cookie ?? "";
@@ -39,12 +44,11 @@ function readRefreshCookie(req) {
 }
 
 function setRefreshCookie(res, token) {
-  res.cookie(REFRESH_COOKIE_NAME, token, refreshCookieOptions());
+  setRefreshCookieResponse(res, token, refreshCookieConfig);
 }
 
 function clearRefreshCookie(res) {
-  const { maxAge: _maxAge, ...options } = refreshCookieOptions();
-  res.clearCookie(REFRESH_COOKIE_NAME, options);
+  clearRefreshCookieResponse(res, refreshCookieConfig);
 }
 
 function requireTrustedBrowserRequest(req, res, next) {
