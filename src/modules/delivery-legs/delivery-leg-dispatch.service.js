@@ -310,6 +310,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             where: { id: leg.id }, include: { parcelBooking: true },
           });
           if (!lockedLeg || lockedLeg.status !== "READY_FOR_ASSIGNMENT"
+            || lockedLeg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
+            || lockedLeg.metadata?.driverPayoutMinor !== payout.toString()
             || !lockedLeg.parcelBooking.integrationDispatchAuthorizedAt
             || lockedLeg.parcelBooking.paymentStatus !== "SUCCEEDED"
             || lockedLeg.parcelBooking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
