@@ -13,6 +13,7 @@ import { createAuthMiddleware } from "./auth.middleware.js";
 import { createAuthSessionsService } from "./auth-sessions.service.js";
 import { createWorkspaceResolver } from "./workspace-resolver.service.js";
 import { createPersistentRateLimit } from "../../shared/http/rate-limit.middleware.js";
+import { getRefreshCookieConfig } from "./auth-cookie.js";
 
 const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(160),
@@ -29,18 +30,7 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
 }).strict();
 const resetPasswordSchema = emailTokenSchema.extend({ password: z.string().min(10).max(128) }).strict();
-const REFRESH_COOKIE_NAME = env.NODE_ENV === "production" ? "__Host-lh_refresh" : "lh_refresh";
-const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-function refreshCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: COOKIE_MAX_AGE_MS,
-  };
-}
+const { cookieName: REFRESH_COOKIE_NAME, cookieOptions: refreshCookieOptions } = getRefreshCookieConfig(env);
 
 function readRefreshCookie(req) {
   const header = req.headers.cookie ?? "";
