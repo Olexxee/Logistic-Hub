@@ -1,8 +1,11 @@
 # GEO-06 — Staging Admin bootstrap
 
-**Status:** Implementation proposal in review  
+**Status:** Merged and deployed to the isolated staging backend  
 **Scope:** One-time first Admin provisioning in the isolated Logistic Hub staging database  
 **Production impact:** None intended; production must remain untouched.
+
+**Merged commit:** `60984b5556e969e495d1fdf7c491cf8d2343f7f0`  
+**Staging Render deployment:** `dep-dbph1ap5efls73b8rbf0` — LIVE on 10 November 2026.
 
 ## Why a bootstrap script
 

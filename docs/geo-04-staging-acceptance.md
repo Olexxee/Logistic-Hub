@@ -82,7 +82,7 @@ An independent read-only SQL query against the staging Prisma database confirmed
 | Secure staging cookie deployed | PENDING | Staging deploy for merge commit was still building |
 | Nigeria geography seed | PASS | Existing guarded script applied to dedicated staging DB; 37 states and 774 LGAs created |
 | Geography post-seed verification | PASS | Read-only SQL: Nigeria 1 active; states 37/37 active; LGAs 774; users 0; service zones 0 |
-| Staging Admin bootstrap path | IMPLEMENTED IN GEO-06 PR | Guarded one-time CLI; dry-run by default; pending email verification; transactional audit event |
+| Staging Admin bootstrap path | PASS — MERGED AND DEPLOYED | GEO-06 commit `60984b5556e969e495d1fdf7c491cf8d2343f7f0`; Render staging deploy `dep-dbph1ap5efls73b8rbf0` live; dry-run-first CLI with transactional audit |
 | Staging Admin account | NOT YET PROVISIONED | Run GEO-06 bootstrap after its PR is merged |
 | Staging frontend deployment | NOT PROVISIONED | Separate frontend origin required |
 | Browser CORS/auth acceptance | BLOCKED | `CORS_ORIGINS` empty; no staging frontend origin |
@@ -90,6 +90,8 @@ An independent read-only SQL query against the staging Prisma database confirmed
 | GEO-03/GEO-04 readiness acceptance | NOT RUN | Requires seeded geography, Admin access, and staging frontend/auth |
 
 ## 6. Admin bootstrap and browser access
+
+GEO-06 is merged and deployed to the staging backend. The staging Admin account has **not** yet been provisioned; the local guarded CLI must still be run against the dedicated staging database. Its account remains pending until the existing email-verification endpoint consumes the one-time token.
 
 Public registration creates customer accounts; it is not an acceptable path to create a privileged staging Admin. No Admin account has been created. The next implementation must use a narrowly scoped staging-only bootstrap mechanism, must not be reachable in production, and must not embed credentials in source control.
 
