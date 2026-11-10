@@ -16,7 +16,8 @@
     "api:validate": "node scripts/validate-openapi.js && node scripts/validate-route-contract.js",
     "db:validate-foundation-constraints": "node scripts/validate-foundation-constraints.js",
     "postinstall": "npm run db:generate",
-    "db:seed:nigeria": "node scripts/seed-nigeria-geography.js"
+    "db:seed:nigeria": "node scripts/seed-nigeria-geography.js",
+    "db:bootstrap:staging-admin": "node scripts/bootstrap-staging-admin.js"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
