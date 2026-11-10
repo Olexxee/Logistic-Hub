@@ -353,6 +353,7 @@ test("admin dispatch creates fixed-payout offers only for paid and released plat
       integrationDispatchAuthorizedAt: now,
       paymentStatus: "SUCCEEDED",
       pricingSnapshot: { driverPayoutMinor: "3500" },
+      pricingSnapshot: { driverPayoutMinor: "3500" },
     },
     metadata: { pricingSource: "PLATFORM_ROUTE_RATE", driverPayoutMinor: "3500" },
   };
@@ -390,6 +391,7 @@ test("driver fixed-payout acceptance creates an accepted assignment at the immut
       integrationClientId: "integration_client_1",
       integrationDispatchAuthorizedAt: now,
       paymentStatus: "SUCCEEDED",
+      pricingSnapshot: { driverPayoutMinor: "3500" },
       status: "AWAITING_PARTNER_ASSIGNMENT",
     },
   };
