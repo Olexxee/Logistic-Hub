@@ -99,7 +99,7 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
         where: {
           driverProfileId: profileId,
           status: "OFFERED",
-          proposedFareMinor: null,
+          OR: [{ proposedFareMinor: null }, { fixedPayoutMinor: { not: null } }],
           expiresAt: { gt: now },
           deliveryLeg: { is: { status: "READY_FOR_ASSIGNMENT" } },
         },
