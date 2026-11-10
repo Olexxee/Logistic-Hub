@@ -40,6 +40,7 @@ function serializeDriverOffer(offer) {
   return {
     id: offer.id,
     currency: offer.currency,
+    ...(offer.fixedPayoutMinor != null ? { fixedPayoutMinor: offer.fixedPayoutMinor.toString() } : {}),
     expiresAt: offer.expiresAt,
     createdAt: offer.createdAt,
     deliveryLeg: {
@@ -177,6 +178,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           }
           if (profile.verificationStatus !== "VERIFIED" || profile.suspendedAt || profile.kycTier !== "FULL" || !profile.isOnline || !profile.isAvailable) {
             throw new ForbiddenError("A verified, online and available driver profile is required.");
+          }
+          if (offer.fixedPayoutMinor != null) {
+            throw conflict("FIXED_PAYOUT_ACCEPTANCE_REQUIRED", "This offer has a platform-fixed payout and cannot receive a fare proposal.");
           }
           if (offer.status !== "OFFERED" || offer.proposedFareMinor != null
             || offer.expiresAt <= now || offer.deliveryLeg.status !== "READY_FOR_ASSIGNMENT") {
