@@ -99,7 +99,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
           throw conflict("BOOKING_STATE_CONFLICT", "Only a draft booking can request driver offers.");
         }
 
-        if (!booking.pricingRuleId) {
+        if (booking.pricingSnapshot?.status === "AWAITING_ROUTE_QUOTE") {
           throw conflict("ROUTE_QUOTE_REQUIRED", "This booking must receive and accept a route-aware customer quote before legacy driver matching can begin.");
         }
 
