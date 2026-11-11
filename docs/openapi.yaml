@@ -3827,6 +3827,139 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/parcel-bookings/{bookingId}/operational-plan:
+    get:
+      tags: [Admin]
+      operationId: getAdminOperationalTripPlan
+      summary: Resolve the operational route plan for a draft parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Backend-resolved route topology and booking context.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [booking, route, packageCount]
+                    properties:
+                      booking: { type: object }
+                      route: { type: object }
+                      packageCount: { type: integer, minimum: 0 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Booking is not a draft or route zones/hubs are unavailable. }
+  /admin/parcel-bookings/{bookingId}/operational-quotes:
+    get:
+      tags: [Admin]
+      operationId: listAdminOperationalTripQuotes
+      summary: List operational quote versions for a parcel booking
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Operational quote history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/ShipmentQuoteResource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Admin]
+      operationId: createAdminOperationalTripQuote
+      summary: Issue a booking-specific operational trip quote
+      description: Requires a customer charge and execution party for every backend-resolved leg. Driver payout and partner execution cost remain internal. The current payment model requires exactly one fixed-payout LOCAL_PICKUP driver leg.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason, legs]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+                expiresInMinutes: { type: integer, minimum: 5, maximum: 1440, default: 60 }
+                legs:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [sequence, type, executionType, customerChargeMinor]
+                    properties:
+                      sequence: { type: integer, minimum: 1, maximum: 10 }
+                      type: { type: string, enum: [LOCAL_PICKUP, INTERSTATE_TRANSPORT, FINAL_MILE, HUB_TRANSFER, DIRECT] }
+                      executionType: { type: string, enum: [DRIVER, PARTNER] }
+                      customerChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
+                      driverPayoutMinor: { $ref: '#/components/schemas/MinorAmount' }
+                      partnerId: { type: string, minLength: 1, maxLength: 128 }
+                      agreementId: { type: string, minLength: 1, maxLength: 128 }
+                      executionCostMinor: { $ref: '#/components/schemas/MinorAmount' }
+                collectionChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                hubHandlingChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                destinationDeliveryChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                platformChargeMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+                otherChargesMinor: { $ref: '#/components/schemas/MinorAmount', default: '0' }
+      responses:
+        '201':
+          description: Versioned operational quote issued; previous offered versions superseded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [quote]
+                    properties:
+                      quote: { $ref: '#/components/schemas/ShipmentQuoteResource' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Route, hub or selected partner is no longer eligible. }
   /admin/parcel-bookings/{bookingId}/quotes:
     post:
       tags: [Admin]
