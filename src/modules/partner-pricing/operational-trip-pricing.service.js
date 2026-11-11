@@ -22,6 +22,21 @@ function routeSnapshot(route) {
     })),
   };
 }
+function packageSnapshot(booking) {
+  return (booking.parcelPackages ?? []).map(pkg => ({
+    id: pkg.id, packageCategory: pkg.packageCategory, weightGrams: pkg.weightGrams,
+    lengthMm: pkg.lengthMm, widthMm: pkg.widthMm, heightMm: pkg.heightMm,
+  }));
+}
+function samePackages(left, right) {
+  return Array.isArray(left) && left.length === right.length
+    && left.every((pkg, index) => pkg.id === right[index].id
+      && pkg.packageCategory === right[index].packageCategory
+      && pkg.weightGrams === right[index].weightGrams
+      && pkg.lengthMm === right[index].lengthMm
+      && pkg.widthMm === right[index].widthMm
+      && pkg.heightMm === right[index].heightMm);
+}
 function sameRoute(a, b) {
   return a.routeMode === b.routeMode && a.originHub?.id === b.originHub?.id
     && a.destinationHub?.id === b.destinationHub?.id && a.legs.length === b.legs.length
@@ -81,7 +96,8 @@ export async function validateOperationalTripQuote(tx, booking, quote, now = new
   if (!await activeZones(tx, booking, now)) return false;
   const route = await resolve(tx, booking);
   const current = routeSnapshot(route);
-  if (!sameRoute(snapshot.routeSnapshot, current) || snapshot.operationalLegs.length !== current.legs.length) return false;
+  if (!sameRoute(snapshot.routeSnapshot, current) || snapshot.operationalLegs.length !== current.legs.length
+    || !samePackages(snapshot.packageSnapshot, packageSnapshot(booking))) return false;
   if (!snapshot.operationalLegs.every((leg, i) => leg.sequence === current.legs[i].sequence && leg.type === current.legs[i].type
     && (leg.executionType !== "PLATFORM_MANAGED_DRIVER" || (leg.payeeName && leg.driverPayoutMinor && BigInt(leg.driverPayoutMinor) > 0n)))) return false;
   if (!await partnersValid(tx, snapshot.operationalLegs, quote.currency, now)) return false;
@@ -153,7 +169,7 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
             platformChargeMinor: platform.toString(), otherChargesMinor: other.toString(),
             legs: legs.map(leg => ({ sequence: leg.sequence, type: leg.type, customerChargeMinor: leg.customerChargeMinor })),
           },
-          inputSnapshot: { source: "ADMIN_OPERATIONAL_TRIP", routeSnapshot: snapshot, operationalLegs: legs, reason: input.reason },
+          inputSnapshot: { source: "ADMIN_OPERATIONAL_TRIP", routeSnapshot: snapshot, packageSnapshot: packageSnapshot(booking), operationalLegs: legs, reason: input.reason },
           expiresAt,
         } });
         await tx.bookingEvent.create({ data: { parcelBookingId: booking.id, actorUserId,
