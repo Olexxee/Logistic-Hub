@@ -30,6 +30,9 @@ export function createPaymentsService({ prismaClient, repository = createPayment
       const settlement = assignment?.driverProfile?.settlementAccounts?.[0];
       if (assignment && (!settlement?.externalAccountRef || settlement.status !== "ACTIVE")) throw new ConflictError("The assigned driver has no active Paystack settlement subaccount.", "DRIVER_SETTLEMENT_NOT_READY");
       const platformFeeMinor = amountMinor - driverAllocationMinor;
+      if (manualOperationalQuote && BigInt(booking.pricingSnapshot.internalExecutionCostMinor ?? "0") > amountMinor) {
+        throw new ConflictError("Operational execution costs exceed the accepted customer charge.", "OPERATIONAL_ALLOCATION_MISMATCH");
+      }
       const reference = ("lh_" + bookingType.toLowerCase() + "_" + booking.id + "_" + idempotencyKey).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 100);
       const attempt = await repository.createAttempt({
         ...(bookingType === "PARCEL" ? { parcelBookingId: booking.id } : { rideBookingId: booking.id }),
