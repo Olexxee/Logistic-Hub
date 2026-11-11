@@ -227,7 +227,14 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
       return legs.map(leg => ({
         ...serializeDeliveryLeg(leg),
         ...(user.role === "ADMIN" && leg.metadata?.pricingSource === "ADMIN_OPERATIONAL_TRIP"
-          ? { operationalExecutionType: leg.metadata.executionType }
+          ? {
+            operationalExecutionType: leg.metadata.executionType,
+            ...(leg.metadata.partnerId ? { operationalPartnerId: leg.metadata.partnerId } : {}),
+            partnerAssignment: leg.partnerAssignments?.[0] ? {
+              id: leg.partnerAssignments[0].id, status: leg.partnerAssignments[0].status,
+              partner: leg.partnerAssignments[0].partner,
+            } : null,
+          }
           : {}),
       }));
     },
