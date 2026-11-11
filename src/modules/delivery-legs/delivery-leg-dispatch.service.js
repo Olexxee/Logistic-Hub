@@ -110,9 +110,10 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const fixedPayout = leg.type === "LOCAL_PICKUP"
             && leg.metadata?.driverPayoutMinor != null
             && BigInt(leg.metadata.driverPayoutMinor) > 0n
-            && leg.parcelBooking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
-            && leg.parcelBooking.pricingSnapshot?.quoteId === leg.metadata.quoteId
-            && leg.parcelBooking.pricingSnapshot?.driverPayoutMinor === leg.metadata.driverPayoutMinor;
+            && leg.parcelBooking.pricingSnapshot?.driverPayoutMinor === leg.metadata.driverPayoutMinor
+            && (leg.parcelBooking.integrationClientId != null
+              || (leg.parcelBooking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
+                && leg.parcelBooking.pricingSnapshot?.quoteId === leg.metadata.quoteId));
           const customerDispatch = user.role !== "ADMIN"
             && leg.parcelBooking.senderId === user.id
             && leg.parcelBooking.integrationClientId == null
