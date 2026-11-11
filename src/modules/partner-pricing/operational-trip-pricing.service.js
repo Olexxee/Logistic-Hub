@@ -90,6 +90,20 @@ async function serializable(client, work) {
   }
 }
 
+function adminQuoteView(quote) {
+  return {
+    ...customerQuoteView(quote),
+    reason: quote.inputSnapshot?.reason ?? null,
+    operationalPlan: (quote.inputSnapshot?.operationalLegs ?? []).map(leg => ({
+      sequence: leg.sequence, type: leg.type, executionType: leg.executionType,
+      customerChargeMinor: leg.customerChargeMinor,
+      ...(leg.executionType === "PLATFORM_MANAGED_DRIVER" ? {
+        payeeName: leg.payeeName, payeePhone: leg.payeePhone ?? null, driverPayoutMinor: leg.driverPayoutMinor,
+      } : { partnerId: leg.partnerId, agreementId: leg.agreementId, executionCostMinor: leg.executionCostMinor }),
+    })),
+  };
+}
+
 export async function validateOperationalTripQuote(tx, booking, quote, now = new Date()) {
   const snapshot = quote.inputSnapshot ?? {};
   if (snapshot.source !== "ADMIN_OPERATIONAL_TRIP" || !Array.isArray(snapshot.operationalLegs)) return false;
@@ -182,7 +196,7 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
             operationalLegs: legs.map(leg => ({ sequence: leg.sequence, type: leg.type, executionType: leg.executionType,
               ...(leg.partnerId ? { partnerId: leg.partnerId, agreementId: leg.agreementId, executionCostMinor: leg.executionCostMinor } : {}),
               ...(leg.driverPayoutMinor ? { driverPayoutMinor: leg.driverPayoutMinor, payeeName: leg.payeeName, payeePhone: leg.payeePhone ?? null } : {}) })) } });
-        return { quote: customerQuoteView(quote) };
+        return { quote: adminQuoteView(quote) };
       });
     },
     async listQuotes({ bookingId }) {
@@ -191,7 +205,7 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
       const quotes = await prismaClient.shipmentQuote.findMany({ where: {
         parcelBookingId: bookingId, inputSnapshot: { path: ["source"], equals: "ADMIN_OPERATIONAL_TRIP" },
       }, orderBy: { version: "desc" } });
-      return { items: quotes.map(customerQuoteView) };
+      return { items: quotes.map(adminQuoteView) };
     },
   };
 }
