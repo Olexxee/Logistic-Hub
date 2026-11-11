@@ -421,7 +421,7 @@ export function createPartnerPricingRouter({
           where: { parcelBookingId: booking.id, id: { not: quote.id }, status: "OFFERED" },
           data: { status: "SUPERSEDED" },
         });
-        const nextBookingStatus = isPlatformRouteQuote || isOperationalTripQuote ? "AWAITING_PARTNER_ASSIGNMENT" : "AWAITING_PAYMENT";
+        const nextBookingStatus = isPlatformRouteQuote ? "AWAITING_PARTNER_ASSIGNMENT" : "AWAITING_PAYMENT";
         const bookingUpdate = await tx.parcelBooking.updateMany({
           where: {
             id: booking.id,
@@ -438,7 +438,6 @@ export function createPartnerPricingRouter({
               quoteVersion: quote.version,
               currency: quote.currency,
               totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
-              ...((isPlatformRouteQuote || isOperationalTripQuote) && quote.inputSnapshot?.driverPayoutMinor != null ? { driverPayoutMinor: String(quote.inputSnapshot.driverPayoutMinor) } : {}),
               chargeBreakdown: quote.chargeBreakdown,
               acceptedAt: now.toISOString(),
             },
@@ -451,7 +450,7 @@ export function createPartnerPricingRouter({
           error.code = "BOOKING_NOT_QUOTABLE";
           throw error;
         }
-        const routePlan = await createMultiLegPlan({ tx, booking, quote, now });
+        const routePlan = await createMultiLegPlan({ tx, booking, quote, actorUserId: req.user.id, now });
         await tx.bookingEvent.create({
           data: {
             parcelBookingId: booking.id,
