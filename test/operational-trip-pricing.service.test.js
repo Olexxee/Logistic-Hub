@@ -65,6 +65,18 @@ test("supports partner-only interstate routes without inventing a driver reserva
   assert.equal(calls.created[0].inputSnapshot.operationalLegs[0].partnerId, "partner-1");
 });
 
+test("allows a platform-managed driver to execute an interstate leg without a registered driver or partner", async () => {
+  const booking = { ...localBooking, destinationStateId: "state-b" };
+  const { service, calls } = harness(booking);
+  const result = await service.issueQuote({
+    bookingId: booking.id, actorUserId: "admin-1",
+    input: { ...platformManagedInput, legs: [{ sequence: 1, type: "INTERSTATE_TRANSPORT",
+      executionType: "PLATFORM_MANAGED_DRIVER", customerChargeMinor: "50000",
+      driverPayoutMinor: "35000", payeeName: "Contract interstate driver" }] },
+  });
+  assert.equal(result.quote.totalCustomerChargeMinor, "50200");
+  assert.equal(calls.created[0].inputSnapshot.operationalLegs[0].executionType, "PLATFORM_MANAGED_DRIVER");
+});
 test("rejects an operational quote when internal execution costs exceed the customer total", async () => {
   const { service, calls } = harness();
   const result = await service.issueQuote({
