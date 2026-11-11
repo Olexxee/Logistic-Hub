@@ -120,9 +120,22 @@ export function createPaymentsRepository(prismaClient = prisma) {
      }
      const journalReference = "REFUND:" + providerReference;
      const posted = await tx.ledgerEntry.findFirst({ where: { journalReference }, select: { id: true } });
+     const manualOperational = refund.paymentAttempt.splitConfigurationSnapshot?.pricingSource === "ADMIN_OPERATIONAL_TRIP";
      const platformRefund = refund.amountMinor < (refund.paymentAttempt.platformAllocationMinor ?? 0n)
       ? refund.amountMinor : (refund.paymentAttempt.platformAllocationMinor ?? 0n);
-     if (!posted && platformRefund > 0n) {
+     if (!posted && manualOperational) {
+      const fundsCode = "OPERATIONAL_CUSTOMER_FUNDS_" + refund.currency;
+      const clearingCode = "PAYSTACK_CLEARING_" + refund.currency;
+      const accounts = await Promise.all([
+       tx.ledgerAccount.upsert({ where: { code: fundsCode }, create: { code: fundsCode, name: "Operational customer funds held for fulfilment", type: "LIABILITY", currency: refund.currency }, update: {} }),
+       tx.ledgerAccount.upsert({ where: { code: clearingCode }, create: { code: clearingCode, name: "Paystack platform clearing", type: "ASSET", currency: refund.currency }, update: {} }),
+      ]);
+      const common = { journalReference, currency: refund.currency, paymentAttemptId: refund.paymentAttemptId, parcelBookingId: refund.paymentAttempt.parcelBookingId, description: "Provider-confirmed refund of operational trip customer funds" };
+      await tx.ledgerEntry.createMany({ data: [
+       { ...common, accountId: accounts[0].id, side: "DEBIT", amountMinor: refund.amountMinor },
+       { ...common, accountId: accounts[1].id, side: "CREDIT", amountMinor: refund.amountMinor },
+      ] });
+     } else if (!posted && platformRefund > 0n) {
       const accounts = await Promise.all([
        tx.ledgerAccount.upsert({ where: { code: "PLATFORM_CONNECTION_REVENUE_NGN" }, create: { code: "PLATFORM_CONNECTION_REVENUE_NGN", name: "Platform connection fee revenue", type: "REVENUE", currency: refund.currency }, update: {} }),
        tx.ledgerAccount.upsert({ where: { code: "PAYSTACK_CLEARING_NGN" }, create: { code: "PAYSTACK_CLEARING_NGN", name: "Paystack platform clearing", type: "ASSET", currency: refund.currency }, update: {} }),
