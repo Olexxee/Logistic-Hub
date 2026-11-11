@@ -2,6 +2,7 @@ import test from "node:test";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { createDeliveryLegDispatchService } from "../src/modules/delivery-legs/delivery-leg-dispatch.service.js";
+import { createDeliveryLegDispatchRepository } from "../src/modules/delivery-legs/delivery-leg-dispatch.repository.js";
 
 const now = new Date("2026-10-30T12:00:00.000Z");
 const leg = {
@@ -650,4 +651,20 @@ test("customer fixed-payout offers serialize without a null fare-proposal crash"
   assert.equal(offers[0].proposedFareMinor, null);
   assert.equal("fixedPayoutMinor" in offers[0], false);
   assert.equal(offers[0].currency, "NGN");
+});
+
+
+test("customer offer repository includes fixed-payout offers without selecting payout for the customer", async () => {
+  let query;
+  const repository = createDeliveryLegDispatchRepository({
+    deliveryLegOffer: {
+      findMany: async args => { query = args; return []; },
+    },
+  });
+  await repository.findCustomerOffers("booking_1", "leg_1");
+  assert.deepEqual(query.where.OR, [
+    { proposedFareMinor: { not: null } },
+    { fixedPayoutMinor: { not: null } },
+  ]);
+  assert.equal("fixedPayoutMinor" in query.select || false, false);
 });
