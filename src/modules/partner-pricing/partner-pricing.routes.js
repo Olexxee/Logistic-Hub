@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { createMultiLegPlan, getExistingDeliveryRoutePlan } from "../delivery-legs/delivery-plan.service.js";
+import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
+import { createCustomerShipmentQuotesService, customerQuoteView } from "../parcels/customer-shipment-quotes.service.js";
+import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
@@ -22,6 +25,9 @@ const quoteInput = z.object({
   message: "Provide a contracted partner rate or a manual transport charge tied to an active partner agreement.",
 });
 const rejectionInput = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
+const customerQuoteInput = z.object({
+  expiresInMinutes: z.number().int().min(5).max(1440).default(15),
+}).strict();
 
 export function isPositiveMinorAmount(value) {
   return /^(?:[1-9][0-9]{0,14})$/.test(String(value));
@@ -72,10 +78,71 @@ function invalid(res, issues) {
     details: issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
   } });
 }
+async function partnerRouteQuoteStillValid(tx, booking, quote, packages, now) {
+  const snapshot = quote.inputSnapshot ?? {};
+  const rateSnapshots = snapshot.partnerRateSnapshots ?? [];
+  if (snapshot.source !== "PARTNER_RATE_CARD" || !rateSnapshots.length) return false;
+
+  const pricingRule = await tx.pricingRule.findUnique({ where: { id: snapshot.pricingRuleId } });
+  if (
+    !pricingRule
+    || !pricingRule.isActive
+    || pricingRule.version !== snapshot.pricingRuleVersion
+    || pricingRule.currency !== quote.currency
+    || pricingRule.fixedConnectionFeeMinor.toString() !== quote.platformChargeMinor.toString()
+    || pricingRule.effectiveFrom > now
+    || (pricingRule.effectiveUntil && pricingRule.effectiveUntil <= now)
+  ) return false;
+
+  const rates = await tx.partnerRate.findMany({
+    where: {
+      id: { in: rateSnapshots.map(item => item.rateId) },
+      isActive: true,
+      originServiceZoneId: booking.pickupServiceZoneId,
+      destinationServiceZoneId: booking.destinationServiceZoneId,
+      serviceType: "PARCEL_DELIVERY",
+      rateCard: {
+        status: "ACTIVE",
+        currency: quote.currency,
+        version: snapshot.partnerRateCardVersion,
+        effectiveFrom: { lte: now },
+        AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
+        agreement: {
+          id: quote.partnerAgreementId,
+          status: "ACTIVE",
+          currency: quote.currency,
+          effectiveFrom: { lte: now },
+          AND: [{ OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] }],
+          partner: { status: "ACTIVE", verificationStatus: "VERIFIED" },
+        },
+      },
+    },
+    include: { rateCard: { include: { agreement: { include: { partner: { select: { id: true } } } } } } },
+  });
+  if (rates.length !== rateSnapshots.length) return false;
+
+  const byId = new Map(rates.map(rate => [rate.id, rate]));
+  let transportTotal = 0n;
+  for (const item of rateSnapshots) {
+    const pkg = packages.find(value => value.id === item.packageId);
+    const rate = byId.get(item.rateId);
+    if (
+      !pkg
+      || !rate
+      || rate.parcelCategory !== pkg.packageCategory
+      || !rateFitsPackage(rate, pkg)
+      || rate.transportChargeMinor.toString() !== item.transportChargeMinor
+      || rate.rateCard.agreementId !== quote.partnerAgreementId
+    ) return false;
+    transportTotal += rate.transportChargeMinor;
+  }
+  return transportTotal.toString() === quote.transportChargeMinor.toString();
+}
+
 function quoteView(q) {
   return {
     id: q.id, parcelBookingId: q.parcelBookingId, version: q.version, status: q.status,
-    partnerAgreementId: q.partnerAgreementId, partnerRateId: q.partnerRateId, currency: q.currency,
+    currency: q.currency,
     transportChargeMinor: q.transportChargeMinor.toString(),
     collectionChargeMinor: q.collectionChargeMinor.toString(),
     hubHandlingChargeMinor: q.hubHandlingChargeMinor.toString(),
@@ -92,9 +159,11 @@ export function createPartnerPricingRouter({
   prismaClient = prisma,
   authMiddleware = requireAuth,
   adminMiddleware = requireRole("ADMIN"),
+  clock = () => new Date(),
 } = {}) {
   const router = Router();
   const admin = adminMiddleware;
+  const customerQuotes = createCustomerShipmentQuotesService({ prismaClient, clock });
   router.use("/admin", createPartnerPricingAdminRouter({ prismaClient, authMiddleware, adminMiddleware }));
 
   // Admins can issue a versioned quote. Manual transport charges require an explicit reason;
@@ -207,6 +276,22 @@ export function createPartnerPricingRouter({
     } catch (error) { return next(error); }
   });
 
+  router.post("/parcel-bookings/:bookingId/quotes", authMiddleware, asyncWrapper(async (req, res) => {
+    const parsedId = id.safeParse(req.params.bookingId);
+    if (!parsedId.success) return invalid(res, parsedId.error.issues);
+    const parsed = customerQuoteInput.safeParse(req.body ?? {});
+    if (!parsed.success) return invalid(res, parsed.error.issues);
+    const result = await customerQuotes.createQuote({
+      bookingId: parsedId.data,
+      userId: req.user.id,
+      expiresInMinutes: parsed.data.expiresInMinutes,
+    });
+    if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
+    if (result.forbidden) return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot request a quote for this booking." } });
+    if (result.conflict) return res.status(409).json({ success: false, error: result.conflict });
+    return res.status(result.quote ? 201 : 200).json({ success: true, data: result });
+  }));
+
   router.get("/parcel-bookings/:bookingId/quotes", authMiddleware, async (req, res, next) => {
     const parsedId = id.safeParse(req.params.bookingId);
     if (!parsedId.success) return invalid(res, parsedId.error.issues);
@@ -219,7 +304,7 @@ export function createPartnerPricingRouter({
       const quotes = await prismaClient.shipmentQuote.findMany({
         where: { parcelBookingId: booking.id }, orderBy: { version: "desc" },
       });
-      return res.status(200).json({ success: true, data: { items: quotes.map(quoteView) } });
+      return res.status(200).json({ success: true, data: { items: quotes.map(customerQuoteView) } });
     } catch (error) { return next(error); }
   });
 
@@ -229,7 +314,10 @@ export function createPartnerPricingRouter({
     if (!bookingId.success || !quoteId.success) return invalid(res, [...(bookingId.success ? [] : bookingId.error.issues), ...(quoteId.success ? [] : quoteId.error.issues)]);
     try {
       const result = await prismaClient.$transaction(async (tx) => {
-        const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId.data } });
+        const booking = await tx.parcelBooking.findUnique({
+          where: { id: bookingId.data },
+          include: { parcelPackages: { orderBy: { packageSequence: "asc" } } },
+        });
         if (!booking) return { notFound: true };
         if (booking.senderId !== req.user.id) return { forbidden: true };
         const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId.data, parcelBookingId: booking.id } });
@@ -247,6 +335,77 @@ export function createPartnerPricingRouter({
             await tx.shipmentQuote.updateMany({ where: { id: quote.id, status: "OFFERED" }, data: { status: "EXPIRED" } });
           }
           return { conflict: true };
+        }
+        const isPlatformRouteQuote = quote.inputSnapshot?.source === "PLATFORM_ROUTE_RATE";
+        const isPartnerRouteQuote = quote.inputSnapshot?.source === "PARTNER_RATE_CARD";
+        if (isPlatformRouteQuote || isPartnerRouteQuote) {
+          const requiredZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
+          const activeZones = await tx.serviceZone.findMany({
+            where: {
+              id: { in: requiredZoneIds },
+              isActive: true,
+              state: { isActive: true, country: { isActive: true } },
+              availability: {
+                some: {
+                  serviceType: "PARCEL_DELIVERY",
+                  isEnabled: true,
+                  AND: [
+                    { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                    { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+                  ],
+                },
+              },
+            },
+            select: { id: true },
+          });
+          if (activeZones.length !== requiredZoneIds.length) return { conflict: true, stalePricing: true };
+        }
+        if (isPartnerRouteQuote) {
+          const packages = (booking.parcelPackages ?? []).map(pkg => ({
+            id: pkg.id,
+            packageCategory: pkg.packageCategory,
+            weightGrams: pkg.weightGrams,
+            lengthMm: pkg.lengthMm,
+            widthMm: pkg.widthMm,
+            heightMm: pkg.heightMm,
+          }));
+          if (!await partnerRouteQuoteStillValid(tx, booking, quote, packages, now)) {
+            return { conflict: true, stalePricing: true };
+          }
+        }
+        if (isPlatformRouteQuote) {
+          const packages = (booking.parcelPackages ?? []).map(pkg => ({
+            id: pkg.id,
+            externalPackageRef: pkg.externalPackageRef,
+            packageCategory: pkg.packageCategory,
+            weightGrams: pkg.weightGrams,
+            lengthMm: pkg.lengthMm,
+            widthMm: pkg.widthMm,
+            heightMm: pkg.heightMm,
+          }));
+          const current = await assessPlatformRouteTariffs({
+            tx,
+            originServiceZoneId: booking.pickupServiceZoneId,
+            destinationServiceZoneId: booking.destinationServiceZoneId,
+            packages,
+            currency: quote.currency,
+            now,
+            routeSnapshot: quote.inputSnapshot.routeSnapshot,
+            expiresAt: quote.expiresAt,
+          });
+          const currentOption = current.status === "QUOTED" ? current.options[0] : null;
+          const originalRates = quote.inputSnapshot.packageRateSnapshot ?? [];
+          const currentRates = currentOption?.rateSnapshot ?? [];
+          const rateKey = rates => rates.map(rate => `${rate.packageRef}:${rate.rateId}:${rate.rateVersion}`).sort().join("|");
+          if (
+            !currentOption
+            || currentOption.customerCharge.toString() !== quote.totalCustomerChargeMinor.toString()
+            || currentOption.platformCharge.toString() !== quote.platformChargeMinor.toString()
+            || currentOption.driverPayout.toString() !== String(quote.inputSnapshot.driverPayoutMinor)
+            || rateKey(currentRates) !== rateKey(originalRates)
+          ) {
+            return { conflict: true, stalePricing: true };
+          }
         }
         const updated = await tx.shipmentQuote.updateMany({
           where: { id: quote.id, status: "OFFERED", expiresAt: { gt: now } },
@@ -275,7 +434,7 @@ export function createPartnerPricingRouter({
               chargeBreakdown: quote.chargeBreakdown,
               acceptedAt: now.toISOString(),
             },
-            status: "AWAITING_PAYMENT",
+            status: isPlatformRouteQuote ? "AWAITING_PARTNER_ASSIGNMENT" : "AWAITING_PAYMENT",
           },
         });
         if (bookingUpdate.count !== 1) {
@@ -291,7 +450,7 @@ export function createPartnerPricingRouter({
             actorUserId: req.user.id,
             eventType: "SHIPMENT_QUOTE_ACCEPTED",
             fromStatus: booking.status,
-            toStatus: "AWAITING_PAYMENT",
+            toStatus: isPlatformRouteQuote ? "AWAITING_PARTNER_ASSIGNMENT" : "AWAITING_PAYMENT",
             metadata: {
               quoteId: quote.id,
               quoteVersion: quote.version,
@@ -312,9 +471,12 @@ export function createPartnerPricingRouter({
       if (result.notFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Parcel booking not found." } });
       if (result.quoteNotFound) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Quote not found for this booking." } });
       if (result.forbidden) return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "You cannot accept this quote." } });
-      if (result.conflict) return res.status(409).json({ success: false, error: { code: "QUOTE_NOT_ACCEPTABLE", message: "This quote is no longer available or has expired." } });
+      if (result.conflict) return res.status(409).json({ success: false, error: {
+        code: result.stalePricing ? "QUOTE_PRICING_CHANGED" : "QUOTE_NOT_ACCEPTABLE",
+        message: result.stalePricing ? "Route availability or tariff terms changed after this quote was issued. Request a fresh quote." : "This quote is no longer available or has expired.",
+      } });
       return res.status(200).json({ success: true, data: {
-        quote: quoteView(result.quote),
+        quote: customerQuoteView(result.quote),
         routePlan: result.routePlan ?? null,
         replay: result.replay === true,
       } });

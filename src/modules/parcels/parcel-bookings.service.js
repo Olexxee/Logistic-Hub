@@ -127,7 +127,8 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
       const pricingRules = await db.findApplicablePricingRules(pickupServiceZoneId, now);
       const pricingRule = pricingRules.find((rule) => rule.serviceZoneId === pickupServiceZoneId)
         ?? pricingRules.find((rule) => rule.serviceZoneId == null);
-      if (!pricingRule) throw new ConflictError("Parcel pricing is not configured for the pickup zone.", "PRICING_UNAVAILABLE");
+      // Draft creation records shipment facts. Route-aware pricing is assessed
+      // separately; the legacy zone rule is optional and is not a customer tariff.
 
       const packages = (input.packages ?? [{
         packageCategory: input.parcelCategory,
@@ -159,7 +160,7 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         destinationServiceZoneId,
         status: "DRAFT",
         paymentStatus: "INITIALIZED",
-        currency: pricingRule.currency,
+        currency: pricingRule?.currency ?? "NGN",
         pickupAddress: input.pickupAddress,
         pickupLatitude: input.pickup.latitude,
         pickupLongitude: input.pickup.longitude,
@@ -175,24 +176,28 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         declaredValueMinor: input.declaredValueMinor == null ? undefined : BigInt(input.declaredValueMinor),
         handlingInstructions: input.handlingInstructions,
         driverFareMinor: null,
-        connectionFeeMinor: pricingRule.fixedConnectionFeeMinor,
+        connectionFeeMinor: pricingRule?.fixedConnectionFeeMinor ?? 0n,
         otherChargesMinor: 0n,
         customerPayableMinor: null,
-        pricingRuleId: pricingRule.id,
-        pricingSnapshot: {
+        pricingRuleId: pricingRule?.id ?? null,
+        pricingSnapshot: pricingRule ? {
           pricingRuleId: pricingRule.id,
           version: pricingRule.version,
           serviceType: "PARCEL_DELIVERY",
           currency: pricingRule.currency,
           fixedConnectionFeeMinor: pricingRule.fixedConnectionFeeMinor.toString(),
           minimumDriverFareMinor: pricingRule.minimumDriverFareMinor.toString(),
-          calculation: "The driver fare is proposed separately and must be accepted by the sender before payment.",
+          calculation: "Legacy negotiated-fare pricing snapshot. New route quotes are assessed separately.",
+        } : {
+          status: "AWAITING_ROUTE_QUOTE",
+          source: "NO_LEGACY_ZONE_RULE",
+          currency: "NGN",
         },
       };
       try {
         const booking = await db.createWithEvent(bookingData, {
           actorUserId: senderId,
-          metadata: { publicReference: bookingData.publicReference, pricingRuleId: pricingRule.id, packageCount: packages.length },
+          metadata: { publicReference: bookingData.publicReference, pricingRuleId: pricingRule?.id ?? null, packageCount: packages.length },
           packages,
         });
         return { booking: serializeBooking(booking), replay: false };

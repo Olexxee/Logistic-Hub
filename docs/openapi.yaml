@@ -3880,6 +3880,81 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Booking is terminal or selected partner rate is not currently eligible. }
   /parcel-bookings/{bookingId}/quotes:
+    post:
+      tags: [Parcel bookings]
+      operationId: assessCustomerShipmentQuote
+      summary: Assess and issue a route-aware quote for an owned parcel booking
+      description: Uses the same platform tariff assessor as integration quotes for LOCAL_DIRECT routes and active verified partner rate cards for END_TO_END routes. HUB_ASSISTED routes fail closed until every operational leg is priced. Missing package weights are never estimated. Driver payout and partner internals are not returned.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                expiresInMinutes: { type: integer, minimum: 5, maximum: 1440, default: 15 }
+      responses:
+        '201':
+          description: A customer quote was issued and prior offered quotes were superseded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [assessment, quote]
+                    properties:
+                      assessment:
+                        type: object
+                        required: [status, source, routeMode, packageCount, assessedAt]
+                        properties:
+                          status: { const: QUOTED }
+                          source: { type: string, enum: [PLATFORM_ROUTE_RATE, PARTNER_RATE_CARD] }
+                          routeMode: { type: string, enum: [LOCAL_DIRECT, END_TO_END] }
+                          packageCount: { type: integer, minimum: 1 }
+                          estimatedTransitMinutes: { type: [integer, 'null'] }
+                          assessedAt: { type: string, format: date-time }
+                      quote: { $ref: '#/components/schemas/ShipmentQuoteResource' }
+        '200':
+          description: Assessment completed but no quote can safely be issued yet, for example missing measurements or missing operational pricing.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [assessment, quote]
+                    properties:
+                      assessment:
+                        type: object
+                        required: [status, packageCount, reason, assessedAt]
+                        properties:
+                          status: { type: string, enum: [REQUIRES_MEASUREMENT, REQUIRES_OPERATIONAL_PRICING, NO_COVERAGE, PRICING_AMBIGUOUS, SERVICE_UNAVAILABLE] }
+                          routeMode: { type: [string, 'null'] }
+                          packageCount: { type: integer, minimum: 1 }
+                          reason: { type: string }
+                          assessedAt: { type: string, format: date-time }
+                      quote: { type: 'null' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Booking is no longer a draft or has changed during assessment. }
     get:
       tags: [Parcel bookings]
       operationId: listShipmentQuotes
@@ -3910,8 +3985,8 @@ paths:
     post:
       tags: [Parcel bookings]
       operationId: acceptShipmentQuote
-      summary: Accept one unexpired partner quote for a draft booking
-      description: Acceptance is transactional and naturally idempotent for the same accepted quote. It snapshots the total, supersedes competing partner quotes and moves the booking to awaiting payment. Partner quote acceptance is blocked after driver matching starts. Payment itself remains approval-gated.
+      summary: Accept one unexpired shipment quote for a draft booking
+      description: Acceptance revalidates platform tariff versions and route availability. Platform-priced local quotes move the booking to AWAITING_PARTNER_ASSIGNMENT and do not trigger payment; contracted partner quotes retain the partner workflow. Acceptance is transactional and naturally idempotent for the same accepted quote.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -3939,7 +4014,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Quote expired, already decided, or no longer available.
+          description: Quote expired, already decided, or no longer available; platform tariff or corridor terms may also have changed since issue.
           content:
             application/json:
               schema:
