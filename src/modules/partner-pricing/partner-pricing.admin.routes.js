@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth, requireRole } from "../auth/auth.middleware.js";
 import { createPartnerPricingAdminController } from "./partner-pricing.admin.controller.js";
+import { createOperationalTripPricingRouter } from "./operational-trip-pricing.routes.js";
 
 export function createPartnerPricingAdminRouter({
   prismaClient = prisma,
@@ -11,6 +12,7 @@ export function createPartnerPricingAdminRouter({
   const router = Router();
   const controller = createPartnerPricingAdminController({ prismaClient });
   router.use(authMiddleware, adminMiddleware);
+  router.use(createOperationalTripPricingRouter({ prismaClient }));
   router.get("/transport-partners", controller.listPartners);
   router.get("/transport-partners/:partnerId", controller.getPartner);
   router.patch("/transport-partners/:partnerId", controller.updatePartner);
