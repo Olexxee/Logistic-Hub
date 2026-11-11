@@ -3898,7 +3898,7 @@ paths:
       tags: [Admin]
       operationId: createAdminOperationalTripQuote
       summary: Issue a booking-specific operational trip quote
-      description: Requires a customer charge and execution party for every backend-resolved leg. Driver payout and partner execution cost remain internal. The current payment model requires exactly one fixed-payout LOCAL_PICKUP driver leg.
+      description: Requires a customer charge and execution party for every backend-resolved leg. Platform-managed drivers can be settled manually without registered driver accounts. Driver payout and partner execution cost remain internal.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -3929,9 +3929,11 @@ paths:
                     properties:
                       sequence: { type: integer, minimum: 1, maximum: 10 }
                       type: { type: string, enum: [LOCAL_PICKUP, INTERSTATE_TRANSPORT, FINAL_MILE, HUB_TRANSFER, DIRECT] }
-                      executionType: { type: string, enum: [DRIVER, PARTNER] }
+                      executionType: { type: string, enum: [PLATFORM_MANAGED_DRIVER, PARTNER] }
                       customerChargeMinor: { $ref: '#/components/schemas/MinorAmount' }
                       driverPayoutMinor: { $ref: '#/components/schemas/MinorAmount' }
+                      payeeName: { type: string, minLength: 2, maxLength: 120 }
+                      payeePhone: { type: string, minLength: 7, maxLength: 24 }
                       partnerId: { type: string, minLength: 1, maxLength: 128 }
                       agreementId: { type: string, minLength: 1, maxLength: 128 }
                       executionCostMinor: { $ref: '#/components/schemas/MinorAmount' }
@@ -4578,6 +4580,87 @@ paths:
         '403': { description: Driver role and eligibility required. }
         '404': { description: Delivery-leg offer not found. }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/delivery-legs/{legId}/platform-managed-status:
+    patch:
+      tags: [Admin]
+      operationId: updatePlatformManagedDeliveryLegStatus
+      summary: Record progress for a platform-managed driver leg
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: legId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [IN_TRANSIT, COMPLETED, FAILED] }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Platform-managed leg status updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Payment is not confirmed or the leg transition is invalid. }
+  /admin/delivery-legs/{legId}/manual-settlement:
+    get:
+      tags: [Admin]
+      operationId: getManualOperationalDriverSettlement
+      summary: Retrieve a platform-managed driver's internal settlement record
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: legId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Internal manual settlement details. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/delivery-legs/{legId}/manual-settlement/settle:
+    post:
+      tags: [Admin]
+      operationId: recordManualOperationalDriverSettlement
+      summary: Record a manual driver payout after leg completion
+      description: This endpoint records an external transfer; it does not initiate a bank payment.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: legId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [paymentReference, reason]
+              properties:
+                paymentReference: { type: string, minLength: 5, maxLength: 128 }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: Manual driver settlement recorded as paid. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Leg is not completed, funds are insufficient, or settlement was already recorded. }
   /admin/delivery-legs/{legId}/partner-assignment:
     post:
       tags: [Partner execution, Admin]
