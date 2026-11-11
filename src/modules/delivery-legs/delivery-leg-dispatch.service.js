@@ -145,7 +145,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               ],
             },
             select: { id: true },
-          });
+          }) : null;
           if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE" && !routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
         }
         const activeZones = await db.findActiveServiceZones(tx, leg, now);
