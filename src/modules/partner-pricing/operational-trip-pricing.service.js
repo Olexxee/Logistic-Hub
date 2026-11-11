@@ -84,7 +84,8 @@ export async function validateOperationalTripQuote(tx, booking, quote, now = new
   if (!sameRoute(snapshot.routeSnapshot, current) || snapshot.operationalLegs.length !== current.legs.length) return false;
   if (snapshot.operationalLegs.filter(leg => leg.executionType === "DRIVER").length !== 1
     || !snapshot.operationalLegs.every((leg, i) => leg.sequence === current.legs[i].sequence && leg.type === current.legs[i].type)) return false;
-  return partnersValid(tx, snapshot.operationalLegs, quote.currency, now) && hubsValid(tx, route);
+  if (!await partnersValid(tx, snapshot.operationalLegs, quote.currency, now)) return false;
+  return hubsValid(tx, route);
 }
 
 export function createOperationalTripPricingService({ prismaClient, clock = () => new Date() }) {
