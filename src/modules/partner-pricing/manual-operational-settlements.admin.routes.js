@@ -94,11 +94,8 @@ export function createManualOperationalSettlementRouter({ prismaClient }) {
         return { conflict: "SETTLEMENT_NOT_PAYABLE" };
       }
       const now = new Date();
-      const changed = await tx.manualOperationalSettlement.updateMany({
-        where: { id: item.id, status: "PENDING" },
-        data: { status: "PAID", paymentReference: parsed.data.paymentReference, settledAt: now, settledByUserId: req.user.id },
-      });
-      if (changed.count !== 1) return { conflict: "SETTLEMENT_STATE_CONFLICT" };
+      const priorReference = await tx.manualOperationalSettlement.findUnique({ where: { paymentReference: parsed.data.paymentReference } });
+      if (priorReference && priorReference.id !== item.id) return { conflict: "PAYMENT_REFERENCE_ALREADY_USED" };
       const fundsCode = "OPERATIONAL_CUSTOMER_FUNDS_" + item.currency;
       const clearingCode = "MANUAL_DRIVER_SETTLEMENT_CLEARING_" + item.currency;
       const [funds, clearing] = await Promise.all([
@@ -109,6 +106,11 @@ export function createManualOperationalSettlementRouter({ prismaClient }) {
       const credits = balances.find(row => row.side === "CREDIT")?._sum.amountMinor ?? 0n;
       const debits = balances.find(row => row.side === "DEBIT")?._sum.amountMinor ?? 0n;
       if (credits - debits < item.amountMinor) return { conflict: "OPERATIONAL_FUNDS_INSUFFICIENT" };
+      const changed = await tx.manualOperationalSettlement.updateMany({
+        where: { id: item.id, status: "PENDING" },
+        data: { status: "PAID", paymentReference: parsed.data.paymentReference, settledAt: now, settledByUserId: req.user.id },
+      });
+      if (changed.count !== 1) return { conflict: "SETTLEMENT_STATE_CONFLICT" };
       const journalReference = "MANUAL-OPERATIONAL-DRIVER-SETTLEMENT:" + item.id;
       const posted = await tx.ledgerEntry.findFirst({ where: { journalReference }, select: { id: true } });
       if (!posted) {
@@ -135,7 +137,7 @@ export function createManualOperationalSettlementRouter({ prismaClient }) {
     if (result.notFound) return res.status(404).json({ success: false, error: { code: "MANUAL_SETTLEMENT_NOT_FOUND", message: "No platform-managed driver settlement exists for this leg." } });
     if (result.conflict) return res.status(409).json({ success: false, error: {
       code: result.conflict,
-      message: result.conflict === "OPERATIONAL_FUNDS_INSUFFICIENT" ? "Collected operational customer funds do not cover this manual driver payout." : "This manual settlement cannot be completed in its current state.",
+      message: result.conflict === "OPERATIONAL_FUNDS_INSUFFICIENT" ? "Collected operational customer funds do not cover this manual driver payout." : result.conflict === "PAYMENT_REFERENCE_ALREADY_USED" ? "This payment reference has already been recorded for another settlement." : "This manual settlement cannot be completed in its current state.",
     } });
     return res.status(200).json({ success: true, data: { settlement: settlementResource(result.item), replay: result.replay } });
   }));
