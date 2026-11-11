@@ -93,3 +93,34 @@ The legacy negotiated-fare matching path is blocked for bookings without a legac
 ## Verification
 
 The CBP-03 test suite covers successful platform quote creation, customer payout confidentiality, missing measurements, unavailable directed corridors, ownership enforcement and booking-state enforcement. CI must additionally validate Prisma, OpenAPI, migration/schema drift, and the full backend test suite before merge.
+
+
+## CBP-06 — admin operational trip pricing
+
+An administrator can prepare a booking-specific route plan and issue a versioned operational quote without creating a reusable platform tariff or inventing a partner agreement.
+
+### Admin endpoints
+
+- `GET /api/v1/admin/parcel-bookings/:bookingId/operational-plan` returns the backend-resolved route topology.
+- `POST /api/v1/admin/parcel-bookings/:bookingId/operational-quotes` creates a customer-visible operational quote.
+- `GET /api/v1/admin/parcel-bookings/:bookingId/operational-quotes` lists operational quote versions.
+
+### Pricing and execution rules
+
+- Each route leg must have its own customer charge in integer minor units. The backend consolidates those charges plus collection, hub handling, destination delivery, platform and other charges into the customer total.
+- Every leg must declare its executor. Partner execution requires an active, verified partner and active agreement in the booking currency. Partner execution cost is internal and is not exposed in customer quote resources.
+- Driver execution currently supports exactly one `LOCAL_PICKUP` leg per booking with a positive fixed payout. The current payment reservation/split flow supports one driver allocation per booking; multi-driver trips are rejected.
+- A route without a `LOCAL_PICKUP` leg cannot yet use this quote path. The admin must use an existing eligible contracted quote path or wait for the multi-party payment phase; the system does not fabricate a driver assignment.
+- Hub-assisted plans require active, operator-verified hubs. Hub handling is a customer charge in this phase; no automatic hub-operator payout is created.
+- Quote snapshots pin route topology, execution party per leg, customer leg charges and internal partner/driver costs. Acceptance revalidates endpoint availability, route topology, hubs and partner agreements.
+- New quote versions supersede earlier offered versions. Admin actor and reason are recorded in operational audit events. Customer quote resources do not expose driver payout, partner execution cost, partner IDs or internal execution metadata.
+
+### Acceptance and dispatch
+
+- An operational quote moves the booking to `AWAITING_PARTNER_ASSIGNMENT`. The customer can request fixed-payout matching for the one local pickup leg. Driver acceptance moves the booking to `AWAITING_PAYMENT`.
+- After successful payment, admins assign each partner-executed leg using the existing partner assignment endpoint. The selected partner and agreement must match the accepted operational quote.
+- No production route, tariff, partner agreement, hub, driver, payment or settlement configuration is created or activated by this feature.
+
+### Remaining boundary
+
+The admin operational quote API is implemented in the backend. The admin booking workspace still needs its operational pricing interface wired to these endpoints. Multi-driver payment allocation and automatic hub-operator settlement are separate follow-up work.
