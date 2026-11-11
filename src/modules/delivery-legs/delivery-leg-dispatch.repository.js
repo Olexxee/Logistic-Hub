@@ -146,7 +146,10 @@ export function createDeliveryLegDispatchRepository(prismaClient) {
           deliveryLegId: legId,
           deliveryLeg: { is: { parcelBookingId: bookingId } },
           status: { in: ["OFFERED", "ACCEPTED"] },
-          proposedFareMinor: { not: null },
+          OR: [
+            { proposedFareMinor: { not: null } },
+            { fixedPayoutMinor: { not: null } },
+          ],
         },
         include: {
           driverProfile: {
