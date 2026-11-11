@@ -42,6 +42,7 @@ export function createPaymentsService({ prismaClient, repository = createPayment
           platformFeeModel: manualOperationalQuote ? "OPERATIONAL_CUSTOMER_FUNDS" : isPlatformRouteBooking ? "PLATFORM_RETAINED_REMAINDER" : "FIXED_CONNECTION_FEE",
           pricingSource: manualOperationalQuote ? "ADMIN_OPERATIONAL_TRIP" : isPlatformRouteBooking ? "PLATFORM_ROUTE_RATE" : "LEGACY_OR_RIDE_PRICING",
           driverPayoutMinor: driverAllocationMinor.toString(),
+          ...(manualOperationalQuote ? { internalExecutionCostMinor: String(booking.pricingSnapshot.internalExecutionCostMinor ?? "0"), platformRevenueMinor: (amountMinor - BigInt(booking.pricingSnapshot.internalExecutionCostMinor ?? "0")).toString() } : {}),
           customerChargeMinor: amountMinor.toString(),
         },
       });
