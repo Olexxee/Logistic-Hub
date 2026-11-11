@@ -189,13 +189,19 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
         await tx.bookingEvent.create({ data: { parcelBookingId: booking.id, actorUserId,
           eventType: "ADMIN_OPERATIONAL_TRIP_QUOTE_ISSUED", fromStatus: "DRAFT", toStatus: "DRAFT",
           metadata: { quoteId: quote.id, quoteVersion: quote.version, totalCustomerChargeMinor: total.toString(), currency: quote.currency } } });
-        await tx.operationalAuditEvent.create({ data: { actorUserId, entityType: "SHIPMENT_QUOTE", entityId: quote.id,
+        await tx.operationalAuditEvent.create({ data: {
+          actorUserId, entityType: "SHIPMENT_QUOTE", entityId: quote.id,
           action: "ADMIN_OPERATIONAL_TRIP_QUOTE_ISSUED", reason: input.reason,
-          after: { parcelBookingId: booking.id, quoteVersion: quote.version, source: "ADMIN_OPERATIONAL_TRIP",
+          after: {
+            parcelBookingId: booking.id, quoteVersion: quote.version, source: "ADMIN_OPERATIONAL_TRIP",
             totalCustomerChargeMinor: total.toString(), currency: quote.currency,
-            operationalLegs: legs.map(leg => ({ sequence: leg.sequence, type: leg.type, executionType: leg.executionType,
+            operationalLegs: legs.map(leg => ({
+              sequence: leg.sequence, type: leg.type, executionType: leg.executionType,
               ...(leg.partnerId ? { partnerId: leg.partnerId, agreementId: leg.agreementId, executionCostMinor: leg.executionCostMinor } : {}),
-              ...(leg.driverPayoutMinor ? { driverPayoutMinor: leg.driverPayoutMinor, payeeName: leg.payeeName, payeePhone: leg.payeePhone ?? null } : {}) })) } });
+              ...(leg.driverPayoutMinor ? { driverPayoutMinor: leg.driverPayoutMinor, payeeName: leg.payeeName, payeePhone: leg.payeePhone ?? null } : {}),
+            })),
+          },
+        } });
         return { quote: adminQuoteView(quote) };
       });
     },
