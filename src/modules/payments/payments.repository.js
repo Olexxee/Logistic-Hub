@@ -10,7 +10,16 @@ export function createPaymentsRepository(prismaClient = prisma) {
     const existing = await tx.paymentAttempt.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
     if (existing) return existing;
 
-    const reservation = await tx.driverAssignment.findFirst({
+    const manualOperationalBooking = data.parcelBookingId
+     ? await tx.parcelBooking.findUnique({
+      where: { id: data.parcelBookingId },
+      select: { status: true, pricingSnapshot: true },
+     })
+     : null;
+    const manualOperationalPayment = manualOperationalBooking?.status === "AWAITING_PAYMENT"
+     && manualOperationalBooking?.pricingSnapshot?.source === "ADMIN_OPERATIONAL_TRIP";
+
+    const reservation = manualOperationalPayment ? null : await tx.driverAssignment.findFirst({
      where: {
       ...bookingWhere,
       status: "AWAITING_PAYMENT",
@@ -19,24 +28,26 @@ export function createPaymentsRepository(prismaClient = prisma) {
      orderBy: { createdAt: "desc" },
      select: { id: true },
     });
-    if (!reservation) {
+    if (!manualOperationalPayment && !reservation) {
      throw Object.assign(new Error("The driver reservation is no longer active."), {
       statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
      });
     }
 
-    // The expiry worker locks this same row before releasing the reservation.
-    // Whichever transaction wins the lock decides whether payment can start.
-    await tx.$queryRaw`SELECT id FROM driver_assignments WHERE id = ${reservation.id} FOR UPDATE`;
-    const currentReservation = await tx.driverAssignment.findUnique({
-     where: { id: reservation.id },
-     select: { status: true, paymentExpiresAt: true },
-    });
-    if (!currentReservation || currentReservation.status !== "AWAITING_PAYMENT"
-     || (currentReservation.paymentExpiresAt && currentReservation.paymentExpiresAt <= new Date())) {
-     throw Object.assign(new Error("The driver reservation expired before payment initialization."), {
-      statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
+    if (reservation) {
+     // The expiry worker locks this same row before releasing the reservation.
+     // Whichever transaction wins the lock decides whether payment can start.
+     await tx.$queryRaw`SELECT id FROM driver_assignments WHERE id = ${reservation.id} FOR UPDATE`;
+     const currentReservation = await tx.driverAssignment.findUnique({
+      where: { id: reservation.id },
+      select: { status: true, paymentExpiresAt: true },
      });
+     if (!currentReservation || currentReservation.status !== "AWAITING_PAYMENT"
+      || (currentReservation.paymentExpiresAt && currentReservation.paymentExpiresAt <= new Date())) {
+      throw Object.assign(new Error("The driver reservation expired before payment initialization."), {
+       statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
+      });
+     }
     }
 
     const unresolvedAttempt = await tx.paymentAttempt.findFirst({
