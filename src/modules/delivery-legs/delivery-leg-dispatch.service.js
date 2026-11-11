@@ -371,7 +371,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "The shipment is no longer eligible for fixed-payout driver assignment.");
           }
 
-          const routeAvailability = await tx.platformRouteAvailability.findFirst({
+          const routeAvailability = leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE" ? await tx.platformRouteAvailability.findFirst({
             where: {
               originServiceZoneId: leg.originServiceZoneId,
               destinationServiceZoneId: leg.destinationServiceZoneId,
@@ -382,8 +382,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               ],
             },
             select: { id: true },
-          });
-          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+          }) : null;
+          if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE" && !routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
 
           const capability = parcelCapabilityForLegType(leg.type);
           const vehicle = await tx.vehicle.findFirst({
