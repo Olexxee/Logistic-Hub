@@ -16,20 +16,13 @@ function harness(booking = localBooking) {
     { id: "zone-b", code: "B", name: "Destination", stateId: booking.destinationStateId ?? "state-a" },
   ];
   const tx = {
-    parcelBooking: {
-      findUnique: async () => booking,
-      updateMany: async () => ({ count: 1 }),
-    },
+    parcelBooking: { findUnique: async () => booking, updateMany: async () => ({ count: 1 }) },
     serviceZone: { findMany: async () => zones },
     hubPoint: { findMany: async () => [] },
-    partnerAgreement: { findFirst: async () => null },
+    partnerAgreement: { findFirst: async () => ({ id: "agreement-1" }) },
     shipmentQuote: {
-      findFirst: async () => null,
-      updateMany: async () => ({ count: 1 }),
-      create: async ({ data }) => {
-        calls.created.push(data);
-        return { id: "quote-1", ...data, offeredAt: now, acceptedAt: null };
-      },
+      findFirst: async () => null, updateMany: async () => ({ count: 1 }),
+      create: async ({ data }) => { calls.created.push(data); return { id: "quote-1", ...data, offeredAt: now, acceptedAt: null }; },
     },
     bookingEvent: { create: async ({ data }) => { calls.events.push(data); return data; } },
     operationalAuditEvent: { create: async ({ data }) => { calls.audits.push(data); return data; } },
@@ -37,43 +30,54 @@ function harness(booking = localBooking) {
   const prismaClient = { $transaction: async work => work(tx) };
   return { tx, calls, service: createOperationalTripPricingService({ prismaClient, clock: () => now }) };
 }
-const input = {
-  reason: "Approved one-off operational price",
-  expiresInMinutes: 60,
-  legs: [{ sequence: 1, type: "LOCAL_PICKUP", executionType: "DRIVER", customerChargeMinor: "1000", driverPayoutMinor: "700" }],
+const platformManagedInput = {
+  reason: "Approved one-off operational price", expiresInMinutes: 60,
+  legs: [{ sequence: 1, type: "LOCAL_PICKUP", executionType: "PLATFORM_MANAGED_DRIVER",
+    customerChargeMinor: "1000", driverPayoutMinor: "700", payeeName: "Contract driver", payeePhone: "+2348012345678" }],
   collectionChargeMinor: "0", hubHandlingChargeMinor: "0", destinationDeliveryChargeMinor: "0",
   platformChargeMinor: "200", otherChargesMinor: "0",
 };
 
-test("issues a booking-specific per-leg quote and keeps driver payout private", async () => {
+test("issues a booking-specific quote and keeps driver payee and payout private", async () => {
   const { service, calls } = harness();
-  const result = await service.issueQuote({ bookingId: localBooking.id, actorUserId: "admin-1", input });
+  const result = await service.issueQuote({ bookingId: localBooking.id, actorUserId: "admin-1", input: platformManagedInput });
   assert.equal(result.quote.totalCustomerChargeMinor, "1200");
   assert.equal(result.quote.transportChargeMinor, "1000");
   assert.equal("driverPayoutMinor" in result.quote, false);
   assert.equal(calls.created.length, 1);
   assert.equal(calls.created[0].inputSnapshot.source, "ADMIN_OPERATIONAL_TRIP");
-  assert.equal(calls.created[0].inputSnapshot.driverPayoutMinor, "700");
+  assert.equal(calls.created[0].inputSnapshot.operationalLegs[0].driverPayoutMinor, "700");
+  assert.equal(calls.created[0].inputSnapshot.operationalLegs[0].payeeName, "Contract driver");
   assert.equal(calls.created[0].chargeBreakdown.legs[0].customerChargeMinor, "1000");
   assert.equal(calls.events[0].actorUserId, "admin-1");
-  assert.equal(calls.audits[0].reason, input.reason);
+  assert.equal(calls.audits[0].reason, platformManagedInput.reason);
 });
 
-test("rejects a route without a LOCAL_PICKUP driver leg instead of creating a payable quote", async () => {
+test("supports partner-only interstate routes without inventing a driver reservation", async () => {
   const booking = { ...localBooking, destinationStateId: "state-b" };
   const { service, calls } = harness(booking);
   const result = await service.issueQuote({
     bookingId: booking.id, actorUserId: "admin-1",
-    input: { ...input, legs: [{ sequence: 1, type: "INTERSTATE_TRANSPORT", executionType: "PARTNER",
+    input: { ...platformManagedInput, legs: [{ sequence: 1, type: "INTERSTATE_TRANSPORT", executionType: "PARTNER",
       customerChargeMinor: "1000", partnerId: "partner-1", agreementId: "agreement-1", executionCostMinor: "800" }] },
   });
-  assert.equal(result.driverLegRequired, true);
+  assert.equal(result.quote.totalCustomerChargeMinor, "1200");
+  assert.equal(calls.created[0].inputSnapshot.operationalLegs[0].partnerId, "partner-1");
+});
+
+test("rejects an operational quote when internal execution costs exceed the customer total", async () => {
+  const { service, calls } = harness();
+  const result = await service.issueQuote({
+    bookingId: localBooking.id, actorUserId: "admin-1",
+    input: { ...platformManagedInput, legs: [{ ...platformManagedInput.legs[0], driverPayoutMinor: "1500" }] },
+  });
+  assert.equal(result.invalidTotal, true);
   assert.equal(calls.created.length, 0);
 });
 
-test("revalidates operational quote route topology and internal execution snapshot", async () => {
+test("revalidates the route topology and manual execution snapshot before acceptance", async () => {
   const { service, tx } = harness();
-  const result = await service.issueQuote({ bookingId: localBooking.id, actorUserId: "admin-1", input });
+  const result = await service.issueQuote({ bookingId: localBooking.id, actorUserId: "admin-1", input: platformManagedInput });
   const quote = {
     currency: "NGN",
     inputSnapshot: {
@@ -87,7 +91,8 @@ test("revalidates operational quote route topology and internal execution snapsh
           originHubPointId: null, destinationHubPointId: null,
           origin: { latitude: 7.4, longitude: 4.2 }, destination: { latitude: 7.5, longitude: 4.3 } }],
       },
-      operationalLegs: [{ sequence: 1, type: "LOCAL_PICKUP", executionType: "DRIVER", driverPayoutMinor: "700" }],
+      operationalLegs: [{ sequence: 1, type: "LOCAL_PICKUP", executionType: "PLATFORM_MANAGED_DRIVER",
+        payeeName: "Contract driver", driverPayoutMinor: "700" }],
     },
   };
   assert.equal(await validateOperationalTripQuote(tx, localBooking, quote, now), true);
