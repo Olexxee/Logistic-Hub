@@ -91,6 +91,7 @@ test("revalidates the route topology and manual execution snapshot before accept
           originHubPointId: null, destinationHubPointId: null,
           origin: { latitude: 7.4, longitude: 4.2 }, destination: { latitude: 7.5, longitude: 4.3 } }],
       },
+      packageSnapshot: [{ id: "package-1", packageCategory: "DOCUMENT", weightGrams: 250, lengthMm: null, widthMm: null, heightMm: null }],
       operationalLegs: [{ sequence: 1, type: "LOCAL_PICKUP", executionType: "PLATFORM_MANAGED_DRIVER",
         payeeName: "Contract driver", driverPayoutMinor: "700" }],
     },
