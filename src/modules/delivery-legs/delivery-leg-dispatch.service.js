@@ -10,7 +10,6 @@ const ACTIVE_ASSIGNMENT_STATUSES = [
   "IN_PROGRESS", "ARRIVED_AT_DESTINATION",
 ];
 const DRIVER_LEG_TYPES = new Set(["LOCAL_PICKUP", "FINAL_MILE"]);
-const FIXED_PAYOUT_SOURCES = new Set(["PLATFORM_ROUTE_RATE", "ADMIN_OPERATIONAL_TRIP"]);
 
 function hash(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -107,13 +106,14 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         } else if (leg.parcelBooking.senderId !== user.id) {
           throw new ForbiddenError();
         }
-        if (FIXED_PAYOUT_SOURCES.has(leg.metadata?.pricingSource)) {
+        if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE") {
           const fixedPayout = leg.type === "LOCAL_PICKUP"
             && leg.metadata?.driverPayoutMinor != null
             && BigInt(leg.metadata.driverPayoutMinor) > 0n
             && leg.parcelBooking.pricingSnapshot?.driverPayoutMinor === leg.metadata.driverPayoutMinor
-            && leg.parcelBooking.pricingSnapshot?.source === leg.metadata.pricingSource
-            && leg.parcelBooking.pricingSnapshot?.quoteId === leg.metadata.quoteId;
+            && (leg.parcelBooking.integrationClientId != null
+              || (leg.parcelBooking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
+                && leg.parcelBooking.pricingSnapshot?.quoteId === leg.metadata.quoteId));
           const customerDispatch = user.role !== "ADMIN"
             && leg.parcelBooking.senderId === user.id
             && leg.parcelBooking.integrationClientId == null
@@ -134,7 +134,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           throw conflict("DELIVERY_LEG_NOT_READY", "Driver offers can only be requested for a leg that is ready for assignment.");
         }
         if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE") {
-          const routeAvailability = leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE" ? await tx.platformRouteAvailability.findFirst({
+          const routeAvailability = await tx.platformRouteAvailability.findFirst({
             where: {
               originServiceZoneId: leg.originServiceZoneId,
               destinationServiceZoneId: leg.destinationServiceZoneId,
@@ -145,8 +145,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               ],
             },
             select: { id: true },
-          }) : null;
-          if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE" && !routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+          });
+          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
         }
         const activeZones = await db.findActiveServiceZones(tx, leg, now);
         const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
@@ -168,7 +168,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           driverProfileId: driver.id,
           status: "OFFERED",
           currency: leg.parcelBooking.currency,
-          ...(FIXED_PAYOUT_SOURCES.has(leg.metadata?.pricingSource)
+          ...(leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE"
             ? { fixedPayoutMinor: BigInt(leg.metadata.driverPayoutMinor) }
             : {}),
           expiresAt,
@@ -329,8 +329,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const customerPaymentReady = customerShipment
             && ["INITIALIZED", "FAILED"].includes(booking.paymentStatus)
             && booking.status === "AWAITING_PARTNER_ASSIGNMENT"
-            && FIXED_PAYOUT_SOURCES.has(booking.pricingSnapshot?.source)
-            && booking.pricingSnapshot?.source === leg.metadata?.pricingSource
+            && booking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
             && booking.pricingSnapshot?.quoteId === leg.metadata?.quoteId;
           const integrationPaymentReady = integrationShipment
             && booking.integrationDispatchAuthorizedAt != null
@@ -338,8 +337,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             && booking.status === "AWAITING_PARTNER_ASSIGNMENT";
           if (offer.status !== "OFFERED" || offer.expiresAt <= now || payout == null || payout <= 0n
             || offer.proposedFareMinor != null || leg.status !== "READY_FOR_ASSIGNMENT"
-            || leg.type !== "LOCAL_PICKUP" || !FIXED_PAYOUT_SOURCES.has(leg.metadata?.pricingSource)
-            || booking.pricingSnapshot?.source !== leg.metadata?.pricingSource
+            || leg.type !== "LOCAL_PICKUP" || leg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
             || leg.metadata?.driverPayoutMinor !== payout.toString()
             || booking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
             || !(customerPaymentReady || integrationPaymentReady)) {
@@ -355,23 +353,21 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const lockedCustomerShipment = lockedBooking?.senderId != null && lockedBooking?.integrationClientId == null
             && lockedBooking.status === "AWAITING_PARTNER_ASSIGNMENT"
             && ["INITIALIZED", "FAILED"].includes(lockedBooking.paymentStatus)
-            && FIXED_PAYOUT_SOURCES.has(lockedBooking.pricingSnapshot?.source)
-            && lockedBooking.pricingSnapshot?.source === lockedLeg.metadata?.pricingSource
+            && lockedBooking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
             && lockedBooking.pricingSnapshot?.quoteId === lockedLeg.metadata?.quoteId;
           const lockedIntegrationShipment = lockedBooking?.integrationClientId != null && lockedBooking?.senderId == null
             && lockedBooking.integrationDispatchAuthorizedAt != null
             && lockedBooking.paymentStatus === "SUCCEEDED"
             && lockedBooking.status === "AWAITING_PARTNER_ASSIGNMENT";
           if (!lockedLeg || lockedLeg.status !== "READY_FOR_ASSIGNMENT"
-            || !FIXED_PAYOUT_SOURCES.has(lockedLeg.metadata?.pricingSource)
-            || lockedBooking?.pricingSnapshot?.source !== lockedLeg.metadata?.pricingSource
+            || lockedLeg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
             || lockedLeg.metadata?.driverPayoutMinor !== payout.toString()
             || lockedBooking?.pricingSnapshot?.driverPayoutMinor !== payout.toString()
             || !(lockedCustomerShipment || lockedIntegrationShipment)) {
             throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "The shipment is no longer eligible for fixed-payout driver assignment.");
           }
 
-          const routeAvailability = leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE" ? await tx.platformRouteAvailability.findFirst({
+          const routeAvailability = await tx.platformRouteAvailability.findFirst({
             where: {
               originServiceZoneId: leg.originServiceZoneId,
               destinationServiceZoneId: leg.destinationServiceZoneId,
@@ -382,8 +378,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               ],
             },
             select: { id: true },
-          }) : null;
-          if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE" && !routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+          });
+          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
 
           const capability = parcelCapabilityForLegType(leg.type);
           const vehicle = await tx.vehicle.findFirst({
@@ -484,7 +480,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               metadata: {
                 deliveryLegId: leg.id, offerId, assignmentId: assignment.id, driverProfileId: profile.id,
                 vehicleId: vehicle.id, fixedPayoutMinor: payout.toString(), currency: offer.currency,
-                pricingSource: leg.metadata?.pricingSource,
+                pricingSource: "PLATFORM_ROUTE_RATE",
                 ...(customerPaymentFlow ? { paymentRequired: true, paymentExpiresAt: paymentExpiresAt.toISOString() } : {}),
               },
             },
