@@ -62,7 +62,8 @@ function serializeCustomerOffer(offer) {
   return {
     id: offer.id,
     status: offer.status,
-    proposedFareMinor: offer.proposedFareMinor.toString(),
+    proposedFareMinor: offer.proposedFareMinor == null ? null : offer.proposedFareMinor.toString(),
+    fixedPayoutMinor: offer.fixedPayoutMinor == null ? null : offer.fixedPayoutMinor.toString(),
     currency: offer.currency,
     expiresAt: offer.expiresAt,
     driver: {
