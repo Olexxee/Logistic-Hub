@@ -619,3 +619,35 @@ test("fixed-payout acceptance replay preserves the pending customer payment rese
   assert.equal(result.paymentExpiresAt, paymentExpiresAt);
   assert.equal(result.status, "AWAITING_PAYMENT");
 });
+
+
+test("customer fixed-payout offers serialize without a null fare-proposal crash", async () => {
+  const fixedOffer = {
+    id: "fixed_offer_1",
+    status: "OFFERED",
+    proposedFareMinor: null,
+    fixedPayoutMinor: 4200n,
+    currency: "NGN",
+    expiresAt: new Date(now.getTime() + 60_000),
+    driverProfile: {
+      user: { fullName: "Verified Driver" },
+      averageRating: 4.8,
+      completedJobs: 12,
+    },
+    vehicle: { type: "MOTORCYCLE", make: "Honda", model: "CBR" },
+  };
+  const repository = {
+    findBookingForCustomer: async () => ({ id: "booking_1", senderId: "sender_1" }),
+    findCustomerOffers: async () => [fixedOffer],
+  };
+  const service = createDeliveryLegDispatchService({ prismaClient: {}, repository, clock: () => now });
+  const offers = await service.listCustomerOffers({
+    bookingId: "booking_1",
+    legId: "leg_1",
+    user: { id: "sender_1", role: "CUSTOMER" },
+  });
+  assert.equal(offers.length, 1);
+  assert.equal(offers[0].proposedFareMinor, null);
+  assert.equal(offers[0].fixedPayoutMinor, "4200");
+  assert.equal(offers[0].currency, "NGN");
+});
