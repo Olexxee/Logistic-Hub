@@ -9413,6 +9413,28 @@ components:
           oneOf:
             - $ref: '#/components/schemas/DeliveryLegAssignmentSummary'
             - type: 'null'
+        operationalExecutionType:
+          type: string
+          enum: [PLATFORM_MANAGED_DRIVER, PARTNER]
+          description: Admin-only executor metadata for one-off operational quotes.
+        operationalPartnerId:
+          type: string
+          description: Admin-only partner pinned to this operational leg.
+        partnerAssignment:
+          oneOf:
+            - type: object
+              required: [id, status, partner]
+              properties:
+                id: { type: string }
+                status: { type: string }
+                partner:
+                  type: object
+                  required: [id, displayName]
+                  properties:
+                    id: { type: string }
+                    displayName: { type: string }
+            - type: 'null'
+          description: Admin-only partner assignment state for operational legs.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     PartnerAssignmentServiceZone:
