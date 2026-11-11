@@ -427,10 +427,12 @@ export function createPartnerPricingRouter({
             connectionFeeMinor: quote.platformChargeMinor,
             otherChargesMinor: quote.otherChargesMinor + quote.collectionChargeMinor + quote.hubHandlingChargeMinor + quote.destinationDeliveryChargeMinor,
             pricingSnapshot: {
+              source: quote.inputSnapshot?.source ?? null,
               quoteId: quote.id,
               quoteVersion: quote.version,
               currency: quote.currency,
               totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
+              ...(isPlatformRouteQuote ? { driverPayoutMinor: String(quote.inputSnapshot.driverPayoutMinor) } : {}),
               chargeBreakdown: quote.chargeBreakdown,
               acceptedAt: now.toISOString(),
             },
