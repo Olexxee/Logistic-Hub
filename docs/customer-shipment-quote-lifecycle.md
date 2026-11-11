@@ -112,7 +112,7 @@ An administrator can prepare a booking-specific operational route plan and issue
 
 - Every route leg must have its own customer charge in integer minor units. The backend consolidates leg charges plus collection, hub handling, destination delivery, platform and other charges into the customer total.
 - Every leg must declare its executor:
-  - `PLATFORM_MANAGED_DRIVER`: an administrator records the payee's name, optional phone number and fixed payout. This does not require a registered Logistic Hub driver profile.
+  - `PLATFORM_MANAGED_DRIVER`: an administrator records the payee's name, optional phone number and fixed payout for a leg, including interstate transport. This does not require a registered Logistic Hub driver profile.
   - `PARTNER`: an active, verified transport partner and active agreement in the booking currency are mandatory. The agreed partner execution cost is stored internally.
 - Driver payouts and partner execution costs are never returned in customer quote, booking or tracking resources.
 - The backend rejects a quote if the sum of internal execution costs exceeds the consolidated customer charge.
