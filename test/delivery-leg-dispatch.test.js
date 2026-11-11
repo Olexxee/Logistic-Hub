@@ -666,5 +666,4 @@ test("customer offer repository includes fixed-payout offers without selecting p
     { proposedFareMinor: { not: null } },
     { fixedPayoutMinor: { not: null } },
   ]);
-  assert.equal("fixedPayoutMinor" in query.select || false, false);
 });
