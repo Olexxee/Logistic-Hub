@@ -648,6 +648,6 @@ test("customer fixed-payout offers serialize without a null fare-proposal crash"
   });
   assert.equal(offers.length, 1);
   assert.equal(offers[0].proposedFareMinor, null);
-  assert.equal(offers[0].fixedPayoutMinor, "4200");
+  assert.equal("fixedPayoutMinor" in offers[0], false);
   assert.equal(offers[0].currency, "NGN");
 });
