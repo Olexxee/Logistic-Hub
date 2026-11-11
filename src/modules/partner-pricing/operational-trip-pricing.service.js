@@ -150,7 +150,7 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
           if (supplied.sequence !== routeLeg.sequence || supplied.type !== routeLeg.type) return { routeChanged: true };
           if (BigInt(supplied.customerChargeMinor) <= 0n) return { invalidExecution: true };
           if (supplied.executionType === "PLATFORM_MANAGED_DRIVER") {
-            if (!["LOCAL_PICKUP", "FINAL_MILE", "DIRECT"].includes(routeLeg.type) || !supplied.payeeName
+            if (!supplied.payeeName
               || !supplied.driverPayoutMinor || BigInt(supplied.driverPayoutMinor) <= 0n
               || supplied.partnerId || supplied.agreementId || supplied.executionCostMinor !== undefined) return { invalidExecution: true };
           } else if (!supplied.partnerId || !supplied.agreementId || !supplied.executionCostMinor || BigInt(supplied.executionCostMinor) <= 0n
