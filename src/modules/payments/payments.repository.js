@@ -10,7 +10,7 @@ export function createPaymentsRepository(prismaClient = prisma) {
     const existing = await tx.paymentAttempt.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
     if (existing) return existing;
 
-    const manualOperationalBooking = data.parcelBookingId
+    const manualOperationalBooking = data.parcelBookingId && tx.parcelBooking?.findUnique
      ? await tx.parcelBooking.findUnique({
       where: { id: data.parcelBookingId },
       select: { status: true, pricingSnapshot: true },
