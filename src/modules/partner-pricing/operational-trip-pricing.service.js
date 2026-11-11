@@ -82,8 +82,7 @@ export async function validateOperationalTripQuote(tx, booking, quote, now = new
   const route = await resolve(tx, booking);
   const current = routeSnapshot(route);
   if (!sameRoute(snapshot.routeSnapshot, current) || snapshot.operationalLegs.length !== current.legs.length) return false;
-  if (snapshot.operationalLegs.filter(leg => leg.executionType === "DRIVER").length !== 1
-    || !snapshot.operationalLegs.every((leg, i) => leg.sequence === current.legs[i].sequence && leg.type === current.legs[i].type)) return false;
+  if (!snapshot.operationalLegs.every((leg, i) => leg.sequence === current.legs[i].sequence && leg.type === current.legs[i].type)) return false;
   if (!await partnersValid(tx, snapshot.operationalLegs, quote.currency, now)) return false;
   return hubsValid(tx, route);
 }
@@ -119,19 +118,18 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
           const routeLeg = snapshot.legs[i], supplied = input.legs[i];
           if (supplied.sequence !== routeLeg.sequence || supplied.type !== routeLeg.type) return { routeChanged: true };
           if (BigInt(supplied.customerChargeMinor) <= 0n) return { invalidExecution: true };
-          if (supplied.executionType === "DRIVER") {
-            if (routeLeg.type !== "LOCAL_PICKUP" || !supplied.driverPayoutMinor || BigInt(supplied.driverPayoutMinor) <= 0n
+          if (supplied.executionType === "PLATFORM_MANAGED_DRIVER") {
+            if (!["LOCAL_PICKUP", "FINAL_MILE", "DIRECT"].includes(routeLeg.type) || !supplied.payeeName
+              || !supplied.driverPayoutMinor || BigInt(supplied.driverPayoutMinor) <= 0n
               || supplied.partnerId || supplied.agreementId || supplied.executionCostMinor !== undefined) return { invalidExecution: true };
           } else if (!supplied.partnerId || !supplied.agreementId || !supplied.executionCostMinor || BigInt(supplied.executionCostMinor) <= 0n
-            || supplied.driverPayoutMinor !== undefined) return { invalidExecution: true };
+            || supplied.driverPayoutMinor !== undefined || supplied.payeeName !== undefined || supplied.payeePhone !== undefined) return { invalidExecution: true };
           legs.push({ ...routeLeg, executionType: supplied.executionType, customerChargeMinor: supplied.customerChargeMinor,
-            ...(supplied.executionType === "DRIVER" ? { driverPayoutMinor: supplied.driverPayoutMinor } : {
-              partnerId: supplied.partnerId, agreementId: supplied.agreementId, executionCostMinor: supplied.executionCostMinor,
-            }) });
+            ...(supplied.executionType === "PLATFORM_MANAGED_DRIVER" ? {
+              payeeName: supplied.payeeName, ...(supplied.payeePhone ? { payeePhone: supplied.payeePhone } : {}),
+              driverPayoutMinor: supplied.driverPayoutMinor,
+            } : { partnerId: supplied.partnerId, agreementId: supplied.agreementId, executionCostMinor: supplied.executionCostMinor }) });
         }
-        const driverLegs = legs.filter(leg => leg.executionType === "DRIVER");
-        if (driverLegs.length > 1) return { multipleDriverLegs: true };
-        if (driverLegs.length !== 1) return { driverLegRequired: true };
         if (!await partnersValid(tx, legs, booking.currency, now)) return { partnerIneligible: true };
         const lock = await tx.parcelBooking.updateMany({ where: { id: booking.id, status: "DRAFT" }, data: { updatedAt: now } });
         if (lock.count !== 1) return { conflict: "The booking changed while the operational quote was being prepared." };
@@ -142,7 +140,6 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
         const destination = BigInt(input.destinationDeliveryChargeMinor), platform = BigInt(input.platformChargeMinor);
         const other = BigInt(input.otherChargesMinor), total = transport + collection + handling + destination + platform + other;
         if (total <= 0n || total > 999999999999999n) return { invalidTotal: true };
-        const driverPayoutMinor = driverLegs[0].driverPayoutMinor;
         const quote = await tx.shipmentQuote.create({ data: {
           parcelBookingId: booking.id, version: (previous?.version ?? 0) + 1, status: "OFFERED", currency: booking.currency,
           transportChargeMinor: transport, collectionChargeMinor: collection, hubHandlingChargeMinor: handling,
@@ -154,7 +151,7 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
             platformChargeMinor: platform.toString(), otherChargesMinor: other.toString(),
             legs: legs.map(leg => ({ sequence: leg.sequence, type: leg.type, customerChargeMinor: leg.customerChargeMinor })),
           },
-          inputSnapshot: { source: "ADMIN_OPERATIONAL_TRIP", routeSnapshot: snapshot, operationalLegs: legs, driverPayoutMinor, reason: input.reason },
+          inputSnapshot: { source: "ADMIN_OPERATIONAL_TRIP", routeSnapshot: snapshot, operationalLegs: legs, reason: input.reason },
           expiresAt,
         } });
         await tx.bookingEvent.create({ data: { parcelBookingId: booking.id, actorUserId,
@@ -166,7 +163,7 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
             totalCustomerChargeMinor: total.toString(), currency: quote.currency,
             operationalLegs: legs.map(leg => ({ sequence: leg.sequence, type: leg.type, executionType: leg.executionType,
               ...(leg.partnerId ? { partnerId: leg.partnerId, agreementId: leg.agreementId, executionCostMinor: leg.executionCostMinor } : {}),
-              ...(leg.driverPayoutMinor ? { driverPayoutMinor: leg.driverPayoutMinor } : {}) })) } });
+              ...(leg.driverPayoutMinor ? { driverPayoutMinor: leg.driverPayoutMinor, payeeName: leg.payeeName, payeePhone: leg.payeePhone ?? null } : {}) })) } });
         return { quote: customerQuoteView(quote) };
       });
     },
