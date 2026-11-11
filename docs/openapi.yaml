@@ -4096,7 +4096,7 @@ paths:
       tags: [Delivery legs]
       operationId: requestDeliveryLegDriverMatching
       summary: Request local driver offers for a ready delivery leg
-      description: Only LOCAL_PICKUP and FINAL_MILE legs are eligible. Interstate transport remains a partner-execution responsibility. Offers expose service-zone and hub names, not exact addresses or coordinates.
+      description: Only LOCAL_PICKUP and FINAL_MILE legs are eligible. Interstate transport remains a partner-execution responsibility. The booking owner may request matching for an accepted platform-priced customer quote; integration-owned platform shipments retain the admin-only paid-and-released dispatch gate. Fixed-payout offers use the accepted tariff snapshot and expose the payout only to the driver. Offers expose service-zone and hub names, not exact addresses or coordinates.
       x-implementation-status: implemented
       security: [{ bearerAuth: [] }]
       parameters:
@@ -4413,7 +4413,7 @@ paths:
       tags: [Dispatch, Driver]
       operationId: acceptFixedPayoutDeliveryLegOffer
       summary: Accept a platform-fixed driver payout offer
-      description: Accepts an eligible driver offer at the exact fixed payout from the accepted platform tariff snapshot. No counter-offer is permitted. The operation is idempotent.
+      description: Accepts an eligible driver offer at the exact fixed payout from the accepted platform tariff snapshot. No counter-offer is permitted. For ordinary customer bookings, acceptance reserves the driver and creates an AWAITING_PAYMENT assignment with a 15-minute payment reservation; payment confirmation activates the assignment. Integration-owned shipments retain their existing paid-and-released acceptance behavior. The operation is idempotent.
       security:
         - bearerAuth: []
       x-implementation-status: implemented
@@ -4437,7 +4437,7 @@ paths:
               properties:
                 vehicleId: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Fixed-payout driver assignment accepted; idempotent replay returns the original assignment. }
+        '200': { description: Fixed-payout driver reserved pending customer payment, or immediately assigned for an already-paid and released integration shipment; idempotent replay returns the original result. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { description: Authentication required. }
         '403': { description: Driver role and eligibility required. }
