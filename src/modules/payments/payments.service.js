@@ -15,7 +15,16 @@ export function createPaymentsService({ prismaClient, repository = createPayment
       const assignment = booking.assignments?.[0];
       if (booking.status !== "AWAITING_PAYMENT" || !assignment || booking.paymentStatus === "SUCCEEDED") throw new ConflictError("This booking is not awaiting payment.", "BOOKING_NOT_PAYABLE");
       const amountMinor = booking.customerPayableMinor;
-      if (amountMinor == null || amountMinor <= 0n || assignment.agreedFareMinor > amountMinor || amountMinor > BigInt(Number.MAX_SAFE_INTEGER)) throw new ConflictError("The payable amount is invalid.", "INVALID_PAYMENT_AMOUNT");
+      if (amountMinor == null || amountMinor <= 0n || assignment.agreedFareMinor <= 0n
+        || assignment.agreedFareMinor > amountMinor || amountMinor > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new ConflictError("The payable amount is invalid.", "INVALID_PAYMENT_AMOUNT");
+      }
+      const isPlatformRouteBooking = bookingType === "PARCEL"
+        && booking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE";
+      if (isPlatformRouteBooking
+        && booking.pricingSnapshot?.driverPayoutMinor !== assignment.agreedFareMinor.toString()) {
+        throw new ConflictError("The reserved driver payout no longer matches the accepted platform tariff.", "DRIVER_PAYOUT_SNAPSHOT_MISMATCH");
+      }
       const settlement = assignment.driverProfile?.settlementAccounts?.[0];
       if (!settlement?.externalAccountRef || settlement.status !== "ACTIVE") throw new ConflictError("The assigned driver has no active Paystack settlement subaccount.", "DRIVER_SETTLEMENT_NOT_READY");
       const platformFeeMinor = amountMinor - assignment.agreedFareMinor;
@@ -25,7 +34,14 @@ export function createPaymentsService({ prismaClient, repository = createPayment
         provider: "PAYSTACK", providerReference: reference, idempotencyKey, status: "INITIALIZED",
         amountMinor, currency: booking.currency, driverAllocationMinor: assignment.agreedFareMinor,
         platformAllocationMinor: platformFeeMinor, driverSettlementAccountId: settlement.id,
-        splitConfigurationSnapshot: { subaccount: settlement.externalAccountRef, transactionChargeMinor: platformFeeMinor.toString(), platformFeeModel: "FIXED_CONNECTION_FEE" },
+        splitConfigurationSnapshot: {
+          subaccount: settlement.externalAccountRef,
+          transactionChargeMinor: platformFeeMinor.toString(),
+          platformFeeModel: isPlatformRouteBooking ? "PLATFORM_RETAINED_REMAINDER" : "FIXED_CONNECTION_FEE",
+          pricingSource: isPlatformRouteBooking ? "PLATFORM_ROUTE_RATE" : "LEGACY_OR_RIDE_PRICING",
+          driverPayoutMinor: assignment.agreedFareMinor.toString(),
+          customerChargeMinor: amountMinor.toString(),
+        },
       });
       if (attempt.amountMinor !== amountMinor || attempt.parcelBookingId !== (bookingType === "PARCEL" ? booking.id : null) || attempt.rideBookingId !== (bookingType === "RIDE" ? booking.id : null)) throw new ConflictError("The idempotency key was previously used for a different payment.", "IDEMPOTENCY_CONFLICT");
       if (attempt.providerPayload?.authorizationUrl) return { paymentAttemptId: attempt.id, reference: attempt.providerReference, authorizationUrl: attempt.providerPayload.authorizationUrl, accessCode: attempt.providerPayload.accessCode ?? null, amountMinor: amountMinor.toString(), currency: booking.currency, replay: true };
