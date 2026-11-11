@@ -224,7 +224,19 @@ export function createParcelBookingsService({ prismaClient, repository, clock = 
         throw new ForbiddenError("You do not have permission to view this booking.");
       }
       const legs = await db.findDeliveryLegsByBookingId(bookingId);
-      return legs.map(serializeDeliveryLeg);
+      return legs.map(leg => ({
+        ...serializeDeliveryLeg(leg),
+        ...(user.role === "ADMIN" && leg.metadata?.pricingSource === "ADMIN_OPERATIONAL_TRIP"
+          ? {
+            operationalExecutionType: leg.metadata.executionType,
+            ...(leg.metadata.partnerId ? { operationalPartnerId: leg.metadata.partnerId } : {}),
+            partnerAssignment: leg.partnerAssignments?.[0] ? {
+              id: leg.partnerAssignments[0].id, status: leg.partnerAssignments[0].status,
+              partner: leg.partnerAssignments[0].partner,
+            } : null,
+          }
+          : {}),
+      }));
     },
     async listVisibleBookings({ user, page, limit, status, paymentStatus, reference, pickupServiceZoneId, destinationServiceZoneId, createdFrom, createdTo }) {
       const includeAll = ["ADMIN", "SUPPORT"].includes(user.role);

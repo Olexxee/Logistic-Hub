@@ -2,6 +2,7 @@ import { Router } from "express";
 import { createMultiLegPlan, getExistingDeliveryRoutePlan } from "../delivery-legs/delivery-plan.service.js";
 import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
 import { createCustomerShipmentQuotesService, customerQuoteView } from "../parcels/customer-shipment-quotes.service.js";
+import { validateOperationalTripQuote } from "./operational-trip-pricing.service.js";
 import { asyncWrapper } from "../../shared/http/async-wrapper.js";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
@@ -338,7 +339,8 @@ export function createPartnerPricingRouter({
         }
         const isPlatformRouteQuote = quote.inputSnapshot?.source === "PLATFORM_ROUTE_RATE";
         const isPartnerRouteQuote = quote.inputSnapshot?.source === "PARTNER_RATE_CARD";
-        if (isPlatformRouteQuote || isPartnerRouteQuote) {
+        const isOperationalTripQuote = quote.inputSnapshot?.source === "ADMIN_OPERATIONAL_TRIP";
+        if (isPlatformRouteQuote || isPartnerRouteQuote || isOperationalTripQuote) {
           const requiredZoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
           const activeZones = await tx.serviceZone.findMany({
             where: {
@@ -359,6 +361,9 @@ export function createPartnerPricingRouter({
             select: { id: true },
           });
           if (activeZones.length !== requiredZoneIds.length) return { conflict: true, stalePricing: true };
+        }
+        if (isOperationalTripQuote && !await validateOperationalTripQuote(tx, booking, quote, now)) {
+          return { conflict: true, stalePricing: true };
         }
         if (isPartnerRouteQuote) {
           const packages = (booking.parcelPackages ?? []).map(pkg => ({
@@ -416,6 +421,7 @@ export function createPartnerPricingRouter({
           where: { parcelBookingId: booking.id, id: { not: quote.id }, status: "OFFERED" },
           data: { status: "SUPERSEDED" },
         });
+        const nextBookingStatus = isPlatformRouteQuote ? "AWAITING_PARTNER_ASSIGNMENT" : "AWAITING_PAYMENT";
         const bookingUpdate = await tx.parcelBooking.updateMany({
           where: {
             id: booking.id,
@@ -432,11 +438,11 @@ export function createPartnerPricingRouter({
               quoteVersion: quote.version,
               currency: quote.currency,
               totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
-              ...(isPlatformRouteQuote ? { driverPayoutMinor: String(quote.inputSnapshot.driverPayoutMinor) } : {}),
+              ...(isOperationalTripQuote ? { internalExecutionCostMinor: quote.inputSnapshot.operationalLegs.reduce((total, leg) => total + BigInt(leg.driverPayoutMinor ?? leg.executionCostMinor ?? "0"), 0n).toString() } : {}),
               chargeBreakdown: quote.chargeBreakdown,
               acceptedAt: now.toISOString(),
             },
-            status: isPlatformRouteQuote ? "AWAITING_PARTNER_ASSIGNMENT" : "AWAITING_PAYMENT",
+            status: nextBookingStatus,
           },
         });
         if (bookingUpdate.count !== 1) {
@@ -445,14 +451,14 @@ export function createPartnerPricingRouter({
           error.code = "BOOKING_NOT_QUOTABLE";
           throw error;
         }
-        const routePlan = await createMultiLegPlan({ tx, booking, quote, now });
+        const routePlan = await createMultiLegPlan({ tx, booking, quote, actorUserId: req.user.id, now });
         await tx.bookingEvent.create({
           data: {
             parcelBookingId: booking.id,
             actorUserId: req.user.id,
             eventType: "SHIPMENT_QUOTE_ACCEPTED",
             fromStatus: booking.status,
-            toStatus: isPlatformRouteQuote ? "AWAITING_PARTNER_ASSIGNMENT" : "AWAITING_PAYMENT",
+            toStatus: nextBookingStatus,
             metadata: {
               quoteId: quote.id,
               quoteVersion: quote.version,

@@ -324,6 +324,12 @@ enum ShipmentQuoteStatus {
   SUPERSEDED
 }
 
+enum ManualOperationalSettlementStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
 enum PartnerAssignmentStatus {
   ASSIGNED
   ACCEPTED
@@ -504,6 +510,8 @@ model User {
   authActionTokens AuthActionToken[]
   authSessions     AuthSession[]
   acceptedShipmentQuotes ShipmentQuote[] @relation("ShipmentQuoteAcceptedBy")
+  createdManualOperationalSettlements ManualOperationalSettlement[] @relation("ManualOperationalSettlementCreator")
+  settledManualOperationalSettlements ManualOperationalSettlement[] @relation("ManualOperationalSettlementSettler")
   approvedPartnerPayables PartnerPayable[] @relation("PartnerPayableApprover")
   createdPartnerPayableAdjustments PartnerPayableAdjustment[] @relation("PartnerPayableAdjustmentCreator")
   approvedPartnerPayableAdjustments PartnerPayableAdjustment[] @relation("PartnerPayableAdjustmentApprover")
@@ -1312,6 +1320,7 @@ model DeliveryLeg {
   verificationTokens VerificationToken[]
   partnerAssignments PartnerDeliveryAssignment[]
   partnerPayables PartnerPayable[]
+  manualOperationalSettlement ManualOperationalSettlement?
   custodyHandovers   CustodyHandover[]
   operationalCases   OperationalCase[]
   hubIntakeRecords HubIntakeRecord[]
@@ -1800,6 +1809,31 @@ model PlatformRouteRate {
   @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, status], map: "platform_route_rates_route_package_status_idx")
   @@index([status, effectiveFrom, effectiveUntil], map: "platform_route_rates_effective_idx")
   @@map("platform_route_rates")
+}
+
+model ManualOperationalSettlement {
+  id               String                             @id @default(cuid())
+  deliveryLegId    String                             @unique
+  payeeName        String
+  payeePhone       String?
+  amountMinor      BigInt
+  currency         String                             @default("NGN")
+  status           ManualOperationalSettlementStatus  @default(PENDING)
+  reason           String
+  paymentReference String?                            @unique
+  settledAt        DateTime?
+  createdByUserId  String
+  settledByUserId  String?
+  createdAt        DateTime                           @default(now())
+  updatedAt        DateTime                           @updatedAt
+
+  deliveryLeg DeliveryLeg @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+  createdBy   User        @relation("ManualOperationalSettlementCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  settledBy   User?       @relation("ManualOperationalSettlementSettler", fields: [settledByUserId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([createdByUserId, createdAt])
+  @@map("manual_operational_settlements")
 }
 
 model ShipmentQuote {

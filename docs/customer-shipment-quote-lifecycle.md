@@ -93,3 +93,45 @@ The legacy negotiated-fare matching path is blocked for bookings without a legac
 ## Verification
 
 The CBP-03 test suite covers successful platform quote creation, customer payout confidentiality, missing measurements, unavailable directed corridors, ownership enforcement and booking-state enforcement. CI must additionally validate Prisma, OpenAPI, migration/schema drift, and the full backend test suite before merge.
+
+
+## CBP-06 — admin operational trip pricing and manual driver settlement
+
+An administrator can prepare a booking-specific operational route plan and issue a versioned quote without creating a reusable platform tariff or inventing a partner agreement.
+
+### Admin endpoints
+
+- `GET /api/v1/admin/parcel-bookings/:bookingId/operational-plan` returns the backend-resolved route topology.
+- `POST /api/v1/admin/parcel-bookings/:bookingId/operational-quotes` creates a customer-visible operational quote.
+- `GET /api/v1/admin/parcel-bookings/:bookingId/operational-quotes` lists operational quote versions.
+- `PATCH /api/v1/admin/delivery-legs/:legId/platform-managed-status` records the operational progress of a platform-managed leg.
+- `GET /api/v1/admin/delivery-legs/:legId/manual-settlement` retrieves the driver's internal settlement record.
+- `POST /api/v1/admin/delivery-legs/:legId/manual-settlement/settle` records an externally completed driver payment.
+
+### Pricing and execution rules
+
+- Every route leg must have its own customer charge in integer minor units. The backend consolidates leg charges plus collection, hub handling, destination delivery, platform and other charges into the customer total.
+- Every leg must declare its executor:
+  - `PLATFORM_MANAGED_DRIVER`: an administrator records the payee's name, optional phone number and fixed payout for a leg, including interstate transport. This does not require a registered Logistic Hub driver profile.
+  - `PARTNER`: an active, verified transport partner and active agreement in the booking currency are mandatory. The agreed partner execution cost is stored internally.
+- Driver payouts and partner execution costs are never returned in customer quote, booking or tracking resources.
+- The backend rejects a quote if the sum of internal execution costs exceeds the consolidated customer charge.
+- Hub-assisted plans require active, operator-verified hubs. Hub handling is a customer charge in this phase; automatic hub-operator settlement is not created.
+- Quote snapshots pin route topology, executor per leg, customer leg charges and internal execution costs. Acceptance revalidates endpoint availability, route topology, hubs and partner agreements.
+- New quote versions supersede earlier offered versions. Admin actor and reason are recorded in operational audit events.
+
+### Payment and fulfilment
+
+- Operational quote acceptance moves the booking to `AWAITING_PAYMENT`. The platform collects the full customer amount; the Paystack flow does not require a driver subaccount or registered driver reservation.
+- Successful payment moves a booking with partner legs to `AWAITING_PARTNER_ASSIGNMENT`. A booking with only platform-managed legs moves to `DRIVER_ASSIGNED`.
+- After payment, admins assign partner legs through the existing partner assignment endpoint. The assigned partner and agreement must match the accepted quote. The booking advances when every partner-executed leg has accepted its assignment.
+- Platform-managed driver legs are recorded as assigned when the quote is accepted. Admins update their status from `ASSIGNED` to `IN_TRANSIT`, then `COMPLETED` or `FAILED`. Status changes require confirmed customer payment and are actor-attributed.
+- A manual driver settlement is created from the accepted quote snapshot. Admins can mark it paid only after the leg is completed, with an external payment reference and reason. The system records the settlement and ledger movement; it does not initiate the bank transfer.
+- Operational customer payments are posted to an operational customer-funds liability account, not misclassified as platform connection-fee revenue. Manual driver settlement debits that held-funds balance. Provider-confirmed refunds reverse the operational customer-funds balance.
+
+### Boundaries
+
+- This is a one-off booking quote, not a reusable corridor tariff.
+- The system does not create driver accounts, driver profiles, partner agreements, hubs, route availability or tariffs.
+- Hub operator payout automation and broader partner cost settlement/accounting remain separate work.
+- The admin booking workspace still needs its operational pricing and manual settlement interface wired to these endpoints.

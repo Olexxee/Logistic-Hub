@@ -165,7 +165,8 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
 
         const leg = await repository.findLegForAssignment(deliveryLegId, tx);
         if (!leg) return { notFound: true };
-        if (leg.type !== "INTERSTATE_TRANSPORT") return { blocker: "LEG_NOT_PARTNER_EXECUTED" };
+        const operationalTripLeg = leg.metadata?.pricingSource === "ADMIN_OPERATIONAL_TRIP" && leg.metadata?.executionType === "PARTNER";
+        if (!operationalTripLeg && leg.type !== "INTERSTATE_TRANSPORT") return { blocker: "LEG_NOT_PARTNER_EXECUTED" };
         if (leg.status !== "READY_FOR_ASSIGNMENT") return { blocker: "LEG_NOT_READY" };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
         if (leg.parcelBooking.integrationClientId && leg.parcelBooking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
@@ -179,9 +180,14 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           where: { parcelBookingId: leg.parcelBookingId, status: "ACCEPTED" },
           orderBy: { version: "desc" },
         });
-        if (!acceptedQuote?.partnerAgreementId) return { blocker: "ACCEPTED_PARTNER_QUOTE_REQUIRED" };
+        const operationalSnapshot = acceptedQuote?.inputSnapshot?.source === "ADMIN_OPERATIONAL_TRIP" ? acceptedQuote.inputSnapshot : null;
+        const operationalLeg = operationalSnapshot?.operationalLegs?.find(item => item.sequence === leg.sequence);
+        if (operationalSnapshot && (operationalLeg?.executionType !== "PARTNER" || operationalLeg.partnerId !== partnerId || leg.metadata?.partnerId !== partnerId)) return { blocker: "OPERATIONAL_PARTNER_MISMATCH" };
+        if (!operationalSnapshot && !acceptedQuote?.partnerAgreementId) return { blocker: "ACCEPTED_PARTNER_QUOTE_REQUIRED" };
+        const agreementId = operationalSnapshot ? operationalLeg.agreementId : acceptedQuote.partnerAgreementId;
+        const agreedTransportChargeMinor = operationalSnapshot ? BigInt(operationalLeg.executionCostMinor) : acceptedQuote.transportChargeMinor;
 
-        const agreement = await repository.findActiveAgreement(acceptedQuote.partnerAgreementId, tx);
+        const agreement = await repository.findActiveAgreement(agreementId, tx);
         const now = clock();
         if (!agreement || agreement.partnerId !== partnerId ||
           agreement.status !== "ACTIVE" ||
@@ -206,13 +212,14 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
 
         const assignment = await repository.createAssignment({
           deliveryLegId, partnerId, agreementId: agreement.id, assignedByUserId: actorUserId,
-          status: "ASSIGNED", agreedTransportChargeMinor: acceptedQuote.transportChargeMinor,
+          status: "ASSIGNED", agreedTransportChargeMinor,
           currency: acceptedQuote.currency, idempotencyKey, assignedAt: now,
+          ...(operationalSnapshot ? { metadata: { quoteId: acceptedQuote.id, quoteVersion: acceptedQuote.version, executionSource: "ADMIN_OPERATIONAL_TRIP", legSequence: leg.sequence } } : {}),
         }, tx);
         await tx.operationalAuditEvent.create({ data: {
           actorUserId, entityType: "PARTNER_DELIVERY_ASSIGNMENT", entityId: assignment.id,
           action: "PARTNER_LEG_ASSIGNED",
-          after: { deliveryLegId, partnerId, agreementId: agreement.id, agreedTransportChargeMinor: acceptedQuote.transportChargeMinor.toString(), currency: acceptedQuote.currency },
+          after: { deliveryLegId, partnerId, agreementId: agreement.id, agreedTransportChargeMinor: agreedTransportChargeMinor.toString(), currency: acceptedQuote.currency },
         } });
 
         if (leg.parcelBooking.integrationClientId
@@ -276,6 +283,32 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         });
         if (changed.count !== 1) return { blocker: "ASSIGNMENT_NOT_ACCEPTABLE" };
         const updated = await repository.findAssignment(assignmentId, tx);
+        const bookingId = assignment.deliveryLeg?.parcelBookingId;
+        if (bookingId) {
+          const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId }, select: { id: true, status: true, paymentStatus: true, pricingSnapshot: true } });
+          if (booking?.pricingSnapshot?.source === "ADMIN_OPERATIONAL_TRIP" && booking.paymentStatus === "SUCCEEDED"
+            && booking.status === "AWAITING_PARTNER_ASSIGNMENT") {
+            const partnerLegs = await tx.deliveryLeg.findMany({
+              where: { parcelBookingId: bookingId, metadata: { path: ["executionType"], equals: "PARTNER" } },
+              select: { id: true },
+            });
+            const acceptedLegs = partnerLegs.length ? await tx.partnerDeliveryAssignment.count({
+              where: { deliveryLegId: { in: partnerLegs.map(leg => leg.id) }, status: { in: ["ACCEPTED", "IN_TRANSIT", "COMPLETED"] } },
+            }) : 0;
+            if (partnerLegs.length > 0 && acceptedLegs === partnerLegs.length) {
+              const changedBooking = await tx.parcelBooking.updateMany({
+                where: { id: bookingId, status: "AWAITING_PARTNER_ASSIGNMENT", paymentStatus: "SUCCEEDED" },
+                data: { status: "DRIVER_ASSIGNED" },
+              });
+              if (changedBooking.count === 1) await tx.bookingEvent.create({ data: {
+                parcelBookingId: bookingId, actorUserId: userId,
+                eventType: "OPERATIONAL_TRIP_PARTNER_LEGS_ACCEPTED",
+                fromStatus: "AWAITING_PARTNER_ASSIGNMENT", toStatus: "DRIVER_ASSIGNED",
+                metadata: { acceptedPartnerLegCount: acceptedLegs },
+              } });
+            }
+          }
+        }
         await tx.operationalAuditEvent.create({ data: {
           actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT", entityId: assignmentId,
           action: "PARTNER_LEG_ACCEPTED", before: { status: assignment.status }, after: { status: updated.status },

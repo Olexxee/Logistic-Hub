@@ -258,6 +258,33 @@ export function createPartnerSettlementService({ prismaClient, clock = () => new
           where: { id: { in: batch.items.map((item) => item.payableId) }, status: { in: ["IN_BATCH", "DISPUTED"] } },
           data: matched ? { status: "RECONCILED", reconciledAt: now } : { status: "DISPUTED", reconciledAt: null },
         });
+        if (matched) {
+          const operationalPayables = await tx.partnerPayable.findMany({
+            where: { id: { in: batch.items.map(item => item.payableId) } },
+            include: { deliveryLeg: { select: { metadata: true } } },
+          });
+          const operationalAmount = operationalPayables
+            .filter(item => item.deliveryLeg.metadata?.pricingSource === "ADMIN_OPERATIONAL_TRIP")
+            .reduce((total, item) => total + item.amountMinor, 0n);
+          if (operationalAmount > 0n) {
+            const fundsCode = "OPERATIONAL_CUSTOMER_FUNDS_" + batch.currency;
+            const clearingCode = "PARTNER_SETTLEMENT_CLEARING_" + batch.currency;
+            const [funds, clearing] = await Promise.all([
+              tx.ledgerAccount.upsert({ where: { code: fundsCode }, create: { code: fundsCode, name: "Operational customer funds held for fulfilment", type: "LIABILITY", currency: batch.currency }, update: {} }),
+              tx.ledgerAccount.upsert({ where: { code: clearingCode }, create: { code: clearingCode, name: "Partner settlement clearing", type: "ASSET", currency: batch.currency }, update: {} }),
+            ]);
+            const balances = await tx.ledgerEntry.groupBy({ by: ["side"], where: { accountId: funds.id }, _sum: { amountMinor: true } });
+            const credits = balances.find(row => row.side === "CREDIT")?._sum.amountMinor ?? 0n;
+            const debits = balances.find(row => row.side === "DEBIT")?._sum.amountMinor ?? 0n;
+            if (credits - debits < operationalAmount) throw new ConflictError("Collected operational funds do not cover this partner settlement.", "OPERATIONAL_FUNDS_INSUFFICIENT");
+            const journalReference = "PARTNER-OPERATIONAL-SETTLEMENT:" + batch.id;
+            const posted = await tx.ledgerEntry.findFirst({ where: { journalReference }, select: { id: true } });
+            if (!posted) await tx.ledgerEntry.createMany({ data: [
+              { journalReference, currency: batch.currency, accountId: funds.id, side: "DEBIT", amountMinor: operationalAmount, description: "Operational trip partner execution costs settled" },
+              { journalReference, currency: batch.currency, accountId: clearing.id, side: "CREDIT", amountMinor: operationalAmount, description: "Operational trip partner execution costs settled" },
+            ] });
+          }
+        }
         await audit(tx, actorUserId, "PARTNER_SETTLEMENT_BATCH", batchId,
           matched ? "PARTNER_SETTLEMENT_BATCH_RECONCILED" : "PARTNER_SETTLEMENT_BATCH_EXCEPTION",
           { status: batch.status, reconciliationOutcome: batch.reconciliationOutcome },

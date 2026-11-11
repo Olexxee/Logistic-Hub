@@ -10,7 +10,16 @@ export function createPaymentsRepository(prismaClient = prisma) {
     const existing = await tx.paymentAttempt.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
     if (existing) return existing;
 
-    const reservation = await tx.driverAssignment.findFirst({
+    const manualOperationalBooking = data.parcelBookingId && tx.parcelBooking?.findUnique
+     ? await tx.parcelBooking.findUnique({
+      where: { id: data.parcelBookingId },
+      select: { status: true, pricingSnapshot: true },
+     })
+     : null;
+    const manualOperationalPayment = manualOperationalBooking?.status === "AWAITING_PAYMENT"
+     && manualOperationalBooking?.pricingSnapshot?.source === "ADMIN_OPERATIONAL_TRIP";
+
+    const reservation = manualOperationalPayment ? null : await tx.driverAssignment.findFirst({
      where: {
       ...bookingWhere,
       status: "AWAITING_PAYMENT",
@@ -19,24 +28,26 @@ export function createPaymentsRepository(prismaClient = prisma) {
      orderBy: { createdAt: "desc" },
      select: { id: true },
     });
-    if (!reservation) {
+    if (!manualOperationalPayment && !reservation) {
      throw Object.assign(new Error("The driver reservation is no longer active."), {
       statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
      });
     }
 
-    // The expiry worker locks this same row before releasing the reservation.
-    // Whichever transaction wins the lock decides whether payment can start.
-    await tx.$queryRaw`SELECT id FROM driver_assignments WHERE id = ${reservation.id} FOR UPDATE`;
-    const currentReservation = await tx.driverAssignment.findUnique({
-     where: { id: reservation.id },
-     select: { status: true, paymentExpiresAt: true },
-    });
-    if (!currentReservation || currentReservation.status !== "AWAITING_PAYMENT"
-     || (currentReservation.paymentExpiresAt && currentReservation.paymentExpiresAt <= new Date())) {
-     throw Object.assign(new Error("The driver reservation expired before payment initialization."), {
-      statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
+    if (reservation) {
+     // The expiry worker locks this same row before releasing the reservation.
+     // Whichever transaction wins the lock decides whether payment can start.
+     await tx.$queryRaw`SELECT id FROM driver_assignments WHERE id = ${reservation.id} FOR UPDATE`;
+     const currentReservation = await tx.driverAssignment.findUnique({
+      where: { id: reservation.id },
+      select: { status: true, paymentExpiresAt: true },
      });
+     if (!currentReservation || currentReservation.status !== "AWAITING_PAYMENT"
+      || (currentReservation.paymentExpiresAt && currentReservation.paymentExpiresAt <= new Date())) {
+      throw Object.assign(new Error("The driver reservation expired before payment initialization."), {
+       statusCode: 409, code: "ASSIGNMENT_RESERVATION_EXPIRED",
+      });
+     }
     }
 
     const unresolvedAttempt = await tx.paymentAttempt.findFirst({
@@ -109,9 +120,35 @@ export function createPaymentsRepository(prismaClient = prisma) {
      }
      const journalReference = "REFUND:" + providerReference;
      const posted = await tx.ledgerEntry.findFirst({ where: { journalReference }, select: { id: true } });
+     const manualOperational = refund.paymentAttempt.splitConfigurationSnapshot?.pricingSource === "ADMIN_OPERATIONAL_TRIP";
      const platformRefund = refund.amountMinor < (refund.paymentAttempt.platformAllocationMinor ?? 0n)
       ? refund.amountMinor : (refund.paymentAttempt.platformAllocationMinor ?? 0n);
-     if (!posted && platformRefund > 0n) {
+     if (!posted && manualOperational) {
+      const fundsCode = "OPERATIONAL_CUSTOMER_FUNDS_" + refund.currency;
+      const revenueCode = "PLATFORM_OPERATIONAL_REVENUE_" + refund.currency;
+      const clearingCode = "PAYSTACK_CLEARING_" + refund.currency;
+      const accounts = await Promise.all([
+       tx.ledgerAccount.findUnique({ where: { code: fundsCode } }),
+       tx.ledgerAccount.findUnique({ where: { code: revenueCode } }),
+       tx.ledgerAccount.upsert({ where: { code: clearingCode }, create: { code: clearingCode, name: "Paystack platform clearing", type: "ASSET", currency: refund.currency }, update: {} }),
+      ]);
+      if (!accounts[0] || !accounts[1]) throw Object.assign(new Error("Operational payment ledger allocation is missing."), { statusCode: 409, code: "OPERATIONAL_LEDGER_ALLOCATION_MISSING" });
+      const balances = await tx.ledgerEntry.groupBy({ by: ["accountId", "side"], where: { accountId: { in: [accounts[0].id, accounts[1].id] } }, _sum: { amountMinor: true } });
+      const balance = accountId => {
+       const credits = balances.find(row => row.accountId === accountId && row.side === "CREDIT")?._sum.amountMinor ?? 0n;
+       const debits = balances.find(row => row.accountId === accountId && row.side === "DEBIT")?._sum.amountMinor ?? 0n;
+       return credits - debits;
+      };
+      const revenueRemaining = balance(accounts[1].id) > 0n ? balance(accounts[1].id) : 0n;
+      const revenueRefund = refund.amountMinor < revenueRemaining ? refund.amountMinor : revenueRemaining;
+      const fundsRefund = refund.amountMinor - revenueRefund;
+      const common = { journalReference, currency: refund.currency, paymentAttemptId: refund.paymentAttemptId, parcelBookingId: refund.paymentAttempt.parcelBookingId, description: "Provider-confirmed refund reversal for operational trip funds and revenue" };
+      const entries = [];
+      if (revenueRefund > 0n) entries.push({ ...common, accountId: accounts[1].id, side: "DEBIT", amountMinor: revenueRefund });
+      if (fundsRefund > 0n) entries.push({ ...common, accountId: accounts[0].id, side: "DEBIT", amountMinor: fundsRefund });
+      entries.push({ ...common, accountId: accounts[2].id, side: "CREDIT", amountMinor: refund.amountMinor });
+      await tx.ledgerEntry.createMany({ data: entries });
+     } else if (!posted && platformRefund > 0n) {
       const accounts = await Promise.all([
        tx.ledgerAccount.upsert({ where: { code: "PLATFORM_CONNECTION_REVENUE_NGN" }, create: { code: "PLATFORM_CONNECTION_REVENUE_NGN", name: "Platform connection fee revenue", type: "REVENUE", currency: refund.currency }, update: {} }),
        tx.ledgerAccount.upsert({ where: { code: "PAYSTACK_CLEARING_NGN" }, create: { code: "PAYSTACK_CLEARING_NGN", name: "Paystack platform clearing", type: "ASSET", currency: refund.currency }, update: {} }),
@@ -153,17 +190,22 @@ export function createPaymentsRepository(prismaClient = prisma) {
    if(attempt.amountMinor!==BigInt(amountMinor)||attempt.currency!==currency) throw Object.assign(new Error("Verified payment amount does not match expected amount."),{statusCode:409,code:"PAYMENT_AMOUNT_MISMATCH"});
    await tx.paymentAttempt.update({where:{id:attempt.id},data:{status:"SUCCEEDED",verifiedAt:new Date(),providerPayload}});
    let settlementContext;
-   if(attempt.parcelBookingId){const b=await tx.parcelBooking.findUnique({where:{id:attempt.parcelBookingId}});if(!b||b.paymentStatus==="SUCCEEDED")throw Object.assign(new Error("Parcel booking already settled or missing."),{statusCode:409,code:"BOOKING_ALREADY_SETTLED"});settlementContext={userId:b.senderId,bookingId:b.id,bookingType:"PARCEL",publicReference:b.publicReference};await tx.parcelBooking.update({where:{id:b.id},data:{paymentStatus:"SUCCEEDED",status:"DRIVER_ASSIGNED",paidAt:new Date()}});await tx.driverAssignment.updateMany({where:{parcelBookingId:b.id,status:"AWAITING_PAYMENT"},data:{status:"ACCEPTED",acceptedAt:new Date()}});await tx.deliveryLeg.updateMany({where:{parcelBookingId:b.id,status:"AWAITING_PAYMENT"},data:{status:"ASSIGNED",assignedAt:new Date()}});await tx.bookingEvent.create({data:{parcelBookingId:b.id,eventType:"PAYMENT_CONFIRMED",fromStatus:"AWAITING_PAYMENT",toStatus:"DRIVER_ASSIGNED",metadata:{reference}}});}
+   if(attempt.parcelBookingId){const b=await tx.parcelBooking.findUnique({where:{id:attempt.parcelBookingId}});if(!b||b.paymentStatus==="SUCCEEDED")throw Object.assign(new Error("Parcel booking already settled or missing."),{statusCode:409,code:"BOOKING_ALREADY_SETTLED"});settlementContext={userId:b.senderId,bookingId:b.id,bookingType:"PARCEL",publicReference:b.publicReference};const manualOperational=b.pricingSnapshot?.source==="ADMIN_OPERATIONAL_TRIP";let nextStatus="DRIVER_ASSIGNED";if(manualOperational){const operationalLegs=await tx.deliveryLeg.findMany({where:{parcelBookingId:b.id},select:{metadata:true}});if(operationalLegs.some(leg=>leg.metadata?.executionType==="PARTNER"))nextStatus="AWAITING_PARTNER_ASSIGNMENT";}await tx.parcelBooking.update({where:{id:b.id},data:{paymentStatus:"SUCCEEDED",status:nextStatus,paidAt:new Date()}});if(!manualOperational){await tx.driverAssignment.updateMany({where:{parcelBookingId:b.id,status:"AWAITING_PAYMENT"},data:{status:"ACCEPTED",acceptedAt:new Date()}});await tx.deliveryLeg.updateMany({where:{parcelBookingId:b.id,status:"AWAITING_PAYMENT"},data:{status:"ASSIGNED",assignedAt:new Date()}});}await tx.bookingEvent.create({data:{parcelBookingId:b.id,eventType:"PAYMENT_CONFIRMED",fromStatus:"AWAITING_PAYMENT",toStatus:nextStatus,metadata:{reference,manualOperational}}});}
    else if(attempt.rideBookingId){const b=await tx.rideBooking.findUnique({where:{id:attempt.rideBookingId}});if(!b||b.paymentStatus==="SUCCEEDED")throw Object.assign(new Error("Ride booking already settled or missing."),{statusCode:409,code:"BOOKING_ALREADY_SETTLED"});settlementContext={userId:b.passengerId,bookingId:b.id,bookingType:"RIDE",publicReference:b.publicReference};await tx.rideBooking.update({where:{id:b.id},data:{paymentStatus:"SUCCEEDED",status:"DRIVER_ASSIGNED",paidAt:new Date()}});await tx.driverAssignment.updateMany({where:{rideBookingId:b.id,status:"AWAITING_PAYMENT"},data:{status:"ACCEPTED",acceptedAt:new Date()}});await tx.bookingEvent.create({data:{rideBookingId:b.id,eventType:"PAYMENT_CONFIRMED",fromStatus:"AWAITING_PAYMENT",toStatus:"DRIVER_ASSIGNED",metadata:{reference}}});}
    else throw Object.assign(new Error("Payment attempt is not linked to a booking."),{statusCode:409,code:"PAYMENT_BOOKING_MISSING"});
    const platform=attempt.platformAllocationMinor??0n;
    if(platform<0n||platform>attempt.amountMinor)throw Object.assign(new Error("Platform allocation is outside the captured amount."),{statusCode:409,code:"LEDGER_ALLOCATION_MISMATCH"});
-   const accounts=await Promise.all([
+   const manualOperational=attempt.splitConfigurationSnapshot?.pricingSource==="ADMIN_OPERATIONAL_TRIP";
+   const journalReference="PAYMENT:"+reference;const posted=await tx.ledgerEntry.findFirst({where:{journalReference},select:{id:true}});
+   if(!posted&&manualOperational){const clearingCode="PAYSTACK_CLEARING_"+currency;const fundsCode="OPERATIONAL_CUSTOMER_FUNDS_"+currency;const revenueCode="PLATFORM_OPERATIONAL_REVENUE_"+currency;const internalCosts=BigInt(attempt.splitConfigurationSnapshot?.internalExecutionCostMinor??"0");const platformRevenue=attempt.amountMinor-internalCosts;if(internalCosts<0n||platformRevenue<0n)throw Object.assign(new Error("Operational payment allocation exceeds the captured amount."),{statusCode:409,code:"OPERATIONAL_ALLOCATION_MISMATCH"});const accounts=await Promise.all([
+    tx.ledgerAccount.upsert({where:{code:clearingCode},create:{code:clearingCode,name:"Paystack platform clearing",type:"ASSET",currency},update:{}}),
+    tx.ledgerAccount.upsert({where:{code:fundsCode},create:{code:fundsCode,name:"Operational customer funds held for fulfilment",type:"LIABILITY",currency},update:{}}),
+    tx.ledgerAccount.upsert({where:{code:revenueCode},create:{code:revenueCode,name:"Operational trip platform revenue",type:"REVENUE",currency},update:{}})
+   ]);const common={journalReference,currency,paymentAttemptId:attempt.id,parcelBookingId:attempt.parcelBookingId,description:"Customer payment allocation for an admin-approved operational trip"};const entries=[{...common,accountId:accounts[0].id,side:"DEBIT",amountMinor:attempt.amountMinor}];if(internalCosts>0n)entries.push({...common,accountId:accounts[1].id,side:"CREDIT",amountMinor:internalCosts});if(platformRevenue>0n)entries.push({...common,accountId:accounts[2].id,side:"CREDIT",amountMinor:platformRevenue});await tx.ledgerEntry.createMany({data:entries});}
+   else if(!posted&&platform>0n){const accounts=await Promise.all([
     tx.ledgerAccount.upsert({where:{code:"PAYSTACK_CLEARING_NGN"},create:{code:"PAYSTACK_CLEARING_NGN",name:"Paystack platform clearing",type:"ASSET",currency},update:{}}),
     tx.ledgerAccount.upsert({where:{code:"PLATFORM_CONNECTION_REVENUE_NGN"},create:{code:"PLATFORM_CONNECTION_REVENUE_NGN",name:"Platform connection fee revenue",type:"REVENUE",currency},update:{}})
-   ]);
-   const journalReference="PAYMENT:"+reference;const posted=await tx.ledgerEntry.findFirst({where:{journalReference},select:{id:true}});
-   if(!posted&&platform>0n){const common={journalReference,currency,paymentAttemptId:attempt.id,description:"Fixed platform connection fee from Paystack split"};await tx.ledgerEntry.createMany({data:[
+   ]);const common={journalReference,currency,paymentAttemptId:attempt.id,description:"Fixed platform connection fee from Paystack split"};await tx.ledgerEntry.createMany({data:[
     {...common,accountId:accounts[0].id,side:"DEBIT",amountMinor:platform,parcelBookingId:attempt.parcelBookingId,rideBookingId:attempt.rideBookingId},
     {...common,accountId:accounts[1].id,side:"CREDIT",amountMinor:platform,parcelBookingId:attempt.parcelBookingId,rideBookingId:attempt.rideBookingId}
    ]});}

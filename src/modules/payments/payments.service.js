@@ -13,33 +13,39 @@ export function createPaymentsService({ prismaClient, repository = createPayment
       const booking = await repository.findBooking({ bookingType, bookingId, userId });
       if (!booking) throw new ConflictError("Booking was not found or is not owned by the authenticated user.", "BOOKING_NOT_PAYABLE");
       const assignment = booking.assignments?.[0];
-      if (booking.status !== "AWAITING_PAYMENT" || !assignment || booking.paymentStatus === "SUCCEEDED") throw new ConflictError("This booking is not awaiting payment.", "BOOKING_NOT_PAYABLE");
+      const manualOperationalQuote = bookingType === "PARCEL" && booking.pricingSnapshot?.source === "ADMIN_OPERATIONAL_TRIP";
+      if (booking.status !== "AWAITING_PAYMENT" || (!assignment && !manualOperationalQuote) || booking.paymentStatus === "SUCCEEDED") throw new ConflictError("This booking is not awaiting payment.", "BOOKING_NOT_PAYABLE");
       const amountMinor = booking.customerPayableMinor;
-      if (amountMinor == null || amountMinor <= 0n || assignment.agreedFareMinor <= 0n
-        || assignment.agreedFareMinor > amountMinor || amountMinor > BigInt(Number.MAX_SAFE_INTEGER)) {
+      const driverAllocationMinor = assignment?.agreedFareMinor ?? 0n;
+      if (amountMinor == null || amountMinor <= 0n || (assignment && assignment.agreedFareMinor <= 0n)
+        || driverAllocationMinor > amountMinor || amountMinor > BigInt(Number.MAX_SAFE_INTEGER)) {
         throw new ConflictError("The payable amount is invalid.", "INVALID_PAYMENT_AMOUNT");
       }
       const isPlatformRouteBooking = bookingType === "PARCEL"
         && booking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE";
       if (isPlatformRouteBooking
-        && booking.pricingSnapshot?.driverPayoutMinor !== assignment.agreedFareMinor.toString()) {
+        && booking.pricingSnapshot?.driverPayoutMinor !== assignment?.agreedFareMinor?.toString()) {
         throw new ConflictError("The reserved driver payout no longer matches the accepted platform tariff.", "DRIVER_PAYOUT_SNAPSHOT_MISMATCH");
       }
-      const settlement = assignment.driverProfile?.settlementAccounts?.[0];
-      if (!settlement?.externalAccountRef || settlement.status !== "ACTIVE") throw new ConflictError("The assigned driver has no active Paystack settlement subaccount.", "DRIVER_SETTLEMENT_NOT_READY");
-      const platformFeeMinor = amountMinor - assignment.agreedFareMinor;
+      const settlement = assignment?.driverProfile?.settlementAccounts?.[0];
+      if (assignment && (!settlement?.externalAccountRef || settlement.status !== "ACTIVE")) throw new ConflictError("The assigned driver has no active Paystack settlement subaccount.", "DRIVER_SETTLEMENT_NOT_READY");
+      const platformFeeMinor = amountMinor - driverAllocationMinor;
+      if (manualOperationalQuote && BigInt(booking.pricingSnapshot.internalExecutionCostMinor ?? "0") > amountMinor) {
+        throw new ConflictError("Operational execution costs exceed the accepted customer charge.", "OPERATIONAL_ALLOCATION_MISMATCH");
+      }
       const reference = ("lh_" + bookingType.toLowerCase() + "_" + booking.id + "_" + idempotencyKey).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 100);
       const attempt = await repository.createAttempt({
         ...(bookingType === "PARCEL" ? { parcelBookingId: booking.id } : { rideBookingId: booking.id }),
         provider: "PAYSTACK", providerReference: reference, idempotencyKey, status: "INITIALIZED",
-        amountMinor, currency: booking.currency, driverAllocationMinor: assignment.agreedFareMinor,
-        platformAllocationMinor: platformFeeMinor, driverSettlementAccountId: settlement.id,
+        amountMinor, currency: booking.currency, driverAllocationMinor,
+        platformAllocationMinor: manualOperationalQuote ? 0n : platformFeeMinor,
+        driverSettlementAccountId: settlement?.id ?? null,
         splitConfigurationSnapshot: {
-          subaccount: settlement.externalAccountRef,
-          transactionChargeMinor: platformFeeMinor.toString(),
-          platformFeeModel: isPlatformRouteBooking ? "PLATFORM_RETAINED_REMAINDER" : "FIXED_CONNECTION_FEE",
-          pricingSource: isPlatformRouteBooking ? "PLATFORM_ROUTE_RATE" : "LEGACY_OR_RIDE_PRICING",
-          driverPayoutMinor: assignment.agreedFareMinor.toString(),
+          ...(settlement ? { subaccount: settlement.externalAccountRef, transactionChargeMinor: platformFeeMinor.toString() } : {}),
+          platformFeeModel: manualOperationalQuote ? "OPERATIONAL_CUSTOMER_FUNDS" : isPlatformRouteBooking ? "PLATFORM_RETAINED_REMAINDER" : "FIXED_CONNECTION_FEE",
+          pricingSource: manualOperationalQuote ? "ADMIN_OPERATIONAL_TRIP" : isPlatformRouteBooking ? "PLATFORM_ROUTE_RATE" : "LEGACY_OR_RIDE_PRICING",
+          driverPayoutMinor: driverAllocationMinor.toString(),
+          ...(manualOperationalQuote ? { internalExecutionCostMinor: String(booking.pricingSnapshot.internalExecutionCostMinor ?? "0"), platformRevenueMinor: (amountMinor - BigInt(booking.pricingSnapshot.internalExecutionCostMinor ?? "0")).toString() } : {}),
           customerChargeMinor: amountMinor.toString(),
         },
       });
@@ -50,7 +56,7 @@ export function createPaymentsService({ prismaClient, repository = createPayment
       const response = await fetchImpl("https://api.paystack.co/transaction/initialize", {
         method: "POST",
         headers: { Authorization: "Bearer " + secretKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email, amount: Number(amountMinor), currency: booking.currency, reference: attempt.providerReference, subaccount: settlement.externalAccountRef, transaction_charge: Number(platformFeeMinor), metadata: { bookingType, bookingId: booking.id, paymentAttemptId: attempt.id } }),
+        body: JSON.stringify({ email: user.email, amount: Number(amountMinor), currency: booking.currency, reference: attempt.providerReference, ...(settlement ? { subaccount: settlement.externalAccountRef, transaction_charge: Number(platformFeeMinor) } : {}), metadata: { bookingType, bookingId: booking.id, paymentAttemptId: attempt.id } }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.status || !body?.data?.authorization_url) throw new ServiceUnavailableError("Paystack could not initialize this payment. Retry with the same idempotency key.", "PAYSTACK_INITIALIZATION_FAILED");
