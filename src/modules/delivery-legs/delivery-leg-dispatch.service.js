@@ -95,19 +95,36 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw new ForbiddenError("An active hub dispatch permission is required.");
           }
         } else if (user.role === "ADMIN") {
-          const fixedPayout = leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE"
-            && leg.type === "LOCAL_PICKUP"
-            && leg.metadata?.driverPayoutMinor != null
-            && BigInt(leg.metadata.driverPayoutMinor) > 0n;
-          if (!fixedPayout
-            || leg.parcelBooking.pricingSnapshot?.driverPayoutMinor !== leg.metadata.driverPayoutMinor
-            || !leg.parcelBooking.integrationClientId
-            || !leg.parcelBooking.integrationDispatchAuthorizedAt
-            || leg.parcelBooking.paymentStatus !== "SUCCEEDED") {
-            throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Admin dispatch requires a paid, released platform-priced local shipment with a positive fixed driver payout.");
+          const integrationDispatch = leg.parcelBooking.integrationClientId != null
+            && leg.parcelBooking.senderId == null
+            && leg.parcelBooking.integrationDispatchAuthorizedAt != null
+            && leg.parcelBooking.paymentStatus === "SUCCEEDED"
+            && leg.parcelBooking.status === "AWAITING_PARTNER_ASSIGNMENT";
+          if (!integrationDispatch) {
+            throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Admin dispatch requires a paid, released platform-priced integration shipment.");
           }
         } else if (leg.parcelBooking.senderId !== user.id) {
           throw new ForbiddenError();
+        }
+        if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE") {
+          const fixedPayout = leg.type === "LOCAL_PICKUP"
+            && leg.metadata?.driverPayoutMinor != null
+            && BigInt(leg.metadata.driverPayoutMinor) > 0n
+            && leg.parcelBooking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
+            && leg.parcelBooking.pricingSnapshot?.quoteId === leg.metadata.quoteId
+            && leg.parcelBooking.pricingSnapshot?.driverPayoutMinor === leg.metadata.driverPayoutMinor;
+          const customerDispatch = user.role !== "ADMIN"
+            && leg.parcelBooking.senderId === user.id
+            && leg.parcelBooking.integrationClientId == null
+            && leg.parcelBooking.status === "AWAITING_PARTNER_ASSIGNMENT"
+            && ["INITIALIZED", "FAILED"].includes(leg.parcelBooking.paymentStatus);
+          const integrationDispatch = user.role === "ADMIN"
+            && leg.parcelBooking.integrationClientId != null
+            && leg.parcelBooking.integrationDispatchAuthorizedAt != null
+            && leg.parcelBooking.paymentStatus === "SUCCEEDED";
+          if (!fixedPayout || !(customerDispatch || integrationDispatch)) {
+            throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Platform fixed-payout dispatch requires an accepted tariff snapshot and the correct customer-payment or integration-release state.");
+          }
         }
         if (!DRIVER_LEG_TYPES.has(leg.type)) {
           throw conflict("LEG_REQUIRES_PARTNER_EXECUTION", "This delivery leg is not eligible for local driver assignment.");
@@ -115,7 +132,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         if (leg.status !== "READY_FOR_ASSIGNMENT") {
           throw conflict("DELIVERY_LEG_NOT_READY", "Driver offers can only be requested for a leg that is ready for assignment.");
         }
-        if (user.role === "ADMIN") {
+        if (leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE") {
           const routeAvailability = await tx.platformRouteAvailability.findFirst({
             where: {
               originServiceZoneId: leg.originServiceZoneId,
@@ -302,13 +319,23 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const leg = offer.deliveryLeg;
           const booking = leg.parcelBooking;
           const payout = offer.fixedPayoutMinor;
+          const integrationShipment = booking.integrationClientId != null && booking.senderId == null;
+          const customerShipment = booking.senderId != null && booking.integrationClientId == null;
+          const customerPaymentReady = customerShipment
+            && ["INITIALIZED", "FAILED"].includes(booking.paymentStatus)
+            && booking.status === "AWAITING_PARTNER_ASSIGNMENT"
+            && booking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
+            && booking.pricingSnapshot?.quoteId === leg.metadata?.quoteId;
+          const integrationPaymentReady = integrationShipment
+            && booking.integrationDispatchAuthorizedAt != null
+            && booking.paymentStatus === "SUCCEEDED"
+            && booking.status === "AWAITING_PARTNER_ASSIGNMENT";
           if (offer.status !== "OFFERED" || offer.expiresAt <= now || payout == null || payout <= 0n
             || offer.proposedFareMinor != null || leg.status !== "READY_FOR_ASSIGNMENT"
             || leg.type !== "LOCAL_PICKUP" || leg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
             || leg.metadata?.driverPayoutMinor !== payout.toString()
             || booking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
-            || !booking.integrationClientId || !booking.integrationDispatchAuthorizedAt
-            || booking.paymentStatus !== "SUCCEEDED" || booking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
+            || !(customerPaymentReady || integrationPaymentReady)) {
             throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "This fixed-payout offer is no longer authorized or available.");
           }
 
@@ -317,14 +344,22 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const lockedLeg = await tx.deliveryLeg.findUnique({
             where: { id: leg.id }, include: { parcelBooking: true },
           });
+          const lockedBooking = lockedLeg?.parcelBooking;
+          const lockedCustomerShipment = lockedBooking?.senderId != null && lockedBooking?.integrationClientId == null
+            && lockedBooking.status === "AWAITING_PARTNER_ASSIGNMENT"
+            && ["INITIALIZED", "FAILED"].includes(lockedBooking.paymentStatus)
+            && lockedBooking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE"
+            && lockedBooking.pricingSnapshot?.quoteId === lockedLeg.metadata?.quoteId;
+          const lockedIntegrationShipment = lockedBooking?.integrationClientId != null && lockedBooking?.senderId == null
+            && lockedBooking.integrationDispatchAuthorizedAt != null
+            && lockedBooking.paymentStatus === "SUCCEEDED"
+            && lockedBooking.status === "AWAITING_PARTNER_ASSIGNMENT";
           if (!lockedLeg || lockedLeg.status !== "READY_FOR_ASSIGNMENT"
             || lockedLeg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
             || lockedLeg.metadata?.driverPayoutMinor !== payout.toString()
-            || lockedLeg.parcelBooking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
-            || !lockedLeg.parcelBooking.integrationDispatchAuthorizedAt
-            || lockedLeg.parcelBooking.paymentStatus !== "SUCCEEDED"
-            || lockedLeg.parcelBooking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
-            throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "The shipment is no longer released for driver assignment.");
+            || lockedBooking?.pricingSnapshot?.driverPayoutMinor !== payout.toString()
+            || !(lockedCustomerShipment || lockedIntegrationShipment)) {
+            throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "The shipment is no longer eligible for fixed-payout driver assignment.");
           }
 
           const routeAvailability = await tx.platformRouteAvailability.findFirst({
@@ -402,42 +437,53 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             where: { deliveryLegId: leg.id, id: { not: offer.id }, status: "OFFERED" },
             data: { status: "WITHDRAWN", respondedAt: now },
           });
+          const customerPaymentFlow = lockedCustomerShipment;
+          const nextLegStatus = customerPaymentFlow ? "AWAITING_PAYMENT" : "ASSIGNED";
+          const nextBookingStatus = customerPaymentFlow ? "AWAITING_PAYMENT" : "DRIVER_ASSIGNED";
           const legChanged = await tx.deliveryLeg.updateMany({
-            where: { id: leg.id, status: "READY_FOR_ASSIGNMENT" }, data: { status: "ASSIGNED", assignedAt: now },
+            where: { id: leg.id, status: "READY_FOR_ASSIGNMENT" },
+            data: { status: nextLegStatus, ...(customerPaymentFlow ? {} : { assignedAt: now }) },
           });
           if (legChanged.count !== 1) throw conflict("DELIVERY_LEG_STATE_CONFLICT", "The delivery leg changed during driver acceptance.");
           const bookingChanged = await tx.parcelBooking.updateMany({
             where: {
-              id: booking.id, status: "AWAITING_PARTNER_ASSIGNMENT", paymentStatus: "SUCCEEDED",
-              integrationDispatchAuthorizedAt: { not: null },
+              id: booking.id, status: "AWAITING_PARTNER_ASSIGNMENT",
+              ...(customerPaymentFlow
+                ? { paymentStatus: { in: ["INITIALIZED", "FAILED"] }, senderId: { not: null }, integrationClientId: null }
+                : { paymentStatus: "SUCCEEDED", integrationDispatchAuthorizedAt: { not: null }, integrationClientId: { not: null } }),
             },
-            data: { status: "DRIVER_ASSIGNED" },
+            data: { status: nextBookingStatus },
           });
           if (bookingChanged.count !== 1) throw conflict("SHIPMENT_STATE_CONFLICT", "The shipment changed during driver acceptance.");
 
+          const paymentExpiresAt = customerPaymentFlow ? new Date(now.getTime() + 15 * 60_000) : null;
           const assignment = await tx.driverAssignment.create({
             data: {
               parcelBookingId: booking.id, deliveryLegId: leg.id, driverProfileId: profile.id,
-              vehicleId: vehicle.id, assignedByUserId: userId, status: "ACCEPTED",
-              agreedFareMinor: payout, currency: offer.currency, reservedAt: now, acceptedAt: now,
+              vehicleId: vehicle.id, assignedByUserId: userId,
+              status: customerPaymentFlow ? "AWAITING_PAYMENT" : "ACCEPTED",
+              agreedFareMinor: payout, currency: offer.currency, reservedAt: now,
+              ...(customerPaymentFlow ? { paymentExpiresAt } : { acceptedAt: now }),
             },
             select: { id: true },
           });
           const sourceEvent = await tx.bookingEvent.create({
             data: {
               parcelBookingId: booking.id, actorUserId: userId,
-              eventType: "PLATFORM_FIXED_PAYOUT_DRIVER_ACCEPTED",
-              fromStatus: "AWAITING_PARTNER_ASSIGNMENT", toStatus: "DRIVER_ASSIGNED",
+              eventType: customerPaymentFlow ? "PLATFORM_FIXED_PAYOUT_DRIVER_RESERVED" : "PLATFORM_FIXED_PAYOUT_DRIVER_ACCEPTED",
+              fromStatus: "AWAITING_PARTNER_ASSIGNMENT", toStatus: nextBookingStatus,
               metadata: {
                 deliveryLegId: leg.id, offerId, assignmentId: assignment.id, driverProfileId: profile.id,
                 vehicleId: vehicle.id, fixedPayoutMinor: payout.toString(), currency: offer.currency,
                 pricingSource: "PLATFORM_ROUTE_RATE",
+                ...(customerPaymentFlow ? { paymentRequired: true, paymentExpiresAt: paymentExpiresAt.toISOString() } : {}),
               },
             },
           });
           await projectIntegrationShipmentEvent({ tx, parcelBookingId: booking.id, sourceEvent });
-          return { offerId, assignmentId: assignment.id, status: "ACCEPTED",
-            fixedPayoutMinor: payout.toString(), currency: offer.currency, replay: false };
+          return { offerId, assignmentId: assignment.id, status: customerPaymentFlow ? "AWAITING_PAYMENT" : "ACCEPTED",
+            fixedPayoutMinor: payout.toString(), currency: offer.currency,
+            ...(customerPaymentFlow ? { paymentRequired: true, paymentExpiresAt } : {}), replay: false };
         });
       } catch (error) {
         if (error.code !== "P2002") throw error;
