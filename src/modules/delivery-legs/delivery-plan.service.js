@@ -20,10 +20,13 @@ function legData({
     destinationLatitude,
     destinationLongitude,
     plannedAt: now,
+    ...(status === "ASSIGNED" ? { assignedAt: now } : {}),
     metadata: operationalLeg ? {
       quoteId, routePlanVersion: 1, pricingSource: "ADMIN_OPERATIONAL_TRIP",
       executionType: operationalLeg.executionType,
       driverPayoutMinor: operationalLeg.driverPayoutMinor ?? null,
+      payeeName: operationalLeg.payeeName ?? null,
+      payeePhone: operationalLeg.payeePhone ?? null,
       partnerId: operationalLeg.partnerId ?? null, agreementId: operationalLeg.agreementId ?? null,
       executionCostMinor: operationalLeg.executionCostMinor ?? null,
       customerChargeMinor: operationalLeg.customerChargeMinor,
@@ -38,7 +41,7 @@ function legData({
  * Creates the execution legs from the same route resolver used by integration quoting.
  * A persisted END_TO_END quote pins its one-leg topology even if hubs become eligible later.
  */
-export async function createMultiLegPlan({ tx, booking, quote, now = new Date() }) {
+export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now = new Date() }) {
   if (!tx || !booking || !quote) throw new Error("A transaction, booking and accepted quote are required.");
 
   const quoteRoute = quote.inputSnapshot?.routeSnapshot ?? quote.routeSnapshot ?? null;
@@ -52,7 +55,7 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
   const operationalLegs = quote.inputSnapshot?.source === "ADMIN_OPERATIONAL_TRIP" ? quote.inputSnapshot.operationalLegs : null;
   const definitions = operationalLegs
     ? operationalLegs.map(leg => ({
-      ...leg, status: "READY_FOR_ASSIGNMENT",
+      ...leg, status: leg.executionType === "PLATFORM_MANAGED_DRIVER" ? "ASSIGNED" : "READY_FOR_ASSIGNMENT",
       originLatitude: leg.origin?.latitude ?? booking.pickupLatitude,
       originLongitude: leg.origin?.longitude ?? booking.pickupLongitude,
       destinationLatitude: leg.destination?.latitude ?? booking.destinationLatitude,
@@ -84,6 +87,17 @@ export async function createMultiLegPlan({ tx, booking, quote, now = new Date() 
       },
     });
     legs.push(leg);
+    if (operationalLegs && definition.executionType === "PLATFORM_MANAGED_DRIVER") {
+      await tx.manualOperationalSettlement.create({ data: {
+        deliveryLegId: leg.id,
+        payeeName: definition.payeeName,
+        payeePhone: definition.payeePhone ?? null,
+        amountMinor: BigInt(definition.driverPayoutMinor),
+        currency: quote.currency,
+        reason: quote.inputSnapshot.reason,
+        createdByUserId: actorUserId,
+      } });
+    }
   }
 
   return {
