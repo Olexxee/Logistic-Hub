@@ -82,7 +82,8 @@ export async function validateOperationalTripQuote(tx, booking, quote, now = new
   const route = await resolve(tx, booking);
   const current = routeSnapshot(route);
   if (!sameRoute(snapshot.routeSnapshot, current) || snapshot.operationalLegs.length !== current.legs.length) return false;
-  if (!snapshot.operationalLegs.every((leg, i) => leg.sequence === current.legs[i].sequence && leg.type === current.legs[i].type)) return false;
+  if (!snapshot.operationalLegs.every((leg, i) => leg.sequence === current.legs[i].sequence && leg.type === current.legs[i].type
+    && (leg.executionType !== "PLATFORM_MANAGED_DRIVER" || (leg.payeeName && leg.driverPayoutMinor && BigInt(leg.driverPayoutMinor) > 0n)))) return false;
   if (!await partnersValid(tx, snapshot.operationalLegs, quote.currency, now)) return false;
   return hubsValid(tx, route);
 }
@@ -139,7 +140,8 @@ export function createOperationalTripPricingService({ prismaClient, clock = () =
         const collection = BigInt(input.collectionChargeMinor), handling = BigInt(input.hubHandlingChargeMinor);
         const destination = BigInt(input.destinationDeliveryChargeMinor), platform = BigInt(input.platformChargeMinor);
         const other = BigInt(input.otherChargesMinor), total = transport + collection + handling + destination + platform + other;
-        if (total <= 0n || total > 999999999999999n) return { invalidTotal: true };
+        const internalExecutionCost = sum(legs.map(leg => leg.executionType === "PLATFORM_MANAGED_DRIVER" ? leg.driverPayoutMinor : leg.executionCostMinor));
+        if (total <= 0n || total > 999999999999999n || internalExecutionCost > total) return { invalidTotal: true };
         const quote = await tx.shipmentQuote.create({ data: {
           parcelBookingId: booking.id, version: (previous?.version ?? 0) + 1, status: "OFFERED", currency: booking.currency,
           transportChargeMinor: transport, collectionChargeMinor: collection, hubHandlingChargeMinor: handling,
