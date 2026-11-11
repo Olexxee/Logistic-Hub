@@ -12,7 +12,7 @@ export function createPartnerPricingAdminRouter({
   const router = Router();
   const controller = createPartnerPricingAdminController({ prismaClient });
   router.use(authMiddleware, adminMiddleware);
-  router.use(createOperationalTripPricingRouter({ prismaClient }));
+  router.use("/", createOperationalTripPricingRouter({ prismaClient }));
   router.get("/transport-partners", controller.listPartners);
   router.get("/transport-partners/:partnerId", controller.getPartner);
   router.patch("/transport-partners/:partnerId", controller.updatePartner);
