@@ -20,7 +20,8 @@ export function createPaymentsService({ prismaClient, repository = createPayment
         throw new ConflictError("The payable amount is invalid.", "INVALID_PAYMENT_AMOUNT");
       }
       const isPlatformRouteBooking = bookingType === "PARCEL"
-        && booking.pricingSnapshot?.source === "PLATFORM_ROUTE_RATE";
+        && ["PLATFORM_ROUTE_RATE", "ADMIN_OPERATIONAL_TRIP"].includes(booking.pricingSnapshot?.source)
+        && booking.pricingSnapshot?.driverPayoutMinor != null;
       if (isPlatformRouteBooking
         && booking.pricingSnapshot?.driverPayoutMinor !== assignment.agreedFareMinor.toString()) {
         throw new ConflictError("The reserved driver payout no longer matches the accepted platform tariff.", "DRIVER_PAYOUT_SNAPSHOT_MISMATCH");
@@ -38,7 +39,7 @@ export function createPaymentsService({ prismaClient, repository = createPayment
           subaccount: settlement.externalAccountRef,
           transactionChargeMinor: platformFeeMinor.toString(),
           platformFeeModel: isPlatformRouteBooking ? "PLATFORM_RETAINED_REMAINDER" : "FIXED_CONNECTION_FEE",
-          pricingSource: isPlatformRouteBooking ? "PLATFORM_ROUTE_RATE" : "LEGACY_OR_RIDE_PRICING",
+          pricingSource: isPlatformRouteBooking ? booking.pricingSnapshot.source : "LEGACY_OR_RIDE_PRICING",
           driverPayoutMinor: assignment.agreedFareMinor.toString(),
           customerChargeMinor: amountMinor.toString(),
         },
