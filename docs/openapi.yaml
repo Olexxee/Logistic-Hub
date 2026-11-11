@@ -3860,7 +3860,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Booking is not a draft or route zones/hubs are unavailable. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/parcel-bookings/{bookingId}/operational-quotes:
     get:
       tags: [Admin]
@@ -3961,7 +3961,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Route, hub or selected partner is no longer eligible. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/parcel-bookings/{bookingId}/quotes:
     post:
       tags: [Admin]
@@ -4610,7 +4610,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Payment is not confirmed or the leg transition is invalid. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/delivery-legs/{legId}/manual-settlement:
     get:
       tags: [Admin]
@@ -4660,7 +4660,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Leg is not completed, funds are insufficient, or settlement was already recorded. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/delivery-legs/{legId}/partner-assignment:
     post:
       tags: [Partner execution, Admin]
