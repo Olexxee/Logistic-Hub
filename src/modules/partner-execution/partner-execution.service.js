@@ -283,6 +283,32 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         });
         if (changed.count !== 1) return { blocker: "ASSIGNMENT_NOT_ACCEPTABLE" };
         const updated = await repository.findAssignment(assignmentId, tx);
+        const bookingId = assignment.deliveryLeg?.parcelBookingId;
+        if (bookingId) {
+          const booking = await tx.parcelBooking.findUnique({ where: { id: bookingId }, select: { id: true, status: true, paymentStatus: true, pricingSnapshot: true } });
+          if (booking?.pricingSnapshot?.source === "ADMIN_OPERATIONAL_TRIP" && booking.paymentStatus === "SUCCEEDED"
+            && booking.status === "AWAITING_PARTNER_ASSIGNMENT") {
+            const partnerLegs = await tx.deliveryLeg.findMany({
+              where: { parcelBookingId: bookingId, metadata: { path: ["executionType"], equals: "PARTNER" } },
+              select: { id: true },
+            });
+            const acceptedLegs = partnerLegs.length ? await tx.partnerDeliveryAssignment.count({
+              where: { deliveryLegId: { in: partnerLegs.map(leg => leg.id) }, status: { in: ["ACCEPTED", "IN_TRANSIT", "COMPLETED"] } },
+            }) : 0;
+            if (partnerLegs.length > 0 && acceptedLegs === partnerLegs.length) {
+              const changedBooking = await tx.parcelBooking.updateMany({
+                where: { id: bookingId, status: "AWAITING_PARTNER_ASSIGNMENT", paymentStatus: "SUCCEEDED" },
+                data: { status: "DRIVER_ASSIGNED" },
+              });
+              if (changedBooking.count === 1) await tx.bookingEvent.create({ data: {
+                parcelBookingId: bookingId, actorUserId: userId,
+                eventType: "OPERATIONAL_TRIP_PARTNER_LEGS_ACCEPTED",
+                fromStatus: "AWAITING_PARTNER_ASSIGNMENT", toStatus: "DRIVER_ASSIGNED",
+                metadata: { acceptedPartnerLegCount: acceptedLegs },
+              } });
+            }
+          }
+        }
         await tx.operationalAuditEvent.create({ data: {
           actorUserId: userId, entityType: "PARTNER_DELIVERY_ASSIGNMENT", entityId: assignmentId,
           action: "PARTNER_LEG_ACCEPTED", before: { status: assignment.status }, after: { status: updated.status },
