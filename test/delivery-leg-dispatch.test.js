@@ -581,3 +581,41 @@ test("customer fixed-payout acceptance reserves driver and waits for payment bef
   assert.equal(bookingUpdate.data.status, "AWAITING_PAYMENT");
   assert.deepEqual(bookingUpdate.where.paymentStatus, { in: ["INITIALIZED", "FAILED"] });
 });
+
+
+test("fixed-payout acceptance replay preserves the pending customer payment reservation", async () => {
+  const offer = {
+    id: "customer_fixed_offer_replay",
+    deliveryLegId: "customer_leg_replay",
+    driverProfileId: "profile_1",
+    acceptancePayloadHash: createHash("sha256")
+      .update(JSON.stringify({ offerId: "customer_fixed_offer_replay", vehicleId: "vehicle_1", userId: "driver_user_1" }))
+      .digest("hex"),
+    fixedPayoutMinor: 3500n,
+    currency: "NGN",
+  };
+  const paymentExpiresAt = new Date(now.getTime() + 15 * 60_000);
+  const repository = {
+    findOfferByAcceptanceKey: async () => offer,
+    findDriverProfile: async () => ({ id: "profile_1" }),
+  };
+  const service = createDeliveryLegDispatchService({
+    prismaClient: {
+      driverAssignment: {
+        findFirst: async () => ({ id: "assignment_1", status: "AWAITING_PAYMENT", agreedFareMinor: 3500n, paymentExpiresAt }),
+      },
+    },
+    repository,
+    clock: () => now,
+  });
+  const result = await service.acceptFixedPayout({
+    offerId: offer.id,
+    userId: "driver_user_1",
+    vehicleId: "vehicle_1",
+    idempotencyKey: "fixed-payout-replay-key-0001",
+  });
+  assert.equal(result.replay, true);
+  assert.equal(result.paymentRequired, true);
+  assert.equal(result.paymentExpiresAt, paymentExpiresAt);
+  assert.equal(result.status, "AWAITING_PAYMENT");
+});
