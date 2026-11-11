@@ -125,16 +125,29 @@ export function createPaymentsRepository(prismaClient = prisma) {
       ? refund.amountMinor : (refund.paymentAttempt.platformAllocationMinor ?? 0n);
      if (!posted && manualOperational) {
       const fundsCode = "OPERATIONAL_CUSTOMER_FUNDS_" + refund.currency;
+      const revenueCode = "PLATFORM_OPERATIONAL_REVENUE_" + refund.currency;
       const clearingCode = "PAYSTACK_CLEARING_" + refund.currency;
       const accounts = await Promise.all([
-       tx.ledgerAccount.upsert({ where: { code: fundsCode }, create: { code: fundsCode, name: "Operational customer funds held for fulfilment", type: "LIABILITY", currency: refund.currency }, update: {} }),
+       tx.ledgerAccount.findUnique({ where: { code: fundsCode } }),
+       tx.ledgerAccount.findUnique({ where: { code: revenueCode } }),
        tx.ledgerAccount.upsert({ where: { code: clearingCode }, create: { code: clearingCode, name: "Paystack platform clearing", type: "ASSET", currency: refund.currency }, update: {} }),
       ]);
-      const common = { journalReference, currency: refund.currency, paymentAttemptId: refund.paymentAttemptId, parcelBookingId: refund.paymentAttempt.parcelBookingId, description: "Provider-confirmed refund of operational trip customer funds" };
-      await tx.ledgerEntry.createMany({ data: [
-       { ...common, accountId: accounts[0].id, side: "DEBIT", amountMinor: refund.amountMinor },
-       { ...common, accountId: accounts[1].id, side: "CREDIT", amountMinor: refund.amountMinor },
-      ] });
+      if (!accounts[0] || !accounts[1]) throw Object.assign(new Error("Operational payment ledger allocation is missing."), { statusCode: 409, code: "OPERATIONAL_LEDGER_ALLOCATION_MISSING" });
+      const balances = await tx.ledgerEntry.groupBy({ by: ["accountId", "side"], where: { paymentAttemptId: refund.paymentAttemptId, accountId: { in: [accounts[0].id, accounts[1].id] } }, _sum: { amountMinor: true } });
+      const balance = accountId => {
+       const credits = balances.find(row => row.accountId === accountId && row.side === "CREDIT")?._sum.amountMinor ?? 0n;
+       const debits = balances.find(row => row.accountId === accountId && row.side === "DEBIT")?._sum.amountMinor ?? 0n;
+       return credits - debits;
+      };
+      const revenueRemaining = balance(accounts[1].id) > 0n ? balance(accounts[1].id) : 0n;
+      const revenueRefund = refund.amountMinor < revenueRemaining ? refund.amountMinor : revenueRemaining;
+      const fundsRefund = refund.amountMinor - revenueRefund;
+      const common = { journalReference, currency: refund.currency, paymentAttemptId: refund.paymentAttemptId, parcelBookingId: refund.paymentAttempt.parcelBookingId, description: "Provider-confirmed refund reversal for operational trip funds and revenue" };
+      const entries = [];
+      if (revenueRefund > 0n) entries.push({ ...common, accountId: accounts[1].id, side: "DEBIT", amountMinor: revenueRefund });
+      if (fundsRefund > 0n) entries.push({ ...common, accountId: accounts[0].id, side: "DEBIT", amountMinor: fundsRefund });
+      entries.push({ ...common, accountId: accounts[2].id, side: "CREDIT", amountMinor: refund.amountMinor });
+      await tx.ledgerEntry.createMany({ data: entries });
      } else if (!posted && platformRefund > 0n) {
       const accounts = await Promise.all([
        tx.ledgerAccount.upsert({ where: { code: "PLATFORM_CONNECTION_REVENUE_NGN" }, create: { code: "PLATFORM_CONNECTION_REVENUE_NGN", name: "Platform connection fee revenue", type: "REVENUE", currency: refund.currency }, update: {} }),
