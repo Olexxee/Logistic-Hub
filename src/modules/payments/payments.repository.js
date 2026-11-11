@@ -133,7 +133,7 @@ export function createPaymentsRepository(prismaClient = prisma) {
        tx.ledgerAccount.upsert({ where: { code: clearingCode }, create: { code: clearingCode, name: "Paystack platform clearing", type: "ASSET", currency: refund.currency }, update: {} }),
       ]);
       if (!accounts[0] || !accounts[1]) throw Object.assign(new Error("Operational payment ledger allocation is missing."), { statusCode: 409, code: "OPERATIONAL_LEDGER_ALLOCATION_MISSING" });
-      const balances = await tx.ledgerEntry.groupBy({ by: ["accountId", "side"], where: { paymentAttemptId: refund.paymentAttemptId, accountId: { in: [accounts[0].id, accounts[1].id] } }, _sum: { amountMinor: true } });
+      const balances = await tx.ledgerEntry.groupBy({ by: ["accountId", "side"], where: { accountId: { in: [accounts[0].id, accounts[1].id] } }, _sum: { amountMinor: true } });
       const balance = accountId => {
        const credits = balances.find(row => row.accountId === accountId && row.side === "CREDIT")?._sum.amountMinor ?? 0n;
        const debits = balances.find(row => row.accountId === accountId && row.side === "DEBIT")?._sum.amountMinor ?? 0n;
