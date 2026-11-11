@@ -438,6 +438,7 @@ export function createPartnerPricingRouter({
               quoteVersion: quote.version,
               currency: quote.currency,
               totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
+              ...(isOperationalTripQuote ? { internalExecutionCostMinor: quote.inputSnapshot.operationalLegs.reduce((total, leg) => total + BigInt(leg.driverPayoutMinor ?? leg.executionCostMinor ?? "0"), 0n).toString() } : {}),
               chargeBreakdown: quote.chargeBreakdown,
               acceptedAt: now.toISOString(),
             },
