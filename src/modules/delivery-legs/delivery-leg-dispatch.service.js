@@ -281,12 +281,14 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         const assignment = await prismaClient.driverAssignment.findFirst({
           where: { deliveryLegId: prior.deliveryLegId, driverProfileId: prior.driverProfileId },
           orderBy: { createdAt: "desc" },
-          select: { id: true, status: true, agreedFareMinor: true },
+          select: { id: true, status: true, agreedFareMinor: true, paymentExpiresAt: true },
         });
         return {
           offerId, assignmentId: assignment?.id ?? null, status: assignment?.status ?? "ACCEPTED",
           fixedPayoutMinor: assignment?.agreedFareMinor?.toString() ?? prior.fixedPayoutMinor.toString(),
-          currency: prior.currency, replay: true,
+          currency: prior.currency,
+          ...(assignment?.status === "AWAITING_PAYMENT" ? { paymentRequired: true, paymentExpiresAt: assignment.paymentExpiresAt } : {}),
+          replay: true,
         };
       }
 
@@ -310,11 +312,13 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             if (offer.acceptancePayloadHash !== payloadHash) throw conflict("IDEMPOTENCY_CONFLICT", "The Idempotency-Key was already used for a different fixed-payout acceptance.");
             const assignment = await tx.driverAssignment.findFirst({
               where: { deliveryLegId: offer.deliveryLegId, driverProfileId: profile.id },
-              orderBy: { createdAt: "desc" }, select: { id: true, status: true, agreedFareMinor: true },
+              orderBy: { createdAt: "desc" }, select: { id: true, status: true, agreedFareMinor: true, paymentExpiresAt: true },
             });
             return { offerId, assignmentId: assignment?.id ?? null, status: assignment?.status ?? "ACCEPTED",
               fixedPayoutMinor: assignment?.agreedFareMinor?.toString() ?? offer.fixedPayoutMinor.toString(),
-              currency: offer.currency, replay: true };
+              currency: offer.currency,
+              ...(assignment?.status === "AWAITING_PAYMENT" ? { paymentRequired: true, paymentExpiresAt: assignment.paymentExpiresAt } : {}),
+              replay: true };
           }
 
           const leg = offer.deliveryLeg;
@@ -496,11 +500,13 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
         }
         const assignment = await prismaClient.driverAssignment.findFirst({
           where: { deliveryLegId: existing.deliveryLegId, driverProfileId: existing.driverProfileId },
-          orderBy: { createdAt: "desc" }, select: { id: true, status: true, agreedFareMinor: true },
+          orderBy: { createdAt: "desc" }, select: { id: true, status: true, agreedFareMinor: true, paymentExpiresAt: true },
         });
         return { offerId, assignmentId: assignment?.id ?? null, status: assignment?.status ?? "ACCEPTED",
           fixedPayoutMinor: assignment?.agreedFareMinor?.toString() ?? existing.fixedPayoutMinor.toString(),
-          currency: existing.currency, replay: true };
+          currency: existing.currency,
+          ...(assignment?.status === "AWAITING_PAYMENT" ? { paymentRequired: true, paymentExpiresAt: assignment.paymentExpiresAt } : {}),
+          replay: true };
       }
     },
 
