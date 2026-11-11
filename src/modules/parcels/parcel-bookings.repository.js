@@ -84,6 +84,14 @@ export function createParcelBookingsRepository({ prismaClient }) {
               startedAt: true, completedAt: true,
             },
           },
+          partnerAssignments: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true, status: true,
+              partner: { select: { id: true, displayName: true } },
+            },
+          },
         },
       });
     },
