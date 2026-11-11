@@ -184,13 +184,11 @@ export function createPaymentsRepository(prismaClient = prisma) {
    if(platform<0n||platform>attempt.amountMinor)throw Object.assign(new Error("Platform allocation is outside the captured amount."),{statusCode:409,code:"LEDGER_ALLOCATION_MISMATCH"});
    const manualOperational=attempt.splitConfigurationSnapshot?.pricingSource==="ADMIN_OPERATIONAL_TRIP";
    const journalReference="PAYMENT:"+reference;const posted=await tx.ledgerEntry.findFirst({where:{journalReference},select:{id:true}});
-   if(!posted&&manualOperational){const clearingCode="PAYSTACK_CLEARING_"+currency;const fundsCode="OPERATIONAL_CUSTOMER_FUNDS_"+currency;const accounts=await Promise.all([
+   if(!posted&&manualOperational){const clearingCode="PAYSTACK_CLEARING_"+currency;const fundsCode="OPERATIONAL_CUSTOMER_FUNDS_"+currency;const revenueCode="PLATFORM_OPERATIONAL_REVENUE_"+currency;const internalCosts=BigInt(attempt.splitConfigurationSnapshot?.internalExecutionCostMinor??"0");const platformRevenue=attempt.amountMinor-internalCosts;if(internalCosts<0n||platformRevenue<0n)throw Object.assign(new Error("Operational payment allocation exceeds the captured amount."),{statusCode:409,code:"OPERATIONAL_ALLOCATION_MISMATCH"});const accounts=await Promise.all([
     tx.ledgerAccount.upsert({where:{code:clearingCode},create:{code:clearingCode,name:"Paystack platform clearing",type:"ASSET",currency},update:{}}),
-    tx.ledgerAccount.upsert({where:{code:fundsCode},create:{code:fundsCode,name:"Operational customer funds held for fulfilment",type:"LIABILITY",currency},update:{}})
-   ]);const common={journalReference,currency,paymentAttemptId:attempt.id,parcelBookingId:attempt.parcelBookingId,description:"Customer funds collected for an admin-approved operational trip"};await tx.ledgerEntry.createMany({data:[
-    {...common,accountId:accounts[0].id,side:"DEBIT",amountMinor:attempt.amountMinor},
-    {...common,accountId:accounts[1].id,side:"CREDIT",amountMinor:attempt.amountMinor}
-   ]});}
+    tx.ledgerAccount.upsert({where:{code:fundsCode},create:{code:fundsCode,name:"Operational customer funds held for fulfilment",type:"LIABILITY",currency},update:{}}),
+    tx.ledgerAccount.upsert({where:{code:revenueCode},create:{code:revenueCode,name:"Operational trip platform revenue",type:"REVENUE",currency},update:{}})
+   ]);const common={journalReference,currency,paymentAttemptId:attempt.id,parcelBookingId:attempt.parcelBookingId,description:"Customer payment allocation for an admin-approved operational trip"};const entries=[{...common,accountId:accounts[0].id,side:"DEBIT",amountMinor:attempt.amountMinor}];if(internalCosts>0n)entries.push({...common,accountId:accounts[1].id,side:"CREDIT",amountMinor:internalCosts});if(platformRevenue>0n)entries.push({...common,accountId:accounts[2].id,side:"CREDIT",amountMinor:platformRevenue});await tx.ledgerEntry.createMany({data:entries});}
    else if(!posted&&platform>0n){const accounts=await Promise.all([
     tx.ledgerAccount.upsert({where:{code:"PAYSTACK_CLEARING_NGN"},create:{code:"PAYSTACK_CLEARING_NGN",name:"Paystack platform clearing",type:"ASSET",currency},update:{}}),
     tx.ledgerAccount.upsert({where:{code:"PLATFORM_CONNECTION_REVENUE_NGN"},create:{code:"PLATFORM_CONNECTION_REVENUE_NGN",name:"Platform connection fee revenue",type:"REVENUE",currency},update:{}})
