@@ -4437,7 +4437,9 @@ paths:
               properties:
                 vehicleId: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '200': { description: Fixed-payout driver reserved pending customer payment, or immediately assigned for an already-paid and released integration shipment; idempotent replay returns the original result. }
+        '200':
+          description: >-
+            Fixed-payout driver reserved pending customer payment or immediately assigned for an already-paid and released integration shipment. Idempotent replay returns the original result.
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { description: Authentication required. }
         '403': { description: Driver role and eligibility required. }
