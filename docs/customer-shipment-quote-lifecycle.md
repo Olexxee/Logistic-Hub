@@ -49,6 +49,33 @@ Acceptance is transactional and rechecks the offered quote status, expiry, route
 
 A platform-priced quote acceptance does **not** initialize payment, mark a driver assigned, or dispatch an offer. Payment initialization currently requires a real driver assignment and agreed driver allocation. CBP-04 must connect ordinary customer platform-priced bookings to fixed-payout dispatch before payment can proceed.
 
+## CBP-04 — ordinary customer fixed-payout dispatch
+
+A platform-priced LOCAL_DIRECT customer booking now uses the existing delivery-leg dispatch and payment reservation lifecycle. The customer quote acceptance persists the accepted quote source, quote ID/version, customer total and exact internal driver payout in the booking pricing snapshot. The payout is also pinned to the LOCAL_PICKUP leg.
+
+### State sequence
+
+1. Customer accepts the active, unexpired platform tariff quote. The booking moves to `AWAITING_PARTNER_ASSIGNMENT`; no payment or driver assignment is created yet.
+2. The booking owner requests matching for the LOCAL_PICKUP leg. The backend requires the accepted platform quote snapshot, positive fixed payout, active directed route availability and active endpoint zones. Offers carry the tariff's fixed payout; drivers cannot propose a different fare.
+3. An eligible driver accepts with an explicit active verified vehicle. The backend rechecks the driver profile, KYC, capability, documents, current location, vehicle, service-zone coverage, route availability, offer expiry and exact payout snapshot. The driver is reserved and an assignment is created in `AWAITING_PAYMENT`; the leg and booking move to `AWAITING_PAYMENT`. A 15-minute payment reservation expiry is applied.
+4. The customer initializes Paystack payment. The existing payment service requires that assignment, the matching payable total, and an active Paystack settlement subaccount for the assigned driver. For platform-route bookings, the reserved assignment payout must exactly match the accepted quote's internal driver payout.
+5. A verified successful Paystack webhook moves the booking to `DRIVER_ASSIGNED`, activates the assignment and delivery leg, and records the payment ledger entries. Failed or expired payment does not mark the booking as assigned.
+6. Delivery completion creates/reuses the existing pending driver payout record. This is a payout liability, not an automatic bank transfer; settlement execution remains a separate operational step.
+
+### Payment allocation and confidentiality
+
+- Customer payment amount remains the accepted quote total; driver payout remains the tariff's exact fixed payout.
+- The Paystack split allocates the agreed driver amount to the driver's active settlement subaccount and the remainder to the platform. The payment snapshot labels this platform-route remainder as `PLATFORM_RETAINED_REMAINDER`, not as a legacy fixed connection fee.
+- Driver payout and internal tariff details remain absent from customer quote and booking resources.
+- A customer-owned booking cannot use the integration release path. Integration-owned shipments retain their existing paid-and-released dispatch gate and immediate assignment behavior.
+- Fixed-payout acceptance is idempotent per accepting driver and offer. Competing acceptance, changed payout snapshots, inactive routes, stale driver eligibility, or changed booking state fail closed.
+
+### Operational limitations
+
+- This flow does not make a route operationally ready by itself. Active tariffs, route availability, eligible drivers, active verified vehicles and driver Paystack settlement subaccounts are still required.
+- No production route, tariff, driver, settlement account, or payment configuration is created or activated by this change.
+- A pending driver payout is not proof of completed settlement or bank transfer.
+
 ## Draft creation and legacy compatibility
 
 Parcel booking draft creation now persists validated location and package facts even when no legacy pickup-zone `PricingRule` exists. In that case the booking is created in NGN with no provisional customer charge and a pricing snapshot of `AWAITING_ROUTE_QUOTE`.
