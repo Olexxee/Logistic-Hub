@@ -1,7 +1,13 @@
 import { resolveDeliveryRoute } from "./delivery-route-planner.js";
 
+function isPlatformOperationalQuote(quote) {
+  return quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF"
+    || (quote.inputSnapshot?.source === "INTEGRATION_QUOTE"
+      && quote.inputSnapshot?.routeSnapshot?.routeMode === "HUB_ASSISTED");
+}
+
 function quotePricingSource(quote, driverPayoutMinor) {
-  if (quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF") return "PLATFORM_OPERATIONAL_TARIFF";
+  if (isPlatformOperationalQuote(quote)) return "PLATFORM_OPERATIONAL_TARIFF";
   return driverPayoutMinor != null ? "PLATFORM_ROUTE_RATE" : "CONTRACTED_PARTNER_RATE";
 }
 
@@ -58,7 +64,8 @@ export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now 
   const plan = await resolveDeliveryRoute({
     tx,
     booking,
-    routeModeOverride: ["END_TO_END", "LOCAL_DIRECT"].includes(quoteRoute?.routeMode) ? quoteRoute.routeMode : undefined,
+    routeModeOverride: ["END_TO_END", "LOCAL_DIRECT", "HUB_ASSISTED"].includes(quoteRoute?.routeMode) ? quoteRoute.routeMode : undefined,
+    routeSnapshot: quoteRoute,
   });
 
   const legs = [];
@@ -81,7 +88,7 @@ export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now 
       }]
       : plan.legs;
   for (const definition of definitions) {
-    const pricingPendingExecutionReview = quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF";
+    const pricingPendingExecutionReview = isPlatformOperationalQuote(quote);
     const leg = await tx.deliveryLeg.create({
       data: legData({
         parcelBookingId: booking.id,
