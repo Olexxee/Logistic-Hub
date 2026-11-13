@@ -501,6 +501,8 @@ model User {
   operationalAuditEvents OperationalAuditEvent[] @relation("OperationalAuditActor")
   createdOperationalTariffs PlatformOperationalTariff[] @relation("OperationalTariffCreator")
   authorizedHubAdditionalOperations HubAdditionalOperation[] @relation("HubAdditionalOperationAuthorizer")
+  customerAuthorizedHubAdditionalOperations HubAdditionalOperation[] @relation("HubAdditionalOperationCustomerAuthorizer")
+  completedHubAdditionalOperations HubAdditionalOperation[] @relation("HubAdditionalOperationCompleter")
   recordedHubAdditionalOperations HubAdditionalOperation[] @relation("HubAdditionalOperationRecorder")
   initiatedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryInitiator")
   initiatedHubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoveryInitiator")
@@ -1925,6 +1927,9 @@ model HubAdditionalOperation {
   requestedByUserId String
   authorizedByUserId String?
   authorizedAt DateTime?
+  customerAuthorizedByUserId String?
+  customerAuthorizedAt DateTime?
+  completedByUserId String?
   completedAt DateTime?
   cancelledAt DateTime?
   createdAt DateTime @default(now())
@@ -1934,6 +1939,8 @@ model HubAdditionalOperation {
   hubPoint HubPoint @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
   requestedBy User @relation("HubAdditionalOperationRecorder", fields: [requestedByUserId], references: [id], onDelete: Restrict)
   authorizedBy User? @relation("HubAdditionalOperationAuthorizer", fields: [authorizedByUserId], references: [id], onDelete: Restrict)
+  customerAuthorizedBy User? @relation("HubAdditionalOperationCustomerAuthorizer", fields: [customerAuthorizedByUserId], references: [id], onDelete: Restrict)
+  completedBy User? @relation("HubAdditionalOperationCompleter", fields: [completedByUserId], references: [id], onDelete: Restrict)
 
   @@index([parcelBookingId, hubPointId, status])
   @@index([hubPointId, operationType, status])
