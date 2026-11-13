@@ -2,6 +2,7 @@ import { resolveDeliveryRoute } from "../delivery-legs/delivery-route-planner.js
 import { createMultiLegPlan } from "../delivery-legs/delivery-plan.service.js";
 import { ConflictError } from "../../shared/http/app-error.js";
 import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
+import { assessPlatformOperationalTariffs } from "../platform-operational-pricing/platform-operational-tariff-assessment.service.js";
 
 function conflict(code, message) {
   return { conflict: { code, message } };
@@ -282,22 +283,56 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
 
         const route = await resolveDeliveryRoute({ tx, booking: { ...booking, packages } });
         const routeSnapshot = routeSnapshotFor(booking, route);
-        if (route.routeMode === "HUB_ASSISTED") {
-          return {
-            assessment: {
-              status: "REQUIRES_OPERATIONAL_PRICING",
-              routeMode: route.routeMode,
-              packageCount: packages.length,
-              reason: "This route requires separately approved pickup, inter-hub transport, hub handling and final-mile charges.",
-              assessedAt: now.toISOString(),
-            },
-            quote: null,
-          };
-        }
-
         let assessment;
         let candidate;
-        if (route.routeMode === "LOCAL_DIRECT") {
+        if (route.routeMode === "HUB_ASSISTED") {
+          const operational = await assessPlatformOperationalTariffs({
+            tx, route, packages, currency: booking.currency, now, handlingOperations: [],
+          });
+          if (operational.status !== "QUOTED") {
+            return {
+              assessment: {
+                status: operational.status,
+                routeMode: route.routeMode,
+                packageCount: packages.length,
+                reason: operational.reason,
+                routeSnapshot: operational.routeSnapshot,
+                assessedAt: operational.assessedAt,
+                handling: operational.handling,
+              },
+              quote: null,
+            };
+          }
+          candidate = {
+            source: "PLATFORM_OPERATIONAL_TARIFF",
+            partnerAgreementId: null,
+            partnerRateId: null,
+            currency: booking.currency,
+            transportChargeMinor: BigInt(operational.totals.customerChargeMinor),
+            platformChargeMinor: BigInt(operational.totals.platformChargeMinor),
+            totalCustomerChargeMinor: BigInt(operational.totals.totalCustomerChargeMinor),
+            estimatedTransitMinutes: null,
+            packageRateSnapshot: operational.legs,
+            routeSnapshot: operational.routeSnapshot,
+            expiresAt,
+            inputSnapshot: {
+              source: "PLATFORM_OPERATIONAL_TARIFF",
+              routeSnapshot: operational.routeSnapshot,
+              operationalTariffAssessment: operational,
+              executionReadiness: operational.executionReadiness,
+            },
+          };
+          assessment = {
+            status: "QUOTED",
+            source: "PLATFORM_OPERATIONAL_TARIFF",
+            operationalPlanStatus: "PRICED_AWAITING_EXECUTION_REVIEW",
+            routeMode: route.routeMode,
+            packageCount: packages.length,
+            routeSnapshot: operational.routeSnapshot,
+            assessedAt: operational.assessedAt,
+            executionReadiness: operational.executionReadiness,
+          };
+        } else if (route.routeMode === "LOCAL_DIRECT") {
           const result = await assessPlatformRouteTariffs({
             tx,
             originServiceZoneId: booking.pickupServiceZoneId,
@@ -396,6 +431,9 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
               platformChargeMinor: platform.toString(),
               otherChargesMinor: "0",
               estimatedTransitMinutes: candidate.estimatedTransitMinutes,
+              ...(candidate.source === "PLATFORM_OPERATIONAL_TARIFF"
+                ? { operationalLegCharges: candidate.packageRateSnapshot }
+                : {}),
             },
             inputSnapshot: {
               ...candidate.inputSnapshot,
