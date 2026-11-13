@@ -36,7 +36,7 @@ This is a separate pricing domain from `PlatformRouteRate`, which remains the di
 
 ## 4. Proposed data model
 
-Implemented dedicated `PlatformOperationalTariff` and `PlatformOperationalTariffAvailability` models. The migration enforces scope-specific locator combinations with database CHECK constraints and adds scope-specific partial unique indexes for availability. `HubAdditionalOperation` records separately requested, operationally authorized, customer-authorized and completed additional services with requester/authorizer/completer identities and an idempotency key. Migration validation and full lifecycle enforcement remain release gates.
+Implemented dedicated `PlatformOperationalTariff` and `PlatformOperationalTariffAvailability` models. The migration enforces scope-specific locator combinations with database CHECK constraints and adds scope-specific partial unique indexes for availability. `HubAdditionalOperation` records separately requested, operationally authorized, customer-authorized and completed additional services with requester/authorizer/completer identities and an idempotency key. Each operation is bound to a specific `DeliveryLeg` and booking through a composite foreign key, preventing cross-booking leg references. This is necessary because an additional service must be attributable to the actual planned hub stop and included in the correct leg-level quote snapshot. Migration validation and full lifecycle enforcement remain release gates.
 
 ### 4.1 Tariff identity and scope
 
