@@ -257,7 +257,7 @@ test("blocks partner execution when no single rate card covers all packages", as
     metadata: { quoteId: "quote-1", pricingSource: "PLATFORM_OPERATIONAL_TARIFF", requiresOperationalReview: true },
     parcelBooking: {
       ...baseLeg().parcelBooking,
-      parcelPackages: [...packageFacts, { ...packageFacts[0], id: "package-2", packageSequence: 2 }],
+      parcelPackages: [...packageFacts, { ...packageFacts[0], id: "package-2", packageSequence: 2, packageCategory: "FRAGILE" }],
       quotes: [{
         ...baseLeg().parcelBooking.quotes[0],
         inputSnapshot: { source: "PLATFORM_OPERATIONAL_TARIFF", packageRateSnapshot: [{
