@@ -316,6 +316,24 @@ enum PlatformRouteRateStatus {
   RETIRED
 }
 
+enum PlatformOperationalTariffScope {
+  LOCAL_ZONE
+  HUB_PAIR
+  HUB_HANDLING
+}
+
+enum HubAdditionalOperationType {
+  SPECIAL_SORTING
+  REPACKAGING
+}
+
+enum HubAdditionalOperationStatus {
+  REQUESTED
+  AUTHORIZED
+  COMPLETED
+  CANCELLED
+}
+
 enum ShipmentQuoteStatus {
   OFFERED
   ACCEPTED
@@ -481,6 +499,9 @@ model User {
   updatedAt       DateTime   @updatedAt
 
   operationalAuditEvents OperationalAuditEvent[] @relation("OperationalAuditActor")
+  createdOperationalTariffs PlatformOperationalTariff[] @relation("OperationalTariffCreator")
+  authorizedHubAdditionalOperations HubAdditionalOperation[] @relation("HubAdditionalOperationAuthorizer")
+  recordedHubAdditionalOperations HubAdditionalOperation[] @relation("HubAdditionalOperationRecorder")
   initiatedAssignmentRecoveries DriverAssignmentRecovery[] @relation("AssignmentRecoveryInitiator")
   initiatedHubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoveryInitiator")
   receivedHubCustodyRecoveries DriverAssignmentHubRecovery[] @relation("HubRecoveryReceiver")
@@ -920,6 +941,13 @@ model HubPoint {
   driverAssignmentHubRecoveries DriverAssignmentHubRecovery[]
   hubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionHub")
   destinationHubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionDestinationHub")
+  operationalTariffsAsOrigin PlatformOperationalTariff[] @relation("OperationalTariffOriginHub")
+  operationalTariffsAsDestination PlatformOperationalTariff[] @relation("OperationalTariffDestinationHub")
+  operationalTariffsForHandling PlatformOperationalTariff[] @relation("OperationalTariffHandlingHub")
+  operationalAvailabilitiesAsOrigin PlatformOperationalTariffAvailability[] @relation("OperationalAvailabilityOriginHub")
+  operationalAvailabilitiesAsDestination PlatformOperationalTariffAvailability[] @relation("OperationalAvailabilityDestinationHub")
+  operationalAvailabilitiesForHandling PlatformOperationalTariffAvailability[] @relation("OperationalAvailabilityHandlingHub")
+  additionalOperations HubAdditionalOperation[]
 
   @@index([serviceZoneId, status])
   @@index([partnerId, status])
@@ -1324,6 +1352,7 @@ model DeliveryLeg {
   custodyHandovers   CustodyHandover[]
   operationalCases   OperationalCase[]
   hubIntakeRecords HubIntakeRecord[]
+  additionalOperations HubAdditionalOperation[]
 
   @@unique([parcelBookingId, sequence])
   @@index([status, plannedAt])
@@ -1809,6 +1838,103 @@ model PlatformRouteRate {
   @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, status], map: "platform_route_rates_route_package_status_idx")
   @@index([status, effectiveFrom, effectiveUntil], map: "platform_route_rates_effective_idx")
   @@map("platform_route_rates")
+}
+
+model PlatformOperationalTariff {
+  id String @id @default(cuid())
+  scope PlatformOperationalTariffScope
+  serviceType ServiceType @default(PARCEL_DELIVERY)
+  legType DeliveryLegType?
+  operationType HubAdditionalOperationType?
+  serviceZoneId String?
+  originHubPointId String?
+  destinationHubPointId String?
+  hubPointId String?
+  parcelCategory String
+  minWeightGrams Int @default(0)
+  maxWeightGrams Int?
+  maxLengthMm Int?
+  maxWidthMm Int?
+  maxHeightMm Int?
+  currency String @default("NGN")
+  customerChargeMinor BigInt
+  platformChargeMinor BigInt @default(0)
+  version Int @default(1)
+  status PlatformRouteRateStatus @default(DRAFT)
+  effectiveFrom DateTime @default(now())
+  effectiveUntil DateTime?
+  publishedAt DateTime?
+  createdByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  serviceZone ServiceZone? @relation("OperationalTariffServiceZone", fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  originHub HubPoint? @relation("OperationalTariffOriginHub", fields: [originHubPointId], references: [id], onDelete: Restrict)
+  destinationHub HubPoint? @relation("OperationalTariffDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
+  hubPoint HubPoint? @relation("OperationalTariffHandlingHub", fields: [hubPointId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("OperationalTariffCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([scope, serviceType, parcelCategory, status])
+  @@index([serviceZoneId, legType, status])
+  @@index([originHubPointId, destinationHubPointId, status])
+  @@index([hubPointId, operationType, status])
+  @@index([status, effectiveFrom, effectiveUntil])
+  @@map("platform_operational_tariffs")
+}
+
+model PlatformOperationalTariffAvailability {
+  id String @id @default(cuid())
+  scope PlatformOperationalTariffScope
+  serviceType ServiceType @default(PARCEL_DELIVERY)
+  legType DeliveryLegType?
+  operationType HubAdditionalOperationType?
+  serviceZoneId String?
+  originHubPointId String?
+  destinationHubPointId String?
+  hubPointId String?
+  isEnabled Boolean @default(false)
+  startsAt DateTime?
+  endsAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  serviceZone ServiceZone? @relation("OperationalAvailabilityServiceZone", fields: [serviceZoneId], references: [id], onDelete: Restrict)
+  originHub HubPoint? @relation("OperationalAvailabilityOriginHub", fields: [originHubPointId], references: [id], onDelete: Restrict)
+  destinationHub HubPoint? @relation("OperationalAvailabilityDestinationHub", fields: [destinationHubPointId], references: [id], onDelete: Restrict)
+  hubPoint HubPoint? @relation("OperationalAvailabilityHandlingHub", fields: [hubPointId], references: [id], onDelete: Restrict)
+
+  @@index([scope, serviceType, isEnabled])
+  @@index([serviceZoneId, legType, isEnabled])
+  @@index([originHubPointId, destinationHubPointId, isEnabled])
+  @@index([hubPointId, operationType, isEnabled])
+  @@map("platform_operational_tariff_availability")
+}
+
+model HubAdditionalOperation {
+  id String @id @default(cuid())
+  idempotencyKey String @unique
+  parcelBookingId String
+  hubPointId String
+  operationType HubAdditionalOperationType
+  status HubAdditionalOperationStatus @default(REQUESTED)
+  reason String
+  evidence Json?
+  requestedByUserId String
+  authorizedByUserId String?
+  authorizedAt DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  hubPoint HubPoint @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
+  requestedBy User @relation("HubAdditionalOperationRecorder", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  authorizedBy User? @relation("HubAdditionalOperationAuthorizer", fields: [authorizedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([parcelBookingId, hubPointId, status])
+  @@index([hubPointId, operationType, status])
+  @@map("hub_additional_operations")
 }
 
 model ManualOperationalSettlement {
