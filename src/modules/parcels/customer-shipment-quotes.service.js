@@ -13,7 +13,6 @@ function routeSnapshotFor(booking, route) {
     routeMode: route.routeMode,
     origin: route.origin,
     destination: route.destination,
-    hubAssisted: route.routeMode === "HUB_ASSISTED",
     originHub: route.originHub,
     destinationHub: route.destinationHub,
     legs: route.legs.map(leg => ({
