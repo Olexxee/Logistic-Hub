@@ -19,7 +19,7 @@ function transaction({ availability = { id: "availability_1" }, rates = [] } = {
 
 const rate = (overrides = {}) => ({
   id: "rate_1", version: 3, parcelCategory: "box", currency: "NGN",
-  minWeightGrams: 500, maxWeightGrams: 2000,
+  minWeightGrams: 1001, maxWeightGrams: 3000,
   maxLengthMm: 300, maxWidthMm: 200, maxHeightMm: 100,
   customerTransportChargeMinor: 2500n, platformChargeMinor: 300n,
   driverPayoutMinor: 1800n, estimatedTransitMinutes: 45,
