@@ -19,7 +19,14 @@ export function createExecutionReadinessController(service) {
           details: result.blockers,
         },
       });
-      return res.status(result.replay ? 200 : 201).json({ success: true, data: result });
+      const snapshot = {
+        ...result.snapshot,
+        executionCostMinor: result.snapshot.executionCostMinor.toString(),
+      };
+      return res.status(result.replay ? 200 : 201).json({
+        success: true,
+        data: { snapshot, replay: result.replay },
+      });
     },
   };
 }
