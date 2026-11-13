@@ -29,7 +29,7 @@ function validateInput({ tx, route, packages, currency, now }) {
   if (orderedLegs.some((leg, index) => leg.sequence !== index + 1)) {
     throw inputError("Hub-assisted route leg sequences must be contiguous and start at one.");
   }
-  if (orderedLegs[0]?.type !== "LOCAL_PICKUP" || orderedLegs.at(-1)?.type !== "FINAL_MILE"
+  if (orderedLegs.length < 3 || orderedLegs[0]?.type !== "LOCAL_PICKUP" || orderedLegs.at(-1)?.type !== "FINAL_MILE"
     || orderedLegs.filter(leg => leg.type === "LOCAL_PICKUP").length !== 1
     || orderedLegs.filter(leg => leg.type === "FINAL_MILE").length !== 1
     || orderedLegs.slice(1, -1).some(leg => leg.type !== "INTERSTATE_TRANSPORT")) {
