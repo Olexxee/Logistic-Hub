@@ -36,6 +36,25 @@ function isHubAssistedAcceptedQuote(quote) {
       && quote?.inputSnapshot?.routeSnapshot?.routeMode === "HUB_ASSISTED");
 }
 
+function packageFactsMatchAcceptedQuote(leg, quote, packages) {
+  const snapshotLegs = quote?.inputSnapshot?.operationalTariffAssessment?.legs
+    ?? quote?.inputSnapshot?.packageRateSnapshot;
+  if (!Array.isArray(snapshotLegs)) return false;
+  const snapshotLeg = snapshotLegs.find(item => item.sequence === leg.sequence && item.type === leg.type);
+  if (!Array.isArray(snapshotLeg?.packages) || snapshotLeg.packages.length !== packages.length) return false;
+  return packages.every((pkg, index) => {
+    const snapshot = snapshotLeg.packages.find(item => item.packageSequence === (pkg.packageSequence ?? index + 1));
+    if (!snapshot) return false;
+    const dimensions = snapshot.dimensionsMm ?? {};
+    return (snapshot.packageId == null || snapshot.packageId === pkg.id)
+      && snapshot.packageCategory === pkg.packageCategory
+      && snapshot.weightGrams === pkg.weightGrams
+      && (dimensions.length ?? null) === (pkg.lengthMm ?? null)
+      && (dimensions.width ?? null) === (pkg.widthMm ?? null)
+      && (dimensions.height ?? null) === (pkg.heightMm ?? null);
+  });
+}
+
 function routeLegMatchesSnapshot(leg, quote) {
   const routeLegs = quote?.inputSnapshot?.routeSnapshot?.legs;
   if (!Array.isArray(routeLegs)) return false;
@@ -215,6 +234,10 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
         }
         if (packages.some(pkg => !pkg.packageCategory || !pkg.packageCategory.trim())) {
           blockers.push(blocker("PACKAGE_CATEGORY_MISSING", "Every package requires a normalized category."));
+        }
+        if (acceptedQuote && packages.length
+          && !packageFactsMatchAcceptedQuote(leg, acceptedQuote, packages)) {
+          blockers.push(blocker("PACKAGE_FACTS_CHANGED", "Current package categories, weights or dimensions do not match the package facts pinned by the accepted quote."));
         }
 
         const currency = acceptedQuote?.currency ?? booking.currency;
