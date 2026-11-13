@@ -30,6 +30,12 @@ function packageVolumeCm3(pkg) {
   return Number.isSafeInteger(Math.ceil(volume)) ? Math.ceil(volume) : null;
 }
 
+function isHubAssistedAcceptedQuote(quote) {
+  return quote?.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF"
+    || (quote?.inputSnapshot?.source === "INTEGRATION_QUOTE"
+      && quote?.inputSnapshot?.routeSnapshot?.routeMode === "HUB_ASSISTED");
+}
+
 function routeLegMatchesSnapshot(leg, quote) {
   const routeLegs = quote?.inputSnapshot?.routeSnapshot?.legs;
   if (!Array.isArray(routeLegs)) return false;
@@ -181,7 +187,7 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
         }
         const acceptedQuote = booking.quotes?.find(quote => quote.id === leg.metadata?.quoteId);
         if (!acceptedQuote || acceptedQuote.status !== "ACCEPTED"
-          || acceptedQuote.inputSnapshot?.source !== "PLATFORM_OPERATIONAL_TARIFF"
+          || !isHubAssistedAcceptedQuote(acceptedQuote)
           || !routeLegMatchesSnapshot(leg, acceptedQuote)) {
           blockers.push(blocker("ACCEPTED_ROUTE_SNAPSHOT_MISMATCH", "The leg does not match its accepted hub-assisted quote and immutable route topology."));
         }
