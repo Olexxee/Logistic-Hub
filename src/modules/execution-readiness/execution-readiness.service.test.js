@@ -156,7 +156,7 @@ test("blocks when the receiving hub has insufficient parcel capacity", async () 
   const twoPackages = baseLeg({
     parcelBooking: {
       ...baseLeg().parcelBooking,
-      parcelPackages: [...packageFacts, { ...packageFacts[0], id: "package-2", packageSequence: 2 }],
+      parcelPackages: [...packageFacts, { ...packageFacts[0], id: "package-2", packageSequence: 2, packageCategory: "FRAGILE" }],
     },
   });
   const blocked = await setup({
