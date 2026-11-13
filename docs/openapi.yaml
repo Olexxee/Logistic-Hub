@@ -4121,7 +4121,7 @@ paths:
       tags: [Parcel bookings]
       operationId: acceptShipmentQuote
       summary: Accept one unexpired shipment quote for a draft booking
-      description: Acceptance revalidates platform tariff versions and route availability. Platform-priced local quotes move the booking to AWAITING_PARTNER_ASSIGNMENT and do not trigger payment; contracted partner quotes retain the partner workflow. Acceptance is transactional and naturally idempotent for the same accepted quote.
+      description: Acceptance revalidates platform tariff versions and route availability. Platform-priced local quotes move the booking to AWAITING_PARTNER_ASSIGNMENT and do not trigger payment; contracted partner quotes retain the partner workflow. Acceptance is transactional. Repeating acceptance for the same accepted quote by its owner replays the persisted result without creating duplicate delivery legs.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
@@ -4158,7 +4158,7 @@ paths:
     post:
       tags: [Parcel bookings]
       operationId: rejectShipmentQuote
-      summary: Reject an unexpired partner quote for an owned booking
+      summary: Reject an unexpired quote for an owned booking
       x-implementation-status: implemented
       security:
         - bearerAuth: []
