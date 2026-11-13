@@ -61,12 +61,22 @@ function makeHarness({ missingScope = null } = {}) {
     tariff("HUB_PAIR", "INTERSTATE_TRANSPORT", { originHubPointId: "hub-a", destinationHubPointId: "hub-b" }, "linehaul", 2000),
     tariff("LOCAL_ZONE", "FINAL_MILE", { serviceZoneId: "zone-b" }, "final", 3000),
   ];
+  const bookingRecord = {
+    ...booking,
+    parcelPackages: booking.parcelPackages.map(pkg => ({ ...pkg })),
+    pricingSnapshot: null,
+  };
+  const hubRecords = hubs.map(hub => ({ ...hub }));
   const calls = { quoteCreate: [], quoteUpdate: [], bookingUpdate: [], deliveryLegCreate: [], bookingEvents: [] };
   let storedQuote = null;
   const tx = {
     parcelBooking: {
-      findUnique: async () => booking,
-      updateMany: async args => { calls.bookingUpdate.push(args); return { count: 1 }; },
+      findUnique: async () => bookingRecord,
+      updateMany: async args => {
+        calls.bookingUpdate.push(args);
+        Object.assign(bookingRecord, args.data);
+        return { count: 1 };
+      },
     },
     serviceZone: {
       findMany: async () => [
@@ -74,7 +84,7 @@ function makeHarness({ missingScope = null } = {}) {
         { id: "zone-b", code: "B", name: "Zone B", stateId: "state-b" },
       ],
     },
-    hubPoint: { findMany: async () => hubs },
+    hubPoint: { findMany: async () => hubRecords },
     platformOperationalTariffAvailability: {
       findFirst: async ({ where }) => missingScope === where.scope
         ? null : { isEnabled: true, startsAt: null, endsAt: null },
@@ -91,9 +101,16 @@ function makeHarness({ missingScope = null } = {}) {
     },
     shipmentQuote: {
       findFirst: async args => args.include?.parcelBooking
-        ? (storedQuote ? { ...storedQuote, parcelBooking: booking } : null)
+        ? (storedQuote ? { ...storedQuote, parcelBooking: bookingRecord } : null)
         : null,
-      updateMany: async args => { calls.quoteUpdate.push(args); return { count: 1 }; },
+      updateMany: async args => {
+        calls.quoteUpdate.push(args);
+        if (storedQuote && storedQuote.id === args.where.id && storedQuote.status === args.where.status) {
+          Object.assign(storedQuote, args.data);
+          return { count: 1 };
+        }
+        return { count: 0 };
+      },
       create: async ({ data }) => {
         calls.quoteCreate.push(data);
         storedQuote = {
@@ -105,7 +122,12 @@ function makeHarness({ missingScope = null } = {}) {
       },
     },
     deliveryLeg: {
-      findMany: async () => [],
+      findMany: async () => calls.deliveryLegCreate.map((data, index) => ({
+        id: `delivery-leg-${index + 1}`, sequence: data.sequence, type: data.type,
+        status: data.status, originServiceZoneId: data.originServiceZoneId,
+        destinationServiceZoneId: data.destinationServiceZoneId,
+        originHubPointId: data.originHubPointId, destinationHubPointId: data.destinationHubPointId,
+      })),
       create: async ({ data }) => {
         calls.deliveryLegCreate.push(data);
         return {
@@ -125,7 +147,7 @@ function makeHarness({ missingScope = null } = {}) {
   const prismaClient = { $transaction: async work => work(tx) };
   return {
     service: createCustomerShipmentQuotesService({ prismaClient, clock: () => now }),
-    calls, tariffs, get storedQuote() { return storedQuote; },
+    calls, tariffs, hubRecords, bookingRecord, get storedQuote() { return storedQuote; },
   };
 }
 
@@ -173,6 +195,9 @@ test("accepts an unchanged operational quote and flags each leg for execution re
   assert.ok(calls.deliveryLegCreate.every(leg => leg.metadata.requiresOperationalReview === true));
   assert.ok(calls.deliveryLegCreate.every(leg => leg.metadata.executionReadiness === "NOT_ASSESSED"));
   assert.equal(calls.bookingEvents.length, 1);
+  assert.equal(accepted.booking.pricingSnapshot.executionReadiness.status, "NOT_ASSESSED");
+  assert.equal(Object.hasOwn(accepted.booking.pricingSnapshot, "driverPayoutMinor"), false);
+  assert.equal(Object.hasOwn(accepted.booking.pricingSnapshot, "partnerExecutionCostMinor"), false);
 });
 
 test("rejects acceptance when an operational tariff changes after quote issuance", async () => {
@@ -185,4 +210,45 @@ test("rejects acceptance when an operational tariff changes after quote issuance
   });
   assert.equal(accepted.conflict.code, "OPERATIONAL_TARIFF_CHANGED");
   assert.equal(calls.deliveryLegCreate.length, 0);
+});
+
+
+test("rejects acceptance when the resolved hub route changes after quote issuance", async () => {
+  const { service, hubRecords, calls } = makeHarness();
+  const issued = await service.createQuote({ bookingId: booking.id, userId: booking.senderId });
+  hubRecords.splice(0, hubRecords.length);
+
+  const accepted = await service.acceptQuote({
+    bookingId: booking.id, quoteId: issued.quote.id, userId: booking.senderId,
+  });
+  assert.equal(accepted.conflict.code, "OPERATIONAL_ROUTE_CHANGED");
+  assert.equal(calls.deliveryLegCreate.length, 0);
+});
+
+test("does not accept an operational quote after its expiry", async () => {
+  const { service, calls } = makeHarness();
+  const issued = await service.createQuote({
+    bookingId: booking.id, userId: booking.senderId, expiresInMinutes: 0,
+  });
+  const accepted = await service.acceptQuote({
+    bookingId: booking.id, quoteId: issued.quote.id, userId: booking.senderId,
+  });
+  assert.equal(accepted.conflict.code, "QUOTE_NOT_ACTIVE");
+  assert.equal(calls.deliveryLegCreate.length, 0);
+});
+
+test("acceptance replay returns the existing delivery plan without duplicating legs", async () => {
+  const { service, calls } = makeHarness();
+  const issued = await service.createQuote({ bookingId: booking.id, userId: booking.senderId });
+  const first = await service.acceptQuote({
+    bookingId: booking.id, quoteId: issued.quote.id, userId: booking.senderId,
+  });
+  const second = await service.acceptQuote({
+    bookingId: booking.id, quoteId: issued.quote.id, userId: booking.senderId,
+  });
+  assert.equal(first.quote.status, "ACCEPTED");
+  assert.equal(second.quote.status, "ACCEPTED");
+  assert.equal(second.deliveryPlan.legs.length, 3);
+  assert.equal(calls.deliveryLegCreate.length, 3);
+  assert.equal(calls.bookingEvents.length, 1);
 });
