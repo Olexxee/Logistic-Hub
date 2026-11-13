@@ -13,6 +13,7 @@ const inventoriedAdminRouteFiles = [
   "src/modules/audit/audit.routes.js",
   "src/modules/custody/custody.routes.js",
   "src/modules/delivery-legs/delivery-leg-dispatch.routes.js",
+  "src/modules/execution-readiness/execution-readiness.routes.js",
   "src/modules/discovery/discovery.routes.js",
   "src/modules/drivers/driver-documents.routes.js",
   "src/modules/drivers/drivers.admin.routes.js",
