@@ -153,7 +153,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         const eligibleDrivers = drivers.filter((driver) => isDriverWithinPickupRadius(driver, {
           latitude: booking.pickupLatitude,
           longitude: booking.pickupLongitude,
-        }, now));
+        }, now, MAX_DRIVER_LOCATION_AGE_MS));
 
         if (eligibleDrivers.length === 0) {
           throw conflict("NO_ELIGIBLE_DRIVERS", "No verified, available drivers with fresh locations inside their pickup radius cover both service zones.");
@@ -465,7 +465,7 @@ export function createDispatchService({ prismaClient, clock = () => new Date() }
         if (!isDriverWithinPickupRadius(driverSnapshot, {
           latitude: booking.pickupLatitude,
           longitude: booking.pickupLongitude,
-        }, now)) {
+        }, now, MAX_DRIVER_LOCATION_AGE_MS)) {
           throw conflict("DRIVER_NO_LONGER_AVAILABLE", "The selected driver location is stale or outside the pickup radius.");
         }
 
