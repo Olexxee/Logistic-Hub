@@ -9,7 +9,7 @@ function legData({
   parcelBookingId, sequence, type, status, originServiceZoneId, destinationServiceZoneId,
   originHubPointId = null, destinationHubPointId = null,
   originLatitude, originLongitude, destinationLatitude, destinationLongitude,
-  quoteId, driverPayoutMinor = null, operationalLeg = null, now,
+  quoteId, quote, driverPayoutMinor = null, operationalLeg = null, now,
 }) {
   return {
     parcelBookingId,
@@ -86,6 +86,7 @@ export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now 
       data: legData({
         parcelBookingId: booking.id,
         quoteId: quote.id,
+        quote,
         driverPayoutMinor: operationalLegs ? definition.driverPayoutMinor ?? null : quote.inputSnapshot?.driverPayoutMinor ?? null,
         operationalLeg: operationalLegs ? definition : null,
         now,
