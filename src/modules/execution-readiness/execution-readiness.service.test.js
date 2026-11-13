@@ -39,6 +39,8 @@ function baseLeg(overrides = {}) {
     destinationServiceZoneId: "zone-1",
     originHubPointId: null,
     destinationHubPointId: "hub-1",
+    origin: { latitude: 6.5244, longitude: 3.3792 },
+    destination: { latitude: 6.525, longitude: 3.38 },
   };
   const acceptedQuote = {
     id: "quote-1",
@@ -74,6 +76,8 @@ function baseLeg(overrides = {}) {
     destinationHubPointId: "hub-1",
     originLatitude: 6.5244,
     originLongitude: 3.3792,
+    destinationLatitude: 6.525,
+    destinationLongitude: 3.38,
     metadata: {
       quoteId: "quote-1",
       pricingSource: "PLATFORM_OPERATIONAL_TARIFF",
@@ -208,6 +212,8 @@ test("partner leg resolves a single rate-card candidate covering every package",
             sequence: 1, type: "INTERSTATE_TRANSPORT",
             originServiceZoneId: "zone-1", destinationServiceZoneId: "zone-2",
             originHubPointId: "hub-1", destinationHubPointId: "hub-2",
+            origin: { latitude: 6.5244, longitude: 3.3792 },
+            destination: { latitude: 6.525, longitude: 3.38 },
           }] },
         },
       }],
@@ -270,6 +276,8 @@ test("blocks partner execution when no single rate card covers all packages", as
         }], routeSnapshot: { legs: [{
           sequence: 1, type: "INTERSTATE_TRANSPORT", originServiceZoneId: "zone-1",
           destinationServiceZoneId: "zone-2", originHubPointId: "hub-1", destinationHubPointId: "hub-2",
+          origin: { latitude: 6.5244, longitude: 3.3792 },
+          destination: { latitude: 6.525, longitude: 3.38 },
         }] } },
       }],
     },
