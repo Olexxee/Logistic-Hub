@@ -2,7 +2,7 @@
 
 ## Geography and serviceability
 
-- [Hub-assisted operational tariffs design (HAT-01)](docs/hub-assisted-operational-tariffs-design.md) — HAT-01 schema/migration, approved hybrid tariff scopes, customer-charge/execution-cost separation, and explicit handling policy. Additional operations are bound to the exact delivery leg and booking; ordinary intake and custody remain non-billable.
+- [Hub-assisted operational tariffs design](docs/hub-assisted-operational-tariffs-design.md) — HAT-01 schema/migration is merged and CI-verified. HAT-02 implements ADMIN tariff and exact-scope availability APIs on `feat/admin-operational-tariff-apis`; CI validation is pending. The approved hybrid scopes, customer-charge/execution-cost separation and explicit additional-handling policy remain authoritative. Additional operations are bound to the exact delivery leg and booking; ordinary intake and custody remain non-billable.
 
 - [Platform-operated route pricing](docs/platform-operated-route-pricing.md) — explicit corridor approval, versioned customer tariffs and independent driver payouts.
 - [Platform route pricing weight-band policy](docs/platform-route-weight-bands.md) — seven enforced parcel bands from 0.001 kg to 30 kg; heavier freight requires manual assessment. The ADMIN API also lists configured directed route availability.
