@@ -124,3 +124,15 @@ ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operation
 ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_hubPointId_fkey" FOREIGN KEY ("hubPointId") REFERENCES "hub_points"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_requestedByUserId_fkey" FOREIGN KEY ("requestedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_authorizedByUserId_fkey" FOREIGN KEY ("authorizedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- NULLS are distinct in ordinary PostgreSQL unique indexes. Scope-specific partial
+-- indexes enforce one availability row per exact locator without weakening scope checks.
+CREATE UNIQUE INDEX "platform_operational_tariff_availability_local_unique"
+  ON "platform_operational_tariff_availability" ("serviceZoneId", "legType", "serviceType")
+  WHERE "scope" = 'LOCAL_ZONE';
+CREATE UNIQUE INDEX "platform_operational_tariff_availability_hub_pair_unique"
+  ON "platform_operational_tariff_availability" ("originHubPointId", "destinationHubPointId", "serviceType")
+  WHERE "scope" = 'HUB_PAIR';
+CREATE UNIQUE INDEX "platform_operational_tariff_availability_handling_unique"
+  ON "platform_operational_tariff_availability" ("hubPointId", "operationType", "serviceType")
+  WHERE "scope" = 'HUB_HANDLING';
