@@ -42,7 +42,14 @@ async function resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones
   const [pickup, transfer, finalMile] = legs;
   const originHubPointId = pickup.destinationHubPointId;
   const destinationHubPointId = finalMile.originHubPointId;
-  const validTopology = pickup.sequence === 1 && pickup.type === "LOCAL_PICKUP"
+  const coordinates = legs.flatMap(leg => [
+    leg.origin?.latitude, leg.origin?.longitude,
+    leg.destination?.latitude, leg.destination?.longitude,
+  ]);
+  const validCoordinates = coordinates.every(Number.isFinite);
+  const validTopology = routeSnapshot.routeMode === "HUB_ASSISTED"
+    && validCoordinates
+    && pickup.sequence === 1 && pickup.type === "LOCAL_PICKUP"
     && transfer.sequence === 2 && transfer.type === "INTERSTATE_TRANSPORT"
     && finalMile.sequence === 3 && finalMile.type === "FINAL_MILE"
     && pickup.originServiceZoneId === booking.pickupServiceZoneId
