@@ -67,6 +67,21 @@ The assessment engine calculates each component once and maps the canonical brea
 
 No tariff field may represent driver payout, partner execution cost, executor ID, partner ID, or agreement ID.
 
+### 4.3 Hub handling chargeability policy
+
+Ordinary hub operations are included in the priced delivery service and are not independently billable. In particular, the following are operational evidence or workflow transitions, not chargeable operations:
+
+- Confirmed hub intake / receiving.
+- Custody handover, whether driver-to-hub, hub-to-driver or partner-to-hub.
+- Normal hub custody while the parcel awaits its next planned delivery leg.
+- Normal hub release to the next executor.
+
+A hub visit or custody event must never create a handling charge by itself. Rejected, cancelled, expired or unconfirmed handovers are never chargeable.
+
+A separate handling tariff may be assessed only against a distinct, explicitly recorded additional operation (for example, special sorting or repackaging). The operation must have its own operation type, hub, parcel/booking reference, actor, occurrence timestamp, evidence or reason where required, and an idempotent identity so retries cannot create duplicate charges. The charge must be disclosed and authorized under the applicable customer-facing policy before collection; no charge is inferred from the tariff existing.
+
+The current custody and intake records do not themselves represent these additional services. HAT implementation must introduce an explicit chargeable-operation record or equivalent auditable domain event. It must not overload `HubIntakeRecord`, `CustodyHandover`, or `HubIntakeDisposition` as a billing trigger. The initial supported operation catalogue must be explicitly defined and administered; arbitrary free-text operations must not become billable automatically.
+
 ### 4.3 Availability
 
 Availability is separate from tariff publication. The proposed availability model should support the same scope locators and effective windows, with a unique key per scope + locator + leg type + service type.
