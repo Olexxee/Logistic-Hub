@@ -192,6 +192,20 @@ async function assessEndToEndPartnerRates(tx, { booking, packages, routeSnapshot
   };
 }
 
+function customerOperationalLegBreakdown(legs) {
+  return legs.map(leg => ({
+    sequence: leg.sequence,
+    type: leg.type,
+    packages: leg.packages.map(pkg => ({
+      packageSequence: pkg.packageSequence,
+      packageCategory: pkg.packageCategory,
+      weightGrams: pkg.weightGrams,
+      customerChargeMinor: pkg.tariff.customerChargeMinor,
+      platformChargeMinor: pkg.tariff.platformChargeMinor,
+    })),
+  }));
+}
+
 function operationalAssessmentSignature(assessment) {
   if (!assessment) return null;
   return {
@@ -306,7 +320,6 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
                 routeMode: route.routeMode,
                 packageCount: packages.length,
                 reason: operational.reason,
-                routeSnapshot: operational.routeSnapshot,
                 assessedAt: operational.assessedAt,
                 handling: operational.handling,
               },
@@ -338,7 +351,6 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
             operationalPlanStatus: "PRICED_AWAITING_EXECUTION_REVIEW",
             routeMode: route.routeMode,
             packageCount: packages.length,
-            routeSnapshot: operational.routeSnapshot,
             assessedAt: operational.assessedAt,
             executionReadiness: operational.executionReadiness,
           };
@@ -442,7 +454,7 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
               otherChargesMinor: "0",
               estimatedTransitMinutes: candidate.estimatedTransitMinutes,
               ...(candidate.source === "PLATFORM_OPERATIONAL_TARIFF"
-                ? { operationalLegCharges: candidate.packageRateSnapshot }
+                ? { operationalLegCharges: customerOperationalLegBreakdown(candidate.packageRateSnapshot) }
                 : {}),
             },
             inputSnapshot: {
