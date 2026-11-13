@@ -3,7 +3,7 @@
 ## Geography and serviceability
 
 - [Platform-operated route pricing](docs/platform-operated-route-pricing.md) — explicit corridor approval, versioned customer tariffs and independent driver payouts.
-- [Platform route pricing weight-band policy](docs/platform-route-weight-bands.md) — seven enforced parcel bands from 0.001 kg to 30 kg; heavier freight requires manual assessment.
+- [Platform route pricing weight-band policy](docs/platform-route-weight-bands.md) — seven enforced parcel bands from 0.001 kg to 30 kg; heavier freight requires manual assessment. The ADMIN API also lists configured directed route availability.
 
 - [GEO-01 Service-Zone Operations Audit](docs/geo-01-service-zone-operations-audit.md) — verified geography/service-zone foundation and GEO roadmap.
 - [GEO-03 Coordinate-to-Service-Zone Resolution](docs/geo-03-coordinate-service-zone-resolution.md) — server-authoritative point-in-polygon rules and fail-closed booking resolution.
