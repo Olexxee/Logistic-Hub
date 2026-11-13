@@ -2,6 +2,7 @@ import { resolveDeliveryRoute } from "../delivery-legs/delivery-route-planner.js
 import { createMultiLegPlan } from "../delivery-legs/delivery-plan.service.js";
 import { ConflictError } from "../../shared/http/app-error.js";
 import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
+import { assessPlatformOperationalTariffs } from "../platform-operational-pricing/platform-operational-tariff-assessment.service.js";
 
 function conflict(code, message) {
   return { conflict: { code, message } };
@@ -12,7 +13,6 @@ function routeSnapshotFor(booking, route) {
     routeMode: route.routeMode,
     origin: route.origin,
     destination: route.destination,
-    hubAssisted: route.routeMode === "HUB_ASSISTED",
     originHub: route.originHub,
     destinationHub: route.destinationHub,
     legs: route.legs.map(leg => ({
@@ -192,6 +192,31 @@ async function assessEndToEndPartnerRates(tx, { booking, packages, routeSnapshot
   };
 }
 
+function customerOperationalLegBreakdown(legs) {
+  return legs.map(leg => ({
+    sequence: leg.sequence,
+    type: leg.type,
+    packages: leg.packages.map(pkg => ({
+      packageSequence: pkg.packageSequence,
+      packageCategory: pkg.packageCategory,
+      weightGrams: pkg.weightGrams,
+      customerChargeMinor: pkg.tariff.customerChargeMinor,
+      platformChargeMinor: pkg.tariff.platformChargeMinor,
+    })),
+  }));
+}
+
+function operationalAssessmentSignature(assessment) {
+  if (!assessment) return null;
+  return {
+    routeSnapshot: assessment.routeSnapshot,
+    currency: assessment.currency,
+    legs: assessment.legs,
+    handling: assessment.handling,
+    totals: assessment.totals,
+  };
+}
+
 async function serializable(prismaClient, work) {
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -282,22 +307,54 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
 
         const route = await resolveDeliveryRoute({ tx, booking: { ...booking, packages } });
         const routeSnapshot = routeSnapshotFor(booking, route);
-        if (route.routeMode === "HUB_ASSISTED") {
-          return {
-            assessment: {
-              status: "REQUIRES_OPERATIONAL_PRICING",
-              routeMode: route.routeMode,
-              packageCount: packages.length,
-              reason: "This route requires separately approved pickup, inter-hub transport, hub handling and final-mile charges.",
-              assessedAt: now.toISOString(),
-            },
-            quote: null,
-          };
-        }
-
         let assessment;
         let candidate;
-        if (route.routeMode === "LOCAL_DIRECT") {
+        if (route.routeMode === "HUB_ASSISTED") {
+          const operational = await assessPlatformOperationalTariffs({
+            tx, route, packages, currency: booking.currency, now, handlingOperations: [],
+          });
+          if (operational.status !== "QUOTED") {
+            return {
+              assessment: {
+                status: operational.status,
+                routeMode: route.routeMode,
+                packageCount: packages.length,
+                reason: operational.reason,
+                assessedAt: operational.assessedAt,
+                handling: operational.handling,
+              },
+              quote: null,
+            };
+          }
+          candidate = {
+            source: "PLATFORM_OPERATIONAL_TARIFF",
+            partnerAgreementId: null,
+            partnerRateId: null,
+            currency: booking.currency,
+            transportChargeMinor: BigInt(operational.totals.customerChargeMinor),
+            platformChargeMinor: BigInt(operational.totals.platformChargeMinor),
+            totalCustomerChargeMinor: BigInt(operational.totals.totalCustomerChargeMinor),
+            estimatedTransitMinutes: null,
+            packageRateSnapshot: operational.legs,
+            routeSnapshot: operational.routeSnapshot,
+            expiresAt,
+            inputSnapshot: {
+              source: "PLATFORM_OPERATIONAL_TARIFF",
+              routeSnapshot: operational.routeSnapshot,
+              operationalTariffAssessment: operational,
+              executionReadiness: operational.executionReadiness,
+            },
+          };
+          assessment = {
+            status: "QUOTED",
+            source: "PLATFORM_OPERATIONAL_TARIFF",
+            operationalPlanStatus: "PRICED_AWAITING_EXECUTION_REVIEW",
+            routeMode: route.routeMode,
+            packageCount: packages.length,
+            assessedAt: operational.assessedAt,
+            executionReadiness: operational.executionReadiness,
+          };
+        } else if (route.routeMode === "LOCAL_DIRECT") {
           const result = await assessPlatformRouteTariffs({
             tx,
             originServiceZoneId: booking.pickupServiceZoneId,
@@ -396,6 +453,9 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
               platformChargeMinor: platform.toString(),
               otherChargesMinor: "0",
               estimatedTransitMinutes: candidate.estimatedTransitMinutes,
+              ...(candidate.source === "PLATFORM_OPERATIONAL_TARIFF"
+                ? { operationalLegCharges: customerOperationalLegBreakdown(candidate.packageRateSnapshot) }
+                : {}),
             },
             inputSnapshot: {
               ...candidate.inputSnapshot,
@@ -483,11 +543,29 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
         }
         const packages = packageFacts(booking);
         const route = await resolveDeliveryRoute({ tx, booking: { ...booking, packages } });
-        if (route.routeMode === "HUB_ASSISTED") return conflict("HUB_ASSISTED_PRICING_REQUIRED", "Hub-assisted routes must be priced per delivery leg.");
         const routeSnapshot = routeSnapshotFor(booking, route);
         let payoutMinor = null;
         let packageRateSnapshot;
-        if (quote.inputSnapshot?.source === "PLATFORM_ROUTE_RATE") {
+        let operationalTariffAssessment = null;
+        if (quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF") {
+          if (route.routeMode !== "HUB_ASSISTED"
+            || JSON.stringify(quote.inputSnapshot.routeSnapshot) !== JSON.stringify(routeSnapshot)) {
+            return conflict("OPERATIONAL_ROUTE_CHANGED", "The resolved hub-assisted route changed after this quote was issued. Request a fresh quote.");
+          }
+          operationalTariffAssessment = await assessPlatformOperationalTariffs({
+            tx, route, packages, currency: booking.currency, now, handlingOperations: [],
+          });
+          if (operationalTariffAssessment.status !== "QUOTED"
+            || JSON.stringify(operationalAssessmentSignature(quote.inputSnapshot.operationalTariffAssessment))
+              !== JSON.stringify(operationalAssessmentSignature(operationalTariffAssessment))
+            || BigInt(operationalTariffAssessment.totals?.totalCustomerChargeMinor ?? "-1") !== quote.totalCustomerChargeMinor
+            || BigInt(operationalTariffAssessment.totals?.platformChargeMinor ?? "-1") !== quote.platformChargeMinor) {
+            return conflict("OPERATIONAL_TARIFF_CHANGED", "One or more operational tariffs or availability records changed after this quote was issued. Request a fresh quote.");
+          }
+          packageRateSnapshot = operationalTariffAssessment.legs;
+        } else if (route.routeMode === "HUB_ASSISTED") {
+          return conflict("HUB_ASSISTED_PRICING_REQUIRED", "This hub-assisted route requires a quote issued from platform operational tariffs.");
+        } else if (quote.inputSnapshot?.source === "PLATFORM_ROUTE_RATE") {
           const assessed = await assessPlatformRouteTariffs({ tx, originServiceZoneId: booking.pickupServiceZoneId, destinationServiceZoneId: booking.destinationServiceZoneId, packages, currency: booking.currency, now, routeSnapshot, expiresAt: quote.expiresAt });
           const option = assessed.options?.[0];
           if (assessed.status !== "QUOTED" || !option) return conflict("PLATFORM_TARIFF_CHANGED", "The platform tariff is no longer available. Request a fresh quote.");
@@ -503,10 +581,22 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
         const claimed = await tx.shipmentQuote.updateMany({ where: { id: quote.id, status: "OFFERED", expiresAt: { gt: now } }, data: { status: "ACCEPTED", acceptedAt: now, acceptedByUserId: userId } });
         if (claimed.count !== 1) return conflict("QUOTE_NOT_ACTIVE", "The quote has already been accepted or expired.");
         const source = quote.inputSnapshot.source;
-        const pricingSnapshot = { source, quoteId: quote.id, currency: quote.currency, transportChargeMinor: quote.transportChargeMinor.toString(), platformChargeMinor: quote.platformChargeMinor.toString(), totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(), ...(payoutMinor != null ? { driverPayoutMinor: payoutMinor } : {}), packageRateSnapshot, routeSnapshot, acceptedAt: now.toISOString() };
+        const pricingSnapshot = {
+          source, quoteId: quote.id, currency: quote.currency,
+          transportChargeMinor: quote.transportChargeMinor.toString(),
+          platformChargeMinor: quote.platformChargeMinor.toString(),
+          totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(),
+          ...(payoutMinor != null ? { driverPayoutMinor: payoutMinor } : {}),
+          packageRateSnapshot, routeSnapshot,
+          ...(operationalTariffAssessment ? {
+            operationalTariffAssessment: operationalAssessmentSignature(operationalTariffAssessment),
+            executionReadiness: operationalTariffAssessment.executionReadiness,
+          } : {}),
+          acceptedAt: now.toISOString(),
+        };
         const changed = await tx.parcelBooking.updateMany({ where: { id: booking.id, senderId: userId, status: "DRAFT" }, data: { status: "AWAITING_PARTNER_ASSIGNMENT", driverFareMinor: payoutMinor == null ? null : BigInt(payoutMinor), connectionFeeMinor: quote.platformChargeMinor, customerPayableMinor: quote.totalCustomerChargeMinor, pricingRuleId: null, pricingSnapshot, updatedAt: now } });
         if (changed.count !== 1) throw new ConflictError("The booking changed while the quote was being accepted.", "BOOKING_STATE_CHANGED");
-        const plan = await createMultiLegPlan({ tx, booking: { ...booking, pricingSnapshot }, quote: { ...quote, inputSnapshot: { ...quote.inputSnapshot, routeSnapshot, packageRateSnapshot, ...(payoutMinor != null ? { driverPayoutMinor: payoutMinor } : {}) } }, actorUserId: userId, now });
+        const plan = await createMultiLegPlan({ tx, booking: { ...booking, packages, pricingSnapshot }, quote: { ...quote, inputSnapshot: { ...quote.inputSnapshot, routeSnapshot, packageRateSnapshot, ...(payoutMinor != null ? { driverPayoutMinor: payoutMinor } : {}) } }, actorUserId: userId, now });
         if (source === "PLATFORM_ROUTE_RATE" && (plan.legs.length !== 1 || plan.legs[0].type !== "LOCAL_PICKUP")) throw new ConflictError("This platform-priced route has no supported customer dispatch plan.", "CUSTOMER_ROUTE_DISPATCH_UNAVAILABLE");
         await tx.bookingEvent.create({ data: { parcelBookingId: booking.id, actorUserId: userId, eventType: "CUSTOMER_SHIPMENT_QUOTE_ACCEPTED", fromStatus: "DRAFT", toStatus: "AWAITING_PARTNER_ASSIGNMENT", metadata: { quoteId: quote.id, quoteVersion: quote.version, pricingSource: source, totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(), deliveryLegIds: plan.legs.map(leg => leg.id) } } });
         return { quote: customerQuoteView({ ...quote, status: "ACCEPTED", acceptedAt: now }), booking: { id: booking.id, publicReference: booking.publicReference, status: "AWAITING_PARTNER_ASSIGNMENT", paymentStatus: booking.paymentStatus, currency: quote.currency, customerPayableMinor: quote.totalCustomerChargeMinor.toString(), pricingSnapshot }, deliveryPlan: plan };
