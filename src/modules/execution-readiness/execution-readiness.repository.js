@@ -107,12 +107,20 @@ export function createExecutionReadinessRepository({ prismaClient }) {
               },
             },
           },
-          intakeRecords: {
-            where: { status: { in: ["RECEIVED", "EXCEPTION"] } },
-            select: { weightGrams: true, volumeCm3: true },
-          },
         },
       });
+    },
+
+    getHubLoad(tx, hubPointId) {
+      const where = { hubPointId, status: { in: ["RECEIVED", "EXCEPTION"] } };
+      return Promise.all([
+        tx.hubIntakeRecord.aggregate({
+          where,
+          _count: { _all: true },
+          _sum: { weightGrams: true, volumeCm3: true },
+        }),
+        tx.hubIntakeRecord.count({ where: { ...where, volumeCm3: null } }),
+      ]).then(([load, missingVolumeCount]) => ({ load, missingVolumeCount }));
     },
 
     findPartnerRates(tx, leg, packages, currency, now) {
