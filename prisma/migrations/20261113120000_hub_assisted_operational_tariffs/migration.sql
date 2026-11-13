@@ -156,3 +156,34 @@ ALTER TABLE "hub_additional_operations"
 ALTER TABLE "hub_additional_operations"
   ADD CONSTRAINT "hub_additional_operations_customer_authorizer_fkey" FOREIGN KEY ("customerAuthorizedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "hub_additional_operations_completer_fkey" FOREIGN KEY ("completedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Keep PostgreSQL object names aligned with Prisma's 63-character naming.
+-- This prevents migrate diff from reporting drift after a clean migration.
+ALTER TABLE "platform_operational_tariff_availability"
+  RENAME CONSTRAINT "platform_operational_tariff_availability_destinationHubPointId_fkey"
+  TO "platform_operational_tariff_availability_destinationHubPoi_fkey";
+
+ALTER TABLE "hub_additional_operations"
+  RENAME CONSTRAINT "hub_additional_operations_customer_authorizer_fkey"
+  TO "hub_additional_operations_customerAuthorizedByUserId_fkey";
+ALTER TABLE "hub_additional_operations"
+  RENAME CONSTRAINT "hub_additional_operations_completer_fkey"
+  TO "hub_additional_operations_completedByUserId_fkey";
+
+ALTER INDEX "platform_operational_tariff_availability_hubPointId_operationTy"
+  RENAME TO "platform_operational_tariff_availability_hubPointId_operati_idx";
+ALTER INDEX "platform_operational_tariff_availability_originHubPointId_desti"
+  RENAME TO "platform_operational_tariff_availability_originHubPointId_d_idx";
+ALTER INDEX "platform_operational_tariff_availability_scope_serviceType_isEn"
+  RENAME TO "platform_operational_tariff_availability_scope_serviceType__idx";
+ALTER INDEX "platform_operational_tariff_availability_serviceZoneId_legType_"
+  RENAME TO "platform_operational_tariff_availability_serviceZoneId_legT_idx";
+
+ALTER INDEX "platform_operational_tariffs_hubPointId_operationType_status_id"
+  RENAME TO "platform_operational_tariffs_hubPointId_operationType_statu_idx";
+ALTER INDEX "platform_operational_tariffs_originHubPointId_destinationHubPoi"
+  RENAME TO "platform_operational_tariffs_originHubPointId_destinationHu_idx";
+ALTER INDEX "platform_operational_tariffs_scope_serviceType_parcelCategory_s"
+  RENAME TO "platform_operational_tariffs_scope_serviceType_parcelCatego_idx";
+ALTER INDEX "platform_operational_tariffs_status_effectiveFrom_effectiveUnti"
+  RENAME TO "platform_operational_tariffs_status_effectiveFrom_effective_idx";
