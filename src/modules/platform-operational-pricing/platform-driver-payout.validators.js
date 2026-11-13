@@ -5,7 +5,7 @@ const reason = z.string().trim().min(5).max(1000);
 const currency = z.string().trim().regex(/^[A-Za-z]{3}$/).transform(value => value.toUpperCase());
 const amount = z.string().regex(/^[1-9][0-9]{0,14}$/);
 const category = z.string().trim().min(1).max(80);
-const weight = z.number().int().nonnegative().max(300000);
+const weight = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
 export const driverPayoutListSchema = z.object({
   serviceZoneId: id.optional(),
