@@ -872,7 +872,14 @@ export function createIntegrationShipmentService({ prismaClient, clock = () => n
           const validLocalDirectPlan = plan.routeMode === "LOCAL_DIRECT" && plan.legs.length === 1
             && plan.legs[0].type === "LOCAL_PICKUP"
             && plan.legs[0].status === "READY_FOR_ASSIGNMENT";
-          if (!validEndToEndPlan && !validLocalDirectPlan) {
+          const validHubAssistedPlan = plan.routeMode === "HUB_ASSISTED" && plan.legs.length === 3
+            && plan.legs[0].sequence === 1 && plan.legs[0].type === "LOCAL_PICKUP"
+            && plan.legs[1].sequence === 2 && plan.legs[1].type === "INTERSTATE_TRANSPORT"
+            && plan.legs[2].sequence === 3 && plan.legs[2].type === "FINAL_MILE"
+            && plan.legs.every(leg => leg.status === "PLANNED"
+              && leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+              && leg.metadata?.requiresOperationalReview === true);
+          if (!validEndToEndPlan && !validLocalDirectPlan && !validHubAssistedPlan) {
             throw new ConflictError("The operational delivery plan does not match the accepted quote topology.", "INTEGRATION_ROUTE_PLAN_MISMATCH");
           }
 
