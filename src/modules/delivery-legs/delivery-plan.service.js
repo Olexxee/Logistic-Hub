@@ -66,6 +66,7 @@ export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now 
     booking,
     routeModeOverride: ["END_TO_END", "LOCAL_DIRECT", "HUB_ASSISTED"].includes(quoteRoute?.routeMode) ? quoteRoute.routeMode : undefined,
     routeSnapshot: quoteRoute,
+    now,
   });
 
   const legs = [];
