@@ -91,6 +91,9 @@ CREATE TABLE "hub_additional_operations" (
   "requestedByUserId" TEXT NOT NULL,
   "authorizedByUserId" TEXT,
   "authorizedAt" TIMESTAMP(3),
+  "customerAuthorizedByUserId" TEXT,
+  "customerAuthorizedAt" TIMESTAMP(3),
+  "completedByUserId" TEXT,
   "completedAt" TIMESTAMP(3),
   "cancelledAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -140,8 +143,12 @@ CREATE UNIQUE INDEX "platform_operational_tariff_availability_handling_unique"
 ALTER TABLE "hub_additional_operations"
   ADD CONSTRAINT "hub_additional_operations_reason_check" CHECK (length(trim("reason")) > 0),
   ADD CONSTRAINT "hub_additional_operations_authorization_check" CHECK (
-    ("status" = 'REQUESTED' AND "authorizedByUserId" IS NULL AND "authorizedAt" IS NULL AND "completedAt" IS NULL AND "cancelledAt" IS NULL)
-    OR ("status" = 'AUTHORIZED' AND "authorizedByUserId" IS NOT NULL AND "authorizedAt" IS NOT NULL AND "completedAt" IS NULL AND "cancelledAt" IS NULL)
-    OR ("status" = 'COMPLETED' AND "authorizedByUserId" IS NOT NULL AND "authorizedAt" IS NOT NULL AND "completedAt" IS NOT NULL AND "cancelledAt" IS NULL)
+    ("status" = 'REQUESTED' AND "authorizedByUserId" IS NULL AND "authorizedAt" IS NULL AND "customerAuthorizedByUserId" IS NULL AND "customerAuthorizedAt" IS NULL AND "completedByUserId" IS NULL AND "completedAt" IS NULL AND "cancelledAt" IS NULL)
+    OR ("status" = 'AUTHORIZED' AND "authorizedByUserId" IS NOT NULL AND "authorizedAt" IS NOT NULL AND "customerAuthorizedByUserId" IS NOT NULL AND "customerAuthorizedAt" IS NOT NULL AND "completedByUserId" IS NULL AND "completedAt" IS NULL AND "cancelledAt" IS NULL)
+    OR ("status" = 'COMPLETED' AND "authorizedByUserId" IS NOT NULL AND "authorizedAt" IS NOT NULL AND "customerAuthorizedByUserId" IS NOT NULL AND "customerAuthorizedAt" IS NOT NULL AND "completedByUserId" IS NOT NULL AND "completedAt" IS NOT NULL AND "cancelledAt" IS NULL)
     OR ("status" = 'CANCELLED' AND "cancelledAt" IS NOT NULL)
   );
+
+ALTER TABLE "hub_additional_operations"
+  ADD CONSTRAINT "hub_additional_operations_customer_authorizer_fkey" FOREIGN KEY ("customerAuthorizedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT "hub_additional_operations_completer_fkey" FOREIGN KEY ("completedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
