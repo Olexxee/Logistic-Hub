@@ -67,7 +67,7 @@ function routeLegMatchesSnapshot(leg, quote) {
     && (snapshot.destinationHubPointId ?? null) === (leg.destinationHubPointId ?? null));
 }
 
-function matchPartnerCandidates(rates, packages) {
+function matchPartnerCandidates(rates, packages, currency) {
   const byCard = new Map();
   for (const rate of rates) {
     const list = byCard.get(rate.rateCardId) ?? [];
@@ -291,7 +291,7 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
             blockers.push(blocker("REQUIRES_MEASUREMENT", "Every package requires a positive measured weight before partner execution rates can be matched."));
           } else {
             const rates = await db.findPartnerRates(tx, leg, packages, currency, now);
-            const matched = matchPartnerCandidates(rates, packages);
+            const matched = matchPartnerCandidates(rates, packages, currency);
             if (!matched.candidates.length) {
               blockers.push(blocker(
                 matched.missingDimensionEvidence ? "PARTNER_RATE_DIMENSIONS_REQUIRED"
