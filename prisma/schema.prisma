@@ -847,6 +847,8 @@ model ServiceZone {
   platformRouteDestinations PlatformRouteAvailability[] @relation("PlatformRouteDestination")
   platformRatesAsOrigin    PlatformRouteRate[] @relation("PlatformRateOrigin")
   platformRatesAsDestination PlatformRouteRate[] @relation("PlatformRateDestination")
+  operationalTariffs PlatformOperationalTariff[] @relation("OperationalTariffServiceZone")
+  operationalAvailabilities PlatformOperationalTariffAvailability[] @relation("OperationalAvailabilityServiceZone")
   partnerRateOrigins       PartnerRate[] @relation("PartnerRateOriginZone")
   partnerRateDestinations  PartnerRate[] @relation("PartnerRateDestinationZone")
   hubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionDestinationZone")
@@ -1091,6 +1093,7 @@ model ParcelBooking {
   custodyHandovers       CustodyHandover[]
   operationalCases       OperationalCase[]
   hubIntakeRecords       HubIntakeRecord[]
+  additionalOperations   HubAdditionalOperation[]
   parcelPackages         ParcelBookingPackage[]
   integrationPaymentAttestation IntegrationPaymentAttestation?
   integrationEvents              IntegrationShipmentEvent[]
