@@ -22,6 +22,12 @@ export const availabilitySchema = z.object({
     path: ["endsAt"],
   });
 
+export const availabilityListSchema = z.object({
+  originServiceZoneId: id.optional(),
+  destinationServiceZoneId: id.optional(),
+  serviceType: z.literal("PARCEL_DELIVERY").optional(),
+}).strict();
+
 export const rateSchema = z.object({
   originServiceZoneId: id,
   destinationServiceZoneId: id,
