@@ -447,7 +447,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             },
             select: { id: true },
           });
-          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+          if (!lockedHat && !routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
 
           const capability = parcelCapabilityForLegType(leg.type);
           const vehicle = await tx.vehicle.findFirst({
