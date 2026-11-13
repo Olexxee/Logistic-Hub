@@ -58,3 +58,24 @@ The ADMIN route-pricing API exposes:
 The read response is `{ success: true, data: { items } }`. Each item includes its origin and destination service-zone identifiers, zone code/name summaries, service type, enabled state and effective window. An absent record means the directed route has not been explicitly configured; it must not be inferred as enabled or disabled from endpoint-zone availability.
 
 Enabling a route remains distinct from confirming dispatch capacity, driver/vehicle coverage, partner capacity or full operational readiness. Tariff publication continues to require effective route availability and active/serviceable endpoint zones.
+
+
+## Phase 2 — tariff assessment contract
+
+The shared assessment function is `assessPlatformRouteTariffs` in `platform-route-tariff-assessment.service.js`. It is intended to be called inside the caller's database transaction after origin/destination zones and package categories have been resolved by trusted server-side logic.
+
+The assessment contract enforces:
+
+1. Two distinct, server-resolved directed service zones, a valid uppercase three-letter currency code, a valid assessment timestamp and at least one categorized package.
+2. Positive whole-gram package weights. Missing, zero or invalid weights return `REQUIRES_MEASUREMENT` without querying tariffs.
+3. An enabled, currently effective directed `PARCEL_DELIVERY` availability record before any tariff query.
+4. Active tariffs matching the exact directed corridor, category, currency and effective window.
+5. Exact canonical weight-band boundaries and all configured maximum dimensions. If a tariff sets a maximum dimension, that package dimension must be measured and within the limit.
+6. Exactly one tariff match per package. Missing coverage returns `NO_COVERAGE`; multiple matches return `PRICING_AMBIGUOUS`. Neither case generates a fallback amount.
+7. BigInt arithmetic for customer transport charge, platform charge, customer total and internal driver payout. The customer total is transport plus platform charge; driver payout is reported separately and is never added to the customer total.
+
+A successful result includes a per-package tariff snapshot: category, measured weight/dimensions, tariff ID/version, applied band, each charge component and estimated transit. Persist the returned snapshot with the quote/booking so later tariff edits do not rewrite the historical basis of an issued quote.
+
+### Explicit non-goals and integration gate
+
+This assessment helper is not proof that all quote entry points use it. Before customer booking or external integration is declared governed by platform tariffs, each applicable quote path must be wired to this helper within its transaction, its returned snapshot and BigInt amounts must be persisted using the owning domain's existing models, and integration tests must prove the persisted quote and customer response agree. Multi-leg/hub-assisted pricing remains a separate per-leg assessment problem; this helper currently assesses one directed corridor.
