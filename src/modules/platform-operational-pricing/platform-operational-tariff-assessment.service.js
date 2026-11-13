@@ -127,8 +127,23 @@ export async function assessPlatformOperationalTariffs({
       route, now, { currency, packageCount: packages.length });
   }
 
+  if (packages.some(pkg => pkg.weightGrams > 30000)) {
+    return result("REQUIRES_MANUAL_ASSESSMENT",
+      "Packages above the canonical 30 kg tariff ceiling require manual freight assessment.",
+      route, now, { currency, packageCount: packages.length });
+  }
+
   if (!Array.isArray(handlingOperations)) throw inputError("handlingOperations must be an array.");
-  if (handlingOperations.length) {
+  const chargeableOperations = handlingOperations.filter(operation => operation?.status !== "CANCELLED");
+  if (chargeableOperations.some(operation => operation?.status !== "COMPLETED"
+    || !operation.authorizedByUserId || !operation.authorizedAt
+    || !operation.customerAuthorizedByUserId || !operation.customerAuthorizedAt
+    || !operation.completedByUserId || !operation.completedAt)) {
+    return result("REQUIRES_OPERATIONAL_REVIEW",
+      "Additional handling is billable only after operational authorization, customer authorization and completion by identified actors.",
+      route, now, { currency, packageCount: packages.length, handling: { status: "NOT_COMPLETED_AND_AUTHORIZED", items: [] } });
+  }
+  if (chargeableOperations.length) {
     return result("REQUIRES_OPERATIONAL_REVIEW",
       "HubAdditionalOperation is attached to a delivery leg, not to the package(s) processed. Package attribution is required before a weight-banded handling tariff can be charged.",
       route, now, {
