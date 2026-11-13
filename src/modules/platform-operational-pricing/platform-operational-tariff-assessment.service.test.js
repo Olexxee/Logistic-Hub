@@ -97,7 +97,12 @@ test("requires measurements instead of estimating package weight", async () => {
 test("does not charge handling when package attribution is missing", async () => {
   const result = await assessPlatformOperationalTariffs({
     tx: client(), route, packages, currency: "NGN", now,
-    handlingOperations: [{ id: "operation-1", status: "COMPLETED", operationType: "REPACKAGING" }],
+    handlingOperations: [{
+      id: "operation-1", status: "COMPLETED", operationType: "REPACKAGING",
+      authorizedByUserId: "ops-1", authorizedAt: now,
+      customerAuthorizedByUserId: "customer-1", customerAuthorizedAt: now,
+      completedByUserId: "hub-1", completedAt: now,
+    }],
   });
   assert.equal(result.status, "REQUIRES_OPERATIONAL_REVIEW");
   assert.equal(result.handling.status, "PACKAGE_ATTRIBUTION_REQUIRED");
@@ -131,6 +136,14 @@ test("does not charge cancelled handling operations", async () => {
   });
   assert.equal(result.status, "QUOTED");
   assert.equal(result.handling.status, "NO_CHARGEABLE_OPERATIONS");
+});
+
+test("rejects a hub-assisted route missing its interstate segment", async () => {
+  const malformedRoute = { ...route, legs: [route.legs[0], route.legs[2]] };
+  await assert.rejects(
+    assessPlatformOperationalTariffs({ tx: client(), route: malformedRoute, packages, currency: "NGN", now }),
+    error => error.code === "INVALID_OPERATIONAL_TARIFF_ASSESSMENT_INPUT",
+  );
 });
 
 test("rejects non-hub-assisted routes and invalid route topology", async () => {
