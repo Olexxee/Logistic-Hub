@@ -566,3 +566,8 @@ PowerShell example for encoding the downloaded service-account JSON locally:
 Copy the command output into the backend secret store as `FIREBASE_SERVICE_ACCOUNT_BASE64`. Do not commit the JSON file or encoded value. Grant the service account permission to create, read and delete objects in the evidence bucket. Keep the bucket private; access is mediated by authenticated API endpoints.
 
 Evidence uploads use raw bytes with `Content-Type: application/octet-stream` and the `x-file-content-type` and `x-file-name` headers. Supported files are JPEG, PNG, WebP and PDF, up to 10 MB.
+
+
+## Hub-assisted execution readiness — driver payout administration
+
+The Admin API now manages independent local-driver payout rules under `/api/v1/admin/platform-operational-pricing/driver-payout-rules`. Rules are versioned, audited, and published only when no active rule overlaps the same service-zone/leg/category/currency scope across both inclusive weight ranges and effective windows. These are internal execution costs, separate from customer tariffs. Publishing a rule does not make a delivery leg dispatchable; executor eligibility and transactional readiness remain separate gates. See `docs/hub-assisted-execution-readiness-er02.md`.

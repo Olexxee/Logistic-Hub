@@ -18,6 +18,7 @@ tags:
   - name: Driver offers
   - name: Delivery legs
   - name: Partner execution
+  - name: Platform execution costs
   - name: Partner settlement
   - name: Payments
   - name: Drivers
@@ -8711,6 +8712,108 @@ paths:
                 reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '200': { description: Route tariff retired. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/platform-operational-pricing/driver-payout-rules:
+    get:
+      tags: [Platform execution costs]
+      operationId: listPlatformDriverPayoutRules
+      summary: List independent local-driver payout rules
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: serviceZoneId, schema: { type: string } }
+        - { in: query, name: legType, schema: { type: string, enum: [LOCAL_PICKUP, FINAL_MILE] } }
+        - { in: query, name: parcelCategory, schema: { type: string } }
+        - { in: query, name: currency, schema: { type: string, pattern: '^[A-Za-z]{3}$' } }
+        - { in: query, name: status, schema: { type: string, enum: [DRAFT, ACTIVE, RETIRED] } }
+      responses:
+        '200': { description: Driver payout rules returned; amounts are integer minor-unit strings. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Platform execution costs]
+      operationId: createPlatformDriverPayoutRule
+      summary: Create a draft local-driver payout rule
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [serviceZoneId, legType, parcelCategory, minWeightGrams, driverPayoutMinor, reason]
+              properties:
+                serviceZoneId: { type: string, minLength: 1 }
+                legType: { type: string, enum: [LOCAL_PICKUP, FINAL_MILE] }
+                parcelCategory: { type: string, minLength: 1, maxLength: 80 }
+                minWeightGrams: { type: integer, minimum: 0 }
+                maxWeightGrams: { type: [integer, 'null'], minimum: 0 }
+                currency: { type: string, default: NGN, pattern: '^[A-Za-z]{3}$' }
+                driverPayoutMinor: { type: string, pattern: '^[1-9][0-9]{0,14}$' }
+                effectiveFrom: { type: string, format: date-time }
+                effectiveUntil: { type: [string, 'null'], format: date-time }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '201': { description: Draft driver payout rule created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/platform-operational-pricing/driver-payout-rules/{ruleId}/publish:
+    post:
+      tags: [Platform execution costs]
+      operationId: publishPlatformDriverPayoutRule
+      summary: Publish a draft payout rule after overlap checks
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: ruleId, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Driver payout rule published. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/platform-operational-pricing/driver-payout-rules/{ruleId}/retire:
+    post:
+      tags: [Platform execution costs]
+      operationId: retirePlatformDriverPayoutRule
+      summary: Retire an active driver payout rule
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: ruleId, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Driver payout rule retired. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
