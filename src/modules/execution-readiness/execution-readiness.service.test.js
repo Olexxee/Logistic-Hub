@@ -47,6 +47,19 @@ function baseLeg(overrides = {}) {
     inputSnapshot: {
       source: "PLATFORM_OPERATIONAL_TARIFF",
       routeSnapshot: { legs: [routeLeg] },
+      operationalTariffAssessment: {
+        legs: [{
+          sequence: 1,
+          type: "LOCAL_PICKUP",
+          packages: packageFacts.map((pkg, index) => ({
+            packageId: pkg.id,
+            packageSequence: index + 1,
+            packageCategory: pkg.packageCategory,
+            weightGrams: pkg.weightGrams,
+            dimensionsMm: { length: pkg.lengthMm, width: pkg.widthMm, height: pkg.heightMm },
+          })),
+        }],
+      },
     },
     acceptedAt: now,
   };
@@ -180,6 +193,17 @@ test("partner leg resolves a single rate-card candidate covering every package",
         ...baseLeg().parcelBooking.quotes[0],
         inputSnapshot: {
           source: "PLATFORM_OPERATIONAL_TARIFF",
+          packageRateSnapshot: [{
+            sequence: 1,
+            type: "INTERSTATE_TRANSPORT",
+            packages: packageFacts.map((pkg, index) => ({
+              packageId: pkg.id,
+              packageSequence: index + 1,
+              packageCategory: pkg.packageCategory,
+              weightGrams: pkg.weightGrams,
+              dimensionsMm: { length: pkg.lengthMm, width: pkg.widthMm, height: pkg.heightMm },
+            })),
+          }],
           routeSnapshot: { legs: [{
             sequence: 1, type: "INTERSTATE_TRANSPORT",
             originServiceZoneId: "zone-1", destinationServiceZoneId: "zone-2",
@@ -236,7 +260,14 @@ test("blocks partner execution when no single rate card covers all packages", as
       parcelPackages: [...packageFacts, { ...packageFacts[0], id: "package-2", packageSequence: 2 }],
       quotes: [{
         ...baseLeg().parcelBooking.quotes[0],
-        inputSnapshot: { source: "PLATFORM_OPERATIONAL_TARIFF", routeSnapshot: { legs: [{
+        inputSnapshot: { source: "PLATFORM_OPERATIONAL_TARIFF", packageRateSnapshot: [{
+          sequence: 1, type: "INTERSTATE_TRANSPORT",
+          packages: [...packageFacts, { ...packageFacts[0], id: "package-2", packageSequence: 2, packageCategory: "FRAGILE" }].map((pkg, index) => ({
+            packageId: pkg.id, packageSequence: index + 1, packageCategory: pkg.packageCategory,
+            weightGrams: pkg.weightGrams,
+            dimensionsMm: { length: pkg.lengthMm, width: pkg.widthMm, height: pkg.heightMm },
+          })),
+        }], routeSnapshot: { legs: [{
           sequence: 1, type: "INTERSTATE_TRANSPORT", originServiceZoneId: "zone-1",
           destinationServiceZoneId: "zone-2", originHubPointId: "hub-1", destinationHubPointId: "hub-2",
         }] } },
