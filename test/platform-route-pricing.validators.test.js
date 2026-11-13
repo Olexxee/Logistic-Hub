@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { availabilitySchema, rateSchema } from "../src/modules/platform-route-pricing/platform-route-pricing.validators.js";
 
 test("platform route rate requires independent customer and driver amounts in minor units",()=>{
- const base={originServiceZoneId:"zone-a",destinationServiceZoneId:"zone-b",parcelCategory:"STANDARD",customerTransportChargeMinor:"250000",driverPayoutMinor:"160000",platformChargeMinor:"30000",reason:"Approved commercial tariff"};
+ const base={originServiceZoneId:"zone-a",destinationServiceZoneId:"zone-b",parcelCategory:"STANDARD",minWeightGrams:1,maxWeightGrams:1000,customerTransportChargeMinor:"250000",driverPayoutMinor:"160000",platformChargeMinor:"30000",reason:"Approved commercial tariff"};
  assert.equal(rateSchema.safeParse(base).success,true);
  assert.equal(rateSchema.safeParse({...base,driverPayoutMinor:undefined}).success,false);
  assert.equal(rateSchema.safeParse({...base,customerTransportChargeMinor:"2500.50"}).success,false);
