@@ -6,8 +6,6 @@ import { createExecutionReadinessRepository } from "./execution-readiness.reposi
 
 const LOCAL_DRIVER_LEG_TYPES = new Set(["LOCAL_PICKUP", "FINAL_MILE"]);
 const PARTNER_LEG_TYPES = new Set(["HUB_TRANSFER", "INTERSTATE_TRANSPORT"]);
-const ACTIVE_HUB_INTAKE_STATUSES = ["RECEIVED", "EXCEPTION"];
-
 function blocker(code, message, scope = null) {
   return { code, message, ...(scope ? { scope } : {}) };
 }
@@ -34,7 +32,7 @@ function routeLegMatchesSnapshot(leg, quote) {
     && (snapshot.destinationHubPointId ?? null) === (leg.destinationHubPointId ?? null));
 }
 
-function matchPartnerCandidates(rates, packages, currency) {
+function matchPartnerCandidates(rates, packages) {
   const byCard = new Map();
   for (const rate of rates) {
     const list = byCard.get(rate.rateCardId) ?? [];
@@ -55,7 +53,8 @@ function matchPartnerCandidates(rates, packages, currency) {
       const weightRates = categoryRates.filter(rate => validPositiveInteger(pkg.weightGrams)
         && pkg.weightGrams >= rate.minWeightGrams
         && (rate.maxWeightGrams == null || pkg.weightGrams <= rate.maxWeightGrams));
-      const matches = weightRates.filter(rate => rateFitsPackage(rate, pkg));
+      const matches = weightRates.filter(rate => rateFitsPackage(rate, pkg)
+        && typeof rate.transportChargeMinor === "bigint" && rate.transportChargeMinor > 0n);
       if (matches.length !== 1) {
         if (matches.length > 1) ambiguousRateCardCount += 1;
         if (weightRates.some(rate =>
@@ -253,7 +252,7 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
             blockers.push(blocker("REQUIRES_MEASUREMENT", "Every package requires a positive measured weight before partner execution rates can be matched."));
           } else {
             const rates = await db.findPartnerRates(tx, leg, packages, currency, now);
-            const matched = matchPartnerCandidates(rates, packages, currency);
+            const matched = matchPartnerCandidates(rates, packages);
             if (!matched.candidates.length) {
               blockers.push(blocker(
                 matched.missingDimensionEvidence ? "PARTNER_RATE_DIMENSIONS_REQUIRED"
