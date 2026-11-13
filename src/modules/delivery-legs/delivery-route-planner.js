@@ -36,7 +36,7 @@ function invalidPinnedRoute() {
   return error;
 }
 
-async function resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones, origin, destination }) {
+async function resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones, origin, destination, now }) {
   const legs = routeSnapshot?.legs;
   if (!Array.isArray(legs) || legs.length !== 3) throw invalidPinnedRoute();
   const [pickup, transfer, finalMile] = legs;
@@ -69,6 +69,16 @@ async function resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones
       serviceZone: {
         isActive: true,
         state: { isActive: true, country: { isActive: true } },
+        availability: {
+          some: {
+            serviceType: "PARCEL_DELIVERY",
+            isEnabled: true,
+            AND: [
+              { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+              { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+            ],
+          },
+        },
       },
     },
     select: {
@@ -108,7 +118,7 @@ async function resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones
   };
 }
 
-export async function resolveDeliveryRoute({ tx, booking, routeModeOverride, routeSnapshot }) {
+export async function resolveDeliveryRoute({ tx, booking, routeModeOverride, routeSnapshot, now = new Date() }) {
   if (!tx || !booking) throw new Error("A transaction and booking are required.");
 
   const zoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
@@ -142,7 +152,7 @@ export async function resolveDeliveryRoute({ tx, booking, routeModeOverride, rou
   };
 
   if (routeModeOverride === "HUB_ASSISTED") {
-    return resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones, origin, destination });
+    return resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones, origin, destination, now });
   }
 
   if (sameState || routeModeOverride === "LOCAL_DIRECT") {
