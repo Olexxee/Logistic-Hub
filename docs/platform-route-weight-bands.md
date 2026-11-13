@@ -25,7 +25,7 @@ The intervals are inclusive, contiguous and non-overlapping. Weight below 1 gram
 2. The API accepts only the exact inclusive gram boundaries listed above.
 3. The backend stores and assesses integer grams. The interface displays kilograms to three decimal places.
 4. A tariff applies only to its directed origin/destination corridor, parcel category, currency and effective window.
-5. Every package must match exactly one active tariff. No fallback price is inferred when coverage is missing.
+5. Every package must match exactly one active tariff. No fallback price is inferred when coverage is missing. Tariff assessment ignores active legacy rates whose boundaries are not one of the canonical bands; audit and replace those records before deploying this enforcement to a live environment.
 6. Route availability, endpoint serviceability, operational capacity and dispatch eligibility remain separate requirements.
 7. Dimensions remain optional maximum-size constraints. Volumetric-weight calculation is not part of this policy.
 8. Each band requires its own tariff amount; bands do not imply a price multiplier or a national flat rate.
@@ -43,5 +43,6 @@ The bands do not assert that all Nigerian states, LGAs, routes or service zones 
 - Admin creation selects a canonical band and sends its exact gram boundaries.
 - Tariff register identifies the canonical band from stored boundaries; legacy non-canonical records remain visibly identified rather than being mislabeled.
 - Backend unit tests cover every accepted band, boundary, gap, overlap and the >30 kg rejection.
+- Before production deployment, audit existing ACTIVE tariffs for non-canonical boundaries and create replacement canonical tariffs where needed; legacy active tariffs remain visible in Admin but no longer match package assessments.
 - Frontend typecheck/build and backend tests pass before the branch is considered ready.
 - No migration is required because the existing database columns already store integer gram bounds.
