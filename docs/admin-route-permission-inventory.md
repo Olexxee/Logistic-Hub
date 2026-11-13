@@ -139,3 +139,15 @@ Coverage is representative, not exhaustive. Route-level authorization tests are 
 - No user role-management endpoint.
 - No change to shipment, payment, refund or partner-settlement state machines.
 - No production migration, live payment activation or external partner transfer.
+
+
+## Platform driver payout policy
+
+| Method | Route | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/v1/admin/platform-operational-pricing/driver-payout-rules` | ADMIN | List and filter independent local-driver payout rules |
+| POST | `/api/v1/admin/platform-operational-pricing/driver-payout-rules` | ADMIN | Create a draft payout-rule version |
+| POST | `/api/v1/admin/platform-operational-pricing/driver-payout-rules/:ruleId/publish` | ADMIN | Publish after effective-window and overlap checks |
+| POST | `/api/v1/admin/platform-operational-pricing/driver-payout-rules/:ruleId/retire` | ADMIN | Retire an active payout rule |
+
+These rules apply only to `LOCAL_PICKUP` and `FINAL_MILE`. They do not authorize dispatch or replace driver eligibility checks.
