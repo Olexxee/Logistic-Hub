@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { env } from "../../config/env.js";
-import { activeDriverCapabilityWhere, activeDriverDocumentWhere, activeServiceZoneWhere, eligibleParcelDriverWhere, eligibleVehicleWhere } from "../drivers/driver-dispatch-eligibility.js";
+import { activeDriverCapabilityWhere, activeDriverDocumentWhere, activeServiceZoneWhere, eligibleParcelDriverWhere, eligibleVehicleWhere, isDriverWithinPickupRadius } from "../drivers/driver-dispatch-eligibility.js";
+export { distanceBetweenCoordinatesMeters, isDriverWithinPickupRadius } from "../drivers/driver-dispatch-eligibility.js";
 
 function payloadHash(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -9,33 +10,6 @@ function payloadHash(value) {
 const ACTIVE_ASSIGNMENT_STATUSES = ["AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"];
 const MAX_DRIVER_LOCATION_AGE_MS = env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000;
 
-export function distanceBetweenCoordinatesMeters(latitudeA, longitudeA, latitudeB, longitudeB) {
-  const radians = (degrees) => (degrees * Math.PI) / 180;
-  const earthRadiusMeters = 6_371_000;
-  const latitudeDelta = radians(latitudeB - latitudeA);
-  const longitudeDelta = radians(longitudeB - longitudeA);
-  const a = Math.sin(latitudeDelta / 2) ** 2
-    + Math.cos(radians(latitudeA)) * Math.cos(radians(latitudeB))
-    * Math.sin(longitudeDelta / 2) ** 2;
-  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-export function isDriverWithinPickupRadius(driver, pickup, now = new Date()) {
-  const latestLocation = driver.locations?.[0];
-  if (!latestLocation || !driver.lastLocationAt || !driver.serviceRadiusMeters) return false;
-  const nowMs = now.getTime();
-  const cutoff = nowMs - MAX_DRIVER_LOCATION_AGE_MS;
-  const profileLocationAt = new Date(driver.lastLocationAt).getTime();
-  const recordedAt = new Date(latestLocation.recordedAt).getTime();
-  if (!Number.isFinite(profileLocationAt) || !Number.isFinite(recordedAt)) return false;
-  if (profileLocationAt < cutoff || profileLocationAt > nowMs) return false;
-  if (recordedAt < cutoff || recordedAt > nowMs) return false;
-  const distance = distanceBetweenCoordinatesMeters(
-    Number(latestLocation.latitude), Number(latestLocation.longitude),
-    Number(pickup.latitude), Number(pickup.longitude),
-  );
-  return distance <= driver.serviceRadiusMeters;
-}
 
 function conflict(code, message) {
   const error = new Error(message);
