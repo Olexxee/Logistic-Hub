@@ -36,7 +36,7 @@ This is a separate pricing domain from `PlatformRouteRate`, which remains the di
 
 ## 4. Proposed data model
 
-Implemented dedicated `PlatformOperationalTariff` and `PlatformOperationalTariffAvailability` models. The migration enforces scope-specific locator combinations with database CHECK constraints and adds scope-specific partial unique indexes for availability. `HubAdditionalOperation` records separately requested, authorized and completed additional services with an idempotency key. Migration validation and full lifecycle enforcement remain release gates.
+Implemented dedicated `PlatformOperationalTariff` and `PlatformOperationalTariffAvailability` models. The migration enforces scope-specific locator combinations with database CHECK constraints and adds scope-specific partial unique indexes for availability. `HubAdditionalOperation` records separately requested, operationally authorized, customer-authorized and completed additional services with requester/authorizer/completer identities and an idempotency key. Migration validation and full lifecycle enforcement remain release gates.
 
 ### 4.1 Tariff identity and scope
 
@@ -78,7 +78,7 @@ Ordinary hub operations are included in the priced delivery service and are not 
 
 A hub visit or custody event must never create a handling charge by itself. Rejected, cancelled, expired or unconfirmed handovers are never chargeable.
 
-A separate handling tariff may be assessed only against a distinct, explicitly recorded additional operation (for example, special sorting or repackaging). The operation must have its own operation type, hub, parcel/booking reference, actor, occurrence timestamp, evidence or reason where required, and an idempotent identity so retries cannot create duplicate charges. The charge must be disclosed and authorized under the applicable customer-facing policy before collection; no charge is inferred from the tariff existing.
+A separate handling tariff may be assessed only against a distinct, explicitly recorded additional operation (for example, special sorting or repackaging). The operation must have its own operation type, hub, parcel/booking reference, requester, operational authorizer, explicit customer authorizer, completion actor, occurrence timestamp, evidence or reason where required, and an idempotent identity so retries cannot create duplicate charges. Both operational authorization and customer authorization are required before the operation can enter the authorized state; completion must be recorded by an identified actor before it can qualify for a charge. The charge must be disclosed and authorized under the applicable customer-facing policy before collection; no charge is inferred from the tariff existing.
 
 The current custody and intake records do not themselves represent these additional services. `HubAdditionalOperation` is the explicit record and must not be replaced by `HubIntakeRecord`, `CustodyHandover`, or `HubIntakeDisposition` as a billing trigger. The initial operation catalogue is deliberately limited to `SPECIAL_SORTING` and `REPACKAGING`; arbitrary free-text operations are not billable. A record is not chargeable merely because it was requested: it must be authorized and completed, then matched to an active tariff and customer authorization before any additional charge is collected.
 
