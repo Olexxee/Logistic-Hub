@@ -150,12 +150,12 @@ test("hub-assisted routes require fixed local pickup and final-mile pricing befo
   const service = createIntegrationQuoteService({ prismaClient });
   const result = await service.createQuote({ client, idempotencyKey: "quote-hub-pricing-001", input: baseInput });
 
-  assert.equal(result.body.quoteSession.status, "REQUIRES_OPERATIONAL_PRICING");
+  assert.equal(result.body.quoteSession.status, "NO_COVERAGE");
   assert.equal(result.body.quoteSession.assessment.routeMode, "HUB_ASSISTED");
-  assert.equal(result.body.quoteSession.assessment.routeSnapshot.hubAssisted, true);
-  assert.equal(result.body.quoteSession.assessment.routeSnapshot.originHub, undefined);
-  assert.equal(result.body.quoteSession.assessment.routeSnapshot.legs[0].destinationHubPointId, undefined);
-  assert.match(result.body.quoteSession.assessment.reason, /local pickup and final-mile/i);
+  assert.equal(result.body.quoteSession.assessment.source, "PLATFORM_OPERATIONAL_TARIFF");
+  assert.equal(result.body.quoteSession.assessment.routeSnapshot.originHub.id, "origin_hub");
+  assert.equal(result.body.quoteSession.assessment.routeSnapshot.legs[0].destinationHubPointId, "origin_hub");
+  assert.match(result.body.quoteSession.assessment.reason, /No enabled, effective availability/i);
   assert.equal(result.body.options.length, 0);
   assert.equal(state.options.length, 0);
 });
