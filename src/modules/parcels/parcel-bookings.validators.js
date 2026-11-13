@@ -49,3 +49,12 @@ export function validateParcelBookingId(req, _res, next) {
   req.validated = { ...(req.validated ?? {}), params: { bookingId: req.params.bookingId } };
   return next();
 }
+
+export function validateCustomerQuoteParams(req, _res, next) {
+  const validId = value => /^[A-Za-z0-9_-]{1,128}$/.test(value ?? "");
+  if (!validId(req.params.bookingId) || (req.params.quoteId && !validId(req.params.quoteId))) {
+    return next(new ValidationError("The booking or quote ID is invalid."));
+  }
+  req.validated = { ...(req.validated ?? {}), params: { bookingId: req.params.bookingId, ...(req.params.quoteId ? { quoteId: req.params.quoteId } : {}) } };
+  return next();
+}

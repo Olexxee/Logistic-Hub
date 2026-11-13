@@ -1,7 +1,30 @@
 import { NotFoundError } from "../../shared/http/app-error.js";
 
-export function createParcelBookingsController({ service, notifications }) {
+export function createParcelBookingsController({ service, notifications, quoteService }) {
   return {
+    createQuote: async (req, res) => {
+      const result = await quoteService.createQuote({ bookingId: req.validated.params.bookingId, userId: req.user.id });
+      if (result.notFound || result.forbidden) throw new NotFoundError("The parcel booking was not found.");
+      if (result.conflict) return res.status(409).json({ success: false, error: result.conflict });
+      return res.status(201).json({ success: true, data: result });
+    },
+    listQuotes: async (req, res) => {
+      const result = await quoteService.listQuotes({ bookingId: req.validated.params.bookingId, userId: req.user.id });
+      if (result.notFound || result.forbidden) throw new NotFoundError("The parcel booking was not found.");
+      return res.status(200).json({ success: true, data: result });
+    },
+    acceptQuote: async (req, res) => {
+      const result = await quoteService.acceptQuote({ bookingId: req.validated.params.bookingId, quoteId: req.validated.params.quoteId, userId: req.user.id });
+      if (result.notFound || result.forbidden) throw new NotFoundError("The shipment quote was not found.");
+      if (result.conflict) return res.status(409).json({ success: false, error: result.conflict });
+      return res.status(200).json({ success: true, data: result });
+    },
+    rejectQuote: async (req, res) => {
+      const result = await quoteService.rejectQuote({ bookingId: req.validated.params.bookingId, quoteId: req.validated.params.quoteId, userId: req.user.id });
+      if (result.notFound || result.forbidden) throw new NotFoundError("The shipment quote was not found.");
+      if (result.conflict) return res.status(409).json({ success: false, error: result.conflict });
+      return res.status(200).json({ success: true, data: result });
+    },
     list: async (req, res) => {
       const result = await service.listVisibleBookings({
         user: req.user,
