@@ -1,9 +1,9 @@
 # Hub-assisted operational tariffs — technical design
 
 **Workstream:** Hub-assisted operational tariffs (HAT)  
-**Current phase:** HAT-02 — ADMIN tariff and availability API  
-**Implementation branch:** `feat/admin-operational-tariff-apis`  
-**Status:** HAT-01 merged and CI-verified; HAT-02 implementation committed and awaiting CI validation.
+**Current phase:** HAT-03 — shared per-leg assessment engine  
+**Implementation branch:** `feat/platform-operational-tariff-assessment`  
+**Status:** HAT-01 and HAT-02 merged; HAT-03 assessment engine implemented on the feature branch and awaiting CI validation.
 
 ## 1. Purpose
 
@@ -110,14 +110,14 @@ Processing:
 2. Verify route mode is `HUB_ASSISTED` and route legs are structurally valid.
 3. Match pickup tariff by pickup service zone and `LOCAL_PICKUP`.
 4. Match directed hub-pair tariff for every interstate leg.
-5. Match handling tariffs for each actual handling event represented by the route/custody plan. Do not assume every hub visit incurs a charge; handling events must be explicit and deduplicated.
+5. Assess only explicit additional handling operations. Ordinary intake/custody/handover/release are never chargeable. A handling operation must be operationally authorized, customer-authorized and completed by identified actors. The current `HubAdditionalOperation` schema is linked to a delivery leg and booking but not to individual packages; therefore HAT-03 fails closed with `REQUIRES_OPERATIONAL_REVIEW` when a completed handling operation is supplied until package attribution is added. It must not multiply a handling charge across every package by assumption.
 6. Match final-mile tariff by destination service zone and `FINAL_MILE`.
 7. Require exactly one tariff match for every required package × chargeable operation. Missing matches return a no-coverage result; multiple matches return an ambiguity result.
 8. Aggregate customer amounts with BigInt arithmetic.
 9. Resolve execution-cost eligibility independently. Platform driver payout rules and partner agreements are not tariff inputs. If unresolved, return a separate operational-readiness warning/status; never derive internal costs from customer prices.
 10. Return a canonical per-package/per-leg/per-handling breakdown and immutable tariff snapshot.
 
-The service must not create quotes, assign executors, create delivery legs or write ledger entries. Callers own persistence and lifecycle transitions.
+The service must not create quotes, assign executors, create delivery legs or write ledger entries. Callers own persistence and lifecycle transitions. The HAT-03 implementation currently assesses the three transport-leg scopes and returns immutable tariff snapshots and BigInt totals. Handling remains deliberately blocked pending package attribution; cancelled operations are ignored, and incomplete/unauthorized operations are not chargeable. Execution readiness is explicitly `NOT_ASSESSED` for a separate resolver and is never inferred from customer tariffs.
 
 ## 6. Quote lifecycle and snapshot
 
@@ -198,4 +198,4 @@ The frontend must display scope-specific selectors and must never expose interna
 - **HAT-06:** admin UI extension.
 - **HAT-07:** regression, operational acceptance and documentation.
 
-HAT-01 schema and migration are merged and verified by the full Prisma/PostgreSQL CI suite. HAT-02 API implementation is on `feat/admin-operational-tariff-apis`; its CI validation is the current release gate. HAT-03 assessment engine, HAT-04 customer quote integration, HAT-05 integration quote integration, HAT-06 Admin UI and HAT-07 regression/operational acceptance remain outstanding.
+HAT-01 schema/migration and HAT-02 ADMIN tariff/availability APIs are merged. HAT-03 transport-leg assessment engine is implemented on `feat/platform-operational-tariff-assessment` and awaits CI validation. HAT-03 handling assessment remains blocked on package-level attribution for `HubAdditionalOperation`. HAT-04 customer quote integration, HAT-05 integration quote integration, HAT-06 Admin UI and HAT-07 regression/operational acceptance remain outstanding.
