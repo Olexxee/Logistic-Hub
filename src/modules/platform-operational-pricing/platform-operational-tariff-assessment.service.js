@@ -25,10 +25,17 @@ function validateInput({ tx, route, packages, currency, now }) {
   }
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) throw inputError("Currency must be a three-letter uppercase code.");
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw inputError("A valid assessment timestamp is required.");
-  const sequences = new Set();
-  for (const leg of route.legs) {
-    if (!Number.isInteger(leg.sequence) || sequences.has(leg.sequence)) throw inputError("Route legs require unique integer sequences.");
-    sequences.add(leg.sequence);
+  const orderedLegs = [...route.legs].sort((a, b) => a.sequence - b.sequence);
+  if (orderedLegs.some((leg, index) => leg.sequence !== index + 1)) {
+    throw inputError("Hub-assisted route leg sequences must be contiguous and start at one.");
+  }
+  if (orderedLegs[0]?.type !== "LOCAL_PICKUP" || orderedLegs.at(-1)?.type !== "FINAL_MILE"
+    || orderedLegs.filter(leg => leg.type === "LOCAL_PICKUP").length !== 1
+    || orderedLegs.filter(leg => leg.type === "FINAL_MILE").length !== 1
+    || orderedLegs.slice(1, -1).some(leg => leg.type !== "INTERSTATE_TRANSPORT")) {
+    throw inputError("A hub-assisted route requires one pickup leg, one or more interstate legs, and one final-mile leg in that order.");
+  }
+  for (const leg of orderedLegs) {
     if (leg.type === "LOCAL_PICKUP" || leg.type === "FINAL_MILE") {
       const zoneId = leg.type === "LOCAL_PICKUP" ? leg.originServiceZoneId : leg.destinationServiceZoneId;
       if (!zoneId) throw inputError(`${leg.type} requires its resolved service-zone identifier.`);
@@ -36,9 +43,13 @@ function validateInput({ tx, route, packages, currency, now }) {
       if (!leg.originHubPointId || !leg.destinationHubPointId || leg.originHubPointId === leg.destinationHubPointId) {
         throw inputError("INTERSTATE_TRANSPORT requires distinct resolved origin and destination hubs.");
       }
-    } else {
-      throw inputError(`Unsupported operational leg type: ${leg.type}.`);
     }
+  }
+  const interstateLegs = orderedLegs.slice(1, -1);
+  if (orderedLegs[0].destinationHubPointId !== interstateLegs[0].originHubPointId
+    || interstateLegs.at(-1).destinationHubPointId !== orderedLegs.at(-1).originHubPointId
+    || interstateLegs.some((leg, index) => index > 0 && interstateLegs[index - 1].destinationHubPointId !== leg.originHubPointId)) {
+    throw inputError("Hub-assisted route legs must connect through the same resolved hub sequence.");
   }
 }
 
