@@ -99,6 +99,14 @@ test("creates a customer-visible platform route quote while keeping driver payou
   assert.equal(calls.bookingUpdate.length, 1);
 });
 
+test("uses the requested validated quote expiry window", async () => {
+  const { service, calls } = createHarness({ rates: [platformRate] });
+  const result = await service.createQuote({ bookingId: "booking-1", userId: "sender-1", expiresInMinutes: 30 });
+
+  assert.equal(result.quote.expiresAt.toISOString(), "2026-11-10T12:30:00.000Z");
+  assert.equal(calls.quoteCreate[0].expiresAt.toISOString(), "2026-11-10T12:30:00.000Z");
+});
+
 test("does not estimate missing package weight or create a quote", async () => {
   const record = booking({ parcelPackages: [{ ...booking().parcelPackages[0], weightGrams: null }] });
   const { service, calls } = createHarness({ bookingRecord: record, rates: [platformRate] });

@@ -50,6 +50,22 @@ export function validateParcelBookingId(req, _res, next) {
   return next();
 }
 
+const customerQuoteRequestSchema = z.object({
+  expiresInMinutes: z.number().int().min(5).max(1440).default(15),
+}).strict();
+
+export function validateCreateCustomerQuote(req, _res, next) {
+  const parsed = customerQuoteRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return next(new ValidationError(
+      "The customer quote request is invalid.",
+      parsed.error.issues.map(({ path, message }) => ({ path: path.join("."), message })),
+    ));
+  }
+  req.validated = { ...(req.validated ?? {}), body: parsed.data };
+  return next();
+}
+
 export function validateCustomerQuoteParams(req, _res, next) {
   const validId = value => /^[A-Za-z0-9_-]{1,128}$/.test(value ?? "");
   if (!validId(req.params.bookingId) || (req.params.quoteId && !validId(req.params.quoteId))) {

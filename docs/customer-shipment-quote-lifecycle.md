@@ -42,7 +42,7 @@ A hub-assisted route is not quoted until approved pricing exists for pickup, int
 
 ## Acceptance and fulfilment boundary
 
-Acceptance is transactional and rechecks the offered quote status, expiry, route availability and platform tariff identity/version/amounts.
+Acceptance is transactional and rechecks the offered quote status, expiry, route availability and platform tariff identity/version/amounts. Repeating acceptance for the same accepted quote by the booking owner replays the persisted accepted quote, booking snapshot and delivery plan; it does not create duplicate delivery legs.
 
 - Platform-priced LOCAL_DIRECT quote: the quote is accepted, the route plan is persisted, the customer total is snapshotted, and the booking moves to `AWAITING_PARTNER_ASSIGNMENT`.
 - Partner END_TO_END quote: the existing partner quote acceptance behavior is retained. Partner assignment and settlement remain a separate operational capability.
@@ -92,7 +92,7 @@ The legacy negotiated-fare matching path is blocked for bookings without a legac
 
 ## Verification
 
-The CBP-03 test suite covers successful platform quote creation, customer payout confidentiality, missing measurements, unavailable directed corridors, ownership enforcement and booking-state enforcement. CI must additionally validate Prisma, OpenAPI, migration/schema drift, and the full backend test suite before merge.
+The customer quote tests cover successful platform quote creation, customer payout confidentiality, missing measurements, unavailable directed corridors, ownership enforcement, booking-state enforcement, expiry input boundaries and replay of an already accepted quote without creating duplicate delivery legs. CI validates Prisma, OpenAPI, migration/schema drift and the full backend test suite.
 
 
 ## CBP-06 — admin operational trip pricing and manual driver settlement
