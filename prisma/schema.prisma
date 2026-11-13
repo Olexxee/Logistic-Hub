@@ -1377,6 +1377,8 @@ model DeliveryLegExecutionSnapshot {
   id                       String      @id @default(cuid())
   deliveryLegId            String
   version                  Int
+  idempotencyKey           String      @unique
+  payloadHash              String
   executorType             String
   selectedDriverProfileId  String?
   selectedVehicleId        String?
