@@ -1351,6 +1351,7 @@ model DeliveryLeg {
   sourceHubIntakeDispositions HubIntakeDisposition[] @relation("HubIntakeDispositionSourceLeg")
   nextHubIntakeDisposition HubIntakeDisposition? @relation("HubIntakeDispositionNextLeg")
   offers             DeliveryLegOffer[]
+  executionSnapshots DeliveryLegExecutionSnapshot[]
   verificationTokens VerificationToken[]
   partnerAssignments PartnerDeliveryAssignment[]
   partnerPayables PartnerPayable[]
@@ -1369,6 +1370,37 @@ model DeliveryLeg {
   @@map("delivery_legs")
 }
 
+
+
+
+model DeliveryLegExecutionSnapshot {
+  id                       String      @id @default(cuid())
+  deliveryLegId            String
+  version                  Int
+  executorType             String
+  selectedDriverProfileId  String?
+  selectedVehicleId        String?
+  selectedPartnerId        String?
+  partnerAgreementId       String?
+  partnerRateCardId        String?
+  executionCostMinor       BigInt
+  currency                 String
+  costSource               String
+  costSourceVersion        Int?
+  assessmentSnapshot       Json
+  routeSnapshot            Json
+  packageSnapshot          Json
+  selectedByUserId         String
+  selectedAt               DateTime
+  createdAt                DateTime    @default(now())
+
+  deliveryLeg DeliveryLeg @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
+
+  @@unique([deliveryLegId, version])
+  @@index([deliveryLegId, createdAt])
+  @@index([executorType, selectedDriverProfileId, selectedPartnerId])
+  @@map("delivery_leg_execution_snapshots")
+}
 
 model DeliveryLegOffer {
   id                         String      @id @default(cuid())
