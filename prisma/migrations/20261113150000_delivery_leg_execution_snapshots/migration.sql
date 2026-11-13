@@ -2,6 +2,8 @@ CREATE TABLE "delivery_leg_execution_snapshots" (
   "id" TEXT NOT NULL,
   "deliveryLegId" TEXT NOT NULL,
   "version" INTEGER NOT NULL,
+  "idempotencyKey" TEXT NOT NULL,
+  "payloadHash" TEXT NOT NULL,
   "executorType" TEXT NOT NULL,
   "selectedDriverProfileId" TEXT,
   "selectedVehicleId" TEXT,
@@ -42,6 +44,8 @@ CREATE TABLE "delivery_leg_execution_snapshots" (
   )
 );
 
+CREATE UNIQUE INDEX "delivery_leg_execution_snapshots_idempotencyKey_key"
+  ON "delivery_leg_execution_snapshots"("idempotencyKey");
 CREATE UNIQUE INDEX "delivery_leg_execution_snapshots_leg_version_key"
   ON "delivery_leg_execution_snapshots"("deliveryLegId", "version");
 CREATE INDEX "delivery_leg_execution_snapshots_leg_created_idx"
