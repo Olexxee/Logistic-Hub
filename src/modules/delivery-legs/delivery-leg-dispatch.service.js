@@ -98,10 +98,10 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           }
         } else if (user.role === "ADMIN") {
           const hubAssistedDispatch = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-            && leg.parcelBooking.integrationClientId != null
-            && leg.parcelBooking.senderId == null
-            && leg.parcelBooking.integrationDispatchAuthorizedAt != null
-            && leg.parcelBooking.paymentStatus === "SUCCEEDED";
+            && leg.metadata?.requiresOperationalReview === true
+            && leg.parcelBooking.paymentStatus === "SUCCEEDED"
+            && (!leg.parcelBooking.integrationClientId
+              || leg.parcelBooking.integrationDispatchAuthorizedAt != null);
           const integrationDispatch = leg.parcelBooking.integrationClientId != null
             && leg.parcelBooking.senderId == null
             && leg.parcelBooking.integrationDispatchAuthorizedAt != null
