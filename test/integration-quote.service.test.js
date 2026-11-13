@@ -97,7 +97,9 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
       },
       updateMany: async ({ where, data }) => {
         const items = state.options.filter(o => o.quoteSessionId === where.quoteSessionId
-          && o.id !== where.id.not && o.status === where.status);
+          && (!where.id?.not || o.id !== where.id.not)
+          && o.status === where.status
+          && (!where.expiresAt?.lte || o.expiresAt <= where.expiresAt.lte));
         items.forEach(o => Object.assign(o, data));
         return { count: items.length };
       },
