@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createIntegrationQuoteService } from "../src/modules/integrations/integration-quote.service.js";
 
-function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState = false, platformAvailability = null, platformRates = [] } = {}) {
+function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState = false, platformAvailability = null, platformRates = [], operationalAvailability = false, operationalTariffs = [] } = {}) {
   const state = { idempotency: [], sessions: [], packages: [], options: [], externalRefs: [] };
   const agreement = {
     id: "billing_1", reference: "marketplace-default", version: 1, status: "ACTIVE",
@@ -43,11 +43,29 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     hubPoint: { findMany: async () => hubs },
     platformRouteAvailability: { findFirst: async () => platformAvailability },
     platformRouteRate: { findMany: async () => platformRates },
+    platformOperationalTariffAvailability: {
+      findFirst: async ({ where }) => operationalAvailability ? {
+        scope: where.scope, legType: where.legType, serviceZoneId: where.serviceZoneId,
+        originHubPointId: where.originHubPointId, destinationHubPointId: where.destinationHubPointId,
+        isEnabled: true, startsAt: null, endsAt: null,
+      } : null,
+    },
+    platformOperationalTariff: {
+      findMany: async ({ where }) => operationalTariffs.filter(tariff =>
+        tariff.scope === where.scope
+        && tariff.legType === where.legType
+        && tariff.serviceZoneId === where.serviceZoneId
+        && tariff.originHubPointId === where.originHubPointId
+        && tariff.destinationHubPointId === where.destinationHubPointId
+        && tariff.currency === where.currency
+        && where.parcelCategory.in.includes(tariff.parcelCategory)
+        && tariff.status === "ACTIVE"),
+    },
     pricingRule: { findMany: async () => [{ id: "pricing_1", serviceZoneId: "zone_a", currency: "NGN", fixedConnectionFeeMinor: 500n }] },
     partnerRate: { findMany: async () => rates },
     integrationQuoteSession: {
       create: async ({ data }) => {
-        const session = { id: `quote_${state.sessions.length + 1}`, createdAt: new Date(), updatedAt: new Date(), ...data };
+        const session = { id: `quote_${state.sessions.length + 1}`, createdAt: new Date(), updatedAt: new Date(), billingAgreement: agreement, ...data };
         session.packages = data.packages.create.map((p, i) => ({ id: `pkg_${i + 1}`, createdAt: new Date(), ...p }));
         state.sessions.push(session);
         state.packages.push(...session.packages);
@@ -132,12 +150,12 @@ test("hub-assisted routes require fixed local pickup and final-mile pricing befo
   const service = createIntegrationQuoteService({ prismaClient });
   const result = await service.createQuote({ client, idempotencyKey: "quote-hub-pricing-001", input: baseInput });
 
-  assert.equal(result.body.quoteSession.status, "REQUIRES_OPERATIONAL_PRICING");
+  assert.equal(result.body.quoteSession.status, "NO_COVERAGE");
   assert.equal(result.body.quoteSession.assessment.routeMode, "HUB_ASSISTED");
-  assert.equal(result.body.quoteSession.assessment.routeSnapshot.hubAssisted, true);
-  assert.equal(result.body.quoteSession.assessment.routeSnapshot.originHub, undefined);
-  assert.equal(result.body.quoteSession.assessment.routeSnapshot.legs[0].destinationHubPointId, undefined);
-  assert.match(result.body.quoteSession.assessment.reason, /local pickup and final-mile/i);
+  assert.equal(result.body.quoteSession.assessment.source, "PLATFORM_OPERATIONAL_TARIFF");
+  assert.equal(result.body.quoteSession.assessment.routeSnapshot.originHub.id, "origin_hub");
+  assert.equal(result.body.quoteSession.assessment.routeSnapshot.legs[0].destinationHubPointId, "origin_hub");
+  assert.match(result.body.quoteSession.assessment.reason, /No enabled, effective availability/i);
   assert.equal(result.body.options.length, 0);
   assert.equal(state.options.length, 0);
 });
@@ -234,4 +252,95 @@ test("quote creation refuses billing models whose financial workflows are not im
     service.createQuote({ client, idempotencyKey: "quote-create-006", input: baseInput }),
     error => error.code === "INTEGRATION_BILLING_MODEL_UNSUPPORTED",
   );
+});
+
+const hubAssistedHubs = [
+  { id: "hub_origin", name: "Origin hub", serviceZoneId: "zone_a", latitude: 6.51, longitude: 3.31,
+    acceptedParcelTypes: ["box", "carton"], capacityConfig: { maxParcels: 20 } },
+  { id: "hub_destination", name: "Destination hub", serviceZoneId: "zone_b", latitude: 7.39, longitude: 3.89,
+    acceptedParcelTypes: ["box", "carton"], capacityConfig: { maxParcels: 20 } },
+];
+
+function hubOperationalTariffs() {
+  const rows = [];
+  const scopes = [
+    { scope: "LOCAL_ZONE", legType: "LOCAL_PICKUP", serviceZoneId: "zone_a", originHubPointId: null, destinationHubPointId: null },
+    { scope: "HUB_PAIR", legType: "INTERSTATE_TRANSPORT", serviceZoneId: null, originHubPointId: "hub_origin", destinationHubPointId: "hub_destination" },
+    { scope: "LOCAL_ZONE", legType: "FINAL_MILE", serviceZoneId: "zone_b", originHubPointId: null, destinationHubPointId: null },
+  ];
+  for (const [index, locator] of scopes.entries()) {
+    rows.push(
+      { id: `tariff_${index}_box`, version: 1, ...locator, parcelCategory: "box",
+        minWeightGrams: 1, maxWeightGrams: 1000, maxLengthMm: null, maxWidthMm: null, maxHeightMm: null,
+        currency: "NGN", customerChargeMinor: 1000n, platformChargeMinor: 100n,
+        effectiveFrom: new Date("2026-01-01T00:00:00Z"), effectiveUntil: null, status: "ACTIVE" },
+      { id: `tariff_${index}_carton`, version: 1, ...locator, parcelCategory: "carton",
+        minWeightGrams: 1001, maxWeightGrams: 3000, maxLengthMm: null, maxWidthMm: null, maxHeightMm: null,
+        currency: "NGN", customerChargeMinor: 2000n, platformChargeMinor: 200n,
+        effectiveFrom: new Date("2026-01-01T00:00:00Z"), effectiveUntil: null, status: "ACTIVE" },
+    );
+  }
+  return rows;
+}
+
+test("hub-assisted integration quotes use shared per-leg operational tariffs", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state } = mockPrisma({
+    hubs: hubAssistedHubs, operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const result = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-001",
+    input: { ...baseInput, externalReference: "order-hub-assisted-1" },
+  });
+  assert.equal(result.body.quoteSession.status, "QUOTED");
+  assert.equal(result.body.options.length, 1);
+  assert.equal(result.body.options[0].routeMode, "HUB_ASSISTED");
+  assert.equal(result.body.options[0].logisticsCostMinor, "9000");
+  assert.equal(result.body.options[0].platformChargeMinor, "900");
+  assert.equal(result.body.options[0].customerChargeMinor, "9900");
+  assert.equal(result.body.quoteSession.assessment.source, "PLATFORM_OPERATIONAL_TARIFF");
+  assert.equal(state.options[0].partnerRateCardId, null);
+  assert.equal(state.options[0].partnerAgreementId, null);
+  assert.equal(state.options[0].driverPayoutMinor, null);
+  assert.equal(state.options[0].packageRateSnapshot.length, 3);
+});
+
+test("hub-assisted integration quote acceptance revalidates route and tariffs", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state } = mockPrisma({
+    hubs: hubAssistedHubs, operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const quote = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-002",
+    input: { ...baseInput, externalReference: "order-hub-assisted-2" },
+  });
+  const accepted = await service.acceptOption({
+    client, quoteSessionId: quote.body.quoteSession.id, optionId: state.options[0].id,
+    idempotencyKey: "quote-hub-assisted-accept-002",
+  });
+  assert.equal(accepted.body.status, "SELECTED");
+  assert.equal(state.sessions[0].status, "SELECTED");
+});
+
+test("hub-assisted integration quote rejects acceptance after tariff amount changes", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state } = mockPrisma({
+    hubs: hubAssistedHubs, operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const quote = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-003",
+    input: { ...baseInput, externalReference: "order-hub-assisted-3" },
+  });
+  operationalTariffs[0].customerChargeMinor = 1500n;
+  await assert.rejects(
+    service.acceptOption({
+      client, quoteSessionId: quote.body.quoteSession.id, optionId: state.options[0].id,
+      idempotencyKey: "quote-hub-assisted-accept-003",
+    }),
+    error => error.code === "OPERATIONAL_TARIFF_CHANGED",
+  );
+  assert.equal(state.sessions[0].status, "QUOTED");
 });

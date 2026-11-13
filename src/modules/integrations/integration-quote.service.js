@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { resolveDeliveryRoute } from "../delivery-legs/delivery-route-planner.js";
 import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
+import { assessPlatformOperationalTariffs } from "../platform-operational-pricing/platform-operational-tariff-assessment.service.js";
 import { ConflictError, NotFoundError, ValidationError } from "../../shared/http/app-error.js";
 
 function stable(value) {
@@ -163,7 +164,50 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
       });
     }
 
-    // Hub-assisted routes require separate tariffs for every operational leg.
+    if (route.routeMode === "HUB_ASSISTED") {
+      const operationalAssessment = await assessPlatformOperationalTariffs({
+        tx, route, packages, currency: agreement.currency, now,
+      });
+      if (operationalAssessment.status !== "QUOTED") {
+        const status = operationalAssessment.status === "NO_COVERAGE"
+          ? "NO_COVERAGE"
+          : operationalAssessment.status === "REQUIRES_MEASUREMENT"
+            ? "REQUIRES_MEASUREMENT"
+            : "REQUIRES_OPERATIONAL_PRICING";
+        return {
+          status,
+          options: [],
+          assessment: {
+            ...operationalAssessment,
+            source: "PLATFORM_OPERATIONAL_TARIFF",
+          },
+        };
+      }
+      const logisticsCost = BigInt(operationalAssessment.totals.customerChargeMinor);
+      const platformCharge = BigInt(operationalAssessment.totals.platformChargeMinor);
+      const customerCharge = BigInt(operationalAssessment.totals.totalCustomerChargeMinor);
+      return {
+        status: "QUOTED",
+        assessment: {
+          ...operationalAssessment,
+          source: "PLATFORM_OPERATIONAL_TARIFF",
+        },
+        options: [{
+          optionCode: "OPTION-01",
+          currency: agreement.currency,
+          logisticsCost,
+          platformCharge,
+          customerCharge,
+          estimatedTransitMinutes: null,
+          rateSnapshot: operationalAssessment.legs,
+          routeSnapshot: operationalAssessment.routeSnapshot,
+          expiresAt,
+        }],
+      };
+    }
+
+    // END_TO_END remains the contracted partner-rate path. No other route mode
+    // may fall through to legacy pricing or a direct-corridor tariff.
     if (route.routeMode !== "END_TO_END") {
       return {
         status: "REQUIRES_OPERATIONAL_PRICING",
@@ -411,6 +455,10 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
           if (replay) return replay;
           const session = await tx.integrationQuoteSession.findFirst({
             where: { id: quoteSessionId, clientId: client.id },
+            include: {
+              packages: { orderBy: { packageSequence: "asc" } },
+              billingAgreement: { select: { reference: true } },
+            },
           });
           if (!session) throw new NotFoundError("Quote session not found.", "INTEGRATION_QUOTE_NOT_FOUND");
           if (session.status !== "QUOTED" || session.expiresAt <= now) {
@@ -424,6 +472,48 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
             where: { id: optionId, quoteSessionId: session.id, status: "AVAILABLE", expiresAt: { gt: now } },
           });
           if (!option) throw new ConflictError("The selected quote option is no longer available.", "INTEGRATION_QUOTE_OPTION_UNAVAILABLE");
+
+          if (option.routeMode === "HUB_ASSISTED") {
+            const agreement = await activeAgreement(tx, client.id, session.billingAgreement.reference, now);
+            if (agreement.version !== session.billingAgreementVersion || agreement.currency !== session.currency) {
+              throw new ConflictError("The integration billing agreement changed after quote issuance. Request a fresh quote.", "INTEGRATION_BILLING_AGREEMENT_CHANGED");
+            }
+            const packages = session.packages.map(pkg => ({
+              externalPackageRef: pkg.externalPackageRef,
+              packageCategory: pkg.packageCategory,
+              weightGrams: pkg.weightGrams,
+              lengthMm: pkg.lengthMm,
+              widthMm: pkg.widthMm,
+              heightMm: pkg.heightMm,
+            }));
+            const fresh = await buildOptions(tx, {
+              packages,
+              input: {
+                pickupServiceZoneId: session.pickupServiceZoneId,
+                destinationServiceZoneId: session.destinationServiceZoneId,
+                pickup: { latitude: Number(session.pickupLatitude), longitude: Number(session.pickupLongitude) },
+                destination: { latitude: Number(session.destinationLatitude), longitude: Number(session.destinationLongitude) },
+              },
+              agreement,
+              now,
+              expiresAt: session.expiresAt,
+            });
+            const refreshed = fresh.options?.find(candidate => candidate.optionCode === option.optionCode);
+            if (!refreshed || fresh.status !== "QUOTED") {
+              throw new ConflictError("Operational tariff coverage changed after quote issuance. Request a fresh quote.", "OPERATIONAL_TARIFF_CHANGED");
+            }
+            if (hashPayload(option.routeSnapshot) !== hashPayload(refreshed.routeSnapshot)) {
+              throw new ConflictError("The resolved hub-assisted route changed after quote issuance. Request a fresh quote.", "OPERATIONAL_ROUTE_CHANGED");
+            }
+            if (hashPayload(option.packageRateSnapshot) !== hashPayload(refreshed.rateSnapshot)
+              || option.currency !== refreshed.currency
+              || option.logisticsCostMinor.toString() !== refreshed.logisticsCost.toString()
+              || option.platformChargeMinor.toString() !== refreshed.platformCharge.toString()
+              || option.customerChargeMinor.toString() !== refreshed.customerCharge.toString()) {
+              throw new ConflictError("Operational tariff amounts or versions changed after quote issuance. Request a fresh quote.", "OPERATIONAL_TARIFF_CHANGED");
+            }
+          }
+
           const updatedSession = await tx.integrationQuoteSession.updateMany({
             where: { id: session.id, clientId: client.id, status: "QUOTED", expiresAt: { gt: now } },
             data: { status: "SELECTED", selectedOptionId: option.id },

@@ -1,9 +1,9 @@
 # Hub-assisted operational tariffs — technical design
 
 **Workstream:** Hub-assisted operational tariffs (HAT)  
-**Current phase:** HAT-03 — shared per-leg assessment engine  
-**Implementation branch:** `feat/platform-operational-tariff-assessment`  
-**Status:** HAT-01 and HAT-02 merged; HAT-03 assessment engine implemented on the feature branch and awaiting CI validation.
+**Current phase:** HAT-05 — integration quote lifecycle integration  
+**Implementation branch:** `feat/integration-hub-assisted-quotes`  
+**Status:** HAT-01 through HAT-04 merged. HAT-05 integration quote lifecycle work is in progress on the feature branch and awaiting CI validation.
 
 ## 1. Purpose
 
@@ -31,7 +31,7 @@ This is a separate pricing domain from `PlatformRouteRate`, which remains the di
 - `HubPoint` identifies a hub and its service zone. Hub status, accepted parcel types and capacity configuration remain independent operational eligibility checks.
 - `resolveDeliveryRoute()` supplies server-resolved route mode and operational legs. The pricing engine must consume this route topology, not independently choose hubs.
 - `DeliveryLeg` persists leg type, zone/hub endpoints and metadata. Its accepted quote snapshot remains the source for historical commercial terms.
-- Customer and integration quote services currently return `REQUIRES_OPERATIONAL_PRICING` for hub-assisted paths. Both should call the new shared assessment service when the feature is enabled.
+- The ordinary customer quote lifecycle (HAT-04) and integration quote lifecycle (HAT-05) call the shared assessment service for resolved hub-assisted routes. Neither may fall back to direct-route or legacy pricing when exact operational tariff coverage is missing.
 - Admin one-off operational pricing already supports manually priced legs and must remain available as an exception workflow.
 
 ## 4. Proposed data model
@@ -121,7 +121,7 @@ The service must not create quotes, assign executors, create delivery legs or wr
 
 ## 6. Quote lifecycle and snapshot
 
-The customer and integration quote services call the same assessment service within their existing transaction boundaries.
+The customer and integration quote services call the same assessment service within their existing transaction boundaries. Integration quote selection re-resolves the route and re-assesses the operational tariff before selection; changed route topology, agreement version, tariff snapshots or amounts require a fresh quote.
 
 The quote snapshot must preserve:
 - Route mode, route plan version and selected hub IDs.
@@ -198,4 +198,4 @@ The frontend must display scope-specific selectors and must never expose interna
 - **HAT-06:** admin UI extension.
 - **HAT-07:** regression, operational acceptance and documentation.
 
-HAT-01 schema/migration and HAT-02 ADMIN tariff/availability APIs are merged. HAT-03 transport-leg assessment engine is implemented on `feat/platform-operational-tariff-assessment` and awaits CI validation. HAT-03 handling assessment remains blocked on package-level attribution for `HubAdditionalOperation`. HAT-04 customer quote integration, HAT-05 integration quote integration, HAT-06 Admin UI and HAT-07 regression/operational acceptance remain outstanding.
+HAT-01 schema/migration, HAT-02 ADMIN tariff/availability APIs, HAT-03 shared transport-leg assessment, and HAT-04 ordinary customer quote integration are merged. HAT-05 integration quote integration is implemented on `feat/integration-hub-assisted-quotes` and awaits CI validation. Additional handling remains fail-closed pending package-level attribution for `HubAdditionalOperation`. HAT-06 Admin UI extension and HAT-07 regression/operational acceptance remain outstanding.
