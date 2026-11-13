@@ -13,9 +13,9 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     agreement: { id: "partner_agreement_1", partner: { id: "partner_1", displayName: "Contracted carrier" } },
   };
   const rates = [
-    { id: "rate_box", rateCardId: "card_1", parcelCategory: "box", minWeightGrams: 0, maxWeightGrams: 10000,
+    { id: "rate_box", rateCardId: "card_1", parcelCategory: "box", minWeightGrams: 1, maxWeightGrams: 1000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 2500n, estimatedTransitMinutes: 180, rateCard },
-    { id: "rate_carton", rateCardId: "card_1", parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
+    { id: "rate_carton", rateCardId: "card_1", parcelCategory: "carton", minWeightGrams: 1001, maxWeightGrams: 3000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 4000n, estimatedTransitMinutes: 240, rateCard },
   ];
   const alternateRateCard = {
@@ -23,9 +23,9 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     agreement: { id: "partner_agreement_2", partner: { id: "partner_2", displayName: "Alternate carrier" } },
   };
   rates.push(
-    { id: "rate_box_alt", rateCardId: "card_2", parcelCategory: "box", minWeightGrams: 0, maxWeightGrams: 10000,
+    { id: "rate_box_alt", rateCardId: "card_2", parcelCategory: "box", minWeightGrams: 1, maxWeightGrams: 1000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 3000n, estimatedTransitMinutes: 150, rateCard: alternateRateCard },
-    { id: "rate_carton_alt", rateCardId: "card_2", parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
+    { id: "rate_carton_alt", rateCardId: "card_2", parcelCategory: "carton", minWeightGrams: 1001, maxWeightGrams: 3000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 4500n, estimatedTransitMinutes: 200, rateCard: alternateRateCard },
   );
   const tx = {
