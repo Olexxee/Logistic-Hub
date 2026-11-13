@@ -6,6 +6,16 @@ import { createExecutionReadinessRepository } from "./execution-readiness.reposi
 
 const LOCAL_DRIVER_LEG_TYPES = new Set(["LOCAL_PICKUP", "FINAL_MILE"]);
 const PARTNER_LEG_TYPES = new Set(["HUB_TRANSFER", "INTERSTATE_TRANSPORT"]);
+async function serializableTransaction(prismaClient, callback) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prismaClient.$transaction(callback, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt >= 2) throw error;
+    }
+  }
+}
+
 function blocker(code, message, scope = null) {
   return { code, message, ...(scope ? { scope } : {}) };
 }
@@ -159,7 +169,7 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
   return {
     async assessLeg({ deliveryLegId }) {
       const now = clock();
-      return prismaClient.$transaction(async tx => {
+      return serializableTransaction(prismaClient, async tx => {
         const leg = await db.findLeg(tx, deliveryLegId);
         if (!leg) return { found: false, deliveryLegId };
         const booking = leg.parcelBooking;
@@ -286,7 +296,7 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           currency,
           assessedAt: now.toISOString(),
         };
-      }, { isolationLevel: "Serializable" });
+      });
     },
 
     async assessBooking({ bookingId }) {
