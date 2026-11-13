@@ -356,7 +356,8 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
       const payload = { deliveryLegId, executorType, driverProfileId: driverProfileId ?? null,
         vehicleId: vehicleId ?? null, partnerId: partnerId ?? null };
       const payloadHash = selectionPayloadHash(payload);
-      return serializableTransaction(prismaClient, async tx => {
+      try {
+        return await serializableTransaction(prismaClient, async tx => {
         const prior = await tx.deliveryLegExecutionSnapshot.findUnique({ where: { idempotencyKey } });
         if (prior) {
           if (prior.deliveryLegId !== deliveryLegId || prior.payloadHash !== payloadHash) {
@@ -491,7 +492,18 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           },
         });
         return { snapshot, replay: false };
-      });
+        });
+      } catch (error) {
+        if (error?.code !== "P2002") throw error;
+        const existing = await prismaClient.deliveryLegExecutionSnapshot.findUnique({ where: { idempotencyKey } });
+        if (!existing || existing.deliveryLegId !== deliveryLegId || existing.payloadHash !== payloadHash) {
+          const conflictError = new Error("The idempotency key was already used for a different executor selection.");
+          conflictError.statusCode = 409;
+          conflictError.code = "IDEMPOTENCY_KEY_REUSED";
+          throw conflictError;
+        }
+        return { snapshot: existing, replay: true };
+      }
     },
 
     async assessBooking({ bookingId }) {
