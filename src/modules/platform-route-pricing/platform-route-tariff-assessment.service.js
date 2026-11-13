@@ -1,3 +1,4 @@
+import { isCanonicalPlatformRouteWeightBand } from "./platform-route-weight-bands.js";
 export function rateFitsPackage(rate, pkg) {
   if (pkg.weightGrams == null || pkg.weightGrams < rate.minWeightGrams) return false;
   if (rate.maxWeightGrams != null && pkg.weightGrams > rate.maxWeightGrams) return false;
@@ -77,7 +78,7 @@ export async function assessPlatformRouteTariffs({
   const packageMatches = [];
   for (let index = 0; index < packages.length; index += 1) {
     const pkg = packages[index];
-    const matches = rates.filter(rate => rate.parcelCategory === pkg.packageCategory && rateFitsPackage(rate, pkg));
+    const matches = rates.filter(rate => rate.parcelCategory === pkg.packageCategory && isCanonicalPlatformRouteWeightBand(rate.minWeightGrams, rate.maxWeightGrams) && rateFitsPackage(rate, pkg));
     if (matches.length !== 1) {
       const status = matches.length > 1 ? "PRICING_AMBIGUOUS" : "NO_COVERAGE";
       return {
