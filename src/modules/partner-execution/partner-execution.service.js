@@ -168,7 +168,10 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const leg = await repository.findLegForAssignment(deliveryLegId, tx);
         if (!leg) return { notFound: true };
         const operationalTripLeg = leg.metadata?.pricingSource === "ADMIN_OPERATIONAL_TRIP" && leg.metadata?.executionType === "PARTNER";
-        if (!operationalTripLeg && leg.type !== "INTERSTATE_TRANSPORT") return { blocker: "LEG_NOT_PARTNER_EXECUTED" };
+        const hubAssistedHatLeg = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          && leg.metadata?.requiresOperationalReview === true;
+        if (!operationalTripLeg && leg.type !== "INTERSTATE_TRANSPORT"
+          && !(hubAssistedHatLeg && leg.type === "HUB_TRANSFER")) return { blocker: "LEG_NOT_PARTNER_EXECUTED" };
         if (leg.status !== "READY_FOR_ASSIGNMENT") return { blocker: "LEG_NOT_READY" };
         if (leg.parcelBooking.paymentStatus !== "SUCCEEDED") return { blocker: "BOOKING_NOT_PAID" };
         if (leg.parcelBooking.integrationClientId && leg.parcelBooking.status !== "AWAITING_PARTNER_ASSIGNMENT") {
@@ -182,8 +185,6 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           where: { parcelBookingId: leg.parcelBookingId, status: "ACCEPTED" },
           orderBy: { version: "desc" },
         });
-        const hubAssistedHatLeg = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-          && leg.metadata?.requiresOperationalReview === true;
         const operationalSnapshot = acceptedQuote?.inputSnapshot?.source === "ADMIN_OPERATIONAL_TRIP" ? acceptedQuote.inputSnapshot : null;
         const operationalLeg = operationalSnapshot?.operationalLegs?.find(item => item.sequence === leg.sequence);
         let executionSnapshot = null;
