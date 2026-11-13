@@ -176,7 +176,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             },
             select: { id: true },
           });
-          if (!lockedHat && !routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
         }
         const activeZones = await db.findActiveServiceZones(tx, leg, now);
         const requiredZoneCount = new Set([leg.originServiceZoneId, leg.destinationServiceZoneId]).size;
