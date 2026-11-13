@@ -1,9 +1,9 @@
 # Hub-assisted operational tariffs — technical design
 
 **Workstream:** Hub-assisted operational tariffs (HAT)  
-**Current phase:** HAT-03 — shared per-leg assessment engine  
-**Implementation branch:** `feat/platform-operational-tariff-assessment`  
-**Status:** HAT-01 and HAT-02 merged; HAT-03 assessment engine implemented on the feature branch and awaiting CI validation.
+**Current phase:** HAT-04 — ordinary customer quote integration  
+**Implementation branch:** `feat/customer-hub-assisted-quotes` (stacked on `feat/platform-operational-tariff-assessment`)  
+**Status:** HAT-01/HAT-02 merged; HAT-03 CI passed on commit `5ca0ecaf` and awaits merge; HAT-04 customer quote integration is implemented on a dependent branch and awaits CI.
 
 ## 1. Purpose
 
@@ -117,7 +117,13 @@ Processing:
 9. Resolve execution-cost eligibility independently. Platform driver payout rules and partner agreements are not tariff inputs. If unresolved, return a separate operational-readiness warning/status; never derive internal costs from customer prices.
 10. Return a canonical per-package/per-leg/per-handling breakdown and immutable tariff snapshot.
 
-The service must not create quotes, assign executors, create delivery legs or write ledger entries. Callers own persistence and lifecycle transitions. The HAT-03 implementation currently assesses the three transport-leg scopes and returns immutable tariff snapshots and BigInt totals. Handling remains deliberately blocked pending package attribution; cancelled operations are ignored, and incomplete/unauthorized operations are not chargeable. Execution readiness is explicitly `NOT_ASSESSED` for a separate resolver and is never inferred from customer tariffs.
+The service must not create quotes, assign executors, create delivery legs or write ledger entries. Callers own persistence and lifecycle transitions. HAT-03 assesses the three transport-leg scopes and returns immutable tariff snapshots and BigInt totals. Handling remains deliberately blocked pending package attribution; cancelled operations are ignored, and incomplete/unauthorized operations are not chargeable. Execution readiness is explicitly `NOT_ASSESSED` for a separate resolver and is never inferred from customer tariffs.
+
+### HAT-04 — ordinary customer quote lifecycle
+
+The ordinary customer quote service may issue a `PLATFORM_OPERATIONAL_TARIFF` quote only when every resolved hub-assisted transport leg has exact-scope availability and exactly one active tariff match for every package. The quote stores the complete per-leg/per-package assessment and route snapshot in `ShipmentQuote.inputSnapshot`; customer-facing totals are transport customer charges plus platform charges, with no driver payout or partner execution cost exposed.
+
+Acceptance re-resolves the route and reassesses the operational tariffs inside the existing serializable transaction. A changed route, availability window, tariff match, tariff version or amount invalidates the offer and requires a fresh quote. On acceptance, the existing multi-leg plan creator persists the resolved pickup, interstate and final-mile legs. Because HAT-03 does not resolve execution actors or internal costs, these legs are created in `PLANNED` state with `requiresOperationalReview` metadata; they are not represented as ready for assignment. Additional handling remains uncharged until package attribution is implemented.
 
 ## 6. Quote lifecycle and snapshot
 
@@ -198,4 +204,4 @@ The frontend must display scope-specific selectors and must never expose interna
 - **HAT-06:** admin UI extension.
 - **HAT-07:** regression, operational acceptance and documentation.
 
-HAT-01 schema/migration and HAT-02 ADMIN tariff/availability APIs are merged. HAT-03 transport-leg assessment engine is implemented on `feat/platform-operational-tariff-assessment` and awaits CI validation. HAT-03 handling assessment remains blocked on package-level attribution for `HubAdditionalOperation`. HAT-04 customer quote integration, HAT-05 integration quote integration, HAT-06 Admin UI and HAT-07 regression/operational acceptance remain outstanding.
+HAT-01 schema/migration and HAT-02 ADMIN tariff/availability APIs are merged. HAT-03 transport-leg assessment passed CI on `feat/platform-operational-tariff-assessment` commit `5ca0ecaf` and awaits merge; handling assessment remains blocked on package-level attribution for `HubAdditionalOperation`. HAT-04 ordinary customer quote creation and acceptance are implemented on `feat/customer-hub-assisted-quotes`, stacked on HAT-03, and await CI. HAT-05 integration quote integration, HAT-06 Admin UI and HAT-07 regression/operational acceptance remain outstanding.
