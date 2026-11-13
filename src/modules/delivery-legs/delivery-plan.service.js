@@ -1,5 +1,10 @@
 import { resolveDeliveryRoute } from "./delivery-route-planner.js";
 
+function quotePricingSource(quote, driverPayoutMinor) {
+  if (quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF") return "PLATFORM_OPERATIONAL_TARIFF";
+  return driverPayoutMinor != null ? "PLATFORM_ROUTE_RATE" : "CONTRACTED_PARTNER_RATE";
+}
+
 function legData({
   parcelBookingId, sequence, type, status, originServiceZoneId, destinationServiceZoneId,
   originHubPointId = null, destinationHubPointId = null,
@@ -32,7 +37,12 @@ function legData({
       customerChargeMinor: operationalLeg.customerChargeMinor,
     } : {
       quoteId, routePlanVersion: 1, driverPayoutMinor,
-      pricingSource: driverPayoutMinor != null ? "PLATFORM_ROUTE_RATE" : "CONTRACTED_PARTNER_RATE",
+      pricingSource: quotePricingSource(quote, driverPayoutMinor),
+      ...(quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF" ? {
+        requiresOperationalReview: true,
+        executionReadiness: "NOT_ASSESSED",
+        executionReviewReason: "EXECUTION_ACTOR_AND_COST_NOT_RESOLVED",
+      } : {}),
     },
   };
 }
@@ -71,6 +81,7 @@ export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now 
       }]
       : plan.legs;
   for (const definition of definitions) {
+    const pricingPendingExecutionReview = quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF";
     const leg = await tx.deliveryLeg.create({
       data: legData({
         parcelBookingId: booking.id,
@@ -79,6 +90,7 @@ export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now 
         operationalLeg: operationalLegs ? definition : null,
         now,
         ...definition,
+        ...(pricingPendingExecutionReview ? { status: "PLANNED" } : {}),
       }),
       select: {
         id: true, sequence: true, type: true, status: true,
