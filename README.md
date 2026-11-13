@@ -2,7 +2,7 @@
 
 ## Geography and serviceability
 
-- [Hub-assisted operational tariffs design](docs/hub-assisted-operational-tariffs-design.md) — HAT-01 schema/migration and HAT-02 ADMIN tariff/availability APIs are merged. HAT-03 shared per-leg assessment is implemented on `feat/platform-operational-tariff-assessment` and awaits CI. It prices resolved pickup, directed hub-pair and final-mile legs with exact-scope availability, immutable tariff snapshots and BigInt totals. Additional handling remains fail-closed pending package-level attribution; ordinary intake/custody remains non-billable.
+- [Hub-assisted operational tariffs design](docs/hub-assisted-operational-tariffs-design.md) — HAT-01/HAT-02 are merged. HAT-03 passed CI on `feat/platform-operational-tariff-assessment` commit `5ca0ecaf` and awaits merge. HAT-04 ordinary customer quote creation/acceptance is implemented on dependent branch `feat/customer-hub-assisted-quotes` and awaits CI. Additional handling remains fail-closed pending package-level attribution; ordinary intake/custody remains non-billable.
 
 - [Platform-operated route pricing](docs/platform-operated-route-pricing.md) — explicit corridor approval, versioned customer tariffs and independent driver payouts.
 - [Platform route pricing weight-band policy](docs/platform-route-weight-bands.md) — seven enforced parcel bands from 0.001 kg to 30 kg; heavier freight requires manual assessment. The ADMIN API also lists configured directed route availability.
