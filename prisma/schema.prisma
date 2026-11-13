@@ -1377,7 +1377,7 @@ model DeliveryLegExecutionSnapshot {
   id                       String      @id @default(cuid())
   deliveryLegId            String
   version                  Int
-  idempotencyKey           String      @unique
+  idempotencyKey           String      @unique(map: "delivery_leg_execution_snapshots_idempotencyKey_key")
   payloadHash              String
   executorType             String
   selectedDriverProfileId  String?
@@ -1398,9 +1398,9 @@ model DeliveryLegExecutionSnapshot {
 
   deliveryLeg DeliveryLeg @relation(fields: [deliveryLegId], references: [id], onDelete: Restrict)
 
-  @@unique([deliveryLegId, version])
-  @@index([deliveryLegId, createdAt])
-  @@index([executorType, selectedDriverProfileId, selectedPartnerId])
+  @@unique([deliveryLegId, version], map: "delivery_leg_execution_snapshots_leg_version_key")
+  @@index([deliveryLegId, createdAt], map: "delivery_leg_execution_snapshots_leg_created_idx")
+  @@index([executorType, selectedDriverProfileId, selectedPartnerId], map: "delivery_leg_execution_snapshots_executor_idx")
   @@map("delivery_leg_execution_snapshots")
 }
 
