@@ -46,3 +46,15 @@ The bands do not assert that all Nigerian states, LGAs, routes or service zones 
 - Before production deployment, audit existing ACTIVE tariffs for non-canonical boundaries and create replacement canonical tariffs where needed; legacy active tariffs remain visible in Admin but no longer match package assessments.
 - Frontend typecheck/build and backend tests pass before the branch is considered ready.
 - No migration is required because the existing database columns already store integer gram bounds.
+
+
+## Route availability administration
+
+The ADMIN route-pricing API exposes:
+
+- `GET /api/v1/admin/platform-route-pricing/availability` — lists configured directed route-availability records. Optional filters: `originServiceZoneId`, `destinationServiceZoneId`, and `serviceType` (`PARCEL_DELIVERY`).
+- `POST /api/v1/admin/platform-route-pricing/availability` — creates or updates the unique directed corridor/service-type record and writes an operational audit event.
+
+The read response is `{ success: true, data: { items } }`. Each item includes its origin and destination service-zone identifiers, zone code/name summaries, service type, enabled state and effective window. An absent record means the directed route has not been explicitly configured; it must not be inferred as enabled or disabled from endpoint-zone availability.
+
+Enabling a route remains distinct from confirming dispatch capacity, driver/vehicle coverage, partner capacity or full operational readiness. Tariff publication continues to require effective route availability and active/serviceable endpoint zones.
