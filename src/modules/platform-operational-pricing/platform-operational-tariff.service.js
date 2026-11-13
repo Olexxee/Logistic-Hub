@@ -39,7 +39,7 @@ async function assertLocatorExists(tx, input) {
   if (hubs.length !== ids.length) throw new NotFoundError("One or more hub points were not found.", "HUB_POINT_NOT_FOUND");
 }
 
-async function assertLocatorServiceable(tx, input) {
+async function assertLocatorServiceable(tx, input, at) {
   if (input.scope === "LOCAL_ZONE") {
     const zone = await tx.serviceZone.findUnique({
       where: { id: input.serviceZoneId },
@@ -47,7 +47,7 @@ async function assertLocatorServiceable(tx, input) {
     });
     if (!zone) throw new NotFoundError("Service zone not found.", "SERVICE_ZONE_NOT_FOUND");
     if (!zone.isActive || !zone.state?.isActive || !zone.state?.country?.isActive
-      || !effective(zone.availability?.[0], new Date())) {
+      || !effective(zone.availability?.[0], at)) {
       throw new ConflictError("The service zone and parcel-delivery availability must be active before enabling this scope.", "OPERATIONAL_TARIFF_LOCATION_UNAVAILABLE");
     }
     return;
@@ -63,7 +63,7 @@ async function assertLocatorServiceable(tx, input) {
   if (hubs.length !== ids.length) throw new NotFoundError("One or more hub points were not found.", "HUB_POINT_NOT_FOUND");
   if (hubs.some(hub => hub.status !== "ACTIVE" || !hub.serviceZone?.isActive
     || !hub.serviceZone.state?.isActive || !hub.serviceZone.state?.country?.isActive
-    || !effective(hub.serviceZone.availability?.[0], new Date()))) {
+    || !effective(hub.serviceZone.availability?.[0], at))) {
     throw new ConflictError("Every referenced hub and its service zone must be active and serviceable.", "OPERATIONAL_TARIFF_LOCATION_UNAVAILABLE");
   }
 }
@@ -177,7 +177,7 @@ export function createPlatformOperationalTariffService({ prismaClient, clock = (
         if (tariff.effectiveFrom > now || (tariff.effectiveUntil && tariff.effectiveUntil <= now)) {
           throw new ConflictError("Tariff is outside its effective window.", "PLATFORM_OPERATIONAL_TARIFF_OUTSIDE_EFFECTIVE_DATES");
         }
-        await assertLocatorServiceable(tx, tariff);
+        await assertLocatorServiceable(tx, tariff, now);
         const availability = await tx.platformOperationalTariffAvailability.findFirst({
           where: scopeAvailabilityWhere(tariff),
         });
@@ -229,7 +229,7 @@ export function createPlatformOperationalTariffService({ prismaClient, clock = (
       const { reason, ...data } = input;
       return prismaClient.$transaction(async tx => {
         await assertLocatorExists(tx, data);
-        if (data.isEnabled) await assertLocatorServiceable(tx, data);
+        if (data.isEnabled) await assertLocatorServiceable(tx, data, clock());
         const where = scopeAvailabilityWhere(data);
         const before = await tx.platformOperationalTariffAvailability.findFirst({ where });
         const after = before
