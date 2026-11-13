@@ -30,3 +30,29 @@ test("hub occupancy counts packages, not intake records, and preserves missing v
   assert.equal(result.load._sum.volumeCm3, 1000);
   assert.equal(result.missingVolumeCount, 1);
 });
+
+
+test("selected driver revalidation requires the exact vehicle, both route zones and no active assignment", async () => {
+  const repository = createExecutionReadinessRepository({ prismaClient: {} });
+  const now = new Date("2026-11-13T18:00:00.000Z");
+  let query;
+  const tx = {
+    driverProfile: {
+      findFirst: async value => {
+        query = value;
+        return { id: "driver-1", serviceRadiusMeters: 5000, lastLocationAt: now, locations: [] };
+      },
+    },
+  };
+  const leg = {
+    type: "FINAL_MILE",
+    originServiceZoneId: "zone-origin",
+    destinationServiceZoneId: "zone-destination",
+  };
+  const result = await repository.findEligibleLocalDriver(tx, leg, "driver-1", "vehicle-1", now);
+  assert.equal(result.id, "driver-1");
+  assert.equal(query.where.id, "driver-1");
+  assert.equal(query.where.vehicles.some.id, "vehicle-1");
+  assert.equal(query.where.assignments.none.status.in.includes("IN_PROGRESS"), true);
+  assert.equal(query.where.AND.length, 2);
+});
