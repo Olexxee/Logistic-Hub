@@ -8408,6 +8408,55 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /admin/platform-route-pricing/availability:
+    get:
+      tags: [Platform route pricing]
+      operationId: listPlatformRouteAvailability
+      summary: List configured directed platform-operated route availability
+      description: Returns explicitly configured directed routes only. A missing record does not imply that a route is enabled or disabled.
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: originServiceZoneId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: destinationServiceZoneId
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: query
+          name: serviceType
+          schema: { type: string, const: PARCEL_DELIVERY }
+      responses:
+        '200':
+          description: Configured directed route availability records returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { const: true }
+                  data:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, originServiceZoneId, destinationServiceZoneId, serviceType, isEnabled, origin, destination]
+                          properties:
+                            id: { type: string }
+                            originServiceZoneId: { type: string }
+                            destinationServiceZoneId: { type: string }
+                            serviceType: { type: string, const: PARCEL_DELIVERY }
+                            isEnabled: { type: boolean }
+                            startsAt: { type: [string, 'null'], format: date-time }
+                            endsAt: { type: [string, 'null'], format: date-time }
+                            origin: { $ref: '#/components/schemas/ServiceZoneSummary' }
+                            destination: { $ref: '#/components/schemas/ServiceZoneSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Platform route pricing]
       operationId: setPlatformRouteAvailability
