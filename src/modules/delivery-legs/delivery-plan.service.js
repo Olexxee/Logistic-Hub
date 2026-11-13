@@ -44,7 +44,7 @@ function legData({
     } : {
       quoteId, routePlanVersion: 1, driverPayoutMinor,
       pricingSource: quotePricingSource(quote, driverPayoutMinor),
-      ...(quote.inputSnapshot?.source === "PLATFORM_OPERATIONAL_TARIFF" ? {
+      ...(isPlatformOperationalQuote(quote) ? {
         requiresOperationalReview: true,
         executionReadiness: "NOT_ASSESSED",
         executionReviewReason: "EXECUTION_ACTOR_AND_COST_NOT_RESOLVED",
