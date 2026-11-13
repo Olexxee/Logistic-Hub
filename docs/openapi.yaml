@@ -8346,6 +8346,178 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /admin/platform-operational-pricing/tariffs:
+    get:
+      tags: [Platform route pricing]
+      operationId: listPlatformOperationalTariffs
+      summary: List hub-assisted operational customer tariffs
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: scope, schema: { type: string, enum: [LOCAL_ZONE, HUB_PAIR, HUB_HANDLING] } }
+        - { in: query, name: status, schema: { type: string, enum: [DRAFT, ACTIVE, RETIRED] } }
+        - { in: query, name: serviceZoneId, schema: { type: string } }
+        - { in: query, name: legType, schema: { type: string, enum: [LOCAL_PICKUP, FINAL_MILE, INTERSTATE_TRANSPORT] } }
+        - { in: query, name: originHubPointId, schema: { type: string } }
+        - { in: query, name: destinationHubPointId, schema: { type: string } }
+        - { in: query, name: hubPointId, schema: { type: string } }
+        - { in: query, name: operationType, schema: { type: string, enum: [SPECIAL_SORTING, REPACKAGING] } }
+        - { in: query, name: parcelCategory, schema: { type: string } }
+      responses:
+        '200': { description: Operational tariffs returned; all amounts are integer minor-unit strings. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Platform route pricing]
+      operationId: createPlatformOperationalTariff
+      summary: Create a draft hub-assisted operational tariff
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [scope, parcelCategory, minWeightGrams, maxWeightGrams, customerChargeMinor, reason]
+              properties:
+                scope: { type: string, enum: [LOCAL_ZONE, HUB_PAIR, HUB_HANDLING] }
+                serviceType: { type: string, const: PARCEL_DELIVERY }
+                serviceZoneId: { type: string }
+                legType: { type: string, enum: [LOCAL_PICKUP, FINAL_MILE, INTERSTATE_TRANSPORT] }
+                originHubPointId: { type: string }
+                destinationHubPointId: { type: string }
+                hubPointId: { type: string }
+                operationType: { type: string, enum: [SPECIAL_SORTING, REPACKAGING] }
+                parcelCategory: { type: string, minLength: 2, maxLength: 80 }
+                minWeightGrams: { type: integer, minimum: 1, maximum: 30000 }
+                maxWeightGrams: { type: integer, minimum: 1, maximum: 30000 }
+                maxLengthMm: { type: integer, minimum: 1 }
+                maxWidthMm: { type: integer, minimum: 1 }
+                maxHeightMm: { type: integer, minimum: 1 }
+                currency: { type: string, minLength: 3, maxLength: 3, default: NGN }
+                customerChargeMinor: { type: string, pattern: '^[1-9][0-9]{0,14}$' }
+                platformChargeMinor: { type: string, pattern: '^(0|[1-9][0-9]{0,14})$' }
+                effectiveFrom: { type: string, format: date-time }
+                effectiveUntil: { type: [string, 'null'], format: date-time }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '201': { description: Draft operational tariff created. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/platform-operational-pricing/tariffs/{tariffId}/publish:
+    post:
+      tags: [Platform route pricing]
+      operationId: publishPlatformOperationalTariff
+      summary: Publish a draft operational tariff after exact-scope coverage checks
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: tariffId, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Operational tariff published. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/platform-operational-pricing/tariffs/{tariffId}/retire:
+    post:
+      tags: [Platform route pricing]
+      operationId: retirePlatformOperationalTariff
+      summary: Retire an active operational tariff
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: tariffId, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Operational tariff retired. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/platform-operational-pricing/availability:
+    get:
+      tags: [Platform route pricing]
+      operationId: listPlatformOperationalTariffAvailability
+      summary: List configured operational tariff availability
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: scope, schema: { type: string, enum: [LOCAL_ZONE, HUB_PAIR, HUB_HANDLING] } }
+        - { in: query, name: serviceZoneId, schema: { type: string } }
+        - { in: query, name: legType, schema: { type: string, enum: [LOCAL_PICKUP, FINAL_MILE, INTERSTATE_TRANSPORT] } }
+        - { in: query, name: originHubPointId, schema: { type: string } }
+        - { in: query, name: destinationHubPointId, schema: { type: string } }
+        - { in: query, name: hubPointId, schema: { type: string } }
+        - { in: query, name: operationType, schema: { type: string, enum: [SPECIAL_SORTING, REPACKAGING] } }
+        - { in: query, name: serviceType, schema: { type: string, const: PARCEL_DELIVERY } }
+      responses:
+        '200': { description: Explicitly configured availability returned; missing records imply no coverage. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Platform route pricing]
+      operationId: setPlatformOperationalTariffAvailability
+      summary: Enable or disable availability for an exact operational scope
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [scope, isEnabled, reason]
+              properties:
+                scope: { type: string, enum: [LOCAL_ZONE, HUB_PAIR, HUB_HANDLING] }
+                serviceType: { type: string, const: PARCEL_DELIVERY }
+                serviceZoneId: { type: string }
+                legType: { type: string, enum: [LOCAL_PICKUP, FINAL_MILE, INTERSTATE_TRANSPORT] }
+                originHubPointId: { type: string }
+                destinationHubPointId: { type: string }
+                hubPointId: { type: string }
+                operationType: { type: string, enum: [SPECIAL_SORTING, REPACKAGING] }
+                isEnabled: { type: boolean }
+                startsAt: { type: [string, 'null'], format: date-time }
+                endsAt: { type: [string, 'null'], format: date-time }
+                reason: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200': { description: Operational availability updated. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /admin/platform-route-pricing/rates:
     get:
       tags: [Platform route pricing]

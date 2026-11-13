@@ -1,9 +1,9 @@
 # Hub-assisted operational tariffs — technical design
 
-**Workstream:** HAT-01  
-**Branch:** `feat/hub-assisted-operational-tariffs`  
-**Status:** HAT-01 schema and migration implemented; validation pending  
-**Base:** `27fa2887e4c03c7dc453f8631b42a02d4be4ad93`
+**Workstream:** Hub-assisted operational tariffs (HAT)  
+**Current phase:** HAT-02 — ADMIN tariff and availability API  
+**Implementation branch:** `feat/admin-operational-tariff-apis`  
+**Status:** HAT-01 merged and CI-verified; HAT-02 implementation committed and awaiting CI validation.
 
 ## 1. Purpose
 
@@ -155,7 +155,7 @@ Proposed API resource family:
 - `GET /admin/platform-operational-pricing/availability`
 - `POST /admin/platform-operational-pricing/availability`
 
-All mutations require ADMIN authorization, reason, validation, transaction safety and audit events. Listing should filter by scope, leg type, zone/hub, category and status. API response amounts remain integer-minor-unit strings.
+Implemented in HAT-02 on `feat/admin-operational-tariff-apis`. All routes are mounted under `/api/v1/admin/platform-operational-pricing` and require authenticated ADMIN authorization. Mutations require a reason, strict scope-specific validation, transactional writes and operational audit events. Listing filters by scope, leg type, zone/hub, category and status. Monetary amounts are serialized as integer-minor-unit strings. Availability is independently configured per exact scope locator; missing availability never implies coverage.
 
 The frontend must display scope-specific selectors and must never expose internal driver or partner costs as customer tariff fields.
 
@@ -198,4 +198,4 @@ The frontend must display scope-specific selectors and must never expose interna
 - **HAT-06:** admin UI extension.
 - **HAT-07:** regression, operational acceptance and documentation.
 
-HAT-01 schema models and migration have been committed on the feature branch. HAT-02 API, HAT-03 assessment engine, quote integration and UI are not yet implemented. Prisma validation, migration drift checks and CI remain outstanding.
+HAT-01 schema and migration are merged and verified by the full Prisma/PostgreSQL CI suite. HAT-02 API implementation is on `feat/admin-operational-tariff-apis`; its CI validation is the current release gate. HAT-03 assessment engine, HAT-04 customer quote integration, HAT-05 integration quote integration, HAT-06 Admin UI and HAT-07 regression/operational acceptance remain outstanding.
