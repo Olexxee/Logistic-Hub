@@ -447,6 +447,35 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
         if (!quote) return { notFound: true };
         const booking = quote.parcelBooking;
         if (booking.senderId !== userId) return { forbidden: true };
+        if (quote.status === "ACCEPTED" && booking.pricingSnapshot?.quoteId === quote.id) {
+          const legs = await tx.deliveryLeg.findMany({
+            where: { parcelBookingId: booking.id },
+            orderBy: { sequence: "asc" },
+            select: {
+              id: true, sequence: true, type: true, status: true,
+              originServiceZoneId: true, destinationServiceZoneId: true,
+              originHubPointId: true, destinationHubPointId: true,
+            },
+          });
+          return {
+            quote: customerQuoteView(quote),
+            booking: {
+              id: booking.id,
+              publicReference: booking.publicReference,
+              status: booking.status,
+              paymentStatus: booking.paymentStatus,
+              currency: booking.currency,
+              customerPayableMinor: booking.customerPayableMinor?.toString() ?? quote.totalCustomerChargeMinor.toString(),
+              pricingSnapshot: booking.pricingSnapshot,
+            },
+            deliveryPlan: {
+              routeMode: booking.pricingSnapshot.routeSnapshot?.routeMode ?? "LOCAL_DIRECT",
+              originHub: booking.pricingSnapshot.routeSnapshot?.originHub ?? null,
+              destinationHub: booking.pricingSnapshot.routeSnapshot?.destinationHub ?? null,
+              legs,
+            },
+          };
+        }
         if (booking.status !== "DRAFT") return conflict("BOOKING_NOT_QUOTABLE", "A quote can only be accepted for a draft booking.");
         if (quote.status !== "OFFERED" || quote.expiresAt <= now) {
           if (quote.status === "OFFERED") await tx.shipmentQuote.updateMany({ where: { id: quote.id, status: "OFFERED" }, data: { status: "EXPIRED" } });
