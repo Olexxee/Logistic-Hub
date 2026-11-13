@@ -68,6 +68,8 @@ test("assesses each resolved local and directed hub-pair leg without choosing to
   const result = await assessPlatformOperationalTariffs({ tx, route, packages, currency: "NGN", now });
   assert.equal(result.status, "QUOTED");
   assert.equal(result.legs.length, 3);
+  assert.equal(result.routeSnapshot.routePlanVersion, 1);
+  assert.deepEqual(result.routeSnapshot.legs.map(leg => leg.type), ["LOCAL_PICKUP", "INTERSTATE_TRANSPORT", "FINAL_MILE"]);
   assert.equal(result.totals.customerChargeMinor, "6000");
   assert.equal(result.totals.platformChargeMinor, "300");
   assert.equal(result.totals.totalCustomerChargeMinor, "6300");
