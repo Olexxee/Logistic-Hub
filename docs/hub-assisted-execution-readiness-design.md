@@ -92,7 +92,7 @@ This slice does not enable live payments, external driver payouts or partner set
 
 ## ER-03 — shared per-leg execution-readiness resolver
 
-ER-03 introduces a read-only resolver at `src/modules/execution-readiness`. It assesses one HAT delivery leg against the accepted quote's pinned route topology, current booking payment/release state, active service zones, executor eligibility, and independently sourced internal execution cost.
+ER-03 introduces a read-only resolver at `src/modules/execution-readiness`. It assesses one HAT delivery leg against the accepted quote's pinned route topology, current booking payment/release state, active service zones, executor eligibility, and independently sourced internal execution cost. The integration shipment acceptance path now preserves HUB_ASSISTED topology as well: it creates the three pinned HAT legs from the selected integration quote option rather than rejecting the option or silently resolving a different hub pair.
 
 ### Local-driver legs
 
