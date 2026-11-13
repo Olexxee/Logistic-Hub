@@ -22,6 +22,8 @@ function hub(id, serviceZoneId, latitude, longitude) {
   return {
     id,
     name: id,
+    status: "ACTIVE",
+    operatorVerificationStatus: "VERIFIED",
     serviceZoneId,
     latitude,
     longitude,
@@ -191,4 +193,91 @@ test("same-state quote does not create an unnecessary hub-assisted route", async
   assert.equal(plan.routeMode, "LOCAL_DIRECT");
   assert.deepEqual(plan.legs, []);
   assert.equal(created.length, 0);
+});
+
+
+test("integration hub-assisted quote preserves pinned hubs and creates HAT legs awaiting execution review", async () => {
+  const routeSnapshot = {
+    routeMode: "HUB_ASSISTED",
+    legs: [
+      {
+        sequence: 1, type: "LOCAL_PICKUP",
+        originServiceZoneId: "zone_lagos", destinationServiceZoneId: "zone_lagos",
+        originHubPointId: null, destinationHubPointId: "origin_hub",
+        origin: { latitude: 6.5244, longitude: 3.3792 },
+        destination: { latitude: 6.525, longitude: 3.38 },
+      },
+      {
+        sequence: 2, type: "INTERSTATE_TRANSPORT",
+        originServiceZoneId: "zone_lagos", destinationServiceZoneId: "zone_ogun",
+        originHubPointId: "origin_hub", destinationHubPointId: "destination_hub",
+        origin: { latitude: 6.525, longitude: 3.38 },
+        destination: { latitude: 6.81, longitude: 3.51 },
+      },
+      {
+        sequence: 3, type: "FINAL_MILE",
+        originServiceZoneId: "zone_ogun", destinationServiceZoneId: "zone_ogun",
+        originHubPointId: "destination_hub", destinationHubPointId: null,
+        origin: { latitude: 6.81, longitude: 3.51 },
+        destination: { latitude: 6.8, longitude: 3.5 },
+      },
+    ],
+  };
+  const { tx, created } = transaction({
+    zones: [
+      { id: "zone_lagos", stateId: "NG-LA" },
+      { id: "zone_ogun", stateId: "NG-OG" },
+    ],
+    hubs: [
+      hub("origin_hub", "zone_lagos", 6.525, 3.38),
+      hub("destination_hub", "zone_ogun", 6.81, 3.51),
+    ],
+  });
+  const plan = await createMultiLegPlan({
+    tx,
+    booking: booking({ packages: [{ packageCategory: "BOX" }] }),
+    quote: {
+      id: "integration_quote",
+      inputSnapshot: { source: "INTEGRATION_QUOTE", routeSnapshot },
+    },
+    now,
+  });
+
+  assert.equal(plan.routeMode, "HUB_ASSISTED");
+  assert.equal(plan.originHub.id, "origin_hub");
+  assert.equal(plan.destinationHub.id, "destination_hub");
+  assert.deepEqual(created.map(leg => [leg.sequence, leg.type, leg.status]), [
+    [1, "LOCAL_PICKUP", "PLANNED"],
+    [2, "INTERSTATE_TRANSPORT", "PLANNED"],
+    [3, "FINAL_MILE", "PLANNED"],
+  ]);
+  assert.ok(created.every(leg => leg.metadata.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"));
+  assert.ok(created.every(leg => leg.metadata.requiresOperationalReview === true));
+});
+
+test("integration hub-assisted quote rejects a changed or incomplete pinned hub topology", async () => {
+  const routeSnapshot = {
+    routeMode: "HUB_ASSISTED",
+    legs: [
+      { sequence: 1, type: "LOCAL_PICKUP", originServiceZoneId: "zone_lagos", destinationServiceZoneId: "zone_lagos", originHubPointId: null, destinationHubPointId: "origin_hub", origin: { latitude: 6.5, longitude: 3.3 }, destination: { latitude: 6.5, longitude: 3.3 } },
+      { sequence: 2, type: "INTERSTATE_TRANSPORT", originServiceZoneId: "zone_lagos", destinationServiceZoneId: "zone_ogun", originHubPointId: "origin_hub", destinationHubPointId: "missing_hub", origin: { latitude: 6.5, longitude: 3.3 }, destination: { latitude: 6.8, longitude: 3.5 } },
+      { sequence: 3, type: "FINAL_MILE", originServiceZoneId: "zone_ogun", destinationServiceZoneId: "zone_ogun", originHubPointId: "missing_hub", destinationHubPointId: null, origin: { latitude: 6.8, longitude: 3.5 }, destination: { latitude: 6.8, longitude: 3.5 } },
+    ],
+  };
+  const { tx } = transaction({
+    zones: [
+      { id: "zone_lagos", stateId: "NG-LA" },
+      { id: "zone_ogun", stateId: "NG-OG" },
+    ],
+    hubs: [hub("origin_hub", "zone_lagos", 6.5, 3.3)],
+  });
+  await assert.rejects(
+    createMultiLegPlan({
+      tx,
+      booking: booking({ packages: [{ packageCategory: "BOX" }] }),
+      quote: { id: "integration_quote", inputSnapshot: { source: "INTEGRATION_QUOTE", routeSnapshot } },
+      now,
+    }),
+    error => error.code === "DELIVERY_ROUTE_SNAPSHOT_INVALID",
+  );
 });
