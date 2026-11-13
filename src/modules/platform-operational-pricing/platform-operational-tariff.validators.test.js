@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  availabilitySchema, tariffListSchema, tariffSchema,
+  availabilityListSchema, availabilitySchema, tariffListSchema, tariffSchema,
 } from "./platform-operational-tariff.validators.js";
 
 const base = {
