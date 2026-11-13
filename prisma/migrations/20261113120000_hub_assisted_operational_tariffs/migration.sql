@@ -83,6 +83,7 @@ CREATE TABLE "hub_additional_operations" (
   "id" TEXT NOT NULL,
   "idempotencyKey" TEXT NOT NULL,
   "parcelBookingId" TEXT NOT NULL,
+  "deliveryLegId" TEXT NOT NULL,
   "hubPointId" TEXT NOT NULL,
   "operationType" "HubAdditionalOperationType" NOT NULL,
   "status" "HubAdditionalOperationStatus" NOT NULL DEFAULT 'REQUESTED',
@@ -102,6 +103,7 @@ CREATE TABLE "hub_additional_operations" (
 );
 
 CREATE UNIQUE INDEX "hub_additional_operations_idempotencyKey_key" ON "hub_additional_operations"("idempotencyKey");
+CREATE UNIQUE INDEX "delivery_legs_id_parcelBookingId_key" ON "delivery_legs"("id", "parcelBookingId");
 CREATE INDEX "platform_operational_tariffs_scope_serviceType_parcelCategory_status_idx" ON "platform_operational_tariffs"("scope", "serviceType", "parcelCategory", "status");
 CREATE INDEX "platform_operational_tariffs_serviceZoneId_legType_status_idx" ON "platform_operational_tariffs"("serviceZoneId", "legType", "status");
 CREATE INDEX "platform_operational_tariffs_originHubPointId_destinationHubPointId_status_idx" ON "platform_operational_tariffs"("originHubPointId", "destinationHubPointId", "status");
@@ -112,6 +114,7 @@ CREATE INDEX "platform_operational_tariff_availability_serviceZoneId_legType_isE
 CREATE INDEX "platform_operational_tariff_availability_originHubPointId_destinationHubPointId_isEnabled_idx" ON "platform_operational_tariff_availability"("originHubPointId", "destinationHubPointId", "isEnabled");
 CREATE INDEX "platform_operational_tariff_availability_hubPointId_operationType_isEnabled_idx" ON "platform_operational_tariff_availability"("hubPointId", "operationType", "isEnabled");
 CREATE INDEX "hub_additional_operations_parcelBookingId_hubPointId_status_idx" ON "hub_additional_operations"("parcelBookingId", "hubPointId", "status");
+CREATE INDEX "hub_additional_operations_deliveryLegId_status_idx" ON "hub_additional_operations"("deliveryLegId", "status");
 CREATE INDEX "hub_additional_operations_hubPointId_operationType_status_idx" ON "hub_additional_operations"("hubPointId", "operationType", "status");
 
 ALTER TABLE "platform_operational_tariffs" ADD CONSTRAINT "platform_operational_tariffs_serviceZoneId_fkey" FOREIGN KEY ("serviceZoneId") REFERENCES "service_zones"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -124,6 +127,7 @@ ALTER TABLE "platform_operational_tariff_availability" ADD CONSTRAINT "platform_
 ALTER TABLE "platform_operational_tariff_availability" ADD CONSTRAINT "platform_operational_tariff_availability_destinationHubPointId_fkey" FOREIGN KEY ("destinationHubPointId") REFERENCES "hub_points"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "platform_operational_tariff_availability" ADD CONSTRAINT "platform_operational_tariff_availability_hubPointId_fkey" FOREIGN KEY ("hubPointId") REFERENCES "hub_points"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_parcelBookingId_fkey" FOREIGN KEY ("parcelBookingId") REFERENCES "parcel_bookings"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_deliveryLegId_parcelBookingId_fkey" FOREIGN KEY ("deliveryLegId", "parcelBookingId") REFERENCES "delivery_legs"("id", "parcelBookingId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_hubPointId_fkey" FOREIGN KEY ("hubPointId") REFERENCES "hub_points"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_requestedByUserId_fkey" FOREIGN KEY ("requestedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "hub_additional_operations" ADD CONSTRAINT "hub_additional_operations_authorizedByUserId_fkey" FOREIGN KEY ("authorizedByUserId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
