@@ -1,5 +1,6 @@
 import { resolveDeliveryRoute } from "../delivery-legs/delivery-route-planner.js";
 import { createMultiLegPlan } from "../delivery-legs/delivery-plan.service.js";
+import { ConflictError } from "../../shared/http/app-error.js";
 import { assessPlatformRouteTariffs, rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
 
 function conflict(code, message) {
@@ -475,9 +476,9 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
         const source = quote.inputSnapshot.source;
         const pricingSnapshot = { source, quoteId: quote.id, currency: quote.currency, transportChargeMinor: quote.transportChargeMinor.toString(), platformChargeMinor: quote.platformChargeMinor.toString(), totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(), ...(payoutMinor != null ? { driverPayoutMinor: payoutMinor } : {}), packageRateSnapshot, routeSnapshot, acceptedAt: now.toISOString() };
         const changed = await tx.parcelBooking.updateMany({ where: { id: booking.id, senderId: userId, status: "DRAFT" }, data: { status: "AWAITING_PARTNER_ASSIGNMENT", driverFareMinor: payoutMinor == null ? null : BigInt(payoutMinor), connectionFeeMinor: quote.platformChargeMinor, customerPayableMinor: quote.totalCustomerChargeMinor, pricingRuleId: null, pricingSnapshot, updatedAt: now } });
-        if (changed.count !== 1) return conflict("BOOKING_STATE_CHANGED", "The booking changed while the quote was being accepted.");
+        if (changed.count !== 1) throw new ConflictError("The booking changed while the quote was being accepted.", "BOOKING_STATE_CHANGED");
         const plan = await createMultiLegPlan({ tx, booking: { ...booking, pricingSnapshot }, quote: { ...quote, inputSnapshot: { ...quote.inputSnapshot, routeSnapshot, packageRateSnapshot, ...(payoutMinor != null ? { driverPayoutMinor: payoutMinor } : {}) } }, actorUserId: userId, now });
-        if (source === "PLATFORM_ROUTE_RATE" && (plan.legs.length !== 1 || plan.legs[0].type !== "LOCAL_PICKUP")) return conflict("CUSTOMER_ROUTE_DISPATCH_UNAVAILABLE", "This platform-priced route has no supported customer dispatch plan.");
+        if (source === "PLATFORM_ROUTE_RATE" && (plan.legs.length !== 1 || plan.legs[0].type !== "LOCAL_PICKUP")) throw new ConflictError("This platform-priced route has no supported customer dispatch plan.", "CUSTOMER_ROUTE_DISPATCH_UNAVAILABLE");
         await tx.bookingEvent.create({ data: { parcelBookingId: booking.id, actorUserId: userId, eventType: "CUSTOMER_SHIPMENT_QUOTE_ACCEPTED", fromStatus: "DRAFT", toStatus: "AWAITING_PARTNER_ASSIGNMENT", metadata: { quoteId: quote.id, quoteVersion: quote.version, pricingSource: source, totalCustomerChargeMinor: quote.totalCustomerChargeMinor.toString(), deliveryLegIds: plan.legs.map(leg => leg.id) } } });
         return { quote: customerQuoteView({ ...quote, status: "ACCEPTED", acceptedAt: now }), booking: { id: booking.id, publicReference: booking.publicReference, status: "AWAITING_PARTNER_ASSIGNMENT", paymentStatus: booking.paymentStatus, currency: quote.currency, customerPayableMinor: quote.totalCustomerChargeMinor.toString(), pricingSnapshot }, deliveryPlan: plan };
       });
