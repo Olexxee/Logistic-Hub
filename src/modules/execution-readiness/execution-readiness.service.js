@@ -208,6 +208,16 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
         if (!leg) return { found: false, deliveryLegId };
         const booking = leg.parcelBooking;
         const blockers = [];
+        if (leg.sequence > 1) {
+          const previousLeg = await db.findPreviousLeg(tx, leg);
+          if (!previousLeg || previousLeg.status !== "COMPLETED" || !previousLeg.completedAt) {
+            blockers.push(blocker(
+              "PREVIOUS_LEG_NOT_COMPLETED",
+              "A delivery leg cannot be released to an executor until the immediately preceding leg is completed and recorded.",
+              previousLeg?.id ?? null,
+            ));
+          }
+        }
 
         if (leg.metadata?.pricingSource !== "PLATFORM_OPERATIONAL_TARIFF"
           || leg.metadata?.requiresOperationalReview !== true) {
