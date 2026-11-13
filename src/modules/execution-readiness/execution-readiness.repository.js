@@ -111,16 +111,30 @@ export function createExecutionReadinessRepository({ prismaClient }) {
       });
     },
 
-    getHubLoad(tx, hubPointId) {
-      const where = { hubPointId, status: { in: ["RECEIVED", "EXCEPTION"] } };
-      return Promise.all([
-        tx.hubIntakeRecord.aggregate({
-          where,
-          _count: { _all: true },
-          _sum: { weightGrams: true, volumeCm3: true },
-        }),
-        tx.hubIntakeRecord.count({ where: { ...where, volumeCm3: null } }),
-      ]).then(([load, missingVolumeCount]) => ({ load, missingVolumeCount }));
+    async getHubLoad(tx, hubPointId) {
+      const records = await tx.hubIntakeRecord.findMany({
+        where: { hubPointId, status: { in: ["RECEIVED", "EXCEPTION"] } },
+        select: {
+          weightGrams: true,
+          volumeCm3: true,
+          parcelBooking: {
+            select: { _count: { select: { parcelPackages: true } } },
+          },
+        },
+      });
+      return {
+        load: {
+          _count: {
+            _all: records.reduce((sum, record) => sum
+              + Math.max(1, record.parcelBooking?._count?.parcelPackages ?? 0), 0),
+          },
+          _sum: {
+            weightGrams: records.reduce((sum, record) => sum + record.weightGrams, 0),
+            volumeCm3: records.reduce((sum, record) => sum + (record.volumeCm3 ?? 0), 0),
+          },
+        },
+        missingVolumeCount: records.filter(record => record.volumeCm3 == null).length,
+      };
     },
 
     findPartnerRates(tx, leg, packages, currency, now) {
