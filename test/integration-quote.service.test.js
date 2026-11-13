@@ -13,9 +13,9 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     agreement: { id: "partner_agreement_1", partner: { id: "partner_1", displayName: "Contracted carrier" } },
   };
   const rates = [
-    { id: "rate_box", rateCardId: "card_1", parcelCategory: "box", minWeightGrams: 1, maxWeightGrams: 1000,
+    { id: "rate_box", rateCardId: "card_1", parcelCategory: "box", minWeightGrams: 0, maxWeightGrams: 10000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 2500n, estimatedTransitMinutes: 180, rateCard },
-    { id: "rate_carton", rateCardId: "card_1", parcelCategory: "carton", minWeightGrams: 1001, maxWeightGrams: 3000,
+    { id: "rate_carton", rateCardId: "card_1", parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 4000n, estimatedTransitMinutes: 240, rateCard },
   ];
   const alternateRateCard = {
@@ -23,9 +23,9 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     agreement: { id: "partner_agreement_2", partner: { id: "partner_2", displayName: "Alternate carrier" } },
   };
   rates.push(
-    { id: "rate_box_alt", rateCardId: "card_2", parcelCategory: "box", minWeightGrams: 1, maxWeightGrams: 1000,
+    { id: "rate_box_alt", rateCardId: "card_2", parcelCategory: "box", minWeightGrams: 0, maxWeightGrams: 10000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 3000n, estimatedTransitMinutes: 150, rateCard: alternateRateCard },
-    { id: "rate_carton_alt", rateCardId: "card_2", parcelCategory: "carton", minWeightGrams: 1001, maxWeightGrams: 3000,
+    { id: "rate_carton_alt", rateCardId: "card_2", parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, transportChargeMinor: 4500n, estimatedTransitMinutes: 200, rateCard: alternateRateCard },
   );
   const tx = {
@@ -144,10 +144,10 @@ test("hub-assisted routes require fixed local pickup and final-mile pricing befo
 
 test("local direct routes use one active platform tariff per package and keep driver payout private", async () => {
   const platformRates = [
-    { id: "platform_rate_box", version: 2, parcelCategory: "box", minWeightGrams: 0, maxWeightGrams: 10000,
+    { id: "platform_rate_box", version: 2, parcelCategory: "box", minWeightGrams: 1, maxWeightGrams: 1000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, customerTransportChargeMinor: 2500n,
       platformChargeMinor: 300n, driverPayoutMinor: 1800n, estimatedTransitMinutes: 60 },
-    { id: "platform_rate_carton", version: 1, parcelCategory: "carton", minWeightGrams: 0, maxWeightGrams: 20000,
+    { id: "platform_rate_carton", version: 1, parcelCategory: "carton", minWeightGrams: 1001, maxWeightGrams: 3000,
       maxLengthMm: null, maxWidthMm: null, maxHeightMm: null, customerTransportChargeMinor: 4000n,
       platformChargeMinor: 400n, driverPayoutMinor: 2800n, estimatedTransitMinutes: 90 },
   ];
