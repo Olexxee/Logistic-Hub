@@ -479,7 +479,6 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
               throw new ConflictError("The integration billing agreement changed after quote issuance. Request a fresh quote.", "INTEGRATION_BILLING_AGREEMENT_CHANGED");
             }
             const packages = session.packages.map(pkg => ({
-              id: pkg.id,
               externalPackageRef: pkg.externalPackageRef,
               packageCategory: pkg.packageCategory,
               weightGrams: pkg.weightGrams,
