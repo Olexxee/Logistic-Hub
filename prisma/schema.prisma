@@ -850,6 +850,7 @@ model ServiceZone {
   platformRatesAsOrigin    PlatformRouteRate[] @relation("PlatformRateOrigin")
   platformRatesAsDestination PlatformRouteRate[] @relation("PlatformRateDestination")
   operationalTariffs PlatformOperationalTariff[] @relation("OperationalTariffServiceZone")
+  driverPayoutRules PlatformDriverPayoutRule[] @relation("PlatformDriverPayoutRuleServiceZone")
   operationalAvailabilities PlatformOperationalTariffAvailability[] @relation("OperationalAvailabilityServiceZone")
   partnerRateOrigins       PartnerRate[] @relation("PartnerRateOriginZone")
   partnerRateDestinations  PartnerRate[] @relation("PartnerRateDestinationZone")
@@ -1844,6 +1845,32 @@ model PlatformRouteRate {
   @@index([originServiceZoneId, destinationServiceZoneId, serviceType, parcelCategory, status], map: "platform_route_rates_route_package_status_idx")
   @@index([status, effectiveFrom, effectiveUntil], map: "platform_route_rates_effective_idx")
   @@map("platform_route_rates")
+}
+
+model PlatformDriverPayoutRule {
+  id              String                  @id @default(cuid())
+  serviceZoneId   String
+  legType         DeliveryLegType
+  parcelCategory  String
+  minWeightGrams  Int                     @default(0)
+  maxWeightGrams  Int?
+  currency        String                  @default("NGN")
+  driverPayoutMinor BigInt
+  version         Int                     @default(1)
+  status          PlatformRouteRateStatus @default(DRAFT)
+  effectiveFrom   DateTime                @default(now())
+  effectiveUntil  DateTime?
+  publishedAt     DateTime?
+  createdByUserId String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  serviceZone ServiceZone @relation("PlatformDriverPayoutRuleServiceZone", fields: [serviceZoneId], references: [id], onDelete: Restrict)
+
+  @@unique([serviceZoneId, legType, parcelCategory, currency, version], map: "platform_driver_payout_rules_scope_version_key")
+  @@index([serviceZoneId, legType, parcelCategory, currency, status], map: "platform_driver_payout_rules_scope_status_idx")
+  @@index([status, effectiveFrom, effectiveUntil], map: "platform_driver_payout_rules_status_effective_idx")
+  @@map("platform_driver_payout_rules")
 }
 
 model PlatformOperationalTariff {
