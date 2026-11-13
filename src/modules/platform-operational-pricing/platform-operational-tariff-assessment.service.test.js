@@ -45,7 +45,7 @@ function client({ missingAvailability = false, duplicatePickup = false } = {}) {
         && t.serviceZoneId === where.serviceZoneId
         && t.originHubPointId === where.originHubPointId
         && t.destinationHubPointId === where.destinationHubPointId
-        && t.parcelCategory.in.includes("GENERAL")
+        && where.parcelCategory.in.includes(t.parcelCategory)
         && t.currency === where.currency
         && t.status === "ACTIVE" && t.effectiveFrom <= now),
     },
