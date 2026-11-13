@@ -416,5 +416,24 @@ export function createCustomerShipmentQuotesService({ prismaClient, clock = () =
         };
       });
     },
+    async listQuotes({ bookingId, userId }) {
+      const booking = await prismaClient.parcelBooking.findUnique({ where: { id: bookingId }, select: { id: true, senderId: true } });
+      if (!booking) return { notFound: true };
+      if (booking.senderId !== userId) return { forbidden: true };
+      const quotes = await prismaClient.shipmentQuote.findMany({ where: { parcelBookingId: bookingId }, orderBy: { version: "desc" } });
+      return quotes.map(customerQuoteView);
+    },
+    async rejectQuote({ bookingId, quoteId, userId }) {
+      const now = clock();
+      return serializable(prismaClient, async tx => {
+        const quote = await tx.shipmentQuote.findFirst({ where: { id: quoteId, parcelBookingId: bookingId }, include: { parcelBooking: { select: { senderId: true } } } });
+        if (!quote) return { notFound: true };
+        if (quote.parcelBooking.senderId !== userId) return { forbidden: true };
+        if (quote.status !== "OFFERED") return conflict("QUOTE_NOT_REJECTABLE", "Only an offered quote can be rejected.");
+        const result = await tx.shipmentQuote.updateMany({ where: { id: quoteId, status: "OFFERED", expiresAt: { gt: now } }, data: { status: "REJECTED" } });
+        if (result.count !== 1) return conflict("QUOTE_NOT_ACTIVE", "The quote has expired or changed.");
+        return { id: quoteId, status: "REJECTED" };
+      });
+    },
   };
 }
