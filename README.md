@@ -2,7 +2,7 @@
 
 ## Geography and serviceability
 
-- [Hub-assisted operational tariffs design](docs/hub-assisted-operational-tariffs-design.md) — HAT-01 through HAT-06 are merged. HAT-04 ordinary customer quote integration was merged into a stacked feature branch rather than `main`; `fix/customer-hub-assisted-quotes-mainline` carries the reviewed implementation and regression tests onto current `main`. HAT-05 integration quoting and HAT-06 Admin UI are merged. HAT-07 regression and operational acceptance are in progress. Additional handling remains fail-closed pending package-level attribution; ordinary intake/custody remains non-billable.
+- [Hub-assisted operational tariffs design](docs/hub-assisted-operational-tariffs-design.md) — HAT-01 through HAT-06 are merged. HAT-04 ordinary customer quote lifecycle is now on backend `main` (PR #170 fixed the earlier stacked-branch merge gap); HAT-05 integration quoting and HAT-06 Admin UI are merged. HAT-07 is adding regression coverage for stale routes, tariff/availability/agreement changes, expiry and idempotent acceptance. Additional handling remains fail-closed pending package-level attribution; ordinary intake/custody remains non-billable.
 
 - [Platform-operated route pricing](docs/platform-operated-route-pricing.md) — explicit corridor approval, versioned customer tariffs and independent driver payouts.
 - [Platform route pricing weight-band policy](docs/platform-route-weight-bands.md) — seven enforced parcel bands from 0.001 kg to 30 kg; heavier freight requires manual assessment. The ADMIN API also lists configured directed route availability.
