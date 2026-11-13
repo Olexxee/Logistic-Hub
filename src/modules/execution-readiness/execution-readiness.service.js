@@ -64,7 +64,11 @@ function routeLegMatchesSnapshot(leg, quote) {
     && snapshot.originServiceZoneId === leg.originServiceZoneId
     && snapshot.destinationServiceZoneId === leg.destinationServiceZoneId
     && (snapshot.originHubPointId ?? null) === (leg.originHubPointId ?? null)
-    && (snapshot.destinationHubPointId ?? null) === (leg.destinationHubPointId ?? null));
+    && (snapshot.destinationHubPointId ?? null) === (leg.destinationHubPointId ?? null)
+    && Number(snapshot.origin?.latitude) === Number(leg.originLatitude)
+    && Number(snapshot.origin?.longitude) === Number(leg.originLongitude)
+    && Number(snapshot.destination?.latitude) === Number(leg.destinationLatitude)
+    && Number(snapshot.destination?.longitude) === Number(leg.destinationLongitude));
 }
 
 function matchPartnerCandidates(rates, packages, currency) {
