@@ -111,7 +111,7 @@ function driver(overrides = {}) {
   };
 }
 
-function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = [], hubs = {} } = {}) {
+function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = [], hubs = {}, previousLeg = null } = {}) {
   const tx = {
     platformDriverPayoutRule: { findMany: async () => rules ?? [{
       id: "payout-rule-1",
@@ -130,6 +130,7 @@ function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = []
   };
   const repository = {
     findLeg: async () => leg,
+    findPreviousLeg: async () => previousLeg,
     findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
     findActiveHub: async (_tx, id) => hubs[id] ?? hub(id, id === "hub-2" ? "zone-2" : "zone-1"),
     getHubLoad: async () => ({
@@ -403,4 +404,15 @@ test("executor selection persists a versioned immutable driver payout snapshot a
   assert.equal(result.snapshot.version, 1);
   assert.equal(created.length, 1);
   assert.equal(created[0].assessmentSnapshot.dispatchAuthorized, false);
+});
+
+
+test("blocks a later HAT leg until the immediately preceding leg is completed", async () => {
+  const leg = baseLeg({ sequence: 2 });
+  const result = await setup({
+    leg,
+    previousLeg: { id: "leg-1", sequence: 1, type: "LOCAL_PICKUP", status: "ASSIGNED", completedAt: null },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+  assert.equal(result.readiness, "BLOCKED");
+  assert.ok(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
 });
