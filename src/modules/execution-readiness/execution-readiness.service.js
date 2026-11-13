@@ -196,9 +196,9 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
   const db = repository ?? createExecutionReadinessRepository({ prismaClient });
 
   return {
-    async assessLeg({ deliveryLegId }) {
+    async assessLeg({ deliveryLegId, tx: transactionClient = null }) {
       const now = clock();
-      return serializableTransaction(prismaClient, async tx => {
+      const assess = async tx => {
         const leg = await db.findLeg(tx, deliveryLegId);
         if (!leg) return { found: false, deliveryLegId };
         const booking = leg.parcelBooking;
@@ -329,7 +329,8 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           currency,
           assessedAt: now.toISOString(),
         };
-      });
+      };
+      return transactionClient ? assess(transactionClient) : serializableTransaction(prismaClient, assess);
     },
 
     async assessBooking({ bookingId }) {
