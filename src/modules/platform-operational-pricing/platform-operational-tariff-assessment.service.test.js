@@ -103,6 +103,36 @@ test("does not charge handling when package attribution is missing", async () =>
   assert.equal(result.handling.status, "PACKAGE_ATTRIBUTION_REQUIRED");
 });
 
+test("requires manual assessment above the canonical 30 kg ceiling", async () => {
+  const result = await assessPlatformOperationalTariffs({
+    tx: client(), route, packages: [{ ...packages[0], weightGrams: 30001 }], currency: "NGN", now,
+  });
+  assert.equal(result.status, "REQUIRES_MANUAL_ASSESSMENT");
+});
+
+test("does not charge a completed handling operation without package attribution", async () => {
+  const result = await assessPlatformOperationalTariffs({
+    tx: client(), route, packages, currency: "NGN", now,
+    handlingOperations: [{
+      id: "operation-1", status: "COMPLETED",
+      authorizedByUserId: "ops-1", authorizedAt: now,
+      customerAuthorizedByUserId: "customer-1", customerAuthorizedAt: now,
+      completedByUserId: "hub-1", completedAt: now,
+    }],
+  });
+  assert.equal(result.status, "REQUIRES_OPERATIONAL_REVIEW");
+  assert.equal(result.handling.status, "PACKAGE_ATTRIBUTION_REQUIRED");
+});
+
+test("does not charge cancelled handling operations", async () => {
+  const result = await assessPlatformOperationalTariffs({
+    tx: client(), route, packages, currency: "NGN", now,
+    handlingOperations: [{ id: "cancelled-op", status: "CANCELLED" }],
+  });
+  assert.equal(result.status, "QUOTED");
+  assert.equal(result.handling.status, "NO_CHARGEABLE_OPERATIONS");
+});
+
 test("rejects non-hub-assisted routes and invalid route topology", async () => {
   await assert.rejects(
     assessPlatformOperationalTariffs({ tx: client(), route: { ...route, routeMode: "END_TO_END" }, packages, currency: "NGN", now }),
