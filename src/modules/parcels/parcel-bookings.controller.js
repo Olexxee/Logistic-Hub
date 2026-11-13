@@ -3,7 +3,7 @@ import { NotFoundError } from "../../shared/http/app-error.js";
 export function createParcelBookingsController({ service, notifications, quoteService }) {
   return {
     createQuote: async (req, res) => {
-      const result = await quoteService.createQuote({ bookingId: req.validated.params.bookingId, userId: req.user.id });
+      const result = await quoteService.createQuote({ bookingId: req.validated.params.bookingId, userId: req.user.id, expiresInMinutes: req.validated.body.expiresInMinutes });
       if (result.notFound || result.forbidden) throw new NotFoundError("The parcel booking was not found.");
       if (result.conflict) return res.status(409).json({ success: false, error: result.conflict });
       return res.status(201).json({ success: true, data: result });
