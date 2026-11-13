@@ -1,31 +1,56 @@
+import { isCanonicalPlatformRouteWeightBand } from "./platform-route-weight-bands.js";
+
+const isPositiveInteger = value => Number.isInteger(value) && value > 0;
+
 export function rateFitsPackage(rate, pkg) {
-  if (pkg.weightGrams == null || pkg.weightGrams < rate.minWeightGrams) return false;
+  if (!isPositiveInteger(pkg.weightGrams) || pkg.weightGrams < rate.minWeightGrams) return false;
   if (rate.maxWeightGrams != null && pkg.weightGrams > rate.maxWeightGrams) return false;
   for (const [dimension, limit] of [["lengthMm", rate.maxLengthMm], ["widthMm", rate.maxWidthMm], ["heightMm", rate.maxHeightMm]]) {
-    if (limit != null && (pkg[dimension] == null || pkg[dimension] > limit)) return false;
+    if (limit != null && (!isPositiveInteger(pkg[dimension]) || pkg[dimension] > limit)) return false;
   }
   return true;
 }
 
+function validateAssessmentInput({ tx, originServiceZoneId, destinationServiceZoneId, packages, currency, now }) {
+  if (!tx?.platformRouteAvailability?.findFirst || !tx?.platformRouteRate?.findMany) {
+    throw new TypeError("A transaction client with route availability and tariff queries is required.");
+  }
+  if (typeof originServiceZoneId !== "string" || !originServiceZoneId.trim()
+    || typeof destinationServiceZoneId !== "string" || !destinationServiceZoneId.trim()
+    || originServiceZoneId === destinationServiceZoneId) {
+    throw new TypeError("Two distinct, server-resolved service-zone identifiers are required.");
+  }
+  if (!Array.isArray(packages) || packages.length === 0 || packages.some(pkg => !pkg || typeof pkg !== "object" || Array.isArray(pkg))) {
+    throw new TypeError("At least one valid package is required for tariff assessment.");
+  }
+  if (packages.some(pkg => typeof pkg.packageCategory !== "string" || !pkg.packageCategory.trim())) {
+    throw new TypeError("Every package must have a resolved package category.");
+  }
+  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) {
+    throw new TypeError("Currency must be a three-letter uppercase code.");
+  }
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    throw new TypeError("A valid assessment timestamp is required.");
+  }
+}
+
 /**
  * Shared platform-operated directed-corridor tariff assessment.
- * Both ordinary customer bookings and integration clients must call this
- * function with server-resolved zones and package facts.
+ * Booking and integration flows must call this function with server-resolved
+ * zones, normalized package categories and measured/declared package facts.
  */
 export async function assessPlatformRouteTariffs({
   tx, originServiceZoneId, destinationServiceZoneId, packages, currency, now, routeSnapshot, expiresAt,
 }) {
-  if (!tx) throw new Error("A transaction client is required.");
-  if (!Array.isArray(packages) || packages.length === 0) {
-    throw new TypeError("At least one package is required for tariff assessment.");
-  }
-  if (packages.some(pkg => !Number.isInteger(pkg.weightGrams) || pkg.weightGrams <= 0)) {
+  validateAssessmentInput({ tx, originServiceZoneId, destinationServiceZoneId, packages, currency, now });
+
+  if (packages.some(pkg => !isPositiveInteger(pkg.weightGrams))) {
     return {
       status: "REQUIRES_MEASUREMENT",
       options: [],
       assessment: {
         status: "REQUIRES_MEASUREMENT",
-        reason: "Weight is required for a defensible platform tariff match. No estimated weight is generated.",
+        reason: "A positive package weight in whole grams is required for a defensible platform tariff match. No estimated weight is generated.",
         packageCount: packages.length,
         routeSnapshot,
         assessedAt: now.toISOString(),
@@ -65,7 +90,7 @@ export async function assessPlatformRouteTariffs({
       originServiceZoneId,
       destinationServiceZoneId,
       serviceType: "PARCEL_DELIVERY",
-      parcelCategory: { in: [...new Set(packages.map(pkg => pkg.packageCategory))] },
+      parcelCategory: { in: [...new Set(packages.map(pkg => pkg.packageCategory.trim()))] },
       currency,
       status: "ACTIVE",
       effectiveFrom: { lte: now },
@@ -77,7 +102,11 @@ export async function assessPlatformRouteTariffs({
   const packageMatches = [];
   for (let index = 0; index < packages.length; index += 1) {
     const pkg = packages[index];
-    const matches = rates.filter(rate => rate.parcelCategory === pkg.packageCategory && rateFitsPackage(rate, pkg));
+    const matches = rates.filter(rate =>
+      rate.parcelCategory === pkg.packageCategory.trim()
+      && isCanonicalPlatformRouteWeightBand(rate.minWeightGrams, rate.maxWeightGrams)
+      && rateFitsPackage(rate, pkg)
+    );
     if (matches.length !== 1) {
       const status = matches.length > 1 ? "PRICING_AMBIGUOUS" : "NO_COVERAGE";
       return {
@@ -125,6 +154,11 @@ export async function assessPlatformRouteTariffs({
       rateSnapshot: packageMatches.map(({ pkg, rate, index }) => ({
         packageRef: pkg.externalPackageRef ?? `package-${index + 1}`,
         externalPackageRef: pkg.externalPackageRef ?? null,
+        packageCategory: pkg.packageCategory.trim(),
+        weightGrams: pkg.weightGrams,
+        lengthMm: pkg.lengthMm ?? null,
+        widthMm: pkg.widthMm ?? null,
+        heightMm: pkg.heightMm ?? null,
         rateId: rate.id,
         rateVersion: rate.version,
         customerTransportChargeMinor: rate.customerTransportChargeMinor.toString(),
