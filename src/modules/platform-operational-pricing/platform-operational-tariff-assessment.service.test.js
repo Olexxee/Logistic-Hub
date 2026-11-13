@@ -15,12 +15,12 @@ const packages = [{ id: "pkg-1", packageCategory: "GENERAL", weightGrams: 1500, 
 
 function tariff(scope, legType, locator, id, charge) {
   return {
-    id, version: 1, scope, legType, operationType: null,
+    id, version: 1, scope, legType, operationType: null, status: "ACTIVE",
     serviceZoneId: locator.serviceZoneId ?? null,
     originHubPointId: locator.originHubPointId ?? null,
     destinationHubPointId: locator.destinationHubPointId ?? null,
     hubPointId: null, parcelCategory: "GENERAL",
-    minWeightGrams: 1001, maxWeightGrams: 5000,
+    minWeightGrams: 1001, maxWeightGrams: 3000,
     maxLengthMm: null, maxWidthMm: null, maxHeightMm: null,
     currency: "NGN", customerChargeMinor: BigInt(charge),
     platformChargeMinor: 100n, effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
