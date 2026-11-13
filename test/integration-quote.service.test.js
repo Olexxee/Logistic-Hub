@@ -65,7 +65,7 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     partnerRate: { findMany: async () => rates },
     integrationQuoteSession: {
       create: async ({ data }) => {
-        const session = { id: `quote_${state.sessions.length + 1}`, createdAt: new Date(), updatedAt: new Date(), ...data };
+        const session = { id: `quote_${state.sessions.length + 1}`, createdAt: new Date(), updatedAt: new Date(), billingAgreement: agreement, ...data };
         session.packages = data.packages.create.map((p, i) => ({ id: `pkg_${i + 1}`, createdAt: new Date(), ...p }));
         state.sessions.push(session);
         state.packages.push(...session.packages);
