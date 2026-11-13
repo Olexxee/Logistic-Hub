@@ -123,3 +123,14 @@ ER-03 introduces a read-only resolver at `src/modules/execution-readiness`. It a
 The resolver returns `READY` or `BLOCKED` with explicit blocker codes and an execution-mode assessment. It verifies that the delivery leg still matches the accepted quote's immutable route snapshot, and requires successful payment plus integration dispatch release where applicable.
 
 The resolver is read-only: it does not mutate leg status, create offers, assign a driver or partner, create a payable, or initiate a settlement. Its response always sets `dispatchAuthorized: false`. ER-04 must persist an immutable selected-executor snapshot and independently revalidate all conditions inside the assignment transaction before any leg can advance to dispatch.
+
+
+## ER-04 implementation — immutable executor selection
+
+This implementation slice adds `DeliveryLegExecutionSnapshot`, a versioned per-leg record containing the selected executor, exact internal execution cost, currency, cost-source/version, the full readiness assessment, accepted route snapshot and package facts. The database rejects UPDATE and DELETE operations against these records; a new selection creates a new version rather than rewriting history.
+
+The ADMIN-only `POST /api/v1/admin/delivery-legs/:legId/execution-snapshot` endpoint requires an idempotency key. It re-runs ER-03 assessment inside a serializable transaction, then validates the exact selected driver/vehicle or partner/rate-card candidate. Only a fully resolved selection creates the immutable snapshot and conditionally advances the leg to `READY_FOR_ASSIGNMENT`. Existing active offers or assignments prevent snapshot replacement.
+
+Local HAT driver matching is restricted to the selected driver and uses the snapshot's fixed payout; driver fare proposals are not allowed. Fixed-payout acceptance rechecks the immutable snapshot and reruns readiness assessment inside the acceptance transaction. HAT partner assignment similarly requires the selected partner, agreement, rate-card version and total execution cost to still match a fresh assessment. Neither path uses customer tariff amounts as internal cost.
+
+This slice does not activate payments, driver payouts or partner settlement. The snapshot is an execution authorization record only for the selected leg; it does not release later legs in a multi-leg shipment.
