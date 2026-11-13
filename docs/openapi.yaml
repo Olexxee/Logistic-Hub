@@ -4662,6 +4662,51 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/delivery-legs/{legId}/execution-snapshot:
+    post:
+      tags: [Delivery legs, Admin]
+      operationId: selectDeliveryLegExecutor
+      summary: Select and pin a HAT delivery-leg executor and internal execution cost
+      description: Reassesses route, package facts, executor eligibility and internal cost in one serializable transaction. Customer tariff amounts are never used as execution costs. The resulting snapshot is immutable.
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: legId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [executorType, driverProfileId, vehicleId]
+                  properties:
+                    executorType: { const: PLATFORM_DRIVER }
+                    driverProfileId: { type: string }
+                    vehicleId: { type: string }
+                - type: object
+                  additionalProperties: false
+                  required: [executorType, partnerId]
+                  properties:
+                    executorType: { const: TRANSPORT_PARTNER }
+                    partnerId: { type: string }
+      responses:
+        '201': { description: Immutable execution snapshot created and leg made ready for assignment. }
+        '200': { description: Idempotent replay of the original executor snapshot. }
+        '400': { description: Invalid request or missing idempotency key. }
+        '401': { description: Authentication required. }
+        '403': { description: Administrator access required. }
+        '404': { description: Delivery leg not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/delivery-legs/{legId}/partner-assignment:
     post:
       tags: [Partner execution, Admin]
