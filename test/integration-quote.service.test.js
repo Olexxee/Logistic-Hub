@@ -138,6 +138,8 @@ test("quote session prices every package against one contracted rate card", asyn
   assert.equal(result.body.options[0].route.legs.length, 1);
   assert.equal(result.body.options[0].route.legs[0].type, "INTERSTATE_TRANSPORT");
   assert.equal(state.packages.length, 2);
+  assert.deepEqual(state.packages.map(pkg => pkg.packageSequence), [1, 2]);
+  assert.deepEqual(result.body.packages.map(pkg => pkg.packageSequence), [1, 2]);
   assert.equal(state.options[0].packageRateSnapshot.length, 2);
 });
 

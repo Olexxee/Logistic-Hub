@@ -145,6 +145,8 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
         type: leg.type,
         originServiceZoneId: leg.originServiceZoneId,
         destinationServiceZoneId: leg.destinationServiceZoneId,
+        originHubPointId: leg.originHubPointId ?? null,
+        destinationHubPointId: leg.destinationHubPointId ?? null,
         origin: { latitude: Number(leg.originLatitude), longitude: Number(leg.originLongitude) },
         destination: { latitude: Number(leg.destinationLatitude), longitude: Number(leg.destinationLongitude) },
       })),
@@ -344,8 +346,8 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
               destinationAddress: input.destinationAddress, destinationLatitude: input.destination.latitude, destinationLongitude: input.destination.longitude,
               recipientName: input.recipientName, recipientPhone: input.recipientPhone,
               expiresAt, assessmentSnapshot: assessment.assessment,
-              packages: { create: input.packages.map((pkg, packageSequence) => ({
-                packageSequence,
+              packages: { create: input.packages.map((pkg, index) => ({
+                packageSequence: index + 1,
                 externalPackageRef: pkg.externalPackageRef, packageCategory: pkg.packageCategory,
                 description: pkg.description, weightGrams: pkg.weightGrams,
                 lengthMm: pkg.lengthMm, widthMm: pkg.widthMm, heightMm: pkg.heightMm,
@@ -384,8 +386,8 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
               billingAgreementReference: agreement.reference, billingAgreementVersion: agreement.version, billingModel: agreement.billingModel,
               currency: agreement.currency, expiresAt: session.expiresAt, assessment: assessment.assessment,
             },
-            packages: input.packages.map((pkg, packageSequence) => ({
-              packageSequence,
+            packages: input.packages.map((pkg, index) => ({
+              packageSequence: index + 1,
               externalPackageRef: pkg.externalPackageRef ?? null, packageCategory: pkg.packageCategory,
               weightGrams: pkg.weightGrams ?? null, lengthMm: pkg.lengthMm ?? null,
               widthMm: pkg.widthMm ?? null, heightMm: pkg.heightMm ?? null,

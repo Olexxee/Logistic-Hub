@@ -126,3 +126,32 @@ export function eligibleParcelDriverWhere({ capability, now, strictMode = false,
     },
   };
 }
+
+
+export function distanceBetweenCoordinatesMeters(latitudeA, longitudeA, latitudeB, longitudeB) {
+  const radians = degrees => degrees * Math.PI / 180;
+  const latitudeDelta = radians(latitudeB - latitudeA);
+  const longitudeDelta = radians(longitudeB - longitudeA);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(latitudeA)) * Math.cos(radians(latitudeB))
+    * Math.sin(longitudeDelta / 2) ** 2;
+  return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function isDriverWithinPickupRadius(driver, pickup, now = new Date(), maxLocationAgeMs = 5 * 60_000) {
+  const latestLocation = driver?.locations?.[0];
+  if (!latestLocation || !driver.lastLocationAt || !Number.isFinite(driver.serviceRadiusMeters)
+    || driver.serviceRadiusMeters <= 0) return false;
+  const nowMs = now.getTime();
+  const cutoff = nowMs - maxLocationAgeMs;
+  const profileLocationAt = new Date(driver.lastLocationAt).getTime();
+  const recordedAt = new Date(latestLocation.recordedAt).getTime();
+  if (!Number.isFinite(profileLocationAt) || !Number.isFinite(recordedAt)
+    || profileLocationAt < cutoff || profileLocationAt > nowMs
+    || recordedAt < cutoff || recordedAt > nowMs) return false;
+  const distance = distanceBetweenCoordinatesMeters(
+    Number(latestLocation.latitude), Number(latestLocation.longitude),
+    Number(pickup.latitude), Number(pickup.longitude),
+  );
+  return Number.isFinite(distance) && distance <= driver.serviceRadiusMeters;
+}

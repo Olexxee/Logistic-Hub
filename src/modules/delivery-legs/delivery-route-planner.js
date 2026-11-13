@@ -29,7 +29,103 @@ function nearestHub(hubs, zoneId, packages, latitude, longitude) {
       - distanceMeters(latitude, longitude, Number(b.latitude), Number(b.longitude)))[0] ?? null;
 }
 
-export async function resolveDeliveryRoute({ tx, booking, routeModeOverride }) {
+function invalidPinnedRoute() {
+  const error = new Error("The accepted hub-assisted route no longer matches an active, eligible pair of hubs.");
+  error.statusCode = 409;
+  error.code = "DELIVERY_ROUTE_SNAPSHOT_INVALID";
+  return error;
+}
+
+async function resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones, origin, destination, now }) {
+  const legs = routeSnapshot?.legs;
+  if (!Array.isArray(legs) || legs.length !== 3) throw invalidPinnedRoute();
+  const [pickup, transfer, finalMile] = legs;
+  const originHubPointId = pickup.destinationHubPointId;
+  const destinationHubPointId = finalMile.originHubPointId;
+  const coordinates = legs.flatMap(leg => [
+    leg.origin?.latitude, leg.origin?.longitude,
+    leg.destination?.latitude, leg.destination?.longitude,
+  ]);
+  const validCoordinates = coordinates.every(Number.isFinite);
+  const validTopology = routeSnapshot.routeMode === "HUB_ASSISTED"
+    && validCoordinates
+    && pickup.sequence === 1 && pickup.type === "LOCAL_PICKUP"
+    && transfer.sequence === 2 && transfer.type === "INTERSTATE_TRANSPORT"
+    && finalMile.sequence === 3 && finalMile.type === "FINAL_MILE"
+    && pickup.originServiceZoneId === booking.pickupServiceZoneId
+    && pickup.destinationServiceZoneId === booking.pickupServiceZoneId
+    && transfer.originServiceZoneId === booking.pickupServiceZoneId
+    && transfer.destinationServiceZoneId === booking.destinationServiceZoneId
+    && finalMile.originServiceZoneId === booking.destinationServiceZoneId
+    && finalMile.destinationServiceZoneId === booking.destinationServiceZoneId
+    && typeof originHubPointId === "string" && originHubPointId.length > 0
+    && typeof destinationHubPointId === "string" && destinationHubPointId.length > 0
+    && originHubPointId !== destinationHubPointId
+    && pickup.originHubPointId == null
+    && transfer.originHubPointId === originHubPointId
+    && transfer.destinationHubPointId === destinationHubPointId
+    && finalMile.destinationHubPointId == null;
+  if (!validTopology) throw invalidPinnedRoute();
+
+  const hubIds = [originHubPointId, destinationHubPointId];
+  const hubs = await tx.hubPoint.findMany({
+    where: {
+      id: { in: hubIds },
+      status: "ACTIVE",
+      operatorVerificationStatus: "VERIFIED",
+      serviceZone: {
+        isActive: true,
+        state: { isActive: true, country: { isActive: true } },
+        availability: {
+          some: {
+            serviceType: "PARCEL_DELIVERY",
+            isEnabled: true,
+            AND: [
+              { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+              { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+            ],
+          },
+        },
+      },
+    },
+    select: {
+      id: true, name: true, serviceZoneId: true,
+      acceptedParcelTypes: true, capacityConfig: true,
+    },
+  });
+  if (hubs.length !== 2) throw invalidPinnedRoute();
+  const originHub = hubs.find(hub => hub.id === originHubPointId);
+  const destinationHub = hubs.find(hub => hub.id === destinationHubPointId);
+  const packages = packageFacts(booking);
+  if (!originHub || !destinationHub
+    || originHub.serviceZoneId !== booking.pickupServiceZoneId
+    || destinationHub.serviceZoneId !== booking.destinationServiceZoneId
+    || ![originHub, destinationHub].every(hub => eligibleHub(hub, packages))) {
+    throw invalidPinnedRoute();
+  }
+
+  return {
+    routeMode: "HUB_ASSISTED",
+    originHub: { id: originHub.id, name: originHub.name },
+    destinationHub: { id: destinationHub.id, name: destinationHub.name },
+    zones, origin, destination,
+    legs: legs.map(leg => ({
+      sequence: leg.sequence,
+      type: leg.type,
+      status: "PLANNED",
+      originServiceZoneId: leg.originServiceZoneId,
+      destinationServiceZoneId: leg.destinationServiceZoneId,
+      originHubPointId: leg.originHubPointId ?? null,
+      destinationHubPointId: leg.destinationHubPointId ?? null,
+      originLatitude: leg.origin?.latitude,
+      originLongitude: leg.origin?.longitude,
+      destinationLatitude: leg.destination?.latitude,
+      destinationLongitude: leg.destination?.longitude,
+    })),
+  };
+}
+
+export async function resolveDeliveryRoute({ tx, booking, routeModeOverride, routeSnapshot, now = new Date() }) {
   if (!tx || !booking) throw new Error("A transaction and booking are required.");
 
   const zoneIds = [...new Set([booking.pickupServiceZoneId, booking.destinationServiceZoneId])];
@@ -61,6 +157,10 @@ export async function resolveDeliveryRoute({ tx, booking, routeModeOverride }) {
     latitude: Number(booking.destinationLatitude),
     longitude: Number(booking.destinationLongitude),
   };
+
+  if (routeModeOverride === "HUB_ASSISTED") {
+    return resolvePinnedHubAssistedRoute({ tx, booking, routeSnapshot, zones, origin, destination, now });
+  }
 
   if (sameState || routeModeOverride === "LOCAL_DIRECT") {
     return {

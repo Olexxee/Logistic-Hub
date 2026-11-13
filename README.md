@@ -571,3 +571,8 @@ Evidence uploads use raw bytes with `Content-Type: application/octet-stream` and
 ## Hub-assisted execution readiness — driver payout administration
 
 The Admin API now manages independent local-driver payout rules under `/api/v1/admin/platform-operational-pricing/driver-payout-rules`. Rules are versioned, audited, and published only when no active rule overlaps the same service-zone/leg/category/currency scope across both inclusive weight ranges and effective windows. These are internal execution costs, separate from customer tariffs. Publishing a rule does not make a delivery leg dispatchable; executor eligibility and transactional readiness remain separate gates. See `docs/hub-assisted-execution-readiness-er02.md`.
+
+
+### ER-03 — shared execution-readiness resolver
+
+The HAT per-leg resolver is implemented in `src/modules/execution-readiness`. It validates the accepted route snapshot and payment/release state, checks hub status and receiving capacity, resolves local driver eligibility plus an independent driver payout rule, and resolves complete directed partner rate-card coverage for partner legs. It is read-only and always returns `dispatchAuthorized: false`; ER-04 owns immutable execution snapshots and transactional dispatch gates. See `docs/hub-assisted-execution-readiness-design.md`.
