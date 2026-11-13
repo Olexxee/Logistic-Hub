@@ -2,6 +2,7 @@ import { env } from "../../config/env.js";
 import {
   activeServiceZoneWhere,
   eligibleParcelDriverWhere,
+  eligibleVehicleWhere,
   parcelCapabilityForLegType,
 } from "../drivers/driver-dispatch-eligibility.js";
 
