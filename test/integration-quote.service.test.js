@@ -8,6 +8,7 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     id: "billing_1", reference: "marketplace-default", version: 1, status: "ACTIVE",
     currency: "NGN", billingModel, effectiveFrom: new Date("2026-01-01T00:00:00Z"), effectiveUntil: null,
   };
+  const availability = { enabled: operationalAvailability };
   const rateCard = {
     id: "card_1", version: 3, agreementId: "partner_agreement_1", status: "ACTIVE", currency: "NGN",
     agreement: { id: "partner_agreement_1", partner: { id: "partner_1", displayName: "Contracted carrier" } },
@@ -44,7 +45,7 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     platformRouteAvailability: { findFirst: async () => platformAvailability },
     platformRouteRate: { findMany: async () => platformRates },
     platformOperationalTariffAvailability: {
-      findFirst: async ({ where }) => operationalAvailability ? {
+      findFirst: async ({ where }) => availability.enabled ? {
         scope: where.scope, legType: where.legType, serviceZoneId: where.serviceZoneId,
         originHubPointId: where.originHubPointId, destinationHubPointId: where.destinationHubPointId,
         isEnabled: true, startsAt: null, endsAt: null,
@@ -104,7 +105,7 @@ function mockPrisma({ billingModel = "PLATFORM_COLLECTED", hubs = [], sameState 
     integrationExternalReference: { create: async ({ data }) => { state.externalRefs.push(data); return data; } },
   };
   const prismaClient = { ...tx, $transaction: work => work(tx) };
-  return { prismaClient, state };
+  return { prismaClient, state, agreement, hubs, operationalTariffs, availability };
 }
 
 const client = { id: "client_1", code: "market_iq", scopes: ["quotes:write", "quotes:read"] };
@@ -343,4 +344,113 @@ test("hub-assisted integration quote rejects acceptance after tariff amount chan
     error => error.code === "OPERATIONAL_TARIFF_CHANGED",
   );
   assert.equal(state.sessions[0].status, "QUOTED");
+});
+
+
+test("hub-assisted integration quote rejects acceptance when the resolved hub route changes", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state, hubs } = mockPrisma({
+    hubs: hubAssistedHubs.map(hub => ({ ...hub })), operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const quote = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-route-change",
+    input: { ...baseInput, externalReference: "order-hub-route-change" },
+  });
+  hubs[0].latitude += 0.01;
+  await assert.rejects(
+    service.acceptOption({
+      client, quoteSessionId: quote.body.quoteSession.id, optionId: state.options[0].id,
+      idempotencyKey: "quote-hub-assisted-route-change-accept",
+    }),
+    error => error.code === "OPERATIONAL_ROUTE_CHANGED",
+  );
+  assert.equal(state.sessions[0].status, "QUOTED");
+});
+
+test("hub-assisted integration quote rejects acceptance when exact-scope availability is withdrawn", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state, availability } = mockPrisma({
+    hubs: hubAssistedHubs, operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const quote = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-availability-change",
+    input: { ...baseInput, externalReference: "order-hub-availability-change" },
+  });
+  availability.enabled = false;
+  await assert.rejects(
+    service.acceptOption({
+      client, quoteSessionId: quote.body.quoteSession.id, optionId: state.options[0].id,
+      idempotencyKey: "quote-hub-assisted-availability-change-accept",
+    }),
+    error => error.code === "OPERATIONAL_TARIFF_CHANGED",
+  );
+  assert.equal(state.sessions[0].status, "QUOTED");
+});
+
+test("hub-assisted integration quote rejects acceptance when billing agreement version changes", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state, agreement } = mockPrisma({
+    hubs: hubAssistedHubs, operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const quote = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-agreement-change",
+    input: { ...baseInput, externalReference: "order-hub-agreement-change" },
+  });
+  agreement.version += 1;
+  await assert.rejects(
+    service.acceptOption({
+      client, quoteSessionId: quote.body.quoteSession.id, optionId: state.options[0].id,
+      idempotencyKey: "quote-hub-assisted-agreement-change-accept",
+    }),
+    error => error.code === "INTEGRATION_BILLING_AGREEMENT_CHANGED",
+  );
+  assert.equal(state.sessions[0].status, "QUOTED");
+});
+
+test("hub-assisted integration quote cannot be selected after expiry", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state } = mockPrisma({
+    hubs: hubAssistedHubs, operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const quote = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-expired",
+    input: { ...baseInput, externalReference: "order-hub-expired", expiresInMinutes: 0 },
+  });
+  await assert.rejects(
+    service.acceptOption({
+      client, quoteSessionId: quote.body.quoteSession.id, optionId: state.options[0].id,
+      idempotencyKey: "quote-hub-assisted-expired-accept",
+    }),
+    error => error.code === "INTEGRATION_QUOTE_NOT_SELECTABLE",
+  );
+  assert.notEqual(state.sessions[0].status, "SELECTED");
+});
+
+test("hub-assisted integration acceptance replay does not select or write twice", async () => {
+  const operationalTariffs = hubOperationalTariffs();
+  const { prismaClient, state } = mockPrisma({
+    hubs: hubAssistedHubs, operationalAvailability: true, operationalTariffs,
+  });
+  const service = createIntegrationQuoteService({ prismaClient });
+  const quote = await service.createQuote({
+    client, idempotencyKey: "quote-hub-assisted-replay",
+    input: { ...baseInput, externalReference: "order-hub-replay" },
+  });
+  const args = {
+    client, quoteSessionId: quote.body.quoteSession.id, optionId: state.options[0].id,
+    idempotencyKey: "quote-hub-assisted-replay-accept",
+  };
+  const first = await service.acceptOption(args);
+  const second = await service.acceptOption(args);
+  assert.equal(first.body.status, "SELECTED");
+  assert.equal(first.replay, false);
+  assert.equal(second.body.status, "SELECTED");
+  assert.equal(second.replay, true);
+  assert.equal(state.sessions[0].status, "SELECTED");
+  assert.equal(state.options.filter(option => option.status === "SELECTED").length, 1);
+  assert.equal(state.idempotency.filter(record => record.operation === `integration.quote.accept:${quote.body.quoteSession.id}`).length, 1);
 });
