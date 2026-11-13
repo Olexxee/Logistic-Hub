@@ -313,3 +313,22 @@ test("requires payment and integration dispatch release before readiness", async
   assert.ok(result.blockers.some(item => item.code === "BOOKING_NOT_PAID"));
   assert.ok(result.blockers.some(item => item.code === "INTEGRATION_DISPATCH_REVIEW_PENDING"));
 });
+
+
+test("blocks when package measurements differ from the accepted quote snapshot", async () => {
+  const leg = baseLeg();
+  leg.parcelBooking.parcelPackages = [{ ...packageFacts[0], weightGrams: 700 }];
+  const result = await setup({ leg }).assessLeg({ deliveryLegId: "leg-1" });
+  assert.ok(result.blockers.some(item => item.code === "PACKAGE_FACTS_CHANGED"));
+  assert.equal(result.readiness, "BLOCKED");
+});
+
+test("blocks when a referenced hub is suspended or its operator is unverified", async () => {
+  const service = setup({
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1", { status: "SUSPENDED" }),
+    },
+  });
+  const result = await service.assessLeg({ deliveryLegId: "leg-1" });
+  assert.ok(result.blockers.some(item => item.code === "HUB_NOT_OPERATIONAL"));
+});
