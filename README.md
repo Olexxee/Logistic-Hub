@@ -2,7 +2,7 @@
 
 ## Geography and serviceability
 
-- [Hub-assisted operational tariffs design](docs/hub-assisted-operational-tariffs-design.md) — HAT-01 through HAT-04 are merged. The shared HAT-03 per-leg assessment engine prices resolved pickup, directed hub-pair and final-mile legs with exact-scope availability, immutable tariff snapshots and BigInt totals. HAT-05 integration quote lifecycle integration is implemented on `feat/integration-hub-assisted-quotes` and awaits CI. Additional handling remains fail-closed pending package-level attribution; ordinary intake/custody remains non-billable.
+- [Hub-assisted operational tariffs design](docs/hub-assisted-operational-tariffs-design.md) — HAT-01 through HAT-05 are merged. The shared HAT-03 per-leg assessment engine prices resolved pickup, directed hub-pair and final-mile legs with exact-scope availability, immutable tariff snapshots and BigInt totals. HAT-04 and HAT-05 integrate that engine into ordinary customer and integration quote lifecycles. HAT-06 Admin UI extension is implemented on `Olexxee/logistic-frontend` branch `feat/admin-hub-assisted-operational-pricing` (PR #67); typecheck and production build pass, with merge held while production deployment remains deferred. Additional handling remains fail-closed pending package-level attribution; ordinary intake/custody remains non-billable.
 
 - [Platform-operated route pricing](docs/platform-operated-route-pricing.md) — explicit corridor approval, versioned customer tariffs and independent driver payouts.
 - [Platform route pricing weight-band policy](docs/platform-route-weight-bands.md) — seven enforced parcel bands from 0.001 kg to 30 kg; heavier freight requires manual assessment. The ADMIN API also lists configured directed route availability.

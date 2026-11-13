@@ -1,9 +1,9 @@
 # Hub-assisted operational tariffs — technical design
 
 **Workstream:** Hub-assisted operational tariffs (HAT)  
-**Current phase:** HAT-05 — integration quote lifecycle integration  
-**Implementation branch:** `feat/integration-hub-assisted-quotes`  
-**Status:** HAT-01 through HAT-04 merged. HAT-05 integration quote lifecycle work is in progress on the feature branch and awaiting CI validation.
+**Current phase:** HAT-06 — Admin operational tariff workspace  
+**Implementation branch:** `Olexxee/logistic-frontend:feat/admin-hub-assisted-operational-pricing`  
+**Status:** HAT-01 through HAT-05 merged. HAT-06 Admin UI is implemented in frontend PR #67; typecheck and production build pass. Frontend merge remains deferred pending the user's deployment decision.
 
 ## 1. Purpose
 
@@ -198,4 +198,4 @@ The frontend must display scope-specific selectors and must never expose interna
 - **HAT-06:** admin UI extension.
 - **HAT-07:** regression, operational acceptance and documentation.
 
-HAT-01 schema/migration, HAT-02 ADMIN tariff/availability APIs, HAT-03 shared transport-leg assessment, and HAT-04 ordinary customer quote integration are merged. HAT-05 integration quote integration is implemented on `feat/integration-hub-assisted-quotes` and awaits CI validation. Additional handling remains fail-closed pending package-level attribution for `HubAdditionalOperation`. HAT-06 Admin UI extension and HAT-07 regression/operational acceptance remain outstanding.
+HAT-01 through HAT-05 are merged. HAT-06 Admin UI extension is implemented on `Olexxee/logistic-frontend` branch `feat/admin-hub-assisted-operational-pricing` (PR #67); frontend typecheck and production build pass, but merge is held pending the deployment decision. Additional handling remains fail-closed pending package-level attribution for `HubAdditionalOperation`. HAT-07 regression and operational acceptance remain outstanding.
