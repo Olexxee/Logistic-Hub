@@ -40,6 +40,17 @@ export function createExecutionReadinessRepository({ prismaClient }) {
       });
     },
 
+    findPreviousLeg(tx, leg) {
+      if (leg.sequence <= 1) return Promise.resolve(null);
+      return tx.deliveryLeg.findFirst({
+        where: {
+          parcelBookingId: leg.parcelBookingId,
+          sequence: leg.sequence - 1,
+        },
+        select: { id: true, sequence: true, type: true, status: true, completedAt: true },
+      });
+    },
+
     findEligibleLocalDrivers(tx, leg, now) {
       const capability = parcelCapabilityForLegType(leg.type);
       if (!capability) return Promise.resolve([]);
