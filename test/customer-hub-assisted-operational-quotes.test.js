@@ -146,6 +146,8 @@ test("issues a customer quote from pickup, directed hub-pair and final-mile tari
     ["LOCAL_PICKUP", "INTERSTATE_TRANSPORT", "FINAL_MILE"],
   );
   assert.equal(calls.quoteCreate[0].chargeBreakdown.operationalLegCharges.length, 3);
+  assert.equal("tariff" in calls.quoteCreate[0].chargeBreakdown.operationalLegCharges[0].packages[0], false);
+  assert.equal(calls.quoteCreate[0].chargeBreakdown.operationalLegCharges[0].packages[0].customerChargeMinor, "1000");
 });
 
 test("does not issue a quote when exact-scope operational availability is missing", async () => {
