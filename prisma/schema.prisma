@@ -1360,6 +1360,7 @@ model DeliveryLeg {
   additionalOperations HubAdditionalOperation[]
 
   @@unique([parcelBookingId, sequence])
+  @@unique([id, parcelBookingId])
   @@index([status, plannedAt])
   @@index([originServiceZoneId, destinationServiceZoneId, status], map: "delivery_legs_route_status_idx")
   @@index([originHubPointId])
@@ -1919,6 +1920,7 @@ model HubAdditionalOperation {
   id String @id @default(cuid())
   idempotencyKey String @unique
   parcelBookingId String
+  deliveryLegId String
   hubPointId String
   operationType HubAdditionalOperationType
   status HubAdditionalOperationStatus @default(REQUESTED)
@@ -1936,6 +1938,7 @@ model HubAdditionalOperation {
   updatedAt DateTime @updatedAt
 
   parcelBooking ParcelBooking @relation(fields: [parcelBookingId], references: [id], onDelete: Restrict)
+  deliveryLeg DeliveryLeg @relation(fields: [deliveryLegId, parcelBookingId], references: [id, parcelBookingId], onDelete: Restrict)
   hubPoint HubPoint @relation(fields: [hubPointId], references: [id], onDelete: Restrict)
   requestedBy User @relation("HubAdditionalOperationRecorder", fields: [requestedByUserId], references: [id], onDelete: Restrict)
   authorizedBy User? @relation("HubAdditionalOperationAuthorizer", fields: [authorizedByUserId], references: [id], onDelete: Restrict)
@@ -1943,6 +1946,7 @@ model HubAdditionalOperation {
   completedBy User? @relation("HubAdditionalOperationCompleter", fields: [completedByUserId], references: [id], onDelete: Restrict)
 
   @@index([parcelBookingId, hubPointId, status])
+  @@index([deliveryLegId, status])
   @@index([hubPointId, operationType, status])
   @@map("hub_additional_operations")
 }
