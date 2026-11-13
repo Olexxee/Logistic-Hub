@@ -20,6 +20,12 @@ export function createExecutionReadinessRepository({ prismaClient }) {
         include: {
           parcelBooking: {
             include: {
+              quotes: {
+                where: { status: "ACCEPTED" },
+                orderBy: { version: "desc" },
+                take: 1,
+                select: { id: true, status: true, currency: true, inputSnapshot: true, acceptedAt: true },
+              },
               parcelPackages: {
                 orderBy: { packageSequence: "asc" },
                 select: {
@@ -79,7 +85,7 @@ export function createExecutionReadinessRepository({ prismaClient }) {
       });
     },
 
-    findActiveHub(tx, hubPointId) {
+    findActiveHub(tx, hubPointId, now) {
       if (!hubPointId) return Promise.resolve(null);
       return tx.hubPoint.findUnique({
         where: { id: hubPointId },
@@ -93,8 +99,8 @@ export function createExecutionReadinessRepository({ prismaClient }) {
                   serviceType: "PARCEL_DELIVERY",
                   isEnabled: true,
                   AND: [
-                    { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
-                    { OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }] },
+                    { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                    { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
                   ],
                 },
                 select: { id: true },
