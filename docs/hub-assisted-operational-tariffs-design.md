@@ -3,7 +3,7 @@
 **Workstream:** Hub-assisted operational tariffs (HAT)  
 **Current phase:** HAT-07 — regression and operational acceptance  
 **Implementation branch:** `Olexxee/logistic-frontend:feat/admin-hub-assisted-operational-pricing`  
-**Status:** HAT-01 through HAT-06 are merged. HAT-04 PR #167 was merged into `feat/platform-operational-tariff-assessment`, not `main`; the customer lifecycle changes are being carried onto current `main` in `fix/customer-hub-assisted-quotes-mainline`. HAT-07 regression and operational acceptance are in progress.
+**Status:** HAT-01 through HAT-06 are merged. HAT-04 PR #167 initially landed on the stacked assessment branch rather than `main`; PR #170 carried the reviewed implementation and regression tests onto `main` (merge commit `74668d6`). HAT-07 is adding integration lifecycle regression coverage for route, tariff, availability, billing-agreement, expiry and idempotency changes. Additional handling remains fail-closed pending package-level attribution.
 
 ## 1. Purpose
 
