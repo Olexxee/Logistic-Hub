@@ -104,6 +104,7 @@ export async function createMultiLegPlan({ tx, booking, quote, actorUserId, now 
         id: true, sequence: true, type: true, status: true,
         originServiceZoneId: true, destinationServiceZoneId: true,
         originHubPointId: true, destinationHubPointId: true,
+        metadata: true,
       },
     });
     legs.push(leg);
