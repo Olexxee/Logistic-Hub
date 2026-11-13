@@ -1867,9 +1867,9 @@ model PlatformDriverPayoutRule {
 
   serviceZone ServiceZone @relation("PlatformDriverPayoutRuleServiceZone", fields: [serviceZoneId], references: [id], onDelete: Restrict)
 
-  @@unique([serviceZoneId, legType, parcelCategory, currency, version])
-  @@index([serviceZoneId, legType, parcelCategory, currency, status])
-  @@index([status, effectiveFrom, effectiveUntil])
+  @@unique([serviceZoneId, legType, parcelCategory, currency, version], map: "platform_driver_payout_rules_scope_version_key")
+  @@index([serviceZoneId, legType, parcelCategory, currency, status], map: "platform_driver_payout_rules_scope_status_idx")
+  @@index([status, effectiveFrom, effectiveUntil], map: "platform_driver_payout_rules_status_effective_idx")
   @@map("platform_driver_payout_rules")
 }
 
