@@ -145,6 +145,8 @@ export function createIntegrationQuoteService({ prismaClient, clock = () => new 
         type: leg.type,
         originServiceZoneId: leg.originServiceZoneId,
         destinationServiceZoneId: leg.destinationServiceZoneId,
+        originHubPointId: leg.originHubPointId ?? null,
+        destinationHubPointId: leg.destinationHubPointId ?? null,
         origin: { latitude: Number(leg.originLatitude), longitude: Number(leg.originLongitude) },
         destination: { latitude: Number(leg.destinationLatitude), longitude: Number(leg.destinationLongitude) },
       })),
