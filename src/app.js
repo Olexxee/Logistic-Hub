@@ -25,6 +25,7 @@ import { cancellationsRouter } from "./modules/cancellations/cancellations.route
 import { financeRouter } from "./modules/finance/finance.routes.js";
 import { partnerPricingRouter } from "./modules/partner-pricing/partner-pricing.routes.js";
 import { platformRoutePricingRouter } from "./modules/platform-route-pricing/platform-route-pricing.routes.js";
+import { platformOperationalTariffRouter } from "./modules/platform-operational-pricing/platform-operational-tariff.routes.js";
 import { partnerExecutionRouter } from "./modules/partner-execution/partner-execution.routes.js";
 import { custodyRouter } from "./modules/custody/custody.routes.js";
 import { operationalCasesRouter } from "./modules/operational-cases/operational-cases.routes.js";
@@ -120,6 +121,7 @@ app.use("/api/v1/integrations", integrationWebhookRouter);
 app.use("/api/v1/integrations", integrationQuoteRouter);
 app.use("/api/v1", hubApplicationsRouter);
 app.use("/api/v1/admin/platform-route-pricing", platformRoutePricingRouter);
+app.use("/api/v1/admin/platform-operational-pricing", platformOperationalTariffRouter);
 app.use("/api/v1/admin/audit-events", auditRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/auth/sessions", authSessionsRouter);
