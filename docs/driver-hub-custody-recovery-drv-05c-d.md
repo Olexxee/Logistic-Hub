@@ -85,7 +85,7 @@ D2 adds an explicit Admin disposition for a D1 recovery intake. A parcel with no
 The existing hub dispatch, partner assignment and two-party custody workflows are reused:
 
 1. Admin approves the remaining route; the new leg remains `PLANNED`.
-2. A later D2B route-pricing/activation gate must validate route-specific pricing and activate the leg. This is required because existing partner quotes are booking-route scoped and the current partner execution API does not support `HUB_TRANSFER`.
+2. A later D2B execution-authorization gate must resolve internal execution cost for the exact recovery route and authorize the executor. The original customer quote remains unchanged; recovery creates no additional customer charge.
 3. Only after that gate creates a valid driver/partner assignment may hub staff initiate the existing hub-to-recipient custody handover against the approved next leg.
 4. The receiving party confirms. Only then does the intake become `RELEASED` and the disposition become `RELEASED`.
 
@@ -95,7 +95,7 @@ For a D1 recovery intake, both the hub handover creation path and confirmation t
 
 - `POST /api/v1/admin/hub-intakes/:intakeRecordId/disposition` — Admin records a hold or approves continuation.
 - Existing `GET /api/v1/admin/hub-intakes` and `GET /api/v1/hub-operations/intakes` include recovery/disposition state.
-- D2 creates a planned leg only. Dispatch and partner assignment remain blocked until D2B adds route-specific pricing validation and explicit activation; this avoids reusing a booking quote for a materially changed route.
+- D2 creates a planned leg only. Dispatch and partner assignment remain blocked until D2B is merged; the recovery route is authorized from its persisted disposition and fresh internal execution-cost coverage, without reusing the original customer quote as route pricing.
 
 The endpoint is idempotent for an identical already-approved route. A held disposition may be escalated to continuation after review; an approved route cannot be silently replaced.
 
@@ -127,6 +127,6 @@ The endpoint is idempotent for an identical already-approved route. A held dispo
 
 ### D2B — route-specific recovery execution authorization
 
-**Status:** Technical design committed on `feat/drv-05c-d2b-hub-recovery-execution`; backend implementation and CI are pending. See [DRV-05C-D2B design](./driver-hub-recovery-execution-drv-05c-d2b.md).
+**Status:** Backend implementation is in [PR #184](https://github.com/Olexxee/Logistic-Hub/pull/184), ready for review; CI passed. See [DRV-05C-D2B design](./driver-hub-recovery-execution-drv-05c-d2b.md).
 
 D2B must authorize the exact D2-created continuation leg using its persisted approved disposition, fresh package/route facts, and an immutable executor snapshot. It must not mutate or reuse the original accepted quote as if the recovery route had been priced at booking time. Partner legs use exact directed partner rate-card coverage; final-mile legs use the destination-zone driver payout policy. Customer charges remain unchanged: D2B creates no additional customer charge. Partner/driver assignment and the existing two-party custody handover remain separate gates. No recovered intake can be released until the exact selected executor is assigned and confirms receipt.
