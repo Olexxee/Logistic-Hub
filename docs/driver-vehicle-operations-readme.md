@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, DRV-05C-C eligibility alerting, and DRV-05C-D1 controlled hub custody intake are merged. D1 is merged in [PR #130](https://github.com/Olexxee/Logistic-Hub/pull/130). DRV-05C-D2 hub intake disposition and route continuation is in implementation on `feat/drv-05c-d2-hub-disposition-route-continuation`; staging acceptance for D1 remains outstanding. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md).
+**Status:** DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, DRV-05C-C eligibility alerting, and DRV-05C-D1/D2 hub recovery intake and disposition are merged (backend PRs #130 and #131). D1 staging acceptance remains outstanding. DRV-05C-D2B route-specific execution authorization is in technical design on `feat/drv-05c-d2b-hub-recovery-execution`; implementation, frontend recovery/disposition workflows and staging acceptance remain outstanding. See the [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md) and [D2B execution design](./driver-hub-recovery-execution-drv-05c-d2b.md).
 
 ## 1. Objective
 
