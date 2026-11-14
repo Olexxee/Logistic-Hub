@@ -922,6 +922,18 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
   const acceptService = createDeliveryLegDispatchService({
     prismaClient: {}, repository: acceptRepository, clock: () => now,
   });
+  activePayoutRule.id = "replacement-rule-same-amount-at-acceptance";
+  await assert.rejects(
+    acceptService.acceptFixedPayout({
+      offerId: offer.id,
+      userId: "driver-user-1",
+      vehicleId: "recovery-vehicle",
+      idempotencyKey: "recovery-final-mile-stale-acceptance-001",
+    }),
+    error => error.code === "HAT_EXECUTION_SNAPSHOT_STALE",
+  );
+
+  activePayoutRule.id = "final-mile-payout-rule";
   const accepted = await acceptService.acceptFixedPayout({
     offerId: offer.id,
     userId: "driver-user-1",
