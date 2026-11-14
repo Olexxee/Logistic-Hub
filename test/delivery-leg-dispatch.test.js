@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { createDeliveryLegDispatchService } from "../src/modules/delivery-legs/delivery-leg-dispatch.service.js";
 import { createDeliveryLegDispatchRepository } from "../src/modules/delivery-legs/delivery-leg-dispatch.repository.js";
+import { createExecutionReadinessService } from "../src/modules/execution-readiness/execution-readiness.service.js";
 
 const now = new Date("2026-10-30T12:00:00.000Z");
 const leg = {
@@ -831,6 +832,14 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
     createOffers: async (_tx, data) => { offers = data; return { count: data.length }; },
     recordEvent: async (_tx, data) => { event = data; },
   };
+  const readiness = await createExecutionReadinessService({ prismaClient: {} })
+    .assessLeg({ deliveryLegId: recoveryLeg.id, tx });
+  assert.equal(readiness.readiness, "READY", JSON.stringify(readiness.blockers));
+  assert.deepEqual(
+    readiness.execution.payoutAssessment.packages,
+    selectedSnapshot.assessmentSnapshot.execution.payoutAssessment.packages,
+  );
+
   const service = createDeliveryLegDispatchService({
     prismaClient: {}, repository, clock: () => now,
   });
