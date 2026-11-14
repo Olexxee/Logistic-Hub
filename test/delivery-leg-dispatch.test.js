@@ -866,4 +866,72 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
     }),
     error => error.code === "HAT_EXECUTION_SNAPSHOT_STALE",
   );
+
+  activePayoutRule.id = "final-mile-payout-rule";
+  const offer = {
+    id: "recovery-driver-offer",
+    ...offers[0],
+    status: "OFFERED",
+    proposedFareMinor: null,
+    expiresAt: new Date(now.getTime() + 60_000),
+    deliveryLeg: recoveryLeg,
+  };
+  let acceptedAssignment;
+  const acceptTx = {
+    $queryRaw: async () => [],
+    driverProfile: {
+      findUnique: async () => ({
+        id: selectedDriver.id, verificationStatus: "VERIFIED", kycTier: "FULL",
+        suspendedAt: null, isOnline: true, isAvailable: true,
+      }),
+      findFirst: async () => selectedDriver,
+      findMany: async () => [selectedDriver],
+      updateMany: async () => ({ count: 1 }),
+    },
+    deliveryLeg: {
+      findUnique: async () => recoveryLeg,
+      updateMany: async () => ({ count: 1 }),
+    },
+    deliveryLegOffer: {
+      findUnique: async () => offer,
+      updateMany: async () => ({ count: 1 }),
+    },
+    deliveryLegExecutionSnapshot: { findUnique: async () => selectedSnapshot },
+    hubIntakeDisposition: { findUnique: async () => disposition },
+    hubPoint: { findUnique: async () => hub },
+    serviceZone: { findMany: async ({ where }) => where.id.in.map(id => ({ id })) },
+    hubIntakeRecord: { findMany: async () => [] },
+    platformDriverPayoutRule: { findMany: async () => [activePayoutRule] },
+    vehicle: { findFirst: async () => ({ id: "recovery-vehicle" }) },
+    driverCapabilityGrant: { findFirst: async () => ({ id: "recovery-capability-grant" }) },
+    driverAssignment: {
+      create: async ({ data }) => {
+        acceptedAssignment = data;
+        return { id: "recovery-driver-assignment" };
+      },
+    },
+    bookingEvent: {
+      create: async ({ data }) => ({ id: "recovery-driver-event", createdAt: now, ...data }),
+    },
+  };
+  const acceptRepository = {
+    findOfferByAcceptanceKey: async () => null,
+    acceptOfferTransaction: callback => callback(acceptTx),
+    findActiveServiceZones: async () => [{ id: "zone-hub" }, { id: "zone-final" }],
+  };
+  const acceptService = createDeliveryLegDispatchService({
+    prismaClient: {}, repository: acceptRepository, clock: () => now,
+  });
+  const accepted = await acceptService.acceptFixedPayout({
+    offerId: offer.id,
+    userId: "driver-user-1",
+    vehicleId: "recovery-vehicle",
+    idempotencyKey: "recovery-final-mile-acceptance-001",
+  });
+
+  assert.equal(accepted.status, "ACCEPTED");
+  assert.equal(accepted.fixedPayoutMinor, "30000");
+  assert.equal(acceptedAssignment.status, "ACCEPTED");
+  assert.equal(acceptedAssignment.vehicleId, "recovery-vehicle");
+  assert.equal(acceptedAssignment.agreedFareMinor, 30000n);
 });
