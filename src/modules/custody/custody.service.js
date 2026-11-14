@@ -1188,6 +1188,18 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
       return { items, nextCursor: hasMore ? items.at(-1).id : null };
     },
 
+    async listHubRecoveries({ userId, cursor, limit = 25 } = {}) {
+      const memberships = await repo.findHubOperatorsForUser(userId);
+      const hubPointIds = memberships.map(item => item.hubPointId);
+      if (!hubPointIds.length) return { items: [], nextCursor: null };
+      const rows = await repo.listAdminHubRecoveries({
+        status: "PENDING_RECEIPT", hubPointIds, cursor, limit,
+      });
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      return { items, nextCursor: hasMore ? items.at(-1).id : null };
+    },
+
     async listAdminCustodyHandovers({ status, hubPointId, q, cursor, limit = 25 }) {
       const rows = await repo.listAdminCustodyHandovers({ status, hubPointId, q, cursor, limit });
       const hasMore = rows.length > limit;
