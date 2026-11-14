@@ -169,6 +169,7 @@ function recoveryContinuationFixture(overrides = {}) {
       source: "DRV-05C-D2_HUB_RECOVERY",
       sourceIntakeRecordId: "intake-1",
       sourceDeliveryLegId: "leg-1",
+      sourceQuoteId: "quote-1",
       hubRecoveryId: "hub-recovery-1",
     },
     parcelBooking: {
@@ -199,6 +200,7 @@ function recoveryContinuationFixture(overrides = {}) {
     sourceDeliveryLeg: {
       id: "leg-1", parcelBookingId: "booking-1", sequence: 1,
       status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+      metadata: { quoteId: "quote-1" },
     },
     hubPoint: { id: "hub-1", serviceZoneId: "zone-1", latitude: 6.5244, longitude: 3.3792 },
     destinationHubPoint: { id: "hub-2", serviceZoneId: "zone-2", latitude: 7.1475, longitude: 3.3619 },
