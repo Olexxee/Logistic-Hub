@@ -756,3 +756,128 @@ test("PostgreSQL serializes webhook replay requests, rate-limits them, and prese
     if (country) await prisma.country.deleteMany({ where: { id: country.id } });
   }
 });
+
+test("PostgreSQL protects execution snapshot idempotency, version uniqueness, and immutability under concurrent writes", { skip: !enabled }, async () => {
+  const tag = suffix();
+  let country;
+  let state;
+  let zone;
+  let sender;
+  let booking;
+  let leg;
+
+  const snapshotData = ({ idempotencyKey, payloadHash, version }) => ({
+    deliveryLegId: leg.id,
+    version,
+    idempotencyKey,
+    payloadHash,
+    executorType: "PLATFORM_DRIVER",
+    selectedDriverProfileId: `driver-${tag}`,
+    selectedVehicleId: `vehicle-${tag}`,
+    executionCostMinor: 25000n,
+    currency: "NGN",
+    costSource: "PLATFORM_DRIVER_PAYOUT_RULE",
+    costSourceVersion: 1,
+    assessmentSnapshot: { readiness: "READY", dispatchAuthorized: false },
+    routeSnapshot: { version: 1, legs: [] },
+    packageSnapshot: [{ id: `package-${tag}`, weightGrams: 500 }],
+    selectedByUserId: sender.id,
+    selectedAt: new Date(),
+  });
+
+  try {
+    country = await prisma.country.create({
+      data: { code: `T${tag}`, name: `Execution Snapshot Country ${tag}` },
+    });
+    state = await prisma.state.create({
+      data: { countryId: country.id, code: `S${tag}`, name: `Execution Snapshot State ${tag}` },
+    });
+    zone = await prisma.serviceZone.create({
+      data: { stateId: state.id, code: `Z${tag}`, name: `Execution Snapshot Zone ${tag}` },
+    });
+    sender = await prisma.user.create({ data: { fullName: `Execution Snapshot Actor ${tag}` } });
+    booking = await prisma.parcelBooking.create({
+      data: {
+        publicReference: `EXEC-SNAPSHOT-${tag}`,
+        senderId: sender.id,
+        pickupServiceZoneId: zone.id,
+        destinationServiceZoneId: zone.id,
+        pickupAddress: "Execution snapshot test pickup",
+        pickupLatitude: 6.5,
+        pickupLongitude: 3.4,
+        destinationAddress: "Execution snapshot test destination",
+        destinationLatitude: 6.6,
+        destinationLongitude: 3.5,
+        recipientName: "Execution Snapshot Recipient",
+        recipientPhone: "+2348000000000",
+        parcelCategory: "DOCUMENT",
+        parcelSize: "SMALL",
+        connectionFeeMinor: 300n,
+        pricingSnapshot: {},
+      },
+    });
+    leg = await prisma.deliveryLeg.create({
+      data: {
+        parcelBookingId: booking.id,
+        sequence: 1,
+        type: "LOCAL_PICKUP",
+        status: "READY_FOR_ASSIGNMENT",
+        originServiceZoneId: zone.id,
+        destinationServiceZoneId: zone.id,
+      },
+    });
+
+    const concurrentWrites = await Promise.allSettled([
+      prisma.deliveryLegExecutionSnapshot.create({
+        data: snapshotData({
+          idempotencyKey: `EXEC-SNAPSHOT-KEY-A-${tag}`,
+          payloadHash: "payload-a",
+          version: 1,
+        }),
+      }),
+      prisma.deliveryLegExecutionSnapshot.create({
+        data: snapshotData({
+          idempotencyKey: `EXEC-SNAPSHOT-KEY-B-${tag}`,
+          payloadHash: "payload-b",
+          version: 1,
+        }),
+      }),
+    ]);
+    assert.equal(concurrentWrites.filter(result => result.status === "fulfilled").length, 1);
+    const versionConflict = concurrentWrites.find(result => result.status === "rejected");
+    assert.equal(versionConflict?.reason?.code, "P2002");
+    assert.equal(await prisma.deliveryLegExecutionSnapshot.count({ where: { deliveryLegId: leg.id } }), 1);
+
+    const secondVersion = await prisma.deliveryLegExecutionSnapshot.create({
+      data: snapshotData({
+        idempotencyKey: `EXEC-SNAPSHOT-KEY-V2-${tag}`,
+        payloadHash: "payload-v2",
+        version: 2,
+      }),
+    });
+    assert.equal(secondVersion.version, 2);
+
+    await assert.rejects(
+      prisma.deliveryLegExecutionSnapshot.update({
+        where: { id: secondVersion.id },
+        data: { executionCostMinor: 26000n },
+      }),
+    );
+    await assert.rejects(
+      prisma.deliveryLegExecutionSnapshot.delete({ where: { id: secondVersion.id } }),
+    );
+    assert.equal(await prisma.deliveryLegExecutionSnapshot.count({ where: { deliveryLegId: leg.id } }), 2);
+    assert.equal(
+      (await prisma.deliveryLegExecutionSnapshot.findUnique({ where: { id: secondVersion.id } })).executionCostMinor,
+      25000n,
+    );
+  } finally {
+    if (leg) await prisma.deliveryLegExecutionSnapshot.deleteMany({ where: { deliveryLegId: leg.id } }).catch(() => {});
+    if (leg) await prisma.deliveryLeg.deleteMany({ where: { id: leg.id } });
+    if (booking) await prisma.parcelBooking.deleteMany({ where: { id: booking.id } });
+    if (sender) await prisma.user.deleteMany({ where: { id: sender.id } });
+    if (zone) await prisma.serviceZone.deleteMany({ where: { id: zone.id } });
+    if (state) await prisma.state.deleteMany({ where: { id: state.id } });
+    if (country) await prisma.country.deleteMany({ where: { id: country.id } });
+  }
+});
