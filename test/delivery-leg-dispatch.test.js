@@ -709,6 +709,7 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
       executionSnapshotId: "recovery-execution-snapshot",
       sourceIntakeRecordId: "intake-recovery",
       sourceDeliveryLegId: "failed-source-leg",
+      sourceQuoteId: "recovery-accepted-quote",
       hubRecoveryId: "hub-recovery-record",
     },
     parcelBooking: booking,
@@ -732,6 +733,7 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
     sourceDeliveryLeg: {
       id: "failed-source-leg", parcelBookingId: booking.id, sequence: 1,
       status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+      metadata: { quoteId: "recovery-accepted-quote" },
     },
     hubPoint: {
       id: "hub-recovery", serviceZoneId: "zone-hub", latitude: 6.5244, longitude: 3.3792,
