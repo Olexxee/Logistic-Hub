@@ -15,6 +15,17 @@ const DRIVER_LEG_TYPES = new Set(["LOCAL_PICKUP", "FINAL_MILE"]);
 function hash(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
+
+function payoutPolicyMatchesSnapshot(current, pinned) {
+  return Boolean(current && pinned
+    && current.status === "RESOLVED"
+    && pinned.status === "RESOLVED"
+    && current.serviceZoneId === pinned.serviceZoneId
+    && current.legType === pinned.legType
+    && current.currency === pinned.currency
+    && current.totalDriverPayoutMinor === pinned.totalDriverPayoutMinor
+    && JSON.stringify(current.packages) === JSON.stringify(pinned.packages));
+}
 function distanceMeters(aLat, aLon, bLat, bLon) {
   const radians = (v) => v * Math.PI / 180;
   const dLat = radians(bLat - aLat);
@@ -154,9 +165,11 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw conflict("HAT_DRIVER_SNAPSHOT_REQUIRED", "The latest immutable execution snapshot does not authorize a local driver offer.");
           }
           const assessment = await executionReadiness.assessLeg({ deliveryLegId: leg.id, tx });
+          const pinnedPayoutAssessment = selectedExecutionSnapshot.assessmentSnapshot?.execution?.payoutAssessment;
           if (assessment.readiness !== "READY"
-            || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== selectedExecutionSnapshot.executionCostMinor.toString()) {
-            throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver's eligibility or internal payout no longer matches the immutable execution snapshot.");
+            || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== selectedExecutionSnapshot.executionCostMinor.toString()
+            || !payoutPolicyMatchesSnapshot(assessment.execution?.payoutAssessment, pinnedPayoutAssessment)) {
+            throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver's eligibility or exact payout-rule versions no longer match the immutable execution snapshot.");
           }
         }
         if (!DRIVER_LEG_TYPES.has(leg.type)) {
@@ -433,9 +446,11 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           }
           if (lockedHat) {
             const assessment = await executionReadiness.assessLeg({ deliveryLegId: lockedLeg.id, tx });
+            const pinnedPayoutAssessment = lockedSnapshot?.assessmentSnapshot?.execution?.payoutAssessment;
             if (assessment.readiness !== "READY"
-              || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== payout.toString()) {
-              throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver eligibility or payout policy changed before assignment.");
+              || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== payout.toString()
+              || !payoutPolicyMatchesSnapshot(assessment.execution?.payoutAssessment, pinnedPayoutAssessment)) {
+              throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver eligibility or exact payout-rule versions changed before assignment.");
             }
           }
 
