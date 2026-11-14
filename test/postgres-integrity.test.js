@@ -872,7 +872,13 @@ test("PostgreSQL protects execution snapshot idempotency, version uniqueness, an
       25000n,
     );
   } finally {
-    if (leg) await prisma.deliveryLegExecutionSnapshot.deleteMany({ where: { deliveryLegId: leg.id } }).catch(() => {});
+    if (leg) {
+      await prisma.$transaction(async tx => {
+        await tx.$executeRawUnsafe('ALTER TABLE "delivery_leg_execution_snapshots" DISABLE TRIGGER "delivery_leg_execution_snapshots_immutable"');
+        await tx.deliveryLegExecutionSnapshot.deleteMany({ where: { deliveryLegId: leg.id } });
+        await tx.$executeRawUnsafe('ALTER TABLE "delivery_leg_execution_snapshots" ENABLE TRIGGER "delivery_leg_execution_snapshots_immutable"');
+      });
+    }
     if (leg) await prisma.deliveryLeg.deleteMany({ where: { id: leg.id } });
     if (booking) await prisma.parcelBooking.deleteMany({ where: { id: booking.id } });
     if (sender) await prisma.user.deleteMany({ where: { id: sender.id } });
