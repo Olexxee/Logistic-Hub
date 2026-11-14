@@ -407,6 +407,107 @@ test("executor selection persists a versioned immutable driver payout snapshot a
 });
 
 
+test("executor selection serializes concurrent service requests and enforces idempotency payload identity", async () => {
+  function concurrentHarness() {
+    const leg = baseLeg();
+    const selectedDriver = driver();
+    const snapshots = new Map();
+    let transactionTail = Promise.resolve();
+    const tx = {
+      platformDriverPayoutRule: {
+        findMany: async () => [{
+          id: "payout-rule-race", version: 2, serviceZoneId: "zone-1",
+          legType: "LOCAL_PICKUP", parcelCategory: "GENERAL",
+          minWeightGrams: 0, maxWeightGrams: 1000, currency: "NGN",
+          driverPayoutMinor: 25000n, effectiveFrom: new Date("2026-11-01T00:00:00.000Z"),
+          effectiveUntil: null, status: "ACTIVE",
+        }],
+      },
+      deliveryLegOffer: { count: async () => 0 },
+      driverAssignment: { count: async () => 0 },
+      partnerDeliveryAssignment: { count: async () => 0 },
+      deliveryLegExecutionSnapshot: {
+        findUnique: async ({ where }) => snapshots.get(where.idempotencyKey) ?? null,
+        aggregate: async () => ({
+          _max: { version: Math.max(0, ...[...snapshots.values()].map(item => item.version)) },
+        }),
+        create: async ({ data }) => {
+          const snapshot = { id: `snapshot-${data.version}`, ...data };
+          snapshots.set(data.idempotencyKey, snapshot);
+          return snapshot;
+        },
+      },
+      deliveryLeg: {
+        updateMany: async () => {
+          leg.status = "READY_FOR_ASSIGNMENT";
+          return { count: 1 };
+        },
+      },
+      operationalAuditEvent: { create: async () => ({ id: "audit-race" }) },
+    };
+    const prismaClient = {
+      $transaction: callback => {
+        const transaction = transactionTail.then(() => callback(tx));
+        transactionTail = transaction.catch(() => {});
+        return transaction;
+      },
+    };
+    const repository = {
+      findLeg: async () => leg,
+      findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
+      findActiveHub: async (_tx, id) => hub(id, "zone-1"),
+      getHubLoad: async () => ({
+        load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+        missingVolumeCount: 0,
+      }),
+      findEligibleLocalDrivers: async () => [selectedDriver],
+      findEligibleLocalDriver: async () => selectedDriver,
+      findPartnerRates: async () => [],
+    };
+    return {
+      service: createExecutionReadinessService({ prismaClient, repository, clock: () => now }),
+      snapshots,
+    };
+  }
+
+  const identical = concurrentHarness();
+  const identicalResults = await Promise.all([
+    identical.service.selectExecutor({
+      deliveryLegId: "leg-1", executorType: "PLATFORM_DRIVER",
+      driverProfileId: "driver-1", vehicleId: "vehicle-1",
+      selectedByUserId: "admin-1", idempotencyKey: "race-identical-key",
+    }),
+    identical.service.selectExecutor({
+      deliveryLegId: "leg-1", executorType: "PLATFORM_DRIVER",
+      driverProfileId: "driver-1", vehicleId: "vehicle-1",
+      selectedByUserId: "admin-2", idempotencyKey: "race-identical-key",
+    }),
+  ]);
+  assert.deepEqual(identicalResults.map(result => result.replay).sort(), [false, true]);
+  assert.equal(identical.snapshots.size, 1);
+  assert.equal(identicalResults[0].snapshot.id, identicalResults[1].snapshot.id);
+
+  const conflicting = concurrentHarness();
+  const conflictingResults = await Promise.allSettled([
+    conflicting.service.selectExecutor({
+      deliveryLegId: "leg-1", executorType: "PLATFORM_DRIVER",
+      driverProfileId: "driver-1", vehicleId: "vehicle-1",
+      selectedByUserId: "admin-1", idempotencyKey: "race-conflicting-key",
+    }),
+    conflicting.service.selectExecutor({
+      deliveryLegId: "leg-1", executorType: "PLATFORM_DRIVER",
+      driverProfileId: "different-driver", vehicleId: "vehicle-1",
+      selectedByUserId: "admin-2", idempotencyKey: "race-conflicting-key",
+    }),
+  ]);
+  assert.equal(conflictingResults.filter(result => result.status === "fulfilled").length, 1);
+  const rejected = conflictingResults.find(result => result.status === "rejected");
+  assert.equal(rejected.reason.code, "IDEMPOTENCY_KEY_REUSED");
+  assert.equal(rejected.reason.statusCode, 409);
+  assert.equal(conflicting.snapshots.size, 1);
+});
+
+
 test("blocks a later HAT leg until the immediately preceding leg is completed", async () => {
   const leg = baseLeg({ sequence: 2 });
   const result = await setup({
