@@ -83,6 +83,7 @@ test("partner assignment revalidates and assigns an approved hub-recovery contin
       source: "DRV-05C-D2_HUB_RECOVERY",
       sourceIntakeRecordId: "intake-1",
       sourceDeliveryLegId: "leg-1",
+      sourceQuoteId: "accepted-quote",
       hubRecoveryId: "recovery-1",
       executionSnapshotId: "snapshot-1",
     },
@@ -105,6 +106,7 @@ test("partner assignment revalidates and assigns an approved hub-recovery contin
     sourceDeliveryLeg: {
       id: "leg-1", parcelBookingId: booking.id, sequence: 1,
       status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+      metadata: { quoteId: "accepted-quote" },
     },
     hubPoint: { id: "hub-1", serviceZoneId: "zone-1", latitude: 6.5244, longitude: 3.3792 },
     destinationHubPoint: { id: "hub-2", serviceZoneId: "zone-2", latitude: 7.1475, longitude: 3.3619 },
