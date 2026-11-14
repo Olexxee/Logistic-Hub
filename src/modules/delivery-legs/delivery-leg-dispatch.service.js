@@ -140,8 +140,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           || leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
         let selectedExecutionSnapshot = null;
         if (hubAssistedHatLeg) {
-          if (user.role !== "ADMIN" || leg.status !== "READY_FOR_ASSIGNMENT") {
-            throw conflict("HAT_EXECUTOR_SELECTION_REQUIRED", "A HAT leg must have an administrator-selected executor snapshot before matching.");
+          if ((!hubPointId && user.role !== "ADMIN") || leg.status !== "READY_FOR_ASSIGNMENT") {
+            throw conflict("HAT_EXECUTOR_SELECTION_REQUIRED", "A HAT leg must have an administrator-selected executor snapshot before Admin or delegated hub dispatch can request matching.");
           }
           selectedExecutionSnapshot = await tx.deliveryLegExecutionSnapshot.findFirst({
             where: { deliveryLegId: leg.id },
