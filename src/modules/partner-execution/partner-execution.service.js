@@ -168,8 +168,9 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const leg = await repository.findLegForAssignment(deliveryLegId, tx);
         if (!leg) return { notFound: true };
         const operationalTripLeg = leg.metadata?.pricingSource === "ADMIN_OPERATIONAL_TRIP" && leg.metadata?.executionType === "PARTNER";
-        const hubAssistedHatLeg = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-          && leg.metadata?.requiresOperationalReview === true;
+        const hubRecoveryContinuationLeg = leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
+        const hubAssistedHatLeg = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          && leg.metadata?.requiresOperationalReview === true) || hubRecoveryContinuationLeg;
         if (!operationalTripLeg && leg.type !== "INTERSTATE_TRANSPORT"
           && !(hubAssistedHatLeg && leg.type === "HUB_TRANSFER")) return { blocker: "LEG_NOT_PARTNER_EXECUTED" };
         if (leg.status !== "READY_FOR_ASSIGNMENT") return { blocker: "LEG_NOT_READY" };
@@ -250,7 +251,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           currency: assignmentCurrency, idempotencyKey, assignedAt: now,
           ...(hubAssistedHatLeg ? {
             metadata: {
-              executionSource: "PLATFORM_OPERATIONAL_TARIFF",
+              executionSource: hubRecoveryContinuationLeg ? "DRV-05C-D2_HUB_RECOVERY" : "PLATFORM_OPERATIONAL_TARIFF",
               executionSnapshotId: executionSnapshot.id,
               executionSnapshotVersion: executionSnapshot.version,
               rateCardId: executionSnapshot.partnerRateCardId,
