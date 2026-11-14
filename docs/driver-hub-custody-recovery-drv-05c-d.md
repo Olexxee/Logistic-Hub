@@ -125,6 +125,8 @@ The endpoint is idempotent for an identical already-approved route. A held dispo
 - Cancellation before receipt leaves the source assignment held and in custody.
 
 
-### D2B dependency
+### D2B — route-specific recovery execution authorization
 
-D2B must introduce route-specific pricing/partner authorization for a recovery-created leg and only then activate it. It must not reuse the original booking quote without proving that its route and commercial scope match. It must also add partner execution support for `HUB_TRANSFER` or keep that leg blocked. No recovered intake can be physically released until the continuation leg has a valid receiving assignment.
+**Status:** Technical design committed on `feat/drv-05c-d2b-hub-recovery-execution`; backend implementation and CI are pending. See [DRV-05C-D2B design](./driver-hub-recovery-execution-drv-05c-d2b.md).
+
+D2B must authorize the exact D2-created continuation leg using its persisted approved disposition, fresh package/route facts, and an immutable executor snapshot. It must not mutate or reuse the original accepted quote as if the recovery route had been priced at booking time. Partner legs use exact directed partner rate-card coverage; final-mile legs use the destination-zone driver payout policy. Customer charges remain unchanged: D2B creates no additional customer charge. Partner/driver assignment and the existing two-party custody handover remain separate gates. No recovered intake can be released until the exact selected executor is assigned and confirms receipt.
