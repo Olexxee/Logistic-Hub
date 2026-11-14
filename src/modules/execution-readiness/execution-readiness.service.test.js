@@ -134,7 +134,7 @@ function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = []
     findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
     findActiveHub: async (_tx, id) => hubs[id] ?? hub(id, id === "hub-2" ? "zone-2" : "zone-1"),
     getHubLoad: async () => ({
-      load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+      load: { _count: { _all: occupiedParcels }, _sum: { weightGrams: 0, volumeCm3: 0 } },
       missingVolumeCount: 0,
     }),
     findEligibleLocalDrivers: async () => drivers,
@@ -730,7 +730,7 @@ test("mixed three-leg HAT shipment releases each local and partner leg only afte
 });
 
 
-function executorRevalidationHarness({ selectedDriver = driver(), hubCapacity = 10 } = {}) {
+function executorRevalidationHarness({ selectedDriver = driver(), hubCapacity = 10, occupiedParcels = 0 } = {}) {
   const leg = baseLeg();
   let snapshotWrites = 0;
   const tx = {
@@ -797,7 +797,7 @@ test("executor selection is rejected when the selected driver loses eligibility 
 });
 
 test("executor selection is rejected when receiving-hub capacity is exhausted during revalidation", async () => {
-  const harness = executorRevalidationHarness({ hubCapacity: 0 });
+  const harness = executorRevalidationHarness({ hubCapacity: 1, occupiedParcels: 1 });
   const result = await harness.service.selectExecutor({
     deliveryLegId: "leg-1",
     executorType: "PLATFORM_DRIVER",
