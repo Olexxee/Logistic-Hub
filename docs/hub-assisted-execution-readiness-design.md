@@ -77,13 +77,21 @@ The function is read-only and does not mutate leg status or create assignments.
 - Keep idempotency, serializable transaction boundaries, audit events and race-condition tests.
 
 ### ER-05 — lifecycle and regression acceptance
-- Customer and integration quote acceptance.
-- Multiple legs with mixed local and partner execution.
-- Missing/ambiguous payout rules and partner agreements.
-- Suspended driver, expired KYC, unsuitable vehicle, stale location, unavailable zone, no capacity.
-- Partner suspension/agreement expiry/route mismatch.
-- Concurrent readiness and assignment attempts.
-- Ensure no internal execution costs leak into customer quote DTOs.
+
+ER-05 closes the execution-readiness workstream with regression coverage across quote acceptance, mixed-route sequencing, executor selection, dispatch/assignment revalidation and customer/internal financial separation.
+
+Coverage is tracked against these invariants:
+- Customer and integration HAT quote acceptance preserve the accepted route and package snapshots.
+- Mixed local-driver and partner legs are assessed independently; each later leg remains blocked until its immediately preceding leg is completed.
+- Missing or ambiguous local payout rules and partner rate coverage fail closed.
+- Driver suspension/KYC expiry, unsuitable vehicle, stale location, inactive service zones and insufficient hub capacity cannot be bypassed by a previously successful assessment.
+- Partner suspension, agreement expiry, rate-card changes and route mismatch invalidate execution readiness.
+- Executor selection is idempotent and append-only; conflicting reuse of an idempotency key is rejected.
+- Concurrent readiness/selection/assignment attempts cannot create duplicate active execution.
+- Customer quote DTOs expose customer charges only; driver payouts, partner execution costs, executor identities and execution snapshots remain private.
+- No ER phase activates external driver payouts, partner payables or settlement transfers.
+
+The regression suite must distinguish unit/mock coverage from PostgreSQL concurrency and staging acceptance. A passing unit suite is not evidence that database races or live operational workflows have been accepted.
 
 ## 6. Release constraints
 

@@ -416,3 +416,20 @@ test("blocks a later HAT leg until the immediately preceding leg is completed", 
   assert.equal(result.readiness, "BLOCKED");
   assert.ok(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
 });
+
+test("allows a later leg past the sequencing gate only after the preceding leg is completed", async () => {
+  const leg = baseLeg({ sequence: 2 });
+  leg.parcelBooking.quotes[0].inputSnapshot.routeSnapshot.legs[0].sequence = 2;
+  leg.parcelBooking.quotes[0].inputSnapshot.operationalTariffAssessment.legs[0].sequence = 2;
+  const result = await setup({
+    leg,
+    previousLeg: {
+      id: "leg-1",
+      sequence: 1,
+      type: "LOCAL_PICKUP",
+      status: "COMPLETED",
+      completedAt: new Date("2026-11-13T17:30:00.000Z"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+  assert.equal(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"), false);
+});
