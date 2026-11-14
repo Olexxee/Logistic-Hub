@@ -24,7 +24,6 @@ export function createExecutionReadinessRepository({ prismaClient }) {
               quotes: {
                 where: { status: "ACCEPTED" },
                 orderBy: { version: "desc" },
-                take: 1,
                 select: { id: true, status: true, currency: true, inputSnapshot: true, acceptedAt: true },
               },
               parcelPackages: {
