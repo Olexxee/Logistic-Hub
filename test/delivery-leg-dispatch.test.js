@@ -669,7 +669,7 @@ test("customer offer repository includes fixed-payout offers without selecting p
 });
 
 
-test("Admin can request a fixed-payout driver offer for an approved hub-recovery final-mile leg", async () => {
+test("a delegated hub operator can request a fixed-payout driver offer for an approved recovery final-mile leg", async () => {
   const packageFacts = [{
     id: "recovery-package-1", packageSequence: 1, packageCategory: "GENERAL",
     weightGrams: 500, lengthMm: 100, widthMm: 100, heightMm: 100,
@@ -763,6 +763,8 @@ test("Admin can request a fixed-payout driver offer for an approved hub-recovery
     },
   };
   const tx = {
+    hubPoint: { findUnique: async () => ({ id: "hub-recovery", status: "ACTIVE" }) },
+    hubPointOperator: { findUnique: async () => ({ isActive: true, canDispatch: true }) },
     deliveryLeg: {
       findUnique: async () => recoveryLeg,
       findFirst: async () => ({
@@ -804,7 +806,8 @@ test("Admin can request a fixed-payout driver offer for an approved hub-recovery
 
   const result = await service.requestOffers({
     legId: recoveryLeg.id,
-    user: { id: "admin-1", role: "ADMIN" },
+    hubPointId: "hub-recovery",
+    user: { id: "hub-operator-1", role: "HUB_OPERATOR" },
   });
 
   assert.equal(result.offersCreated, 1);
