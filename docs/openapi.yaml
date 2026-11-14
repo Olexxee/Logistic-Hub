@@ -4662,6 +4662,25 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/delivery-legs/{legId}/execution-readiness:
+    get:
+      tags: [Delivery legs, Admin]
+      operationId: assessDeliveryLegExecutionReadiness
+      summary: Assess a delivery leg's executor eligibility and internal execution cost
+      description: Read-only Admin assessment of route, package, hub/capacity, partner-rate or driver-payout coverage and eligible executor candidates. The response may include internal execution costs and must not be exposed to customers. It never authorizes dispatch or changes booking/customer pricing.
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: legId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { description: Read-only readiness assessment, blockers and eligible executor candidates. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/delivery-legs/{legId}/execution-snapshot:
     post:
       tags: [Delivery legs, Admin]
