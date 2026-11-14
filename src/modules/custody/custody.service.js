@@ -1115,6 +1115,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             source: "DRV-05C-D2_HUB_RECOVERY",
             sourceIntakeRecordId: intakeRecordId,
             sourceDeliveryLegId: sourceLeg.id,
+            sourceQuoteId: sourceLeg.metadata?.quoteId ?? intake.parcelBooking.pricingSnapshot?.quoteId ?? null,
             hubRecoveryId: intake.driverAssignmentHubRecovery.id,
           },
         }, tx);
