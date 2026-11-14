@@ -80,7 +80,8 @@ function packageFactsMatchAnyAcceptedQuote(quote, packages) {
   const snapshotLegs = quote?.inputSnapshot?.operationalTariffAssessment?.legs
     ?? quote?.inputSnapshot?.packageRateSnapshot;
   if (!Array.isArray(snapshotLegs)) return false;
-  return snapshotLegs.some(snapshotLeg => {
+  if (!snapshotLegs.length) return false;
+  return snapshotLegs.every(snapshotLeg => {
     if (!Array.isArray(snapshotLeg?.packages) || snapshotLeg.packages.length !== packages.length) return false;
     return packages.every((pkg, index) => {
       const snapshot = snapshotLeg.packages.find(item =>
