@@ -17,14 +17,34 @@ function hash(value) {
 }
 
 function payoutPolicyMatchesSnapshot(current, pinned) {
-  return Boolean(current && pinned
-    && current.status === "RESOLVED"
-    && pinned.status === "RESOLVED"
-    && current.serviceZoneId === pinned.serviceZoneId
-    && current.legType === pinned.legType
-    && current.currency === pinned.currency
-    && current.totalDriverPayoutMinor === pinned.totalDriverPayoutMinor
-    && JSON.stringify(current.packages) === JSON.stringify(pinned.packages));
+  if (!current || !pinned || current.status !== "RESOLVED" || pinned.status !== "RESOLVED"
+    || current.serviceZoneId !== pinned.serviceZoneId
+    || current.legType !== pinned.legType
+    || current.currency !== pinned.currency
+    || current.totalDriverPayoutMinor !== pinned.totalDriverPayoutMinor
+    || !Array.isArray(current.packages) || !Array.isArray(pinned.packages)
+    || current.packages.length !== pinned.packages.length) return false;
+
+  return current.packages.every((item, index) => {
+    const saved = pinned.packages[index];
+    const rule = item.rule ?? {};
+    const savedRule = saved?.rule ?? {};
+    return item.packageId === saved?.packageId
+      && item.packageSequence === saved?.packageSequence
+      && item.packageCategory === saved?.packageCategory
+      && item.weightGrams === saved?.weightGrams
+      && rule.id === savedRule.id
+      && rule.version === savedRule.version
+      && rule.serviceZoneId === savedRule.serviceZoneId
+      && rule.legType === savedRule.legType
+      && rule.parcelCategory === savedRule.parcelCategory
+      && rule.minWeightGrams === savedRule.minWeightGrams
+      && rule.maxWeightGrams === savedRule.maxWeightGrams
+      && rule.currency === savedRule.currency
+      && rule.driverPayoutMinor === savedRule.driverPayoutMinor
+      && rule.effectiveFrom === savedRule.effectiveFrom
+      && rule.effectiveUntil === savedRule.effectiveUntil;
+  });
 }
 function distanceMeters(aLat, aLon, bLat, bLon) {
   const radians = (v) => v * Math.PI / 180;
