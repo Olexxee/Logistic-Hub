@@ -38,7 +38,7 @@ function partnerPackageRatesMatchSnapshot(current, pinned) {
 
 export function createPartnerExecutionService({ prismaClient, clock = () => new Date() }) {
   const repository = createPartnerExecutionRepository({ prismaClient });
-  const executionReadiness = createExecutionReadinessService({ prismaClient });
+  const executionReadiness = createExecutionReadinessService({ prismaClient, clock });
 
   async function requirePartnerMembership(tx, partnerId, userId) {
     const membership = await repository.findMembership(partnerId, userId, tx);
