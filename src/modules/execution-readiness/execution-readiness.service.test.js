@@ -134,7 +134,7 @@ function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = []
     findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
     findActiveHub: async (_tx, id) => hubs[id] ?? hub(id, id === "hub-2" ? "zone-2" : "zone-1"),
     getHubLoad: async () => ({
-      load: { _count: { _all: occupiedParcels }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+      load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
       missingVolumeCount: 0,
     }),
     findEligibleLocalDrivers: async () => drivers,
@@ -764,7 +764,7 @@ function executorRevalidationHarness({ selectedDriver = driver(), hubCapacity = 
       capacityConfig: { maxParcels: hubCapacity },
     }),
     getHubLoad: async () => ({
-      load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+      load: { _count: { _all: occupiedParcels }, _sum: { weightGrams: 0, volumeCm3: 0 } },
       missingVolumeCount: 0,
     }),
     findEligibleLocalDrivers: async () => [driver()],
