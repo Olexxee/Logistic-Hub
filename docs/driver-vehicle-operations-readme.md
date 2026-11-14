@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, DRV-05C-C eligibility alerting, and DRV-05C-D1/D2 hub recovery intake and disposition are merged (backend PRs #130 and #131). D1 staging acceptance remains outstanding. DRV-05C-D2B recovery-aware execution readiness, partner assignment, final-mile driver dispatch and exact-executor custody gates are implemented in draft [PR #184](https://github.com/Olexxee/Logistic-Hub/pull/184); CI/review and remaining edge-case tests are pending. Admin/hub-operations frontend recovery workflows and staging acceptance remain outstanding. See the [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md) and [D2B execution design](./driver-hub-recovery-execution-drv-05c-d2b.md).
+**Status:** DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, DRV-05C-C eligibility alerting, and DRV-05C-D1/D2 hub recovery intake and disposition are merged (backend PRs #130 and #131). D1 staging acceptance remains outstanding. DRV-05C-D2B recovery-aware execution readiness, partner assignment, final-mile driver dispatch and exact-executor custody gates are implemented in [PR #184](https://github.com/Olexxee/Logistic-Hub/pull/184), ready for review; CI passed. Admin/hub-operations frontend recovery workflows and staging acceptance remain outstanding. See the [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md) and [D2B execution design](./driver-hub-recovery-execution-drv-05c-d2b.md).
 
 ## 1. Objective
 
@@ -428,4 +428,4 @@ A phase is complete only when:
 
 ## 8. Immediate next step
 
-Complete DRV-05C-D2B CI/review and remaining edge-case tests, then implement the dependent Admin and hub-operations frontend recovery/disposition workflow. D1/D2B staging acceptance remains a separate release gate until an isolated Neon-backed staging database is available.
+Review and merge DRV-05C-D2B PR #184, then implement the dependent Admin and hub-operations frontend recovery/disposition workflow. D1/D2B staging acceptance remains a separate release gate until an isolated Neon-backed staging database is available.
