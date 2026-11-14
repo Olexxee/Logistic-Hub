@@ -433,3 +433,182 @@ test("allows a later leg past the sequencing gate only after the preceding leg i
   }).assessLeg({ deliveryLegId: "leg-2" });
   assert.equal(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"), false);
 });
+
+
+test("mixed three-leg HAT shipment releases each local and partner leg only after its predecessor completes", async () => {
+  const quoteId = "mixed-route-quote";
+  const bookingId = "mixed-route-booking";
+  const packages = packageFacts.map(pkg => ({ ...pkg }));
+  const routeLegs = [
+    {
+      sequence: 1, type: "LOCAL_PICKUP",
+      originServiceZoneId: "zone-1", destinationServiceZoneId: "zone-1",
+      originHubPointId: null, destinationHubPointId: null,
+      origin: { latitude: 6.5244, longitude: 3.3792 },
+      destination: { latitude: 6.525, longitude: 3.38 },
+    },
+    {
+      sequence: 2, type: "INTERSTATE_TRANSPORT",
+      originServiceZoneId: "zone-1", destinationServiceZoneId: "zone-2",
+      originHubPointId: "hub-1", destinationHubPointId: "hub-2",
+      origin: { latitude: 6.525, longitude: 3.38 },
+      destination: { latitude: 7.1475, longitude: 3.3619 },
+    },
+    {
+      sequence: 3, type: "FINAL_MILE",
+      originServiceZoneId: "zone-2", destinationServiceZoneId: "zone-2",
+      originHubPointId: "hub-2", destinationHubPointId: null,
+      origin: { latitude: 7.1475, longitude: 3.3619 },
+      destination: { latitude: 7.15, longitude: 3.365 },
+    },
+  ];
+  const quote = {
+    id: quoteId,
+    status: "ACCEPTED",
+    currency: "NGN",
+    inputSnapshot: {
+      source: "PLATFORM_OPERATIONAL_TARIFF",
+      routeSnapshot: { legs: routeLegs },
+      operationalTariffAssessment: {
+        legs: routeLegs.map(routeLeg => ({
+          sequence: routeLeg.sequence,
+          type: routeLeg.type,
+          packages: packages.map((pkg, index) => ({
+            packageId: pkg.id,
+            packageSequence: index + 1,
+            packageCategory: pkg.packageCategory,
+            weightGrams: pkg.weightGrams,
+            dimensionsMm: { length: pkg.lengthMm, width: pkg.widthMm, height: pkg.heightMm },
+          })),
+        })),
+      },
+    },
+    acceptedAt: now,
+  };
+  const legs = routeLegs.map(routeLeg => ({
+    id: `mixed-leg-${routeLeg.sequence}`,
+    sequence: routeLeg.sequence,
+    type: routeLeg.type,
+    status: "PLANNED",
+    completedAt: null,
+    originServiceZoneId: routeLeg.originServiceZoneId,
+    destinationServiceZoneId: routeLeg.destinationServiceZoneId,
+    originHubPointId: routeLeg.originHubPointId,
+    destinationHubPointId: routeLeg.destinationHubPointId,
+    originLatitude: routeLeg.origin.latitude,
+    originLongitude: routeLeg.origin.longitude,
+    destinationLatitude: routeLeg.destination.latitude,
+    destinationLongitude: routeLeg.destination.longitude,
+    metadata: {
+      quoteId,
+      pricingSource: "PLATFORM_OPERATIONAL_TARIFF",
+      requiresOperationalReview: true,
+      executionReadiness: "NOT_ASSESSED",
+    },
+    parcelBooking: {
+      id: bookingId,
+      paymentStatus: "SUCCEEDED",
+      currency: "NGN",
+      integrationClientId: null,
+      integrationDispatchAuthorizedAt: null,
+      parcelPackages: packages,
+      quotes: [quote],
+    },
+  }));
+  const previousByLegId = new Map(legs.map(leg => [
+    leg.id,
+    legs.find(candidate => candidate.sequence === leg.sequence - 1) ?? null,
+  ]));
+  const payoutRules = [
+    {
+      id: "pickup-payout-v1", version: 1, serviceZoneId: "zone-1",
+      legType: "LOCAL_PICKUP", parcelCategory: "GENERAL",
+      minWeightGrams: 0, maxWeightGrams: 1000, currency: "NGN",
+      driverPayoutMinor: 25000n,
+      effectiveFrom: new Date("2026-11-01T00:00:00.000Z"),
+      effectiveUntil: null, status: "ACTIVE",
+    },
+    {
+      id: "final-mile-payout-v1", version: 1, serviceZoneId: "zone-2",
+      legType: "FINAL_MILE", parcelCategory: "GENERAL",
+      minWeightGrams: 0, maxWeightGrams: 1000, currency: "NGN",
+      driverPayoutMinor: 30000n,
+      effectiveFrom: new Date("2026-11-01T00:00:00.000Z"),
+      effectiveUntil: null, status: "ACTIVE",
+    },
+  ];
+  const partnerRate = {
+    id: "mixed-partner-rate",
+    rateCardId: "mixed-partner-card",
+    originServiceZoneId: "zone-1",
+    destinationServiceZoneId: "zone-2",
+    serviceType: "PARCEL_DELIVERY",
+    parcelCategory: "GENERAL",
+    minWeightGrams: 0,
+    maxWeightGrams: 1000,
+    maxLengthMm: null,
+    maxWidthMm: null,
+    maxHeightMm: null,
+    transportChargeMinor: 18000n,
+    estimatedTransitMinutes: 120,
+    rateCard: {
+      id: "mixed-partner-card",
+      version: 3,
+      agreementId: "mixed-partner-agreement",
+      agreement: {
+        id: "mixed-partner-agreement",
+        reference: "MIXED-AGR-001",
+        partner: { id: "mixed-partner", displayName: "Verified Interstate Partner" },
+      },
+    },
+  };
+  const tx = {
+    platformDriverPayoutRule: { findMany: async () => payoutRules },
+  };
+  const repository = {
+    findLeg: async (_tx, id) => legs.find(leg => leg.id === id) ?? null,
+    findPreviousLeg: async (_tx, leg) => previousByLegId.get(leg.id),
+    findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
+    findActiveHub: async (_tx, id) => hub(id, id === "hub-2" ? "zone-2" : "zone-1"),
+    getHubLoad: async () => ({
+      load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+      missingVolumeCount: 0,
+    }),
+    findEligibleLocalDrivers: async () => [driver()],
+    findPartnerRates: async () => [partnerRate],
+  };
+  const prismaClient = {
+    $transaction: callback => callback(tx),
+    deliveryLeg: {
+      findMany: async () => legs.map(({ id, sequence }) => ({ id, sequence })),
+    },
+  };
+  const service = createExecutionReadinessService({
+    prismaClient,
+    repository,
+    clock: () => now,
+  });
+
+  const initial = await service.assessBooking({ bookingId });
+  assert.equal(initial.readiness, "BLOCKED");
+  assert.deepEqual(initial.legs.map(item => item.readiness), ["READY", "BLOCKED", "BLOCKED"]);
+  assert.equal(initial.legs[1].execution.mode, "TRANSPORT_PARTNER");
+  assert.equal(initial.legs[2].execution.mode, "PLATFORM_DRIVER");
+  assert.ok(initial.legs[1].blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
+  assert.ok(initial.legs[2].blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
+
+  legs[0].status = "COMPLETED";
+  legs[0].completedAt = new Date("2026-11-13T18:10:00.000Z");
+  const interstate = await service.assessLeg({ deliveryLegId: "mixed-leg-2" });
+  assert.equal(interstate.readiness, "READY");
+  assert.equal(interstate.execution.mode, "TRANSPORT_PARTNER");
+  assert.equal(interstate.execution.partnerCandidates[0].totalExecutionCostMinor, "18000");
+
+  legs[1].status = "COMPLETED";
+  legs[1].completedAt = new Date("2026-11-13T19:10:00.000Z");
+  const finalMile = await service.assessLeg({ deliveryLegId: "mixed-leg-3" });
+  assert.equal(finalMile.readiness, "READY");
+  assert.equal(finalMile.execution.mode, "PLATFORM_DRIVER");
+  assert.equal(finalMile.execution.payoutAssessment.totalDriverPayoutMinor, "30000");
+  assert.equal(finalMile.dispatchAuthorized, false);
+});
