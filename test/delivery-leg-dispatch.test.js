@@ -705,6 +705,7 @@ test("Admin can request a fixed-payout driver offer for an approved hub-recovery
     destinationLatitude: booking.destinationLatitude, destinationLongitude: booking.destinationLongitude,
     metadata: {
       source: "DRV-05C-D2_HUB_RECOVERY",
+      executionSnapshotId: "recovery-execution-snapshot",
       sourceIntakeRecordId: "intake-recovery",
       sourceDeliveryLegId: "failed-source-leg",
       hubRecoveryId: "hub-recovery-record",
