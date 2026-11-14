@@ -1,6 +1,6 @@
 # DRV-05C-D2B — Hub recovery route execution authorization
 
-**Status:** Technical design on branch `feat/drv-05c-d2b-hub-recovery-execution`. Implementation and staging acceptance are not yet complete.  
+**Status:** First implementation slice is in draft [PR #184](https://github.com/Olexxee/Logistic-Hub/pull/184): recovery-aware readiness, immutable route provenance, partner assignment, final-mile driver offers/acceptance and exact-executor custody release gates. CI and final review are pending; staging acceptance is deferred until Neon is provisioned.  
 **Depends on:** merged DRV-05C-D1 hub intake and D2 disposition/route continuation (backend PRs #130 and #131).  
 **Scope:** Backend execution readiness, internal cost resolution, immutable executor selection, partner/driver assignment revalidation, and custody-release gating for a D2-created continuation leg.
 
@@ -130,12 +130,12 @@ Handover initiation must reject a party that is not the executor assigned to the
 
 ## 9. Delivery order
 
-1. Add recovery-context loading and explicit predecessor exception to execution readiness.
-2. Add recovery-specific route/package assessment and immutable executor snapshot provenance.
-3. Extend partner assignment and local-driver offer/acceptance revalidation for recovery continuations.
-4. Tighten custody handover to require the exact assigned executor.
-5. Add service, route, PostgreSQL and cross-module regression tests; update OpenAPI and docs.
-6. Run CI and review all failures before opening a merge-ready PR.
-7. Keep staging acceptance separate. D2B is not operationally accepted until it is exercised against an isolated, working staging database.
+1. **Implemented in draft PR #184:** persisted recovery-context loading and the narrowly scoped failed-predecessor exception.
+2. **Implemented in draft PR #184:** recovery-specific package/route assessment and immutable executor-snapshot route provenance.
+3. **Implemented in draft PR #184:** partner assignment and local-driver offer/acceptance revalidation using the selected snapshot.
+4. **Implemented in draft PR #184:** custody handover initiation and confirmation require the exact executor and vehicle/partner pinned by the snapshot.
+5. **In progress:** complete edge-case, same-state `HUB_TRANSFER`, final-mile, assignment-race and PostgreSQL regression coverage; keep OpenAPI unchanged unless a public contract actually changes.
+6. **Pending:** run CI on the final PR head, inspect any failed job logs, and complete code review before the PR is marked ready.
+7. **Deferred:** staging acceptance. D2B is not operationally accepted until exercised against an isolated, working staging database after Neon is provisioned.
 
 **Current decision:** D2B is an implementation phase, not a staging or production release. Neon provisioning and staging acceptance remain external prerequisites for live operational verification.
