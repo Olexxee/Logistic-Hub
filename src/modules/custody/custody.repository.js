@@ -129,9 +129,12 @@ export function createCustodyRepository({ prismaClient }) {
         },
       });
     },
-    listAdminHubRecoveries({ status, hubPointId, cursor, limit = 25 } = {}, tx = prismaClient) {
+    listAdminHubRecoveries({ status, hubPointId, hubPointIds, cursor, limit = 25 } = {}, tx = prismaClient) {
+      const hubScope = hubPointId
+        ? { hubPointId }
+        : Array.isArray(hubPointIds) ? { hubPointId: { in: hubPointIds } } : {};
       return tx.driverAssignmentHubRecovery.findMany({
-        where: { ...(status ? { status } : {}), ...(hubPointId ? { hubPointId } : {}) },
+        where: { ...(status ? { status } : {}), ...hubScope },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
