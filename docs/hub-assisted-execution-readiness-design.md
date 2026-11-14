@@ -1,9 +1,9 @@
 # Hub-assisted execution readiness — technical design
 
 **Workstream:** HAT execution readiness  
-**Implementation branch:** `feat/hub-assisted-execution-readiness`  
-**Current slice:** independent platform-driver payout policy and assessment  
-**Status:** first backend slice implemented on this branch; admin policy-management API, shared executor eligibility resolver, partner-cost resolver integration and dispatch activation gate remain outstanding.
+**Implementation branch:** phased ER-01 through ER-05 delivery on `main`  
+**Current slice:** ER-05 lifecycle and regression acceptance  
+**Status:** ER-01 through ER-04 are merged. ER-05 is in progress: the first regression increment is merged in PR #176; mixed local-driver/partner sequencing coverage is being added. PostgreSQL concurrency evidence and staging acceptance remain outstanding.
 
 ## 1. Objective
 
@@ -54,27 +54,23 @@ The first slice adds the schema/migration and a read-only assessment function. I
 
 The function is read-only and does not mutate leg status or create assignments.
 
-## 5. Remaining execution-readiness work
+## 5. Execution-readiness implementation status
 
-### ER-02 — policy administration
-- ADMIN list/create/publish/retire endpoints for payout rules.
-- Exact-scope filters, strict validation, audit reasons, immutable versions.
-- Reject overlapping active rules and invalid effective windows.
-- OpenAPI and permission inventory updates.
+### ER-01 — independent driver payout foundation
+- Separate, versioned `PlatformDriverPayoutRule` records and read-only package-level payout assessment are implemented.
+- Customer operational tariffs remain independent from driver payouts and partner execution costs.
 
-### ER-03 — shared per-leg readiness resolver
-- Load accepted route and package snapshots.
-- For local legs, assess payout rules and use existing driver/vehicle/KYC/coverage/location/availability predicates to establish at least one eligible execution candidate.
-- For partner legs, resolve the exact accepted partner, active agreement, route/rate coverage, currency and internal execution cost using the existing partner execution contract.
-- Check hub status, parcel restrictions, capacity and required custody/route prerequisites where applicable.
-- Return explicit blockers; never substitute customer charge for internal cost.
+### ER-02 — payout policy administration
+- ADMIN policy management, validation, immutable versions, audit reasons and overlap protection are implemented.
 
-### ER-04 — immutable execution snapshot and dispatch gate
-- Persist the readiness result, resolved executor mode, internal cost source/version and assessment timestamp separately from customer pricing.
-- Revalidate policy, partner agreement, route, candidate eligibility and capacity inside the assignment transaction.
-- Only then conditionally advance a leg from `PLANNED` to `READY_FOR_ASSIGNMENT`.
-- Independently require the same valid snapshot/readiness state in driver-offer creation and partner assignment.
-- Keep idempotency, serializable transaction boundaries, audit events and race-condition tests.
+### ER-03 — shared per-leg execution-readiness resolver
+- The resolver validates accepted route/package snapshots, payment and integration release, local driver eligibility and payout coverage, partner agreement/rate coverage, active service zones, hub status and receiving capacity.
+- Assessment is read-only and always returns `dispatchAuthorized: false`.
+
+### ER-04 — immutable execution snapshot and transactional assignment gates
+- Versioned executor snapshots preserve selected executor, internal cost source/version, readiness assessment, route and package facts.
+- Executor selection and assignment paths revalidate within serializable transactions; later legs remain gated by predecessor completion.
+- No external payout, partner payable or settlement is activated.
 
 ### ER-05 — lifecycle and regression acceptance
 
