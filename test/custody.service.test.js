@@ -803,8 +803,12 @@ function recoveredIntakeContext(overrides = {}) {
       id: "booking-1", status: "IN_TRANSIT", paymentStatus: "SUCCEEDED",
       parcelCategory: "PARCEL", destinationServiceZoneId: "zone-destination",
       destinationLatitude: 6.5, destinationLongitude: 3.4,
+      pricingSnapshot: { quoteId: "quote-1" },
     },
-    deliveryLeg: { id: "leg-1", sequence: 1, status: "IN_TRANSIT", type: "INTERSTATE_TRANSPORT" },
+    deliveryLeg: {
+      id: "leg-1", sequence: 1, status: "IN_TRANSIT", type: "INTERSTATE_TRANSPORT",
+      metadata: { quoteId: "quote-1" },
+    },
     hubPoint: {
       id: "hub-recovery-1", name: "Recovery Hub", status: "ACTIVE",
       serviceZoneId: "zone-origin", latitude: 6.4, longitude: 3.3, acceptedParcelTypes: [],
@@ -896,6 +900,7 @@ test("Admin continuation creates a same-state final-mile leg and fails the super
   assert.equal(result.nextDeliveryLeg.type, "FINAL_MILE");
   assert.equal(result.nextDeliveryLeg.status, "PLANNED");
   assert.equal(result.nextDeliveryLeg.originHubPointId, "hub-recovery-1");
+  assert.equal(result.nextDeliveryLeg.metadata.sourceQuoteId, "quote-1");
   assert.equal(calls.legUpdates[0].data.status, "FAILED");
   assert.equal(calls.legUpdates[0].data.failureReason, "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED");
   assert.equal(calls.bookingUpdates.length, 0);
