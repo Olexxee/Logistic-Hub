@@ -108,7 +108,7 @@ function serializeCustomerOffer(offer) {
 
 export function createDeliveryLegDispatchService({ prismaClient, repository, clock = () => new Date() }) {
   const db = repository ?? createDeliveryLegDispatchRepository(prismaClient);
-  const executionReadiness = createExecutionReadinessService({ prismaClient });
+  const executionReadiness = createExecutionReadinessService({ prismaClient, clock });
 
   return {
     async requestOffers({ legId, user, hubPointId }) {
