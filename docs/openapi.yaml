@@ -4662,6 +4662,25 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/delivery-legs/{legId}/execution-readiness:
+    get:
+      tags: [Delivery legs, Admin]
+      operationId: assessDeliveryLegExecutionReadiness
+      summary: Assess a delivery leg's executor eligibility and internal execution cost
+      description: Read-only Admin assessment of route, package, hub/capacity, partner-rate or driver-payout coverage and eligible executor candidates. The response may include internal execution costs and must not be exposed to customers. It never authorizes dispatch or changes booking/customer pricing.
+      security:
+        - bearerAuth: []
+      x-implementation-status: implemented
+      parameters:
+        - name: legId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/delivery-legs/{legId}/execution-snapshot:
     post:
       tags: [Delivery legs, Admin]
@@ -5413,6 +5432,20 @@ paths:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /hub-operations/hub-recoveries:
+    get:
+      tags: [Hub operations]
+      operationId: listHubOperatorPendingRecoveries
+      summary: List pending hub-recovery receipts for the authenticated operator's active hubs
+      description: Returns only PENDING_RECEIPT recoveries assigned to hubs where the authenticated user has an active membership. It does not expose recoveries assigned to other hubs.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /admin/assignments/{assignmentId}/hub-recoveries:
     post:
       tags: [Admin]

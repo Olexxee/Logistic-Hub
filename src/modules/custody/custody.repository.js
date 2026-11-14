@@ -58,9 +58,13 @@ export function createCustodyRepository({ prismaClient }) {
         include: {
           parcelBooking: { select: { id: true, senderId: true, paymentStatus: true, status: true, recipientName: true, recipientPhone: true, integrationClientId: true } },
           assignments: { where: { status: { notIn: ["CANCELLED", "FAILED", "COMPLETED"] } }, include: { driverProfile: { select: { id: true, userId: true } } } },
-          partnerAssignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, select: { partnerId: true, status: true } },
+          partnerAssignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, select: { id: true, partnerId: true, status: true, metadata: true } },
         },
       });
+    },
+    findExecutionSnapshot(snapshotId, tx = prismaClient) {
+      if (!snapshotId) return Promise.resolve(null);
+      return tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: snapshotId } });
     },
     findHubForParty(id, tx = prismaClient) {
       return tx.hubPoint.findUnique({ where: { id }, select: { id: true, status: true } });
@@ -125,9 +129,12 @@ export function createCustodyRepository({ prismaClient }) {
         },
       });
     },
-    listAdminHubRecoveries({ status, hubPointId, cursor, limit = 25 } = {}, tx = prismaClient) {
+    listAdminHubRecoveries({ status, hubPointId, hubPointIds, cursor, limit = 25 } = {}, tx = prismaClient) {
+      const hubScope = hubPointId
+        ? { hubPointId }
+        : Array.isArray(hubPointIds) ? { hubPointId: { in: hubPointIds } } : {};
       return tx.driverAssignmentHubRecovery.findMany({
-        where: { ...(status ? { status } : {}), ...(hubPointId ? { hubPointId } : {}) },
+        where: { ...(status ? { status } : {}), ...hubScope },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -157,13 +164,14 @@ export function createCustodyRepository({ prismaClient }) {
             select: {
               id: true, status: true, paymentStatus: true, parcelCategory: true,
               destinationServiceZoneId: true, destinationAddress: true,
-              destinationLatitude: true, destinationLongitude: true,
+              destinationLatitude: true, destinationLongitude: true, currency: true,
+              pricingSnapshot: true,
             },
           },
           deliveryLeg: {
             select: {
               id: true, sequence: true, status: true, type: true,
-              originServiceZoneId: true, destinationServiceZoneId: true,
+              originServiceZoneId: true, destinationServiceZoneId: true, metadata: true,
             },
           },
           hubPoint: {

@@ -15,6 +15,37 @@ const DRIVER_LEG_TYPES = new Set(["LOCAL_PICKUP", "FINAL_MILE"]);
 function hash(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
+
+function payoutPolicyMatchesSnapshot(current, pinned) {
+  if (!current || !pinned || current.status !== "RESOLVED" || pinned.status !== "RESOLVED"
+    || current.serviceZoneId !== pinned.serviceZoneId
+    || current.legType !== pinned.legType
+    || current.currency !== pinned.currency
+    || current.totalDriverPayoutMinor !== pinned.totalDriverPayoutMinor
+    || !Array.isArray(current.packages) || !Array.isArray(pinned.packages)
+    || current.packages.length !== pinned.packages.length) return false;
+
+  return current.packages.every((item, index) => {
+    const saved = pinned.packages[index];
+    const rule = item.rule ?? {};
+    const savedRule = saved?.rule ?? {};
+    return item.packageId === saved?.packageId
+      && item.packageSequence === saved?.packageSequence
+      && item.packageCategory === saved?.packageCategory
+      && item.weightGrams === saved?.weightGrams
+      && rule.id === savedRule.id
+      && rule.version === savedRule.version
+      && rule.serviceZoneId === savedRule.serviceZoneId
+      && rule.legType === savedRule.legType
+      && rule.parcelCategory === savedRule.parcelCategory
+      && rule.minWeightGrams === savedRule.minWeightGrams
+      && rule.maxWeightGrams === savedRule.maxWeightGrams
+      && rule.currency === savedRule.currency
+      && rule.driverPayoutMinor === savedRule.driverPayoutMinor
+      && rule.effectiveFrom === savedRule.effectiveFrom
+      && rule.effectiveUntil === savedRule.effectiveUntil;
+  });
+}
 function distanceMeters(aLat, aLon, bLat, bLon) {
   const radians = (v) => v * Math.PI / 180;
   const dLat = radians(bLat - aLat);
@@ -77,7 +108,7 @@ function serializeCustomerOffer(offer) {
 
 export function createDeliveryLegDispatchService({ prismaClient, repository, clock = () => new Date() }) {
   const db = repository ?? createDeliveryLegDispatchRepository(prismaClient);
-  const executionReadiness = createExecutionReadinessService({ prismaClient });
+  const executionReadiness = createExecutionReadinessService({ prismaClient, clock });
 
   return {
     async requestOffers({ legId, user, hubPointId }) {
@@ -97,8 +128,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw new ForbiddenError("An active hub dispatch permission is required.");
           }
         } else if (user.role === "ADMIN") {
-          const hubAssistedDispatch = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          const hubAssistedDispatch = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
             && leg.metadata?.requiresOperationalReview === true
+            || leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY")
             && leg.parcelBooking.paymentStatus === "SUCCEEDED"
             && (!leg.parcelBooking.integrationClientId
               || leg.parcelBooking.integrationDispatchAuthorizedAt != null);
@@ -134,12 +166,13 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Platform fixed-payout dispatch requires an accepted tariff snapshot and the correct customer-payment or integration-release state.");
           }
         }
-        const hubAssistedHatLeg = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-          && leg.metadata?.requiresOperationalReview === true;
+        const hubAssistedHatLeg = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          && leg.metadata?.requiresOperationalReview === true)
+          || leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
         let selectedExecutionSnapshot = null;
         if (hubAssistedHatLeg) {
-          if (user.role !== "ADMIN" || leg.status !== "READY_FOR_ASSIGNMENT") {
-            throw conflict("HAT_EXECUTOR_SELECTION_REQUIRED", "A HAT leg must have an administrator-selected executor snapshot before matching.");
+          if ((!hubPointId && user.role !== "ADMIN") || leg.status !== "READY_FOR_ASSIGNMENT") {
+            throw conflict("HAT_EXECUTOR_SELECTION_REQUIRED", "A HAT leg must have an administrator-selected executor snapshot before Admin or delegated hub dispatch can request matching.");
           }
           selectedExecutionSnapshot = await tx.deliveryLegExecutionSnapshot.findFirst({
             where: { deliveryLegId: leg.id },
@@ -152,9 +185,11 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw conflict("HAT_DRIVER_SNAPSHOT_REQUIRED", "The latest immutable execution snapshot does not authorize a local driver offer.");
           }
           const assessment = await executionReadiness.assessLeg({ deliveryLegId: leg.id, tx });
+          const pinnedPayoutAssessment = selectedExecutionSnapshot.assessmentSnapshot?.execution?.payoutAssessment;
           if (assessment.readiness !== "READY"
-            || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== selectedExecutionSnapshot.executionCostMinor.toString()) {
-            throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver's eligibility or internal payout no longer matches the immutable execution snapshot.");
+            || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== selectedExecutionSnapshot.executionCostMinor.toString()
+            || !payoutPolicyMatchesSnapshot(assessment.execution?.payoutAssessment, pinnedPayoutAssessment)) {
+            throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver's eligibility or exact payout-rule versions no longer match the immutable execution snapshot.");
           }
         }
         if (!DRIVER_LEG_TYPES.has(leg.type)) {
@@ -358,8 +393,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const leg = offer.deliveryLeg;
           const booking = leg.parcelBooking;
           const payout = offer.fixedPayoutMinor;
-          const isHatExecution = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-            && leg.metadata?.requiresOperationalReview === true;
+          const isRecoveryExecution = leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
+          const isHatExecution = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+            && leg.metadata?.requiresOperationalReview === true) || isRecoveryExecution;
           const hatSnapshot = isHatExecution
             ? await tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: leg.metadata.executionSnapshotId } })
             : null;
@@ -407,8 +443,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             && lockedBooking.integrationDispatchAuthorizedAt != null
             && lockedBooking.paymentStatus === "SUCCEEDED"
             && lockedBooking.status === "AWAITING_PARTNER_ASSIGNMENT";
-          const lockedHat = lockedLeg?.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-            && lockedLeg.metadata?.requiresOperationalReview === true;
+          const lockedRecoveryExecution = lockedLeg?.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
+          const lockedHat = (lockedLeg?.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+            && lockedLeg.metadata?.requiresOperationalReview === true) || lockedRecoveryExecution;
           const lockedSnapshot = lockedHat
             ? await tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: lockedLeg.metadata.executionSnapshotId } })
             : null;
@@ -429,9 +466,11 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           }
           if (lockedHat) {
             const assessment = await executionReadiness.assessLeg({ deliveryLegId: lockedLeg.id, tx });
+            const pinnedPayoutAssessment = lockedSnapshot?.assessmentSnapshot?.execution?.payoutAssessment;
             if (assessment.readiness !== "READY"
-              || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== payout.toString()) {
-              throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver eligibility or payout policy changed before assignment.");
+              || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== payout.toString()
+              || !payoutPolicyMatchesSnapshot(assessment.execution?.payoutAssessment, pinnedPayoutAssessment)) {
+              throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver eligibility or exact payout-rule versions changed before assignment.");
             }
           }
 
@@ -553,7 +592,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               metadata: {
                 deliveryLegId: leg.id, offerId, assignmentId: assignment.id, driverProfileId: profile.id,
                 vehicleId: vehicle.id, fixedPayoutMinor: payout.toString(), currency: offer.currency,
-                pricingSource: lockedHat ? "PLATFORM_OPERATIONAL_TARIFF" : "PLATFORM_ROUTE_RATE",
+                pricingSource: lockedRecoveryExecution ? "DRV-05C-D2_HUB_RECOVERY"
+                  : lockedHat ? "PLATFORM_OPERATIONAL_TARIFF" : "PLATFORM_ROUTE_RATE",
                 ...(lockedHat ? { executionSnapshotId: lockedSnapshot.id, executionSnapshotVersion: lockedSnapshot.version } : {}),
                 ...(customerPaymentFlow ? { paymentRequired: true, paymentExpiresAt: paymentExpiresAt.toISOString() } : {}),
               },

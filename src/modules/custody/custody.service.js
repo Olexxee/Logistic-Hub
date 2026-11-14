@@ -27,6 +27,29 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
     return user;
   }
 
+  async function validateRecoveryHandoverExecutor(tx, leg, partyType, partyId) {
+    const snapshot = await repo.findExecutionSnapshot(leg.metadata?.executionSnapshotId, tx);
+    if (!snapshot || snapshot.deliveryLegId !== leg.id) return false;
+
+    if (partyType === "DRIVER") {
+      return snapshot.executorType === "PLATFORM_DRIVER"
+        && snapshot.selectedDriverProfileId === partyId
+        && leg.assignments.some(assignment =>
+          assignment.driverProfileId === partyId
+          && assignment.vehicleId === snapshot.selectedVehicleId
+          && assignment.status === "ARRIVED_AT_PICKUP");
+    }
+    if (partyType === "TRANSPORT_PARTNER") {
+      return snapshot.executorType === "TRANSPORT_PARTNER"
+        && snapshot.selectedPartnerId === partyId
+        && leg.partnerAssignments.some(assignment =>
+          assignment.partnerId === partyId
+          && assignment.status === "ACCEPTED"
+          && assignment.metadata?.executionSnapshotId === snapshot.id);
+    }
+    return false;
+  }
+
   async function validateParty(tx, { type, id, userId, booking, leg, actor = false }) {
     if (type === "RECIPIENT") {
       const recipient = await repo.findUser(id, tx);
@@ -359,6 +382,10 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== leg.id) {
               return { blocker: "HUB_RECOVERY_DISPOSITION_REQUIRED" };
             }
+            const exactExecutor = await validateRecoveryHandoverExecutor(
+              tx, leg, input.toPartyType, input.toPartyId,
+            );
+            if (!exactExecutor) return { blocker: "HUB_RECOVERY_EXECUTOR_MISMATCH" };
           }
         }
         if (input.fromPartyType === "HUB") {
@@ -516,6 +543,12 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             const disposition = intake.disposition;
             if (disposition?.status !== "ROUTE_APPROVED" || disposition.nextDeliveryLegId !== handover.deliveryLegId) {
               throw fail(409, "HUB_RECOVERY_DISPOSITION_REQUIRED", "A safety-recovered parcel can only be released on its explicitly approved continuation leg.");
+            }
+            const exactExecutor = await validateRecoveryHandoverExecutor(
+              tx, confirmedLeg, handover.toPartyType, handover.toPartyId,
+            );
+            if (!exactExecutor) {
+              throw fail(409, "HUB_RECOVERY_EXECUTOR_MISMATCH", "The hub can release a safety-recovered parcel only to the exact driver or partner pinned by the continuation leg's immutable executor snapshot.");
             }
             await repo.updateHubIntakeDisposition(disposition.id, {
               status: "RELEASED", releasedAt: clock(), releasedByUserId: handover.initiatedByUserId,
@@ -1082,6 +1115,7 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
             source: "DRV-05C-D2_HUB_RECOVERY",
             sourceIntakeRecordId: intakeRecordId,
             sourceDeliveryLegId: sourceLeg.id,
+            sourceQuoteId: sourceLeg.metadata?.quoteId ?? intake.parcelBooking.pricingSnapshot?.quoteId ?? null,
             hubRecoveryId: intake.driverAssignmentHubRecovery.id,
           },
         }, tx);
@@ -1149,6 +1183,18 @@ export function createCustodyService({ prismaClient, clock = () => new Date() })
 
     async listAdminHubRecoveries({ status, hubPointId, cursor, limit = 25 } = {}) {
       const rows = await repo.listAdminHubRecoveries({ status, hubPointId, cursor, limit });
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      return { items, nextCursor: hasMore ? items.at(-1).id : null };
+    },
+
+    async listHubRecoveries({ userId, cursor, limit = 25 } = {}) {
+      const memberships = await repo.findHubOperatorsForUser(userId);
+      const hubPointIds = memberships.map(item => item.hubPointId);
+      if (!hubPointIds.length) return { items: [], nextCursor: null };
+      const rows = await repo.listAdminHubRecoveries({
+        status: "PENDING_RECEIPT", hubPointIds, cursor, limit,
+      });
       const hasMore = rows.length > limit;
       const items = hasMore ? rows.slice(0, limit) : rows;
       return { items, nextCursor: hasMore ? items.at(-1).id : null };

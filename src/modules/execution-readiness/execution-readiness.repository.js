@@ -24,7 +24,6 @@ export function createExecutionReadinessRepository({ prismaClient }) {
               quotes: {
                 where: { status: "ACCEPTED" },
                 orderBy: { version: "desc" },
-                take: 1,
                 select: { id: true, status: true, currency: true, inputSnapshot: true, acceptedAt: true },
               },
               parcelPackages: {
@@ -47,7 +46,33 @@ export function createExecutionReadinessRepository({ prismaClient }) {
           parcelBookingId: leg.parcelBookingId,
           sequence: leg.sequence - 1,
         },
-        select: { id: true, sequence: true, type: true, status: true, completedAt: true },
+        select: { id: true, sequence: true, type: true, status: true, completedAt: true, failureReason: true },
+      });
+    },
+
+    findRecoveryDisposition(tx, deliveryLegId) {
+      return tx.hubIntakeDisposition.findUnique({
+        where: { nextDeliveryLegId: deliveryLegId },
+        include: {
+          intakeRecord: {
+            select: { id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true, status: true },
+          },
+          hubRecovery: {
+            select: { id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true, status: true, hubIntakeRecordId: true },
+          },
+          sourceDeliveryLeg: {
+            select: { id: true, parcelBookingId: true, sequence: true, status: true, failureReason: true, metadata: true },
+          },
+          hubPoint: {
+            select: { id: true, serviceZoneId: true, latitude: true, longitude: true },
+          },
+          destinationHubPoint: {
+            select: { id: true, serviceZoneId: true, latitude: true, longitude: true },
+          },
+          nextDeliveryLeg: {
+            select: { id: true, sequence: true },
+          },
+        },
       });
     },
 
@@ -88,6 +113,11 @@ export function createExecutionReadinessRepository({ prismaClient }) {
           id: true,
           serviceRadiusMeters: true,
           lastLocationAt: true,
+          user: { select: { fullName: true } },
+          vehicles: {
+            where: eligibleVehicleWhere({ capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }),
+            select: { id: true, type: true, make: true, model: true, registrationPlate: true },
+          },
           locations: {
             orderBy: { recordedAt: "desc" },
             take: 1,

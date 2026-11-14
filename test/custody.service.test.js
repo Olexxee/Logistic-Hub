@@ -803,8 +803,12 @@ function recoveredIntakeContext(overrides = {}) {
       id: "booking-1", status: "IN_TRANSIT", paymentStatus: "SUCCEEDED",
       parcelCategory: "PARCEL", destinationServiceZoneId: "zone-destination",
       destinationLatitude: 6.5, destinationLongitude: 3.4,
+      pricingSnapshot: { quoteId: "quote-1" },
     },
-    deliveryLeg: { id: "leg-1", sequence: 1, status: "IN_TRANSIT", type: "INTERSTATE_TRANSPORT" },
+    deliveryLeg: {
+      id: "leg-1", sequence: 1, status: "IN_TRANSIT", type: "INTERSTATE_TRANSPORT",
+      metadata: { quoteId: "quote-1" },
+    },
     hubPoint: {
       id: "hub-recovery-1", name: "Recovery Hub", status: "ACTIVE",
       serviceZoneId: "zone-origin", latitude: 6.4, longitude: 3.3, acceptedParcelTypes: [],
@@ -896,6 +900,7 @@ test("Admin continuation creates a same-state final-mile leg and fails the super
   assert.equal(result.nextDeliveryLeg.type, "FINAL_MILE");
   assert.equal(result.nextDeliveryLeg.status, "PLANNED");
   assert.equal(result.nextDeliveryLeg.originHubPointId, "hub-recovery-1");
+  assert.equal(result.nextDeliveryLeg.metadata.sourceQuoteId, "quote-1");
   assert.equal(calls.legUpdates[0].data.status, "FAILED");
   assert.equal(calls.legUpdates[0].data.failureReason, "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED");
   assert.equal(calls.bookingUpdates.length, 0);
@@ -1028,4 +1033,126 @@ test("generic hub handover initiation cannot bypass a recovery disposition", asy
     conditionAtRelease: "Parcel sealed and ready for onward movement.",
   }, "hub-operator-1");
   assert.equal(result.blocker, "HUB_RECOVERY_DISPOSITION_REQUIRED");
+});
+
+
+function recoveryHandoverFixture({ selectedDriverProfileId = "driver-1", selectedVehicleId = "vehicle-1" } = {}) {
+  const recoveryLeg = {
+    ...leg,
+    metadata: { source: "DRV-05C-D2_HUB_RECOVERY", executionSnapshotId: "snapshot-recovery-1" },
+    assignments: [{
+      id: "driver-assignment-1", driverProfileId: "driver-1", vehicleId: "vehicle-1",
+      status: "ARRIVED_AT_PICKUP",
+      driverProfile: { id: "driver-1", userId: "driver-user-1" },
+    }],
+    partnerAssignments: [],
+  };
+  const intake = {
+    id: "intake-recovery-1",
+    driverAssignmentHubRecovery: { id: "hub-recovery-1" },
+    disposition: {
+      id: "disposition-recovery-1",
+      status: "ROUTE_APPROVED",
+      nextDeliveryLegId: recoveryLeg.id,
+    },
+  };
+  const snapshot = {
+    id: "snapshot-recovery-1",
+    deliveryLegId: recoveryLeg.id,
+    executorType: "PLATFORM_DRIVER",
+    selectedDriverProfileId,
+    selectedVehicleId,
+  };
+  return { recoveryLeg, intake, snapshot };
+}
+
+test("hub recovery handover initiation accepts only the driver pinned by the selected executor snapshot", async () => {
+  const { recoveryLeg, intake, snapshot } = recoveryHandoverFixture();
+  const { db } = tx({
+    deliveryLeg: { findUnique: async () => recoveryLeg },
+    hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
+    hubIntakeRecord: { findFirst: async () => intake },
+    operationalCase: { findFirst: async () => null },
+    deliveryLegExecutionSnapshot: { findUnique: async () => snapshot },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.createHandover({
+    parcelBookingId: "booking-1",
+    deliveryLegId: recoveryLeg.id,
+    fromPartyType: "HUB",
+    fromPartyId: "hub-1",
+    toPartyType: "DRIVER",
+    toPartyId: "driver-1",
+    conditionAtRelease: "Parcel sealed and ready for onward movement.",
+  }, "hub-operator-1");
+  assert.equal(result.handover.status, "PENDING_CONFIRMATION");
+});
+
+test("hub recovery handover initiation rejects a driver different from the selected executor snapshot", async () => {
+  const { recoveryLeg, intake, snapshot } = recoveryHandoverFixture({
+    selectedDriverProfileId: "driver-2",
+  });
+  const { db } = tx({
+    deliveryLeg: { findUnique: async () => recoveryLeg },
+    hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
+    hubIntakeRecord: { findFirst: async () => intake },
+    operationalCase: { findFirst: async () => null },
+    deliveryLegExecutionSnapshot: { findUnique: async () => snapshot },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  const result = await service.createHandover({
+    parcelBookingId: "booking-1",
+    deliveryLegId: recoveryLeg.id,
+    fromPartyType: "HUB",
+    fromPartyId: "hub-1",
+    toPartyType: "DRIVER",
+    toPartyId: "driver-1",
+    conditionAtRelease: "Parcel sealed and ready for onward movement.",
+  }, "hub-operator-1");
+  assert.deepEqual(result, { blocker: "HUB_RECOVERY_EXECUTOR_MISMATCH" });
+});
+
+test("hub recovery custody confirmation revalidates the selected vehicle before releasing intake", async () => {
+  const { recoveryLeg, intake, snapshot } = recoveryHandoverFixture({
+    selectedVehicleId: "different-vehicle",
+  });
+  const handover = {
+    id: "handover-recovery-valid",
+    parcelBookingId: "booking-1",
+    deliveryLegId: recoveryLeg.id,
+    initiatedByUserId: "hub-operator-1",
+    fromPartyType: "HUB",
+    fromPartyId: "hub-1",
+    toPartyType: "DRIVER",
+    toPartyId: "driver-1",
+    status: "PENDING_CONFIRMATION",
+    expiresAt: new Date("2026-10-31T12:00:00.000Z"),
+    parcelBooking: booking,
+  };
+  let intakeUpdates = 0;
+  let dispositionUpdates = 0;
+  const { db } = tx({
+    custodyHandover: {
+      findUnique: async () => handover,
+      findFirst: async () => null,
+      update: async ({ where, data }) => ({ id: where.id, ...handover, ...data }),
+    },
+    deliveryLeg: { findUnique: async () => recoveryLeg },
+    hubIntakeRecord: {
+      findFirst: async () => intake,
+      update: async () => { intakeUpdates += 1; return {}; },
+    },
+    hubIntakeDisposition: {
+      update: async () => { dispositionUpdates += 1; return {}; },
+    },
+    operationalCase: { findFirst: async () => null },
+    deliveryLegExecutionSnapshot: { findUnique: async () => snapshot },
+  });
+  const service = createCustodyService({ prismaClient: db, clock: () => now });
+  await assert.rejects(
+    service.confirmHandover({ handoverId: handover.id, userId: "driver-user-1" }),
+    error => error.code === "HUB_RECOVERY_EXECUTOR_MISMATCH",
+  );
+  assert.equal(intakeUpdates, 0);
+  assert.equal(dispositionUpdates, 0);
 });

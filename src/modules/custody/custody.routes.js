@@ -26,6 +26,10 @@ const hubIntakesQuerySchema = z.object({
   cursor: id.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
+const hubRecoveriesQuerySchema = z.object({
+  cursor: id.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
 const hubDispatchQuerySchema = z.object({
   hubPointId: id.optional(),
   cursor: id.optional(),
@@ -234,6 +238,7 @@ export function createCustodyRouter({ prismaClient = prisma, authMiddleware = re
     return next();
   }, asyncWrapper(controller.listHubOperatorsForManager));
   router.post("/hub-operations/hubs/:hubPointId/operators", authMiddleware, validateParams, validate(hubStaffSchema), asyncWrapper(controller.addHubStaff));
+  router.get("/hub-operations/hub-recoveries", authMiddleware, validateQuery(hubRecoveriesQuerySchema), asyncWrapper(controller.listHubRecoveries));
   router.get("/hub-operations/intakes", authMiddleware, (req, res, next) => {
     const parsed = hubIntakesQuerySchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ success: false, error: {

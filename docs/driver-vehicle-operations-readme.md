@@ -2,7 +2,7 @@
 
 **Workstream:** DRV  
 **Repositories:** [Logistic Hub backend](https://github.com/Olexxee/Logistic-Hub) · [Logistic Hub frontend](https://github.com/Olexxee/logistic-frontend)  
-**Status:** DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, DRV-05C-C eligibility alerting, and DRV-05C-D1 controlled hub custody intake are merged. D1 is merged in [PR #130](https://github.com/Olexxee/Logistic-Hub/pull/130). DRV-05C-D2 hub intake disposition and route continuation is in implementation on `feat/drv-05c-d2-hub-disposition-route-continuation`; staging acceptance for D1 remains outstanding. See [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md).
+**Status:** DRV-01/02 backend contracts, DRV-03 Admin workspace, DRV-04 driver self-service, DRV-05B execution eligibility, DRV-05C-A safety holds, DRV-05C-B controlled driver-to-driver recovery, DRV-05C-C eligibility alerting, and DRV-05C-D1/D2 hub recovery intake and disposition are merged (backend PRs #130 and #131). D1 staging acceptance remains outstanding. DRV-05C-D2B recovery-aware execution readiness, partner assignment, final-mile driver dispatch and exact-executor custody gates are implemented in [PR #184](https://github.com/Olexxee/Logistic-Hub/pull/184), ready for review; CI passed. Admin/hub-operations frontend recovery workflows and staging acceptance remain outstanding. See the [DRV-05C-D phase contract](./driver-hub-custody-recovery-drv-05c-d.md) and [D2B execution design](./driver-hub-recovery-execution-drv-05c-d2b.md).
 
 ## 1. Objective
 
@@ -350,7 +350,7 @@ The DRV-05C backend sequence is implemented across these merged pull requests:
 
 ### Remaining backend work
 
-1. **DRV-05C-D2B — Route-specific pricing and controlled activation.** Define the commercial scope for a recovery-created leg; obtain a valid rate-card/partner quote or explicit authorized operations quote for that exact route and service; preserve quote/version/audit evidence; add partner execution support for `HUB_TRANSFER` or keep it blocked; and activate a `PLANNED` leg only after all route, commercial, capacity and execution checks pass.
+1. **DRV-05C-D2B — Route-specific execution-cost resolution and controlled activation.** Resolve internal partner execution cost from one active, verified agreement/rate-card version covering every package on the exact directed route, or resolve platform-driver payout from the destination-zone payout rules for `FINAL_MILE`. Preserve the accepted customer quote/payment unchanged; recovery does not create an extra customer charge. Preserve route, package, cost-source and executor-version evidence; allow `HUB_TRANSFER` only through partner execution; and activate a `PLANNED` leg only after route, package, capacity, executor and custody gates pass.
 2. **DRV-05C-D2C — Backend release hardening.** Verify D1/D2/D2B route transitions, idempotency, concurrent disposition/activation, hub capacity and handover release against PostgreSQL; reconcile OpenAPI and operational queue filters after D2B.
 3. **Staging acceptance.** Exercise driver-to-driver recovery, driver-to-hub recovery, hub receipt, investigation hold, approved route continuation, route-specific pricing, dispatch, two-party hub release and final delivery. Record evidence separately from merge status. D1 staging acceptance is still outstanding.
 
@@ -428,4 +428,4 @@ A phase is complete only when:
 
 ## 8. Immediate next step
 
-Complete DRV-05C-D2 backend CI/review, then implement D2B route-specific pricing and activation before the dependent Admin and hub-operations frontend workflow. D1 staging acceptance remains a separate release gate.
+Review and merge DRV-05C-D2B PR #184, then implement the dependent Admin and hub-operations frontend recovery/disposition workflow. D1/D2B staging acceptance remains a separate release gate until an isolated Neon-backed staging database is available.

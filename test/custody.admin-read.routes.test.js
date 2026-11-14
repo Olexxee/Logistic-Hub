@@ -91,3 +91,45 @@ test("admin read queues reject invalid query filters", async () => {
     assert.equal(shortSearch.status, 400);
   });
 });
+
+
+test("hub recovery receipt queue is restricted to the authenticated user's active hub memberships", async () => {
+  let received;
+  const prismaClient = {
+    hubPointOperator: {
+      findMany: async () => [{ hubPointId: "hub-1", isActive: true }],
+    },
+    driverAssignmentHubRecovery: {
+      findMany: async args => {
+        received = args;
+        return [{ id: "recovery-1", status: "PENDING_RECEIPT", hubPointId: "hub-1" }];
+      },
+    },
+  };
+  await serve("HUB_OPERATOR", prismaClient, async base => {
+    const response = await fetch(`${base}/api/v1/hub-operations/hub-recoveries?limit=10`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.items[0].id, "recovery-1");
+    assert.equal(received.where.status, "PENDING_RECEIPT");
+    assert.deepEqual(received.where.hubPointId, { in: ["hub-1"] });
+    assert.equal(received.take, 11);
+  });
+});
+
+test("users without active hub memberships receive an empty recovery queue", async () => {
+  let recoveryQueryCalled = false;
+  const prismaClient = {
+    hubPointOperator: { findMany: async () => [] },
+    driverAssignmentHubRecovery: {
+      findMany: async () => { recoveryQueryCalled = true; return []; },
+    },
+  };
+  await serve("CUSTOMER", prismaClient, async base => {
+    const response = await fetch(`${base}/api/v1/hub-operations/hub-recoveries`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data, { items: [], nextCursor: null });
+    assert.equal(recoveryQueryCalled, false);
+  });
+});

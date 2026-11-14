@@ -141,6 +141,13 @@ export function createCustodyController(service) {
       const result = await service.listAdminHubRecoveries(req.validatedQuery);
       return res.status(200).json({ success: true, data: result });
     },
+    listHubRecoveries: async (req, res) => {
+      const result = await service.listHubRecoveries({
+        userId: req.user.id,
+        ...req.validatedQuery,
+      });
+      return res.status(200).json({ success: true, data: result });
+    },
     listAdminCustodyHandovers: async (req, res) => {
       const result = await service.listAdminCustodyHandovers(req.validatedQuery);
       return res.status(200).json({ success: true, data: result });

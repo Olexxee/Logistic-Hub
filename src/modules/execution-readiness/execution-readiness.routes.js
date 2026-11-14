@@ -57,6 +57,13 @@ export function createExecutionReadinessRouter({
   const router = Router();
   const service = createExecutionReadinessService({ prismaClient });
   const controller = createExecutionReadinessController(service);
+  router.get(
+    "/admin/delivery-legs/:legId/execution-readiness",
+    authMiddleware,
+    roleMiddleware("ADMIN"),
+    validate(z.object({ legId: id }).strict(), "params"),
+    asyncWrapper(controller.assessLeg),
+  );
   router.post(
     "/admin/delivery-legs/:legId/execution-snapshot",
     authMiddleware,

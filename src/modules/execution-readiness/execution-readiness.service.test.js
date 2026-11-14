@@ -111,7 +111,10 @@ function driver(overrides = {}) {
   };
 }
 
-function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = [], hubs = {}, previousLeg = null } = {}) {
+function setup({
+  leg = baseLeg(), drivers = [driver()], rules, partnerRates = [], hubs = {},
+  previousLeg = null, recoveryDisposition = null,
+} = {}) {
   const tx = {
     platformDriverPayoutRule: { findMany: async () => rules ?? [{
       id: "payout-rule-1",
@@ -131,6 +134,7 @@ function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = []
   const repository = {
     findLeg: async () => leg,
     findPreviousLeg: async () => previousLeg,
+    findRecoveryDisposition: async () => recoveryDisposition,
     findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
     findActiveHub: async (_tx, id) => hubs[id] ?? hub(id, id === "hub-2" ? "zone-2" : "zone-1"),
     getHubLoad: async () => ({
@@ -146,6 +150,240 @@ function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = []
   };
   return createExecutionReadinessService({ prismaClient, repository, clock: () => now });
 }
+
+function recoveryContinuationFixture(overrides = {}) {
+  const leg = baseLeg({
+    id: "leg-2",
+    sequence: 2,
+    type: "INTERSTATE_TRANSPORT",
+    status: "PLANNED",
+    originServiceZoneId: "zone-1",
+    destinationServiceZoneId: "zone-2",
+    originHubPointId: "hub-1",
+    destinationHubPointId: "hub-2",
+    originLatitude: 6.5244,
+    originLongitude: 3.3792,
+    destinationLatitude: 7.1475,
+    destinationLongitude: 3.3619,
+    metadata: {
+      source: "DRV-05C-D2_HUB_RECOVERY",
+      sourceIntakeRecordId: "intake-1",
+      sourceDeliveryLegId: "leg-1",
+      sourceQuoteId: "quote-1",
+      hubRecoveryId: "hub-recovery-1",
+    },
+    parcelBooking: {
+      ...baseLeg().parcelBooking,
+      status: "IN_TRANSIT",
+    },
+  });
+  const disposition = {
+    id: "disposition-1",
+    intakeRecordId: "intake-1",
+    hubRecoveryId: "hub-recovery-1",
+    parcelBookingId: "booking-1",
+    sourceDeliveryLegId: "leg-1",
+    hubPointId: "hub-1",
+    decision: "CONTINUE_DELIVERY",
+    status: "ROUTE_APPROVED",
+    destinationServiceZoneId: "zone-2",
+    destinationHubPointId: "hub-2",
+    nextDeliveryLegId: "leg-2",
+    intakeRecord: {
+      id: "intake-1", status: "RECEIVED", parcelBookingId: "booking-1",
+      deliveryLegId: "leg-1", hubPointId: "hub-1",
+    },
+    hubRecovery: {
+      id: "hub-recovery-1", status: "CONFIRMED", parcelBookingId: "booking-1",
+      deliveryLegId: "leg-1", hubPointId: "hub-1", hubIntakeRecordId: "intake-1",
+    },
+    sourceDeliveryLeg: {
+      id: "leg-1", parcelBookingId: "booking-1", sequence: 1,
+      status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+      metadata: { quoteId: "quote-1" },
+    },
+    hubPoint: { id: "hub-1", serviceZoneId: "zone-1", latitude: 6.5244, longitude: 3.3792 },
+    destinationHubPoint: { id: "hub-2", serviceZoneId: "zone-2", latitude: 7.1475, longitude: 3.3619 },
+    ...overrides,
+  };
+  return {
+    leg,
+    disposition,
+    previousLeg: {
+      id: "leg-1", sequence: 1, type: "INTERSTATE_TRANSPORT",
+      status: "FAILED", completedAt: null,
+      failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+    },
+  };
+}
+
+test("approved hub-recovery continuation bypasses only its exact failed source predecessor and resolves partner rates", async () => {
+  const fixture = recoveryContinuationFixture();
+  const partnerRate = {
+    id: "recovery-partner-rate",
+    rateCardId: "recovery-rate-card",
+    parcelCategory: "GENERAL",
+    minWeightGrams: 0,
+    maxWeightGrams: 1000,
+    maxLengthMm: null,
+    maxWidthMm: null,
+    maxHeightMm: null,
+    transportChargeMinor: 21000n,
+    estimatedTransitMinutes: 180,
+    rateCard: {
+      id: "recovery-rate-card",
+      version: 3,
+      agreementId: "recovery-agreement",
+      agreement: {
+        id: "recovery-agreement",
+        reference: "RECOVERY-AGR-001",
+        partner: { id: "recovery-partner", displayName: "Recovery Partner" },
+      },
+    },
+  };
+  const result = await setup({
+    ...fixture,
+    partnerRates: [partnerRate],
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-2": hub("hub-2", "zone-2"),
+    },
+    recoveryDisposition: fixture.disposition,
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "READY");
+  assert.equal(result.dispatchAuthorized, false);
+  assert.equal(result.legType, "INTERSTATE_TRANSPORT");
+  assert.deepEqual(result.recovery, {
+    dispositionId: "disposition-1",
+    intakeRecordId: "intake-1",
+    hubRecoveryId: "hub-recovery-1",
+    sourceDeliveryLegId: "leg-1",
+  });
+  assert.equal(result.execution.mode, "TRANSPORT_PARTNER");
+  assert.equal(result.execution.partnerCandidates[0].totalExecutionCostMinor, "21000");
+  assert.equal(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"), false);
+});
+
+test("same-state hub recovery continuation resolves HUB_TRANSFER partner execution rates", async () => {
+  const fixture = recoveryContinuationFixture();
+  fixture.leg.type = "HUB_TRANSFER";
+  fixture.leg.destinationServiceZoneId = "zone-1";
+  fixture.leg.destinationHubPointId = "hub-3";
+  fixture.leg.destinationLatitude = 6.53;
+  fixture.leg.destinationLongitude = 3.39;
+  fixture.disposition.destinationServiceZoneId = "zone-1";
+  fixture.disposition.destinationHubPointId = "hub-3";
+  fixture.disposition.destinationHubPoint = {
+    id: "hub-3", serviceZoneId: "zone-1", latitude: 6.53, longitude: 3.39,
+  };
+  const rate = {
+    id: "hub-transfer-rate",
+    rateCardId: "hub-transfer-card",
+    parcelCategory: "GENERAL",
+    minWeightGrams: 0,
+    maxWeightGrams: 1000,
+    maxLengthMm: null, maxWidthMm: null, maxHeightMm: null,
+    transportChargeMinor: 12000n,
+    estimatedTransitMinutes: 60,
+    rateCard: {
+      id: "hub-transfer-card", version: 2, agreementId: "hub-transfer-agreement",
+      agreement: {
+        id: "hub-transfer-agreement", reference: "HUB-TRANSFER-AGR",
+        partner: { id: "hub-transfer-partner", displayName: "Local Hub Transfer Partner" },
+      },
+    },
+  };
+  const result = await setup({
+    ...fixture,
+    recoveryDisposition: fixture.disposition,
+    partnerRates: [rate],
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-3": hub("hub-3", "zone-1"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "READY");
+  assert.equal(result.legType, "HUB_TRANSFER");
+  assert.equal(result.execution.mode, "TRANSPORT_PARTNER");
+  assert.equal(result.execution.partnerCandidates[0].totalExecutionCostMinor, "12000");
+});
+
+test("recovery metadata without a persisted approved disposition cannot bypass predecessor gating", async () => {
+  const fixture = recoveryContinuationFixture();
+  const result = await setup({
+    ...fixture,
+    recoveryDisposition: null,
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-2": hub("hub-2", "zone-2"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "BLOCKED");
+  assert.ok(result.blockers.some(item => item.code === "RECOVERY_DISPOSITION_NOT_FOUND"));
+  assert.ok(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
+});
+
+test("released or mismatched hub disposition cannot authorize a recovery continuation", async () => {
+  const fixture = recoveryContinuationFixture({ status: "RELEASED" });
+  const result = await setup({
+    ...fixture,
+    recoveryDisposition: fixture.disposition,
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-2": hub("hub-2", "zone-2"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "BLOCKED");
+  assert.ok(result.blockers.some(item => item.code === "RECOVERY_DISPOSITION_MISMATCH"));
+  assert.ok(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
+});
+
+test("recovery continuation blocks when accepted quote package snapshots disagree across route legs", async () => {
+  const fixture = recoveryContinuationFixture();
+  fixture.leg.parcelBooking.quotes[0].inputSnapshot.operationalTariffAssessment.legs.push({
+    sequence: 2,
+    type: "INTERSTATE_TRANSPORT",
+    packages: [{
+      packageId: "package-1",
+      packageSequence: 1,
+      packageCategory: "GENERAL",
+      weightGrams: 501,
+      dimensionsMm: { length: 100, width: 100, height: 100 },
+    }],
+  });
+  const result = await setup({
+    ...fixture,
+    recoveryDisposition: fixture.disposition,
+    partnerRates: [],
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-2": hub("hub-2", "zone-2"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "BLOCKED");
+  assert.ok(result.blockers.some(item => item.code === "PACKAGE_FACTS_CHANGED"));
+});
+
+test("recovery continuation cannot bypass the predecessor gate for an unrelated failed leg", async () => {
+  const fixture = recoveryContinuationFixture();
+  fixture.previousLeg.failureReason = "OTHER_FAILURE";
+  const result = await setup({
+    ...fixture,
+    recoveryDisposition: fixture.disposition,
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-2": hub("hub-2", "zone-2"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "BLOCKED");
+  assert.ok(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
+});
 
 test("local pickup is ready only with a matching payout rule, eligible driver and receiving-hub capacity", async () => {
   const service = setup();

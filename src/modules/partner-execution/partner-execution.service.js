@@ -22,9 +22,23 @@ function forbidden(message = "You are not an active member of this transport par
   return error;
 }
 
+function partnerPackageRatesMatchSnapshot(current, pinned) {
+  if (!Array.isArray(current) || !Array.isArray(pinned) || current.length !== pinned.length) return false;
+  return current.every((item, index) => {
+    const saved = pinned[index];
+    return item.packageId === saved?.packageId
+      && item.packageSequence === saved?.packageSequence
+      && item.packageCategory === saved?.packageCategory
+      && item.weightGrams === saved?.weightGrams
+      && item.rateId === saved?.rateId
+      && item.transportChargeMinor === saved?.transportChargeMinor
+      && item.estimatedTransitMinutes === saved?.estimatedTransitMinutes;
+  });
+}
+
 export function createPartnerExecutionService({ prismaClient, clock = () => new Date() }) {
   const repository = createPartnerExecutionRepository({ prismaClient });
-  const executionReadiness = createExecutionReadinessService({ prismaClient });
+  const executionReadiness = createExecutionReadinessService({ prismaClient, clock });
 
   async function requirePartnerMembership(tx, partnerId, userId) {
     const membership = await repository.findMembership(partnerId, userId, tx);
@@ -168,8 +182,9 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
         const leg = await repository.findLegForAssignment(deliveryLegId, tx);
         if (!leg) return { notFound: true };
         const operationalTripLeg = leg.metadata?.pricingSource === "ADMIN_OPERATIONAL_TRIP" && leg.metadata?.executionType === "PARTNER";
-        const hubAssistedHatLeg = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-          && leg.metadata?.requiresOperationalReview === true;
+        const hubRecoveryContinuationLeg = leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
+        const hubAssistedHatLeg = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          && leg.metadata?.requiresOperationalReview === true) || hubRecoveryContinuationLeg;
         if (!operationalTripLeg && leg.type !== "INTERSTATE_TRANSPORT"
           && !(hubAssistedHatLeg && leg.type === "HUB_TRANSFER")) return { blocker: "LEG_NOT_PARTNER_EXECUTED" };
         if (leg.status !== "READY_FOR_ASSIGNMENT") return { blocker: "LEG_NOT_READY" };
@@ -207,7 +222,13 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
             && item.rateCardId === executionSnapshot.partnerRateCardId
             && item.rateCardVersion === executionSnapshot.costSourceVersion
             && item.totalExecutionCostMinor === executionSnapshot.executionCostMinor.toString());
-          if (assessment.readiness !== "READY" || !candidate) {
+          const pinnedCandidate = executionSnapshot.assessmentSnapshot?.execution?.partnerCandidates
+            ?.find(item => item.partnerId === partnerId
+              && item.agreementId === executionSnapshot.partnerAgreementId
+              && item.rateCardId === executionSnapshot.partnerRateCardId);
+          if (assessment.readiness !== "READY" || !candidate || !pinnedCandidate
+            || candidate.currency !== executionSnapshot.currency
+            || !partnerPackageRatesMatchSnapshot(candidate.packageRates, pinnedCandidate.packageRates)) {
             return { blocker: "HAT_PARTNER_EXECUTION_SNAPSHOT_STALE" };
           }
           agreementId = executionSnapshot.partnerAgreementId;
@@ -250,7 +271,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
           currency: assignmentCurrency, idempotencyKey, assignedAt: now,
           ...(hubAssistedHatLeg ? {
             metadata: {
-              executionSource: "PLATFORM_OPERATIONAL_TARIFF",
+              executionSource: hubRecoveryContinuationLeg ? "DRV-05C-D2_HUB_RECOVERY" : "PLATFORM_OPERATIONAL_TARIFF",
               executionSnapshotId: executionSnapshot.id,
               executionSnapshotVersion: executionSnapshot.version,
               rateCardId: executionSnapshot.partnerRateCardId,
