@@ -151,3 +151,12 @@ Coverage is representative, not exhaustive. Route-level authorization tests are 
 | POST | `/api/v1/admin/platform-operational-pricing/driver-payout-rules/:ruleId/retire` | ADMIN | Retire an active payout rule |
 
 These rules apply only to `LOCAL_PICKUP` and `FINAL_MILE`. They do not authorize dispatch or replace driver eligibility checks.
+
+
+## Execution readiness and executor selection
+
+| Method | Route | Access | Purpose |
+| --- | --- | --- | --- |
+| POST | `/api/v1/admin/delivery-legs/:legId/execution-snapshot` | ADMIN | Reassess a HAT leg, select one currently eligible executor, persist the immutable internal-cost snapshot and advance the leg to `READY_FOR_ASSIGNMENT` atomically |
+
+The endpoint requires an `Idempotency-Key`. It accepts either a driver profile plus vehicle for local legs, or a partner ID for partner-executed legs. The service reassesses accepted route topology, package facts, executor eligibility and internal cost inside a serializable transaction. It never reads customer tariff amounts as execution cost.

@@ -111,7 +111,7 @@ function driver(overrides = {}) {
   };
 }
 
-function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = [], hubs = {} } = {}) {
+function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = [], hubs = {}, previousLeg = null } = {}) {
   const tx = {
     platformDriverPayoutRule: { findMany: async () => rules ?? [{
       id: "payout-rule-1",
@@ -130,6 +130,7 @@ function setup({ leg = baseLeg(), drivers = [driver()], rules, partnerRates = []
   };
   const repository = {
     findLeg: async () => leg,
+    findPreviousLeg: async () => previousLeg,
     findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
     findActiveHub: async (_tx, id) => hubs[id] ?? hub(id, id === "hub-2" ? "zone-2" : "zone-1"),
     getHubLoad: async () => ({
@@ -339,4 +340,79 @@ test("blocks when a referenced hub is suspended or its operator is unverified", 
   });
   const result = await service.assessLeg({ deliveryLegId: "leg-1" });
   assert.ok(result.blockers.some(item => item.code === "HUB_NOT_OPERATIONAL"));
+});
+
+
+test("executor selection persists a versioned immutable driver payout snapshot and releases the leg", async () => {
+  const leg = baseLeg();
+  const selectedDriver = driver();
+  const created = [];
+  const tx = {
+    platformDriverPayoutRule: {
+      findMany: async () => [{
+        id: "payout-rule-1", version: 2, serviceZoneId: "zone-1",
+        legType: "LOCAL_PICKUP", parcelCategory: "GENERAL",
+        minWeightGrams: 0, maxWeightGrams: 1000, currency: "NGN",
+        driverPayoutMinor: 25000n, effectiveFrom: new Date("2026-11-01T00:00:00.000Z"),
+        effectiveUntil: null, status: "ACTIVE",
+      }],
+    },
+    deliveryLegOffer: { count: async () => 0 },
+    driverAssignment: { count: async () => 0 },
+    partnerDeliveryAssignment: { count: async () => 0 },
+    deliveryLegExecutionSnapshot: {
+      findUnique: async () => null,
+      aggregate: async () => ({ _max: { version: null } }),
+      create: async ({ data }) => {
+        const snapshot = { id: "snapshot-1", ...data };
+        created.push(snapshot);
+        return snapshot;
+      },
+    },
+    deliveryLeg: { updateMany: async () => ({ count: 1 }) },
+    operationalAuditEvent: { create: async () => ({ id: "audit-1" }) },
+  };
+  const repository = {
+    findLeg: async () => leg,
+    findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
+    findActiveHub: async (_tx, id) => hub(id, "zone-1"),
+    getHubLoad: async () => ({
+      load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+      missingVolumeCount: 0,
+    }),
+    findEligibleLocalDrivers: async () => [selectedDriver],
+    findEligibleLocalDriver: async () => selectedDriver,
+    findPartnerRates: async () => [],
+  };
+  const prismaClient = { $transaction: callback => callback(tx) };
+  const service = createExecutionReadinessService({ prismaClient, repository, clock: () => now });
+  const result = await service.selectExecutor({
+    deliveryLegId: "leg-1",
+    executorType: "PLATFORM_DRIVER",
+    driverProfileId: "driver-1",
+    vehicleId: "vehicle-1",
+    selectedByUserId: "admin-1",
+    idempotencyKey: "hat-driver-select-001",
+  });
+
+  assert.equal(result.replay, false);
+  assert.equal(result.snapshot.executorType, "PLATFORM_DRIVER");
+  assert.equal(result.snapshot.selectedDriverProfileId, "driver-1");
+  assert.equal(result.snapshot.selectedVehicleId, "vehicle-1");
+  assert.equal(result.snapshot.executionCostMinor, 25000n);
+  assert.equal(result.snapshot.costSource, "PLATFORM_DRIVER_PAYOUT_RULE");
+  assert.equal(result.snapshot.version, 1);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].assessmentSnapshot.dispatchAuthorized, false);
+});
+
+
+test("blocks a later HAT leg until the immediately preceding leg is completed", async () => {
+  const leg = baseLeg({ sequence: 2 });
+  const result = await setup({
+    leg,
+    previousLeg: { id: "leg-1", sequence: 1, type: "LOCAL_PICKUP", status: "ASSIGNED", completedAt: null },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+  assert.equal(result.readiness, "BLOCKED");
+  assert.ok(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
 });

@@ -3,6 +3,7 @@ import { projectIntegrationShipmentEvent } from "../integrations/integration-shi
 import { env } from "../../config/env.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/http/app-error.js";
 import { createDeliveryLegDispatchRepository } from "./delivery-leg-dispatch.repository.js";
+import { createExecutionReadinessService } from "../execution-readiness/execution-readiness.service.js";
 import { activeDriverCapabilityWhere, activeDriverDocumentWhere, activeServiceZoneWhere, eligibleVehicleWhere, parcelCapabilityForLegType } from "../drivers/driver-dispatch-eligibility.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = [
@@ -76,6 +77,7 @@ function serializeCustomerOffer(offer) {
 
 export function createDeliveryLegDispatchService({ prismaClient, repository, clock = () => new Date() }) {
   const db = repository ?? createDeliveryLegDispatchRepository(prismaClient);
+  const executionReadiness = createExecutionReadinessService({ prismaClient });
 
   return {
     async requestOffers({ legId, user, hubPointId }) {
@@ -95,12 +97,17 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw new ForbiddenError("An active hub dispatch permission is required.");
           }
         } else if (user.role === "ADMIN") {
+          const hubAssistedDispatch = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+            && leg.metadata?.requiresOperationalReview === true
+            && leg.parcelBooking.paymentStatus === "SUCCEEDED"
+            && (!leg.parcelBooking.integrationClientId
+              || leg.parcelBooking.integrationDispatchAuthorizedAt != null);
           const integrationDispatch = leg.parcelBooking.integrationClientId != null
             && leg.parcelBooking.senderId == null
             && leg.parcelBooking.integrationDispatchAuthorizedAt != null
             && leg.parcelBooking.paymentStatus === "SUCCEEDED"
             && leg.parcelBooking.status === "AWAITING_PARTNER_ASSIGNMENT";
-          if (!integrationDispatch) {
+          if (!integrationDispatch && !hubAssistedDispatch) {
             throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Admin dispatch requires a paid, released platform-priced integration shipment.");
           }
         } else if (leg.parcelBooking.senderId !== user.id) {
@@ -125,6 +132,29 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             && leg.parcelBooking.paymentStatus === "SUCCEEDED";
           if (!fixedPayout || !(customerDispatch || integrationDispatch)) {
             throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Platform fixed-payout dispatch requires an accepted tariff snapshot and the correct customer-payment or integration-release state.");
+          }
+        }
+        const hubAssistedHatLeg = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          && leg.metadata?.requiresOperationalReview === true;
+        let selectedExecutionSnapshot = null;
+        if (hubAssistedHatLeg) {
+          if (user.role !== "ADMIN" || leg.status !== "READY_FOR_ASSIGNMENT") {
+            throw conflict("HAT_EXECUTOR_SELECTION_REQUIRED", "A HAT leg must have an administrator-selected executor snapshot before matching.");
+          }
+          selectedExecutionSnapshot = await tx.deliveryLegExecutionSnapshot.findFirst({
+            where: { deliveryLegId: leg.id },
+            orderBy: { version: "desc" },
+          });
+          if (!selectedExecutionSnapshot || selectedExecutionSnapshot.executorType !== "PLATFORM_DRIVER"
+            || selectedExecutionSnapshot.id !== leg.metadata?.executionSnapshotId
+            || selectedExecutionSnapshot.selectedDriverProfileId == null
+            || selectedExecutionSnapshot.selectedVehicleId == null) {
+            throw conflict("HAT_DRIVER_SNAPSHOT_REQUIRED", "The latest immutable execution snapshot does not authorize a local driver offer.");
+          }
+          const assessment = await executionReadiness.assessLeg({ deliveryLegId: leg.id, tx });
+          if (assessment.readiness !== "READY"
+            || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== selectedExecutionSnapshot.executionCostMinor.toString()) {
+            throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver's eligibility or internal payout no longer matches the immutable execution snapshot.");
           }
         }
         if (!DRIVER_LEG_TYPES.has(leg.type)) {
@@ -158,7 +188,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           return { deliveryLegId: leg.id, status: leg.status, offersCreated: existing.length, replay: true };
         }
         const drivers = await db.findEligibleDrivers(tx, leg, now);
-        const eligible = drivers.filter((driver) => assertEligibleDriver(driver, leg, now));
+        const eligible = drivers.filter((driver) => assertEligibleDriver(driver, leg, now)
+          && (!selectedExecutionSnapshot || driver.id === selectedExecutionSnapshot.selectedDriverProfileId));
         if (!eligible.length) {
           throw conflict("NO_ELIGIBLE_DRIVERS", "No verified, available drivers with fresh locations inside their pickup radius cover this leg.");
         }
@@ -167,8 +198,11 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           deliveryLegId: leg.id,
           driverProfileId: driver.id,
           status: "OFFERED",
-          currency: leg.parcelBooking.currency,
-          ...(leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE"
+          currency: selectedExecutionSnapshot?.currency ?? leg.parcelBooking.currency,
+          ...(selectedExecutionSnapshot ? {
+            vehicleId: selectedExecutionSnapshot.selectedVehicleId,
+            fixedPayoutMinor: selectedExecutionSnapshot.executionCostMinor,
+          } : leg.metadata?.pricingSource === "PLATFORM_ROUTE_RATE"
             ? { fixedPayoutMinor: BigInt(leg.metadata.driverPayoutMinor) }
             : {}),
           expiresAt,
@@ -324,6 +358,11 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const leg = offer.deliveryLeg;
           const booking = leg.parcelBooking;
           const payout = offer.fixedPayoutMinor;
+          const isHatExecution = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+            && leg.metadata?.requiresOperationalReview === true;
+          const hatSnapshot = isHatExecution
+            ? await tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: leg.metadata.executionSnapshotId } })
+            : null;
           const integrationShipment = booking.integrationClientId != null && booking.senderId == null;
           const customerShipment = booking.senderId != null && booking.integrationClientId == null;
           const customerPaymentReady = customerShipment
@@ -335,12 +374,21 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             && booking.integrationDispatchAuthorizedAt != null
             && booking.paymentStatus === "SUCCEEDED"
             && booking.status === "AWAITING_PARTNER_ASSIGNMENT";
+          const hatPaymentReady = isHatExecution && booking.paymentStatus === "SUCCEEDED"
+            && (!booking.integrationClientId || booking.integrationDispatchAuthorizedAt != null);
+          const validHatSnapshot = isHatExecution && hatSnapshot
+            && hatSnapshot.executorType === "PLATFORM_DRIVER"
+            && hatSnapshot.selectedDriverProfileId === profile.id
+            && hatSnapshot.selectedVehicleId === vehicleId
+            && hatSnapshot.executionCostMinor === payout
+            && leg.metadata?.executionSnapshotId === hatSnapshot.id;
           if (offer.status !== "OFFERED" || offer.expiresAt <= now || payout == null || payout <= 0n
             || offer.proposedFareMinor != null || leg.status !== "READY_FOR_ASSIGNMENT"
-            || leg.type !== "LOCAL_PICKUP" || leg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
-            || leg.metadata?.driverPayoutMinor !== payout.toString()
-            || booking.pricingSnapshot?.driverPayoutMinor !== payout.toString()
-            || !(customerPaymentReady || integrationPaymentReady)) {
+            || (!isHatExecution && (leg.type !== "LOCAL_PICKUP" || leg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
+              || leg.metadata?.driverPayoutMinor !== payout.toString()
+              || booking.pricingSnapshot?.driverPayoutMinor !== payout.toString()))
+            || (isHatExecution && (!["LOCAL_PICKUP", "FINAL_MILE"].includes(leg.type) || !validHatSnapshot))
+            || !(customerPaymentReady || integrationPaymentReady || hatPaymentReady)) {
             throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "This fixed-payout offer is no longer authorized or available.");
           }
 
@@ -359,15 +407,35 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             && lockedBooking.integrationDispatchAuthorizedAt != null
             && lockedBooking.paymentStatus === "SUCCEEDED"
             && lockedBooking.status === "AWAITING_PARTNER_ASSIGNMENT";
+          const lockedHat = lockedLeg?.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+            && lockedLeg.metadata?.requiresOperationalReview === true;
+          const lockedSnapshot = lockedHat
+            ? await tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: lockedLeg.metadata.executionSnapshotId } })
+            : null;
           if (!lockedLeg || lockedLeg.status !== "READY_FOR_ASSIGNMENT"
-            || lockedLeg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
-            || lockedLeg.metadata?.driverPayoutMinor !== payout.toString()
-            || lockedBooking?.pricingSnapshot?.driverPayoutMinor !== payout.toString()
-            || !(lockedCustomerShipment || lockedIntegrationShipment)) {
+            || (lockedHat
+              ? (!lockedSnapshot || lockedSnapshot.executorType !== "PLATFORM_DRIVER"
+                || lockedSnapshot.selectedDriverProfileId !== profile.id
+                || lockedSnapshot.selectedVehicleId !== vehicleId
+                || lockedSnapshot.executionCostMinor !== payout
+                || !["LOCAL_PICKUP", "FINAL_MILE"].includes(lockedLeg.type)
+                || lockedBooking?.paymentStatus !== "SUCCEEDED"
+                || (lockedBooking.integrationClientId && !lockedBooking.integrationDispatchAuthorizedAt))
+              : (lockedLeg.metadata?.pricingSource !== "PLATFORM_ROUTE_RATE"
+                || lockedLeg.metadata?.driverPayoutMinor !== payout.toString()
+                || lockedBooking?.pricingSnapshot?.driverPayoutMinor !== payout.toString()
+                || !(lockedCustomerShipment || lockedIntegrationShipment)))) {
             throw conflict("FIXED_PAYOUT_OFFER_UNAVAILABLE", "The shipment is no longer eligible for fixed-payout driver assignment.");
           }
+          if (lockedHat) {
+            const assessment = await executionReadiness.assessLeg({ deliveryLegId: lockedLeg.id, tx });
+            if (assessment.readiness !== "READY"
+              || assessment.execution?.payoutAssessment?.totalDriverPayoutMinor !== payout.toString()) {
+              throw conflict("HAT_EXECUTION_SNAPSHOT_STALE", "The selected driver eligibility or payout policy changed before assignment.");
+            }
+          }
 
-          const routeAvailability = await tx.platformRouteAvailability.findFirst({
+          const routeAvailability = lockedHat ? null : await tx.platformRouteAvailability.findFirst({
             where: {
               originServiceZoneId: leg.originServiceZoneId,
               destinationServiceZoneId: leg.destinationServiceZoneId,
@@ -379,7 +447,7 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             },
             select: { id: true },
           });
-          if (!routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
+          if (!lockedHat && !routeAvailability) throw conflict("PLATFORM_ROUTE_UNAVAILABLE", "The platform-operated route is no longer enabled.");
 
           const capability = parcelCapabilityForLegType(leg.type);
           const vehicle = await tx.vehicle.findFirst({
@@ -442,24 +510,27 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             where: { deliveryLegId: leg.id, id: { not: offer.id }, status: "OFFERED" },
             data: { status: "WITHDRAWN", respondedAt: now },
           });
-          const customerPaymentFlow = lockedCustomerShipment;
+          const customerPaymentFlow = !lockedHat && lockedCustomerShipment;
           const nextLegStatus = customerPaymentFlow ? "AWAITING_PAYMENT" : "ASSIGNED";
-          const nextBookingStatus = customerPaymentFlow ? "AWAITING_PAYMENT" : "DRIVER_ASSIGNED";
+          const nextBookingStatus = lockedHat ? lockedBooking.status
+            : customerPaymentFlow ? "AWAITING_PAYMENT" : "DRIVER_ASSIGNED";
           const legChanged = await tx.deliveryLeg.updateMany({
             where: { id: leg.id, status: "READY_FOR_ASSIGNMENT" },
             data: { status: nextLegStatus, ...(customerPaymentFlow ? {} : { assignedAt: now }) },
           });
           if (legChanged.count !== 1) throw conflict("DELIVERY_LEG_STATE_CONFLICT", "The delivery leg changed during driver acceptance.");
-          const bookingChanged = await tx.parcelBooking.updateMany({
-            where: {
-              id: booking.id, status: "AWAITING_PARTNER_ASSIGNMENT",
-              ...(customerPaymentFlow
-                ? { paymentStatus: { in: ["INITIALIZED", "FAILED"] }, senderId: { not: null }, integrationClientId: null }
-                : { paymentStatus: "SUCCEEDED", integrationDispatchAuthorizedAt: { not: null }, integrationClientId: { not: null } }),
-            },
-            data: { status: nextBookingStatus },
-          });
-          if (bookingChanged.count !== 1) throw conflict("SHIPMENT_STATE_CONFLICT", "The shipment changed during driver acceptance.");
+          if (!lockedHat) {
+            const bookingChanged = await tx.parcelBooking.updateMany({
+              where: {
+                id: booking.id, status: "AWAITING_PARTNER_ASSIGNMENT",
+                ...(customerPaymentFlow
+                  ? { paymentStatus: { in: ["INITIALIZED", "FAILED"] }, senderId: { not: null }, integrationClientId: null }
+                  : { paymentStatus: "SUCCEEDED", integrationDispatchAuthorizedAt: { not: null }, integrationClientId: { not: null } }),
+              },
+              data: { status: nextBookingStatus },
+            });
+            if (bookingChanged.count !== 1) throw conflict("SHIPMENT_STATE_CONFLICT", "The shipment changed during driver acceptance.");
+          }
 
           const paymentExpiresAt = customerPaymentFlow ? new Date(now.getTime() + 15 * 60_000) : null;
           const assignment = await tx.driverAssignment.create({
@@ -475,12 +546,15 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const sourceEvent = await tx.bookingEvent.create({
             data: {
               parcelBookingId: booking.id, actorUserId: userId,
-              eventType: customerPaymentFlow ? "PLATFORM_FIXED_PAYOUT_DRIVER_RESERVED" : "PLATFORM_FIXED_PAYOUT_DRIVER_ACCEPTED",
-              fromStatus: "AWAITING_PARTNER_ASSIGNMENT", toStatus: nextBookingStatus,
+              eventType: lockedHat ? "HAT_LOCAL_DRIVER_ASSIGNED"
+                : customerPaymentFlow ? "PLATFORM_FIXED_PAYOUT_DRIVER_RESERVED" : "PLATFORM_FIXED_PAYOUT_DRIVER_ACCEPTED",
+              fromStatus: lockedHat ? lockedBooking.status : "AWAITING_PARTNER_ASSIGNMENT",
+              toStatus: nextBookingStatus,
               metadata: {
                 deliveryLegId: leg.id, offerId, assignmentId: assignment.id, driverProfileId: profile.id,
                 vehicleId: vehicle.id, fixedPayoutMinor: payout.toString(), currency: offer.currency,
-                pricingSource: "PLATFORM_ROUTE_RATE",
+                pricingSource: lockedHat ? "PLATFORM_OPERATIONAL_TARIFF" : "PLATFORM_ROUTE_RATE",
+                ...(lockedHat ? { executionSnapshotId: lockedSnapshot.id, executionSnapshotVersion: lockedSnapshot.version } : {}),
                 ...(customerPaymentFlow ? { paymentRequired: true, paymentExpiresAt: paymentExpiresAt.toISOString() } : {}),
               },
             },

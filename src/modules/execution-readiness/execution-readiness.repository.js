@@ -2,6 +2,7 @@ import { env } from "../../config/env.js";
 import {
   activeServiceZoneWhere,
   eligibleParcelDriverWhere,
+  eligibleVehicleWhere,
   parcelCapabilityForLegType,
 } from "../drivers/driver-dispatch-eligibility.js";
 
@@ -39,6 +40,17 @@ export function createExecutionReadinessRepository({ prismaClient }) {
       });
     },
 
+    findPreviousLeg(tx, leg) {
+      if (leg.sequence <= 1) return Promise.resolve(null);
+      return tx.deliveryLeg.findFirst({
+        where: {
+          parcelBookingId: leg.parcelBookingId,
+          sequence: leg.sequence - 1,
+        },
+        select: { id: true, sequence: true, type: true, status: true, completedAt: true },
+      });
+    },
+
     findEligibleLocalDrivers(tx, leg, now) {
       const capability = parcelCapabilityForLegType(leg.type);
       if (!capability) return Promise.resolve([]);
@@ -57,6 +69,61 @@ export function createExecutionReadinessRepository({ prismaClient }) {
           lastLocationAt: {
             gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000),
             lte: now,
+          },
+          AND: [
+            ...requiredServiceZoneIds.map(serviceZoneId => ({
+              coverage: {
+                some: {
+                  serviceZoneId,
+                  serviceType: "PARCEL_DELIVERY",
+                  isEnabled: true,
+                  serviceZone: { is: activeServiceZoneWhere(now) },
+                },
+              },
+            })),
+          ],
+          assignments: { none: { status: { in: ACTIVE_ASSIGNMENT_STATUSES } } },
+        },
+        select: {
+          id: true,
+          serviceRadiusMeters: true,
+          lastLocationAt: true,
+          locations: {
+            orderBy: { recordedAt: "desc" },
+            take: 1,
+            select: { latitude: true, longitude: true, recordedAt: true },
+          },
+        },
+      });
+    },
+
+    findEligibleLocalDriver(tx, leg, driverProfileId, vehicleId, now) {
+      const capability = parcelCapabilityForLegType(leg.type);
+      if (!capability || !vehicleId) return Promise.resolve(null);
+      const requiredServiceZoneIds = [...new Set([leg.originServiceZoneId, leg.destinationServiceZoneId])];
+      return tx.driverProfile.findFirst({
+        where: {
+          id: driverProfileId,
+          ...eligibleParcelDriverWhere({
+            capability,
+            now,
+            strictMode: env.DRIVER_KYC_MODE === "STRICT",
+            kycTiers: ["FULL"],
+          }),
+          lastLocationAt: {
+            gte: new Date(now.getTime() - env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000),
+            lte: now,
+          },
+          vehicles: {
+            some: {
+              id: vehicleId,
+              ...eligibleVehicleWhere({
+                driverProfileId,
+                capability,
+                now,
+                strictMode: env.DRIVER_KYC_MODE === "STRICT",
+              }),
+            },
           },
           AND: [
             ...requiredServiceZoneIds.map(serviceZoneId => ({

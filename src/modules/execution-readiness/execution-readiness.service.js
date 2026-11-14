@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { env } from "../../config/env.js";
 import { assessPlatformDriverPayout } from "../platform-operational-pricing/platform-driver-payout-assessment.service.js";
 import { rateFitsPackage } from "../platform-route-pricing/platform-route-tariff-assessment.service.js";
@@ -14,6 +15,10 @@ async function serializableTransaction(prismaClient, callback) {
       if (error?.code !== "P2034" || attempt >= 2) throw error;
     }
   }
+}
+
+function selectionPayloadHash(value) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 function blocker(code, message, scope = null) {
@@ -196,13 +201,23 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
   const db = repository ?? createExecutionReadinessRepository({ prismaClient });
 
   return {
-    async assessLeg({ deliveryLegId }) {
+    async assessLeg({ deliveryLegId, tx: transactionClient = null }) {
       const now = clock();
-      return serializableTransaction(prismaClient, async tx => {
+      const assess = async tx => {
         const leg = await db.findLeg(tx, deliveryLegId);
         if (!leg) return { found: false, deliveryLegId };
         const booking = leg.parcelBooking;
         const blockers = [];
+        if (leg.sequence > 1) {
+          const previousLeg = await db.findPreviousLeg(tx, leg);
+          if (!previousLeg || previousLeg.status !== "COMPLETED" || !previousLeg.completedAt) {
+            blockers.push(blocker(
+              "PREVIOUS_LEG_NOT_COMPLETED",
+              "A delivery leg cannot be released to an executor until the immediately preceding leg is completed and recorded.",
+              previousLeg?.id ?? null,
+            ));
+          }
+        }
 
         if (leg.metadata?.pricingSource !== "PLATFORM_OPERATIONAL_TARIFF"
           || leg.metadata?.requiresOperationalReview !== true) {
@@ -329,7 +344,166 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           currency,
           assessedAt: now.toISOString(),
         };
-      });
+      };
+      return transactionClient ? assess(transactionClient) : serializableTransaction(prismaClient, assess);
+    },
+
+    async selectExecutor({
+      deliveryLegId, executorType, driverProfileId, vehicleId, partnerId,
+      selectedByUserId, idempotencyKey,
+    }) {
+      const now = clock();
+      const payload = { deliveryLegId, executorType, driverProfileId: driverProfileId ?? null,
+        vehicleId: vehicleId ?? null, partnerId: partnerId ?? null };
+      const payloadHash = selectionPayloadHash(payload);
+      try {
+        return await serializableTransaction(prismaClient, async tx => {
+        const prior = await tx.deliveryLegExecutionSnapshot.findUnique({ where: { idempotencyKey } });
+        if (prior) {
+          if (prior.deliveryLegId !== deliveryLegId || prior.payloadHash !== payloadHash) {
+            const error = new Error("The idempotency key was already used for a different executor selection.");
+            error.statusCode = 409;
+            error.code = "IDEMPOTENCY_KEY_REUSED";
+            throw error;
+          }
+          return { snapshot: prior, replay: true };
+        }
+
+        const leg = await db.findLeg(tx, deliveryLegId);
+        if (!leg) return { found: false, deliveryLegId };
+        if (!["PLANNED", "READY_FOR_ASSIGNMENT"].includes(leg.status)) {
+          return { blocked: true, blockers: [blocker("LEG_STATE_NOT_SELECTABLE", "Only planned or unassigned readiness-assessed legs can receive an execution snapshot.")] };
+        }
+        const [activeOffers, activeDriverAssignments, activePartnerAssignments] = await Promise.all([
+          tx.deliveryLegOffer.count({ where: { deliveryLegId, status: "OFFERED", expiresAt: { gt: now } } }),
+          tx.driverAssignment.count({ where: { deliveryLegId, status: { in: ["AWAITING_PAYMENT", "ACCEPTED", "ARRIVED_AT_PICKUP", "PICKUP_CONFIRMED", "IN_PROGRESS", "ARRIVED_AT_DESTINATION"] } } }),
+          tx.partnerDeliveryAssignment.count({ where: { deliveryLegId, status: { in: ["ASSIGNED", "ACCEPTED", "IN_TRANSIT"] } } }),
+        ]);
+        if (activeOffers || activeDriverAssignments || activePartnerAssignments) {
+          return { blocked: true, blockers: [blocker("EXECUTOR_ALREADY_COMMITTED", "An active offer or assignment exists; this executor snapshot cannot be replaced.")] };
+        }
+
+        const assessment = await this.assessLeg({ deliveryLegId, tx });
+        if (!assessment.found || assessment.readiness !== "READY") {
+          return { blocked: true, blockers: assessment.blockers ?? [blocker("READINESS_ASSESSMENT_FAILED", "The delivery leg could not be assessed.")] };
+        }
+
+        const booking = leg.parcelBooking;
+        const acceptedQuote = booking.quotes?.find(quote => quote.id === leg.metadata?.quoteId);
+        let selected = {};
+        let executionCostMinor;
+        let costSource;
+        let costSourceVersion = null;
+        if (executorType === "PLATFORM_DRIVER") {
+          if (!LOCAL_DRIVER_LEG_TYPES.has(leg.type) || !driverProfileId || !vehicleId
+            || assessment.execution?.mode !== "PLATFORM_DRIVER"
+            || assessment.execution?.payoutAssessment?.status !== "RESOLVED") {
+            return { blocked: true, blockers: [blocker("INVALID_DRIVER_EXECUTOR_SELECTION", "A local HAT leg requires a selected eligible driver, vehicle and resolved platform payout.")] };
+          }
+          const driver = await db.findEligibleLocalDriver(tx, leg, driverProfileId, vehicleId, now);
+          if (!driver || !isDriverWithinPickupRadius(
+            driver,
+            { latitude: leg.originLatitude, longitude: leg.originLongitude },
+            now,
+            env.DRIVER_LOCATION_MAX_AGE_SECONDS * 1000,
+          )) {
+            return { blocked: true, blockers: [blocker("SELECTED_DRIVER_NO_LONGER_ELIGIBLE", "The selected driver, vehicle, coverage, availability or fresh pickup-radius location is no longer eligible.")] };
+          }
+          executionCostMinor = BigInt(assessment.execution.payoutAssessment.totalDriverPayoutMinor);
+          costSource = "PLATFORM_DRIVER_PAYOUT_RULE";
+          selected = { selectedDriverProfileId: driverProfileId, selectedVehicleId: vehicleId };
+        } else if (executorType === "TRANSPORT_PARTNER") {
+          if (!PARTNER_LEG_TYPES.has(leg.type) || !partnerId
+            || assessment.execution?.mode !== "TRANSPORT_PARTNER") {
+            return { blocked: true, blockers: [blocker("INVALID_PARTNER_EXECUTOR_SELECTION", "A partner-executed HAT leg requires a selected eligible partner rate-card candidate.")] };
+          }
+          const candidate = assessment.execution.partnerCandidates.find(item => item.partnerId === partnerId);
+          if (!candidate) {
+            return { blocked: true, blockers: [blocker("SELECTED_PARTNER_NO_LONGER_ELIGIBLE", "The selected partner no longer has one active rate card covering every package on this leg.")] };
+          }
+          executionCostMinor = BigInt(candidate.totalExecutionCostMinor);
+          costSource = "PARTNER_RATE_CARD";
+          costSourceVersion = candidate.rateCardVersion;
+          selected = {
+            selectedPartnerId: candidate.partnerId,
+            partnerAgreementId: candidate.agreementId,
+            partnerRateCardId: candidate.rateCardId,
+          };
+        } else {
+          return { blocked: true, blockers: [blocker("UNSUPPORTED_EXECUTOR_TYPE", "The selected executor type is not supported for HAT legs.")] };
+        }
+
+        const latest = await tx.deliveryLegExecutionSnapshot.aggregate({
+          where: { deliveryLegId },
+          _max: { version: true },
+        });
+        const snapshot = await tx.deliveryLegExecutionSnapshot.create({
+          data: {
+            deliveryLegId,
+            version: (latest._max.version ?? 0) + 1,
+            idempotencyKey,
+            payloadHash,
+            executorType,
+            ...selected,
+            executionCostMinor,
+            currency: assessment.currency,
+            costSource,
+            costSourceVersion,
+            assessmentSnapshot: assessment,
+            routeSnapshot: acceptedQuote?.inputSnapshot?.routeSnapshot ?? {},
+            packageSnapshot: booking.parcelPackages.map(pkg => ({
+              id: pkg.id, packageSequence: pkg.packageSequence, packageCategory: pkg.packageCategory,
+              weightGrams: pkg.weightGrams, lengthMm: pkg.lengthMm, widthMm: pkg.widthMm, heightMm: pkg.heightMm,
+            })),
+            selectedByUserId,
+            selectedAt: now,
+          },
+        });
+        const updated = await tx.deliveryLeg.updateMany({
+          where: { id: deliveryLegId, status: { in: ["PLANNED", "READY_FOR_ASSIGNMENT"] } },
+          data: {
+            status: "READY_FOR_ASSIGNMENT",
+            metadata: {
+              ...(leg.metadata ?? {}),
+              executionReadiness: "READY",
+              executionSnapshotId: snapshot.id,
+              executionSnapshotVersion: snapshot.version,
+              executionMode: executorType,
+            },
+          },
+        });
+        if (updated.count !== 1) {
+          const error = new Error("The delivery leg changed while its executor snapshot was being selected.");
+          error.statusCode = 409;
+          error.code = "EXECUTION_SELECTION_STATE_CONFLICT";
+          throw error;
+        }
+        await tx.operationalAuditEvent.create({
+          data: {
+            actorUserId: selectedByUserId,
+            entityType: "DELIVERY_LEG_EXECUTION_SNAPSHOT",
+            entityId: snapshot.id,
+            action: "DELIVERY_LEG_EXECUTOR_SELECTED",
+            after: {
+              deliveryLegId, snapshotVersion: snapshot.version, executorType,
+              ...selected, executionCostMinor: executionCostMinor.toString(),
+              currency: assessment.currency, costSource, costSourceVersion,
+            },
+          },
+        });
+        return { snapshot, replay: false };
+        });
+      } catch (error) {
+        if (error?.code !== "P2002") throw error;
+        const existing = await prismaClient.deliveryLegExecutionSnapshot.findUnique({ where: { idempotencyKey } });
+        if (!existing || existing.deliveryLegId !== deliveryLegId || existing.payloadHash !== payloadHash) {
+          const conflictError = new Error("The idempotency key was already used for a different executor selection.");
+          conflictError.statusCode = 409;
+          conflictError.code = "IDEMPOTENCY_KEY_REUSED";
+          throw conflictError;
+        }
+        return { snapshot: existing, replay: true };
+      }
     },
 
     async assessBooking({ bookingId }) {
