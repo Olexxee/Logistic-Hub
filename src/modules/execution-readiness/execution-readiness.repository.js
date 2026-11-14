@@ -113,6 +113,11 @@ export function createExecutionReadinessRepository({ prismaClient }) {
           id: true,
           serviceRadiusMeters: true,
           lastLocationAt: true,
+          user: { select: { fullName: true } },
+          vehicles: {
+            where: eligibleVehicleWhere({ capability, now, strictMode: env.DRIVER_KYC_MODE === "STRICT" }),
+            select: { id: true, type: true, make: true, model: true, registrationPlate: true },
+          },
           locations: {
             orderBy: { recordedAt: "desc" },
             take: 1,
