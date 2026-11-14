@@ -832,7 +832,7 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
     createOffers: async (_tx, data) => { offers = data; return { count: data.length }; },
     recordEvent: async (_tx, data) => { event = data; },
   };
-  const readiness = await createExecutionReadinessService({ prismaClient: {} })
+  const readiness = await createExecutionReadinessService({ prismaClient: {}, clock: () => now })
     .assessLeg({ deliveryLegId: recoveryLeg.id, tx });
   assert.equal(readiness.readiness, "READY", JSON.stringify(readiness.blockers));
   assert.deepEqual(
