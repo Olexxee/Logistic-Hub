@@ -47,7 +47,33 @@ export function createExecutionReadinessRepository({ prismaClient }) {
           parcelBookingId: leg.parcelBookingId,
           sequence: leg.sequence - 1,
         },
-        select: { id: true, sequence: true, type: true, status: true, completedAt: true },
+        select: { id: true, sequence: true, type: true, status: true, completedAt: true, failureReason: true },
+      });
+    },
+
+    findRecoveryDisposition(tx, deliveryLegId) {
+      return tx.hubIntakeDisposition.findUnique({
+        where: { nextDeliveryLegId: deliveryLegId },
+        include: {
+          intakeRecord: {
+            select: { id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true, status: true },
+          },
+          hubRecovery: {
+            select: { id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true, status: true, hubIntakeRecordId: true },
+          },
+          sourceDeliveryLeg: {
+            select: { id: true, parcelBookingId: true, sequence: true, status: true, failureReason: true },
+          },
+          hubPoint: {
+            select: { id: true, serviceZoneId: true, latitude: true, longitude: true },
+          },
+          destinationHubPoint: {
+            select: { id: true, serviceZoneId: true, latitude: true, longitude: true },
+          },
+          nextDeliveryLeg: {
+            select: { id: true, sequence: true },
+          },
+        },
       });
     },
 
