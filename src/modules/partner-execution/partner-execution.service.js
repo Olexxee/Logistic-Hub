@@ -22,6 +22,20 @@ function forbidden(message = "You are not an active member of this transport par
   return error;
 }
 
+function partnerPackageRatesMatchSnapshot(current, pinned) {
+  if (!Array.isArray(current) || !Array.isArray(pinned) || current.length !== pinned.length) return false;
+  return current.every((item, index) => {
+    const saved = pinned[index];
+    return item.packageId === saved?.packageId
+      && item.packageSequence === saved?.packageSequence
+      && item.packageCategory === saved?.packageCategory
+      && item.weightGrams === saved?.weightGrams
+      && item.rateId === saved?.rateId
+      && item.transportChargeMinor === saved?.transportChargeMinor
+      && item.estimatedTransitMinutes === saved?.estimatedTransitMinutes;
+  });
+}
+
 export function createPartnerExecutionService({ prismaClient, clock = () => new Date() }) {
   const repository = createPartnerExecutionRepository({ prismaClient });
   const executionReadiness = createExecutionReadinessService({ prismaClient });
@@ -214,7 +228,7 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
               && item.rateCardId === executionSnapshot.partnerRateCardId);
           if (assessment.readiness !== "READY" || !candidate || !pinnedCandidate
             || candidate.currency !== executionSnapshot.currency
-            || JSON.stringify(candidate.packageRates) !== JSON.stringify(pinnedCandidate.packageRates)) {
+            || !partnerPackageRatesMatchSnapshot(candidate.packageRates, pinnedCandidate.packageRates)) {
             return { blocker: "HAT_PARTNER_EXECUTION_SNAPSHOT_STALE" };
           }
           agreementId = executionSnapshot.partnerAgreementId;
