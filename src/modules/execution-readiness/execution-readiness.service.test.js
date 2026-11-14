@@ -728,3 +728,86 @@ test("mixed three-leg HAT shipment releases each local and partner leg only afte
   assert.equal(finalMile.execution.payoutAssessment.totalDriverPayoutMinor, "30000");
   assert.equal(finalMile.dispatchAuthorized, false);
 });
+
+
+function executorRevalidationHarness({ selectedDriver = driver(), hubCapacity = 10 } = {}) {
+  const leg = baseLeg();
+  let snapshotWrites = 0;
+  const tx = {
+    platformDriverPayoutRule: {
+      findMany: async () => [{
+        id: "payout-rule-revalidation", version: 2, serviceZoneId: "zone-1",
+        legType: "LOCAL_PICKUP", parcelCategory: "GENERAL",
+        minWeightGrams: 0, maxWeightGrams: 1000, currency: "NGN",
+        driverPayoutMinor: 25000n, effectiveFrom: new Date("2026-11-01T00:00:00.000Z"),
+        effectiveUntil: null, status: "ACTIVE",
+      }],
+    },
+    deliveryLegOffer: { count: async () => 0 },
+    driverAssignment: { count: async () => 0 },
+    partnerDeliveryAssignment: { count: async () => 0 },
+    deliveryLegExecutionSnapshot: {
+      findUnique: async () => null,
+      aggregate: async () => ({ _max: { version: null } }),
+      create: async ({ data }) => {
+        snapshotWrites += 1;
+        return { id: "snapshot-revalidation", ...data };
+      },
+    },
+    deliveryLeg: { updateMany: async () => ({ count: 1 }) },
+    operationalAuditEvent: { create: async () => ({ id: "audit-revalidation" }) },
+  };
+  const repository = {
+    findLeg: async () => leg,
+    findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
+    findActiveHub: async (_tx, id) => hub(id, "zone-1", {
+      capacityConfig: { maxParcels: hubCapacity },
+    }),
+    getHubLoad: async () => ({
+      load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+      missingVolumeCount: 0,
+    }),
+    findEligibleLocalDrivers: async () => [driver()],
+    // The selected driver's fresh eligibility lookup can reflect a suspension,
+    // expired KYC, stale location, or changed coverage after initial discovery.
+    findEligibleLocalDriver: async () => selectedDriver,
+    findPartnerRates: async () => [],
+  };
+  const prismaClient = { $transaction: callback => callback(tx) };
+  return {
+    service: createExecutionReadinessService({ prismaClient, repository, clock: () => now }),
+    get snapshotWrites() { return snapshotWrites; },
+  };
+}
+
+test("executor selection is rejected when the selected driver loses eligibility during revalidation", async () => {
+  const harness = executorRevalidationHarness({ selectedDriver: null });
+  const result = await harness.service.selectExecutor({
+    deliveryLegId: "leg-1",
+    executorType: "PLATFORM_DRIVER",
+    driverProfileId: "driver-1",
+    vehicleId: "vehicle-1",
+    selectedByUserId: "admin-1",
+    idempotencyKey: "revalidation-driver-ineligible",
+  });
+
+  assert.equal(result.blocked, true);
+  assert.ok(result.blockers.some(item => item.code === "SELECTED_DRIVER_NO_LONGER_ELIGIBLE"));
+  assert.equal(harness.snapshotWrites, 0);
+});
+
+test("executor selection is rejected when receiving-hub capacity is exhausted during revalidation", async () => {
+  const harness = executorRevalidationHarness({ hubCapacity: 0 });
+  const result = await harness.service.selectExecutor({
+    deliveryLegId: "leg-1",
+    executorType: "PLATFORM_DRIVER",
+    driverProfileId: "driver-1",
+    vehicleId: "vehicle-1",
+    selectedByUserId: "admin-1",
+    idempotencyKey: "revalidation-hub-capacity",
+  });
+
+  assert.equal(result.blocked, true);
+  assert.ok(result.blockers.some(item => item.code === "HUB_PARCEL_CAPACITY_EXCEEDED"));
+  assert.equal(harness.snapshotWrites, 0);
+});
