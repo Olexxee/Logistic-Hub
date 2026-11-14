@@ -568,7 +568,20 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
             costSource,
             costSourceVersion,
             assessmentSnapshot: assessment,
-            routeSnapshot: acceptedQuote?.inputSnapshot?.routeSnapshot ?? {},
+            routeSnapshot: assessment.recovery ? {
+              routeMode: "HUB_RECOVERY",
+              legs: [{
+                sequence: leg.sequence,
+                type: leg.type,
+                originServiceZoneId: leg.originServiceZoneId,
+                destinationServiceZoneId: leg.destinationServiceZoneId,
+                originHubPointId: leg.originHubPointId ?? null,
+                destinationHubPointId: leg.destinationHubPointId ?? null,
+                origin: { latitude: leg.originLatitude, longitude: leg.originLongitude },
+                destination: { latitude: leg.destinationLatitude, longitude: leg.destinationLongitude },
+              }],
+              recovery: assessment.recovery,
+            } : acceptedQuote?.inputSnapshot?.routeSnapshot ?? {},
             packageSnapshot: booking.parcelPackages.map(pkg => ({
               id: pkg.id, packageSequence: pkg.packageSequence, packageCategory: pkg.packageCategory,
               weightGrams: pkg.weightGrams, lengthMm: pkg.lengthMm, widthMm: pkg.widthMm, heightMm: pkg.heightMm,
