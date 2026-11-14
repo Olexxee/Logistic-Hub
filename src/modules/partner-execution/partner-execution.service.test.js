@@ -129,6 +129,27 @@ test("partner assignment revalidates and assigns an approved hub-recovery contin
     selectedPartnerId: "partner-1", partnerAgreementId: "agreement-1",
     partnerRateCardId: "rate-card-1", costSourceVersion: 3,
     executionCostMinor: 21000n, currency: "NGN",
+    assessmentSnapshot: {
+      execution: {
+        partnerCandidates: [{
+          partnerId: "partner-1",
+          agreementId: "agreement-1",
+          rateCardId: "rate-card-1",
+          rateCardVersion: 3,
+          currency: "NGN",
+          totalExecutionCostMinor: "21000",
+          packageRates: [{
+            packageId: "package-1",
+            packageSequence: 1,
+            packageCategory: "GENERAL",
+            weightGrams: 500,
+            rateId: "partner-rate-1",
+            transportChargeMinor: "21000",
+            estimatedTransitMinutes: 180,
+          }],
+        }],
+      },
+    },
   };
   const hub = (id, serviceZoneId, latitude, longitude) => ({
     id, status: "ACTIVE", operatorVerificationStatus: "VERIFIED",
