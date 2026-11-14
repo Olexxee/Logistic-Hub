@@ -667,3 +667,149 @@ test("customer offer repository includes fixed-payout offers without selecting p
     { fixedPayoutMinor: { not: null } },
   ]);
 });
+
+
+test("Admin can request a fixed-payout driver offer for an approved hub-recovery final-mile leg", async () => {
+  const packageFacts = [{
+    id: "recovery-package-1", packageSequence: 1, packageCategory: "GENERAL",
+    weightGrams: 500, lengthMm: 100, widthMm: 100, heightMm: 100,
+  }];
+  const quote = {
+    id: "recovery-accepted-quote", status: "ACCEPTED", currency: "NGN",
+    inputSnapshot: {
+      source: "PLATFORM_OPERATIONAL_TARIFF",
+      operationalTariffAssessment: { legs: [{
+        sequence: 1, type: "LOCAL_PICKUP",
+        packages: packageFacts.map(pkg => ({
+          packageId: pkg.id, packageSequence: pkg.packageSequence,
+          packageCategory: pkg.packageCategory, weightGrams: pkg.weightGrams,
+          dimensionsMm: { length: pkg.lengthMm, width: pkg.widthMm, height: pkg.heightMm },
+        })),
+      }] },
+      routeSnapshot: { legs: [] },
+    },
+  };
+  const booking = {
+    id: "recovery-booking", senderId: "sender-1", publicReference: "LH-RECOVERY-1",
+    status: "IN_TRANSIT", paymentStatus: "SUCCEEDED", currency: "NGN",
+    integrationClientId: null, integrationDispatchAuthorizedAt: null,
+    destinationLatitude: 6.525, destinationLongitude: 3.38,
+    parcelPackages: packageFacts, quotes: [quote],
+  };
+  const recoveryLeg = {
+    id: "recovery-final-mile", parcelBookingId: booking.id, sequence: 2,
+    type: "FINAL_MILE", status: "READY_FOR_ASSIGNMENT",
+    originServiceZoneId: "zone-hub", destinationServiceZoneId: "zone-final",
+    originHubPointId: "hub-recovery", destinationHubPointId: null,
+    originLatitude: 6.5244, originLongitude: 3.3792,
+    destinationLatitude: booking.destinationLatitude, destinationLongitude: booking.destinationLongitude,
+    metadata: {
+      source: "DRV-05C-D2_HUB_RECOVERY",
+      sourceIntakeRecordId: "intake-recovery",
+      sourceDeliveryLegId: "failed-source-leg",
+      hubRecoveryId: "hub-recovery-record",
+    },
+    parcelBooking: booking,
+  };
+  const disposition = {
+    id: "recovery-disposition", intakeRecordId: "intake-recovery",
+    hubRecoveryId: "hub-recovery-record", parcelBookingId: booking.id,
+    sourceDeliveryLegId: "failed-source-leg", hubPointId: "hub-recovery",
+    decision: "CONTINUE_DELIVERY", status: "ROUTE_APPROVED",
+    destinationServiceZoneId: "zone-final", destinationHubPointId: null,
+    nextDeliveryLegId: recoveryLeg.id,
+    intakeRecord: {
+      id: "intake-recovery", status: "RECEIVED", parcelBookingId: booking.id,
+      deliveryLegId: "failed-source-leg", hubPointId: "hub-recovery",
+    },
+    hubRecovery: {
+      id: "hub-recovery-record", status: "CONFIRMED", parcelBookingId: booking.id,
+      deliveryLegId: "failed-source-leg", hubPointId: "hub-recovery",
+      hubIntakeRecordId: "intake-recovery",
+    },
+    sourceDeliveryLeg: {
+      id: "failed-source-leg", parcelBookingId: booking.id, sequence: 1,
+      status: "FAILED", failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+    },
+    hubPoint: {
+      id: "hub-recovery", serviceZoneId: "zone-hub", latitude: 6.5244, longitude: 3.3792,
+    },
+    destinationHubPoint: null,
+  };
+  const selectedDriver = {
+    ...validDriver("selected-recovery-driver"),
+    serviceRadiusMeters: 5000,
+    lastLocationAt: now,
+    locations: [{ latitude: 6.5244, longitude: 3.3792, recordedAt: now }],
+  };
+  const selectedSnapshot = {
+    id: "recovery-execution-snapshot",
+    deliveryLegId: recoveryLeg.id,
+    executorType: "PLATFORM_DRIVER",
+    selectedDriverProfileId: selectedDriver.id,
+    selectedVehicleId: "recovery-vehicle",
+    executionCostMinor: 30000n,
+    currency: "NGN",
+  };
+  const hub = {
+    id: "hub-recovery", status: "ACTIVE", operatorVerificationStatus: "VERIFIED",
+    serviceZoneId: "zone-hub", acceptedParcelTypes: ["GENERAL"],
+    capacityConfig: { maxParcels: 10 },
+    serviceZone: {
+      id: "zone-hub", isActive: true,
+      state: { isActive: true, country: { isActive: true } },
+      availability: [{ id: "hub-availability" }],
+    },
+  };
+  const tx = {
+    deliveryLeg: {
+      findUnique: async () => recoveryLeg,
+      findFirst: async () => ({
+        id: "failed-source-leg", sequence: 1, status: "FAILED", completedAt: null,
+        failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+      }),
+    },
+    deliveryLegExecutionSnapshot: { findFirst: async () => selectedSnapshot },
+    hubIntakeDisposition: { findUnique: async () => disposition },
+    hubPoint: { findUnique: async () => hub },
+    serviceZone: { findMany: async ({ where }) => where.id.in.map(id => ({ id })) },
+    hubIntakeRecord: { findMany: async () => [] },
+    driverProfile: { findMany: async () => [selectedDriver] },
+    platformDriverPayoutRule: {
+      findMany: async () => [{
+        id: "final-mile-payout-rule", version: 2,
+        serviceZoneId: "zone-final", legType: "FINAL_MILE",
+        parcelCategory: "GENERAL", minWeightGrams: 0, maxWeightGrams: 1000,
+        currency: "NGN", driverPayoutMinor: 30000n,
+        effectiveFrom: new Date("2026-10-01T00:00:00.000Z"),
+        effectiveUntil: null, status: "ACTIVE",
+      }],
+    },
+  };
+  let offers;
+  let event;
+  const repository = {
+    transaction: callback => callback(tx),
+    findLeg: async () => recoveryLeg,
+    findActiveServiceZones: async () => [{ id: "zone-hub" }, { id: "zone-final" }],
+    listActiveOffers: async () => [],
+    findEligibleDrivers: async () => [selectedDriver],
+    createOffers: async (_tx, data) => { offers = data; return { count: data.length }; },
+    recordEvent: async (_tx, data) => { event = data; },
+  };
+  const service = createDeliveryLegDispatchService({
+    prismaClient: {}, repository, clock: () => now,
+  });
+
+  const result = await service.requestOffers({
+    legId: recoveryLeg.id,
+    user: { id: "admin-1", role: "ADMIN" },
+  });
+
+  assert.equal(result.offersCreated, 1);
+  assert.equal(offers[0].driverProfileId, selectedDriver.id);
+  assert.equal(offers[0].vehicleId, "recovery-vehicle");
+  assert.equal(offers[0].fixedPayoutMinor, 30000n);
+  assert.equal(offers[0].currency, "NGN");
+  assert.equal(event.eventType, "DELIVERY_LEG_MATCHING_REQUESTED");
+});
