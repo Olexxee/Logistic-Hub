@@ -263,6 +263,51 @@ test("approved hub-recovery continuation bypasses only its exact failed source p
   assert.equal(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"), false);
 });
 
+test("same-state hub recovery continuation resolves HUB_TRANSFER partner execution rates", async () => {
+  const fixture = recoveryContinuationFixture();
+  fixture.leg.type = "HUB_TRANSFER";
+  fixture.leg.destinationServiceZoneId = "zone-1";
+  fixture.leg.destinationHubPointId = "hub-3";
+  fixture.leg.destinationLatitude = 6.53;
+  fixture.leg.destinationLongitude = 3.39;
+  fixture.disposition.destinationServiceZoneId = "zone-1";
+  fixture.disposition.destinationHubPointId = "hub-3";
+  fixture.disposition.destinationHubPoint = {
+    id: "hub-3", serviceZoneId: "zone-1", latitude: 6.53, longitude: 3.39,
+  };
+  const rate = {
+    id: "hub-transfer-rate",
+    rateCardId: "hub-transfer-card",
+    parcelCategory: "GENERAL",
+    minWeightGrams: 0,
+    maxWeightGrams: 1000,
+    maxLengthMm: null, maxWidthMm: null, maxHeightMm: null,
+    transportChargeMinor: 12000n,
+    estimatedTransitMinutes: 60,
+    rateCard: {
+      id: "hub-transfer-card", version: 2, agreementId: "hub-transfer-agreement",
+      agreement: {
+        id: "hub-transfer-agreement", reference: "HUB-TRANSFER-AGR",
+        partner: { id: "hub-transfer-partner", displayName: "Local Hub Transfer Partner" },
+      },
+    },
+  };
+  const result = await setup({
+    ...fixture,
+    recoveryDisposition: fixture.disposition,
+    partnerRates: [rate],
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-3": hub("hub-3", "zone-1"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "READY");
+  assert.equal(result.legType, "HUB_TRANSFER");
+  assert.equal(result.execution.mode, "TRANSPORT_PARTNER");
+  assert.equal(result.execution.partnerCandidates[0].totalExecutionCostMinor, "12000");
+});
+
 test("recovery metadata without a persisted approved disposition cannot bypass predecessor gating", async () => {
   const fixture = recoveryContinuationFixture();
   const result = await setup({
