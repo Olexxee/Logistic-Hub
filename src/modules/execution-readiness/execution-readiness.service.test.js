@@ -563,7 +563,16 @@ test("mixed three-leg HAT shipment releases each local and partner leg only afte
     },
   };
   const tx = {
-    platformDriverPayoutRule: { findMany: async () => payoutRules },
+    platformDriverPayoutRule: {
+      findMany: async ({ where }) => payoutRules.filter(rule =>
+        rule.serviceZoneId === where.serviceZoneId
+        && rule.legType === where.legType
+        && rule.currency === where.currency
+        && rule.status === where.status
+        && rule.parcelCategory === "GENERAL"
+        && rule.effectiveFrom <= where.effectiveFrom.lte
+        && (rule.effectiveUntil == null || rule.effectiveUntil > now)),
+    },
   };
   const repository = {
     findLeg: async (_tx, id) => legs.find(leg => leg.id === id) ?? null,
@@ -574,7 +583,13 @@ test("mixed three-leg HAT shipment releases each local and partner leg only afte
       load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
       missingVolumeCount: 0,
     }),
-    findEligibleLocalDrivers: async () => [driver()],
+    findEligibleLocalDrivers: async (_tx, leg) => [driver({
+      locations: [{
+        latitude: leg.originLatitude,
+        longitude: leg.originLongitude,
+        recordedAt: now,
+      }],
+    })],
     findPartnerRates: async () => [partnerRate],
   };
   const prismaClient = {
@@ -591,7 +606,7 @@ test("mixed three-leg HAT shipment releases each local and partner leg only afte
 
   const initial = await service.assessBooking({ bookingId });
   assert.equal(initial.readiness, "BLOCKED");
-  assert.deepEqual(initial.legs.map(item => item.readiness), ["READY", "BLOCKED", "BLOCKED"], JSON.stringify(initial.legs.map(item => ({ sequence: item.sequence, blockers: item.blockers }))));
+  assert.deepEqual(initial.legs.map(item => item.readiness), ["READY", "BLOCKED", "BLOCKED"]);
   assert.equal(initial.legs[1].execution.mode, "TRANSPORT_PARTNER");
   assert.equal(initial.legs[2].execution.mode, "PLATFORM_DRIVER");
   assert.ok(initial.legs[1].blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
