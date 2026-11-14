@@ -5432,6 +5432,20 @@ paths:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /hub-operations/hub-recoveries:
+    get:
+      tags: [Hub operations]
+      operationId: listHubOperatorPendingRecoveries
+      summary: List pending hub-recovery receipts for the authenticated operator's active hubs
+      description: Returns only PENDING_RECEIPT recoveries assigned to hubs where the authenticated user has an active membership. It does not expose recoveries assigned to other hubs.
+      security: [{ bearerAuth: [] }]
+      x-implementation-status: implemented
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /admin/assignments/{assignmentId}/hub-recoveries:
     post:
       tags: [Admin]
