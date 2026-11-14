@@ -751,6 +751,36 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
     selectedVehicleId: "recovery-vehicle",
     executionCostMinor: 30000n,
     currency: "NGN",
+    assessmentSnapshot: {
+      execution: {
+        payoutAssessment: {
+          status: "RESOLVED",
+          serviceZoneId: "zone-final",
+          legType: "FINAL_MILE",
+          totalDriverPayoutMinor: "30000",
+          currency: "NGN",
+          packages: [{
+            packageId: "recovery-package-1",
+            packageSequence: 1,
+            packageCategory: "GENERAL",
+            weightGrams: 500,
+            rule: {
+              id: "final-mile-payout-rule",
+              version: 2,
+              serviceZoneId: "zone-final",
+              legType: "FINAL_MILE",
+              parcelCategory: "GENERAL",
+              minWeightGrams: 0,
+              maxWeightGrams: 1000,
+              currency: "NGN",
+              driverPayoutMinor: "30000",
+              effectiveFrom: "2026-10-01T00:00:00.000Z",
+              effectiveUntil: null,
+            },
+          }],
+        },
+      },
+    },
   };
   const hub = {
     id: "hub-recovery", status: "ACTIVE", operatorVerificationStatus: "VERIFIED",
