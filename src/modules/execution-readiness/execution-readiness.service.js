@@ -138,6 +138,8 @@ function validateRecoveryDisposition(disposition, leg, booking) {
     && source?.failureReason === "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED"
     && leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY"
     && leg.metadata?.sourceDeliveryLegId === sourceLegId
+    && typeof leg.metadata?.sourceQuoteId === "string"
+    && leg.metadata.sourceQuoteId === source.metadata?.quoteId
     && leg.sequence === source.sequence + 1
     && originHub?.id === disposition.hubPointId
     && leg.originHubPointId === originHub.id
@@ -344,8 +346,9 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           || leg.metadata?.requiresOperationalReview !== true)) {
           blockers.push(blocker("NOT_HUB_ASSISTED_TARIFF_LEG", "This resolver only assesses legs created from the hub-assisted platform tariff flow."));
         }
-        const acceptedQuote = booking.quotes?.find(quote => quote.id === leg.metadata?.quoteId)
-          ?? (recoveryCandidate ? booking.quotes?.[0] : null);
+        const acceptedQuote = booking.quotes?.find(quote => quote.id === (
+          recoveryCandidate ? leg.metadata?.sourceQuoteId : leg.metadata?.quoteId
+        ));
         if (!acceptedQuote || acceptedQuote.status !== "ACCEPTED"
           || !isHubAssistedAcceptedQuote(acceptedQuote)
           || (!recoveryCandidate && !routeLegMatchesSnapshot(leg, acceptedQuote))) {
@@ -383,7 +386,10 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           blockers.push(blocker("PACKAGE_FACTS_CHANGED", "Current package categories, weights or dimensions do not match the package facts pinned by the accepted booking quote."));
         }
 
-        const currency = acceptedQuote?.currency ?? booking.currency;
+        const currency = booking.currency;
+        if (acceptedQuote && acceptedQuote.currency !== booking.currency) {
+          blockers.push(blocker("ACCEPTED_QUOTE_CURRENCY_MISMATCH", "The source accepted quote currency must match the booking currency before execution costs can be resolved."));
+        }
         const activeZones = await db.findActiveServiceZones(
           tx,
           [...new Set([leg.originServiceZoneId, leg.destinationServiceZoneId])],
