@@ -811,3 +811,116 @@ test("executor selection is rejected when receiving-hub capacity is exhausted du
   assert.ok(result.blockers.some(item => item.code === "HUB_PARCEL_CAPACITY_EXCEEDED"));
   assert.equal(harness.snapshotWrites, 0);
 });
+
+
+function partnerRevalidationHarness() {
+  const leg = baseLeg({
+    type: "INTERSTATE_TRANSPORT",
+    originServiceZoneId: "zone-1",
+    destinationServiceZoneId: "zone-2",
+    originHubPointId: "hub-1",
+    destinationHubPointId: "hub-2",
+  });
+  const quote = leg.parcelBooking.quotes[0];
+  quote.inputSnapshot.routeSnapshot.legs[0] = {
+    sequence: 1,
+    type: "INTERSTATE_TRANSPORT",
+    originServiceZoneId: "zone-1",
+    destinationServiceZoneId: "zone-2",
+    originHubPointId: "hub-1",
+    destinationHubPointId: "hub-2",
+    origin: { latitude: leg.originLatitude, longitude: leg.originLongitude },
+    destination: { latitude: leg.destinationLatitude, longitude: leg.destinationLongitude },
+  };
+  quote.inputSnapshot.operationalTariffAssessment.legs[0].type = "INTERSTATE_TRANSPORT";
+
+  const activeRate = {
+    id: "partner-rate-revalidation",
+    rateCardId: "partner-card-revalidation",
+    originServiceZoneId: "zone-1",
+    destinationServiceZoneId: "zone-2",
+    serviceType: "PARCEL_DELIVERY",
+    parcelCategory: "GENERAL",
+    minWeightGrams: 0,
+    maxWeightGrams: 1000,
+    maxLengthMm: null,
+    maxWidthMm: null,
+    maxHeightMm: null,
+    transportChargeMinor: 18000n,
+    estimatedTransitMinutes: 120,
+    rateCard: {
+      id: "partner-card-revalidation",
+      version: 4,
+      agreementId: "partner-agreement-revalidation",
+      agreement: {
+        id: "partner-agreement-revalidation",
+        reference: "AGR-REVALIDATION",
+        partner: { id: "partner-revalidation", displayName: "Verified Partner" },
+      },
+    },
+  };
+  let currentRates = [activeRate];
+  let snapshotWrites = 0;
+  const tx = {
+    deliveryLegOffer: { count: async () => 0 },
+    driverAssignment: { count: async () => 0 },
+    partnerDeliveryAssignment: { count: async () => 0 },
+    deliveryLegExecutionSnapshot: {
+      findUnique: async () => null,
+      aggregate: async () => ({ _max: { version: null } }),
+      create: async ({ data }) => {
+        snapshotWrites += 1;
+        return { id: "partner-snapshot-revalidation", ...data };
+      },
+    },
+    deliveryLeg: { updateMany: async () => ({ count: 1 }) },
+    operationalAuditEvent: { create: async () => ({ id: "partner-audit-revalidation" }) },
+  };
+  const repository = {
+    findLeg: async () => leg,
+    findPreviousLeg: async () => null,
+    findActiveServiceZones: async (_tx, ids) => ids.map(id => ({ id })),
+    findActiveHub: async (_tx, id) => hub(id, id === "hub-2" ? "zone-2" : "zone-1"),
+    getHubLoad: async () => ({
+      load: { _count: { _all: 0 }, _sum: { weightGrams: 0, volumeCm3: 0 } },
+      missingVolumeCount: 0,
+    }),
+    findEligibleLocalDrivers: async () => [],
+    findEligibleLocalDriver: async () => null,
+    findPartnerRates: async () => currentRates,
+  };
+  const prismaClient = { $transaction: callback => callback(tx) };
+  return {
+    service: createExecutionReadinessService({ prismaClient, repository, clock: () => now }),
+    invalidatePartnerEligibility() { currentRates = []; },
+    get snapshotWrites() { return snapshotWrites; },
+  };
+}
+
+for (const scenario of [
+  "partner suspension",
+  "agreement expiry",
+  "rate-card expiry or deactivation",
+]) {
+  test(`partner executor selection is blocked when ${scenario} occurs after candidate discovery`, async () => {
+    const harness = partnerRevalidationHarness();
+    const initial = await harness.service.assessLeg({ deliveryLegId: "leg-1" });
+    assert.equal(initial.readiness, "READY");
+    assert.equal(initial.execution.partnerCandidates[0].partnerId, "partner-revalidation");
+
+    // Model the repository's active-rate query after the partner, agreement,
+    // or rate card ceases to satisfy its current eligibility predicates.
+    harness.invalidatePartnerEligibility();
+    const result = await harness.service.selectExecutor({
+      deliveryLegId: "leg-1",
+      executorType: "TRANSPORT_PARTNER",
+      partnerId: "partner-revalidation",
+      selectedByUserId: "admin-1",
+      idempotencyKey: `partner-revalidation-${scenario.replaceAll(/[^a-z]+/g, "-")}`,
+    });
+
+    assert.equal(result.blocked, true);
+    assert.ok(result.blockers.some(item => item.code === "NO_PARTNER_EXECUTION_RATE"));
+    assert.equal(harness.snapshotWrites, 0);
+  });
+}
