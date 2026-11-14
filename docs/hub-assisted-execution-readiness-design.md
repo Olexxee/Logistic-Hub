@@ -3,7 +3,7 @@
 **Workstream:** HAT execution readiness  
 **Implementation branch:** phased ER-01 through ER-05 delivery on `main`  
 **Current slice:** ER-05 lifecycle and regression acceptance  
-**Status:** ER-01 through ER-04 are merged. ER-05 is in progress: the initial lifecycle regression (PR #176) and mixed local-driver/partner sequencing regression (PR #177) are merged. PostgreSQL execution-snapshot concurrency coverage is now being added; staging acceptance remains outstanding.
+**Status:** ER-01 through ER-04 are merged. ER-05 regression coverage is merged through PR #182: mixed-route lifecycle (PR #177), PostgreSQL snapshot uniqueness/version/immutability (PR #178), service-level idempotency test-double coverage (PR #179), executor and partner revalidation (PRs #180–#181), and customer execution-data isolation (PR #182). A staging acceptance runbook is documented in [ER-05 Staging Execution Acceptance](er-05-staging-acceptance.md); the live staging run remains outstanding.
 
 ## 1. Objective
 
