@@ -62,7 +62,7 @@ export function createExecutionReadinessRepository({ prismaClient }) {
             select: { id: true, parcelBookingId: true, deliveryLegId: true, hubPointId: true, status: true, hubIntakeRecordId: true },
           },
           sourceDeliveryLeg: {
-            select: { id: true, parcelBookingId: true, sequence: true, status: true, failureReason: true },
+            select: { id: true, parcelBookingId: true, sequence: true, status: true, failureReason: true, metadata: true },
           },
           hubPoint: {
             select: { id: true, serviceZoneId: true, latitude: true, longitude: true },
