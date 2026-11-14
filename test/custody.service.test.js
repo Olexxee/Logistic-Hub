@@ -1067,6 +1067,7 @@ test("hub recovery handover initiation accepts only the driver pinned by the sel
     deliveryLeg: { findUnique: async () => recoveryLeg },
     hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
     hubIntakeRecord: { findFirst: async () => intake },
+    operationalCase: { findFirst: async () => null },
     deliveryLegExecutionSnapshot: { findUnique: async () => snapshot },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
@@ -1090,6 +1091,7 @@ test("hub recovery handover initiation rejects a driver different from the selec
     deliveryLeg: { findUnique: async () => recoveryLeg },
     hubPointOperator: { findUnique: async () => ({ isActive: true, role: "OPERATOR" }) },
     hubIntakeRecord: { findFirst: async () => intake },
+    operationalCase: { findFirst: async () => null },
     deliveryLegExecutionSnapshot: { findUnique: async () => snapshot },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
@@ -1138,6 +1140,7 @@ test("hub recovery custody confirmation revalidates the selected vehicle before 
     hubIntakeDisposition: {
       update: async () => { dispositionUpdates += 1; return {}; },
     },
+    operationalCase: { findFirst: async () => null },
     deliveryLegExecutionSnapshot: { findUnique: async () => snapshot },
   });
   const service = createCustodyService({ prismaClient: db, clock: () => now });
