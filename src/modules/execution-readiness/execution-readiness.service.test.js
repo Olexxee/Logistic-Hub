@@ -294,6 +294,33 @@ test("released or mismatched hub disposition cannot authorize a recovery continu
   assert.ok(result.blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
 });
 
+test("recovery continuation blocks when accepted quote package snapshots disagree across route legs", async () => {
+  const fixture = recoveryContinuationFixture();
+  fixture.leg.parcelBooking.quotes[0].inputSnapshot.operationalTariffAssessment.legs.push({
+    sequence: 2,
+    type: "INTERSTATE_TRANSPORT",
+    packages: [{
+      packageId: "package-1",
+      packageSequence: 1,
+      packageCategory: "GENERAL",
+      weightGrams: 501,
+      dimensionsMm: { length: 100, width: 100, height: 100 },
+    }],
+  });
+  const result = await setup({
+    ...fixture,
+    recoveryDisposition: fixture.disposition,
+    partnerRates: [],
+    hubs: {
+      "hub-1": hub("hub-1", "zone-1"),
+      "hub-2": hub("hub-2", "zone-2"),
+    },
+  }).assessLeg({ deliveryLegId: "leg-2" });
+
+  assert.equal(result.readiness, "BLOCKED");
+  assert.ok(result.blockers.some(item => item.code === "PACKAGE_FACTS_CHANGED"));
+});
+
 test("recovery continuation cannot bypass the predecessor gate for an unrelated failed leg", async () => {
   const fixture = recoveryContinuationFixture();
   fixture.previousLeg.failureReason = "OTHER_FAILURE";
