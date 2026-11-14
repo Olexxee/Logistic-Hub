@@ -76,6 +76,108 @@ function routeLegMatchesSnapshot(leg, quote) {
     && Number(snapshot.destination?.longitude) === Number(leg.destinationLongitude));
 }
 
+function packageFactsMatchAnyAcceptedQuote(quote, packages) {
+  const snapshotLegs = quote?.inputSnapshot?.operationalTariffAssessment?.legs
+    ?? quote?.inputSnapshot?.packageRateSnapshot;
+  if (!Array.isArray(snapshotLegs)) return false;
+  return snapshotLegs.some(snapshotLeg => {
+    if (!Array.isArray(snapshotLeg?.packages) || snapshotLeg.packages.length !== packages.length) return false;
+    return packages.every((pkg, index) => {
+      const snapshot = snapshotLeg.packages.find(item =>
+        item.packageId === pkg.id
+        || (item.packageId == null && item.packageSequence === (pkg.packageSequence ?? index + 1)));
+      if (!snapshot) return false;
+      const dimensions = snapshot.dimensionsMm ?? {};
+      return snapshot.packageCategory === pkg.packageCategory
+        && snapshot.weightGrams === pkg.weightGrams
+        && (dimensions.length ?? null) === (pkg.lengthMm ?? null)
+        && (dimensions.width ?? null) === (pkg.widthMm ?? null)
+        && (dimensions.height ?? null) === (pkg.heightMm ?? null);
+    });
+  });
+}
+
+function validateRecoveryDisposition(disposition, leg, booking) {
+  const metadata = leg.metadata ?? {};
+  const blockers = [];
+  if (!disposition) {
+    blockers.push(blocker(
+      "RECOVERY_DISPOSITION_NOT_FOUND",
+      "A recovery continuation must be linked to its persisted hub-intake disposition.",
+    ));
+    return { valid: false, blockers, context: null };
+  }
+
+  const intake = disposition.intakeRecord;
+  const recovery = disposition.hubRecovery;
+  const source = disposition.sourceDeliveryLeg;
+  const originHub = disposition.hubPoint;
+  const destinationHub = disposition.destinationHubPoint;
+  const sourceLegId = disposition.sourceDeliveryLegId;
+
+  const valid = disposition.id
+    && disposition.decision === "CONTINUE_DELIVERY"
+    && disposition.status === "ROUTE_APPROVED"
+    && disposition.nextDeliveryLegId === leg.id
+    && disposition.parcelBookingId === booking.id
+    && intake?.id === metadata.sourceIntakeRecordId
+    && intake?.status === "RECEIVED"
+    && intake?.parcelBookingId === booking.id
+    && intake?.deliveryLegId === sourceLegId
+    && intake?.hubPointId === disposition.hubPointId
+    && recovery?.id === metadata.hubRecoveryId
+    && recovery?.status === "CONFIRMED"
+    && recovery?.parcelBookingId === booking.id
+    && recovery?.deliveryLegId === sourceLegId
+    && recovery?.hubPointId === disposition.hubPointId
+    && recovery?.hubIntakeRecordId === intake.id
+    && source?.id === sourceLegId
+    && source?.parcelBookingId === booking.id
+    && source?.status === "FAILED"
+    && source?.failureReason === "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED"
+    && leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY"
+    && leg.metadata?.sourceDeliveryLegId === sourceLegId
+    && leg.sequence === source.sequence + 1
+    && originHub?.id === disposition.hubPointId
+    && leg.originHubPointId === originHub.id
+    && leg.originServiceZoneId === originHub.serviceZoneId
+    && Number(leg.originLatitude) === Number(originHub.latitude)
+    && Number(leg.originLongitude) === Number(originHub.longitude)
+    && (disposition.destinationServiceZoneId ?? null) === leg.destinationServiceZoneId
+    && (disposition.destinationHubPointId ?? null) === (leg.destinationHubPointId ?? null)
+    && (destinationHub
+      ? destinationHub.id === leg.destinationHubPointId
+        && destinationHub.serviceZoneId === leg.destinationServiceZoneId
+        && PARTNER_LEG_TYPES.has(leg.type)
+        && Number(leg.destinationLatitude) === Number(destinationHub.latitude)
+        && Number(leg.destinationLongitude) === Number(destinationHub.longitude)
+      : leg.destinationHubPointId == null
+        && leg.type === "FINAL_MILE"
+        && Number(leg.destinationLatitude) === Number(booking.destinationLatitude)
+        && Number(leg.destinationLongitude) === Number(booking.destinationLongitude))
+    && booking.paymentStatus === "SUCCEEDED"
+    && booking.status === "IN_TRANSIT";
+
+  if (!valid) {
+    blockers.push(blocker(
+      "RECOVERY_DISPOSITION_MISMATCH",
+      "The approved recovery disposition, received intake, confirmed recovery, failed source leg and continuation route must all match exactly.",
+      disposition.id,
+    ));
+  }
+
+  return {
+    valid: Boolean(valid),
+    blockers,
+    context: valid ? {
+      dispositionId: disposition.id,
+      intakeRecordId: intake.id,
+      hubRecoveryId: recovery.id,
+      sourceDeliveryLegId: sourceLegId,
+    } : null,
+  };
+}
+
 function matchPartnerCandidates(rates, packages, currency) {
   const byCard = new Map();
   for (const rate of rates) {
@@ -208,26 +310,39 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
         if (!leg) return { found: false, deliveryLegId };
         const booking = leg.parcelBooking;
         const blockers = [];
+        const recoveryDisposition = await db.findRecoveryDisposition?.(tx, leg.id) ?? null;
+        const recoveryCandidate = leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY" || Boolean(recoveryDisposition);
+        const recoveryValidation = recoveryCandidate
+          ? validateRecoveryDisposition(recoveryDisposition, leg, booking)
+          : { valid: false, blockers: [], context: null };
+        blockers.push(...recoveryValidation.blockers);
+
         if (leg.sequence > 1) {
           const previousLeg = await db.findPreviousLeg(tx, leg);
-          if (!previousLeg || previousLeg.status !== "COMPLETED" || !previousLeg.completedAt) {
+          const completedNormally = previousLeg?.status === "COMPLETED" && Boolean(previousLeg.completedAt);
+          const exactRecoveryPredecessor = recoveryValidation.valid
+            && previousLeg?.id === recoveryValidation.context.sourceDeliveryLegId
+            && previousLeg.status === "FAILED"
+            && previousLeg.failureReason === "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED";
+          if (!completedNormally && !exactRecoveryPredecessor) {
             blockers.push(blocker(
               "PREVIOUS_LEG_NOT_COMPLETED",
-              "A delivery leg cannot be released to an executor until the immediately preceding leg is completed and recorded.",
+              "A delivery leg requires a completed predecessor, except for the exact failed source leg superseded by its approved hub-recovery disposition.",
               previousLeg?.id ?? null,
             ));
           }
         }
 
-        if (leg.metadata?.pricingSource !== "PLATFORM_OPERATIONAL_TARIFF"
-          || leg.metadata?.requiresOperationalReview !== true) {
+        if (!recoveryCandidate && (leg.metadata?.pricingSource !== "PLATFORM_OPERATIONAL_TARIFF"
+          || leg.metadata?.requiresOperationalReview !== true)) {
           blockers.push(blocker("NOT_HUB_ASSISTED_TARIFF_LEG", "This resolver only assesses legs created from the hub-assisted platform tariff flow."));
         }
-        const acceptedQuote = booking.quotes?.find(quote => quote.id === leg.metadata?.quoteId);
+        const acceptedQuote = booking.quotes?.find(quote => quote.id === leg.metadata?.quoteId)
+          ?? (recoveryCandidate ? booking.quotes?.[0] : null);
         if (!acceptedQuote || acceptedQuote.status !== "ACCEPTED"
           || !isHubAssistedAcceptedQuote(acceptedQuote)
-          || !routeLegMatchesSnapshot(leg, acceptedQuote)) {
-          blockers.push(blocker("ACCEPTED_ROUTE_SNAPSHOT_MISMATCH", "The leg does not match its accepted hub-assisted quote and immutable route topology."));
+          || (!recoveryCandidate && !routeLegMatchesSnapshot(leg, acceptedQuote))) {
+          blockers.push(blocker("ACCEPTED_ROUTE_SNAPSHOT_MISMATCH", "The leg must be backed by an accepted hub-assisted booking quote; ordinary legs must also match its immutable route topology."));
         }
         if (booking.paymentStatus !== "SUCCEEDED") {
           blockers.push(blocker("BOOKING_NOT_PAID", "Execution readiness is assessed only after successful customer payment."));
@@ -255,8 +370,10 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           blockers.push(blocker("PACKAGE_CATEGORY_MISSING", "Every package requires a normalized category."));
         }
         if (acceptedQuote && packages.length
-          && !packageFactsMatchAcceptedQuote(leg, acceptedQuote, packages)) {
-          blockers.push(blocker("PACKAGE_FACTS_CHANGED", "Current package categories, weights or dimensions do not match the package facts pinned by the accepted quote."));
+          && (recoveryCandidate
+            ? !packageFactsMatchAnyAcceptedQuote(acceptedQuote, packages)
+            : !packageFactsMatchAcceptedQuote(leg, acceptedQuote, packages))) {
+          blockers.push(blocker("PACKAGE_FACTS_CHANGED", "Current package categories, weights or dimensions do not match the package facts pinned by the accepted booking quote."));
         }
 
         const currency = acceptedQuote?.currency ?? booking.currency;
@@ -342,6 +459,7 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
           blockers,
           execution,
           currency,
+          recovery: recoveryValidation.context,
           assessedAt: now.toISOString(),
         };
       };
