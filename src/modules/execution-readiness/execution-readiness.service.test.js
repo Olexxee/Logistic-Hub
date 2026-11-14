@@ -591,7 +591,7 @@ test("mixed three-leg HAT shipment releases each local and partner leg only afte
 
   const initial = await service.assessBooking({ bookingId });
   assert.equal(initial.readiness, "BLOCKED");
-  assert.deepEqual(initial.legs.map(item => item.readiness), ["READY", "BLOCKED", "BLOCKED"]);
+  assert.deepEqual(initial.legs.map(item => item.readiness), ["READY", "BLOCKED", "BLOCKED"], JSON.stringify(initial.legs.map(item => ({ sequence: item.sequence, blockers: item.blockers }))));
   assert.equal(initial.legs[1].execution.mode, "TRANSPORT_PARTNER");
   assert.equal(initial.legs[2].execution.mode, "PLATFORM_DRIVER");
   assert.ok(initial.legs[1].blockers.some(item => item.code === "PREVIOUS_LEG_NOT_COMPLETED"));
