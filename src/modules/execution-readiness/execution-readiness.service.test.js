@@ -920,7 +920,7 @@ for (const scenario of [
     });
 
     assert.equal(result.blocked, true);
-    assert.ok(result.blockers.some(item => item.code === "SELECTED_PARTNER_NO_LONGER_ELIGIBLE"));
+    assert.ok(result.blockers.some(item => item.code === "NO_PARTNER_EXECUTION_RATE"));
     assert.equal(harness.snapshotWrites, 0);
   });
 }
