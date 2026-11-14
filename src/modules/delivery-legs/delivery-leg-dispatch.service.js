@@ -97,8 +97,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw new ForbiddenError("An active hub dispatch permission is required.");
           }
         } else if (user.role === "ADMIN") {
-          const hubAssistedDispatch = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          const hubAssistedDispatch = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
             && leg.metadata?.requiresOperationalReview === true
+            || leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY")
             && leg.parcelBooking.paymentStatus === "SUCCEEDED"
             && (!leg.parcelBooking.integrationClientId
               || leg.parcelBooking.integrationDispatchAuthorizedAt != null);
@@ -134,8 +135,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             throw conflict("PLATFORM_DISPATCH_NOT_AUTHORIZED", "Platform fixed-payout dispatch requires an accepted tariff snapshot and the correct customer-payment or integration-release state.");
           }
         }
-        const hubAssistedHatLeg = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-          && leg.metadata?.requiresOperationalReview === true;
+        const hubAssistedHatLeg = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+          && leg.metadata?.requiresOperationalReview === true)
+          || leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
         let selectedExecutionSnapshot = null;
         if (hubAssistedHatLeg) {
           if (user.role !== "ADMIN" || leg.status !== "READY_FOR_ASSIGNMENT") {
@@ -358,8 +360,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
           const leg = offer.deliveryLeg;
           const booking = leg.parcelBooking;
           const payout = offer.fixedPayoutMinor;
-          const isHatExecution = leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-            && leg.metadata?.requiresOperationalReview === true;
+          const isRecoveryExecution = leg.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
+          const isHatExecution = (leg.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+            && leg.metadata?.requiresOperationalReview === true) || isRecoveryExecution;
           const hatSnapshot = isHatExecution
             ? await tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: leg.metadata.executionSnapshotId } })
             : null;
@@ -407,8 +410,9 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
             && lockedBooking.integrationDispatchAuthorizedAt != null
             && lockedBooking.paymentStatus === "SUCCEEDED"
             && lockedBooking.status === "AWAITING_PARTNER_ASSIGNMENT";
-          const lockedHat = lockedLeg?.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
-            && lockedLeg.metadata?.requiresOperationalReview === true;
+          const lockedRecoveryExecution = lockedLeg?.metadata?.source === "DRV-05C-D2_HUB_RECOVERY";
+          const lockedHat = (lockedLeg?.metadata?.pricingSource === "PLATFORM_OPERATIONAL_TARIFF"
+            && lockedLeg.metadata?.requiresOperationalReview === true) || lockedRecoveryExecution;
           const lockedSnapshot = lockedHat
             ? await tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: lockedLeg.metadata.executionSnapshotId } })
             : null;
@@ -553,7 +557,8 @@ export function createDeliveryLegDispatchService({ prismaClient, repository, clo
               metadata: {
                 deliveryLegId: leg.id, offerId, assignmentId: assignment.id, driverProfileId: profile.id,
                 vehicleId: vehicle.id, fixedPayoutMinor: payout.toString(), currency: offer.currency,
-                pricingSource: lockedHat ? "PLATFORM_OPERATIONAL_TARIFF" : "PLATFORM_ROUTE_RATE",
+                pricingSource: lockedRecoveryExecution ? "DRV-05C-D2_HUB_RECOVERY"
+                  : lockedHat ? "PLATFORM_OPERATIONAL_TARIFF" : "PLATFORM_ROUTE_RATE",
                 ...(lockedHat ? { executionSnapshotId: lockedSnapshot.id, executionSnapshotVersion: lockedSnapshot.version } : {}),
                 ...(customerPaymentFlow ? { paymentRequired: true, paymentExpiresAt: paymentExpiresAt.toISOString() } : {}),
               },
