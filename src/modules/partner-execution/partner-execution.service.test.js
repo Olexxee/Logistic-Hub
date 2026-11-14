@@ -162,6 +162,7 @@ test("partner assignment revalidates and assigns an approved hub-recovery contin
     latitude, longitude,
   });
   let createdAssignment = null;
+  let activePartnerRate = partnerRate;
   const tx = {
     partnerDeliveryAssignment: {
       findUnique: async () => null,
@@ -186,7 +187,7 @@ test("partner assignment revalidates and assigns an approved hub-recovery contin
     },
     serviceZone: { findMany: async ({ where }) => where.id.in.map(id => ({ id })) },
     hubIntakeRecord: { findMany: async () => [] },
-    partnerRate: { findMany: async () => [partnerRate] },
+    partnerRate: { findMany: async () => [activePartnerRate] },
     partnerAgreement: {
       findUnique: async () => ({
         id: "agreement-1", partnerId: "partner-1", status: "ACTIVE",
@@ -200,6 +201,16 @@ test("partner assignment revalidates and assigns an approved hub-recovery contin
   const prismaClient = { $transaction: async callback => callback(tx) };
   const service = createPartnerExecutionService({ prismaClient, clock: () => now });
 
+  activePartnerRate = { ...partnerRate, id: "replacement-rate-same-amount" };
+  const staleResult = await service.assignLeg({
+    deliveryLegId: leg.id,
+    partnerId: "partner-1",
+    idempotencyKey: "recovery-partner-assignment-stale-001",
+    actorUserId: "admin-1",
+  });
+  assert.deepEqual(staleResult, { blocker: "HAT_PARTNER_EXECUTION_SNAPSHOT_STALE" });
+
+  activePartnerRate = partnerRate;
   const result = await service.assignLeg({
     deliveryLegId: leg.id,
     partnerId: "partner-1",
