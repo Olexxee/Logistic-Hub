@@ -58,9 +58,13 @@ export function createCustodyRepository({ prismaClient }) {
         include: {
           parcelBooking: { select: { id: true, senderId: true, paymentStatus: true, status: true, recipientName: true, recipientPhone: true, integrationClientId: true } },
           assignments: { where: { status: { notIn: ["CANCELLED", "FAILED", "COMPLETED"] } }, include: { driverProfile: { select: { id: true, userId: true } } } },
-          partnerAssignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, select: { partnerId: true, status: true } },
+          partnerAssignments: { where: { status: { notIn: ["CANCELLED", "FAILED"] } }, select: { id: true, partnerId: true, status: true, metadata: true } },
         },
       });
+    },
+    findExecutionSnapshot(snapshotId, tx = prismaClient) {
+      if (!snapshotId) return Promise.resolve(null);
+      return tx.deliveryLegExecutionSnapshot.findUnique({ where: { id: snapshotId } });
     },
     findHubForParty(id, tx = prismaClient) {
       return tx.hubPoint.findUnique({ where: { id }, select: { id: true, status: true } });
