@@ -1,6 +1,6 @@
 # DRV-05C-D2B — Hub recovery route execution authorization
 
-**Status:** First implementation slice is in draft [PR #184](https://github.com/Olexxee/Logistic-Hub/pull/184): recovery-aware readiness, immutable route provenance, partner assignment, final-mile driver offers/acceptance and exact-executor custody release gates. CI and final review are pending; staging acceptance is deferred until Neon is provisioned.  
+**Status:** Backend D2B implementation is in [PR #184](https://github.com/Olexxee/Logistic-Hub/pull/184), ready for review. GitHub Actions run #43556350937 passed, including Prisma/OpenAPI validation and the full API/PostgreSQL integrity test step. Frontend recovery workflows and staging acceptance remain separate; staging is deferred until Neon is provisioned.  
 **Depends on:** merged DRV-05C-D1 hub intake and D2 disposition/route continuation (backend PRs #130 and #131).  
 **Scope:** Backend execution readiness, internal cost resolution, immutable executor selection, partner/driver assignment revalidation, and custody-release gating for a D2-created continuation leg.
 
@@ -135,7 +135,7 @@ Handover initiation must reject a party that is not the executor assigned to the
 3. **Implemented in draft PR #184:** partner assignment and local-driver offer/acceptance revalidation using the selected snapshot.
 4. **Implemented in draft PR #184:** custody handover initiation and confirmation require the exact executor and vehicle/partner pinned by the snapshot.
 5. **In progress:** complete edge-case, same-state `HUB_TRANSFER`, final-mile, assignment-race and PostgreSQL regression coverage; keep OpenAPI unchanged unless a public contract actually changes.
-6. **Pending:** run CI on the final PR head, inspect any failed job logs, and complete code review before the PR is marked ready.
+6. **Complete:** CI passed on the PR head; code review and user merge approval remain.
 7. **Deferred:** staging acceptance. D2B is not operationally accepted until exercised against an isolated, working staging database after Neon is provisioned.
 
-**Current decision:** D2B is an implementation phase, not a staging or production release. Neon provisioning and staging acceptance remain external prerequisites for live operational verification.
+**Current decision:** D2B backend implementation is ready for review, not a staging or production release. Neon provisioning, frontend recovery workflows and staging acceptance remain external prerequisites for operational verification.
