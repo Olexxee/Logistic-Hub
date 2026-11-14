@@ -792,6 +792,14 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
       availability: [{ id: "hub-availability" }],
     },
   };
+  const activePayoutRule = {
+    id: "final-mile-payout-rule", version: 2,
+    serviceZoneId: "zone-final", legType: "FINAL_MILE",
+    parcelCategory: "GENERAL", minWeightGrams: 0, maxWeightGrams: 1000,
+    currency: "NGN", driverPayoutMinor: 30000n,
+    effectiveFrom: new Date("2026-10-01T00:00:00.000Z"),
+    effectiveUntil: null, status: "ACTIVE",
+  };
   const tx = {
     hubPoint: { findUnique: async () => ({ id: "hub-recovery", status: "ACTIVE" }) },
     hubPointOperator: { findUnique: async () => ({ isActive: true, canDispatch: true }) },
@@ -809,14 +817,7 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
     hubIntakeRecord: { findMany: async () => [] },
     driverProfile: { findMany: async () => [selectedDriver] },
     platformDriverPayoutRule: {
-      findMany: async () => [{
-        id: "final-mile-payout-rule", version: 2,
-        serviceZoneId: "zone-final", legType: "FINAL_MILE",
-        parcelCategory: "GENERAL", minWeightGrams: 0, maxWeightGrams: 1000,
-        currency: "NGN", driverPayoutMinor: 30000n,
-        effectiveFrom: new Date("2026-10-01T00:00:00.000Z"),
-        effectiveUntil: null, status: "ACTIVE",
-      }],
+      findMany: async () => [activePayoutRule],
     },
   };
   let offers;
@@ -846,4 +847,14 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
   assert.equal(offers[0].fixedPayoutMinor, 30000n);
   assert.equal(offers[0].currency, "NGN");
   assert.equal(event.eventType, "DELIVERY_LEG_MATCHING_REQUESTED");
+
+  activePayoutRule.id = "replacement-rule-same-amount";
+  await assert.rejects(
+    service.requestOffers({
+      legId: recoveryLeg.id,
+      hubPointId: "hub-recovery",
+      user: { id: "hub-operator-1", role: "HUB_OPERATOR" },
+    }),
+    error => error.code === "HAT_EXECUTION_SNAPSHOT_STALE",
+  );
 });
