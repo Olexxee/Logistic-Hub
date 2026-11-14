@@ -153,6 +153,7 @@ function setup({
 
 function recoveryContinuationFixture(overrides = {}) {
   const leg = baseLeg({
+    id: "leg-2",
     sequence: 2,
     type: "INTERSTATE_TRANSPORT",
     status: "PLANNED",
