@@ -892,6 +892,10 @@ test("a delegated hub operator can request a fixed-payout driver offer for an ap
     },
     deliveryLeg: {
       findUnique: async () => recoveryLeg,
+      findFirst: async () => ({
+        id: "failed-source-leg", sequence: 1, status: "FAILED", completedAt: null,
+        failureReason: "HUB_CUSTODY_RECOVERY_ROUTE_REPLANNED",
+      }),
       updateMany: async () => ({ count: 1 }),
     },
     deliveryLegOffer: {
