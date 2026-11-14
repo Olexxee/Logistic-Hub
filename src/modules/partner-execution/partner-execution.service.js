@@ -208,7 +208,13 @@ export function createPartnerExecutionService({ prismaClient, clock = () => new 
             && item.rateCardId === executionSnapshot.partnerRateCardId
             && item.rateCardVersion === executionSnapshot.costSourceVersion
             && item.totalExecutionCostMinor === executionSnapshot.executionCostMinor.toString());
-          if (assessment.readiness !== "READY" || !candidate) {
+          const pinnedCandidate = executionSnapshot.assessmentSnapshot?.execution?.partnerCandidates
+            ?.find(item => item.partnerId === partnerId
+              && item.agreementId === executionSnapshot.partnerAgreementId
+              && item.rateCardId === executionSnapshot.partnerRateCardId);
+          if (assessment.readiness !== "READY" || !candidate || !pinnedCandidate
+            || candidate.currency !== executionSnapshot.currency
+            || JSON.stringify(candidate.packageRates) !== JSON.stringify(pinnedCandidate.packageRates)) {
             return { blocker: "HAT_PARTNER_EXECUTION_SNAPSHOT_STALE" };
           }
           agreementId = executionSnapshot.partnerAgreementId;
