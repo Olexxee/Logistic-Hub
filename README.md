@@ -46,7 +46,7 @@ The platform coordinates the shipment lifecycle: booking, route and capacity che
 ## Driver & Vehicle Operations
 
 - [Driver & Vehicle Operations README](docs/driver-vehicle-operations-readme.md) — source-of-truth DRV-00–DRV-07 roadmap. The unified Admin driver/vehicle workspace and capability/suitability model are implemented; DRV-05C backend safety holds, driver recovery, hub recovery and hub disposition (D1–D2) are merged. Route-specific pricing/activation (D2B), frontend recovery/disposition workflows and staging acceptance remain outstanding.
-- [Hub-assisted execution readiness design](docs/hub-assisted-execution-readiness-design.md) — ER-01 through ER-04 are merged: independent driver payout policies, shared per-leg driver/partner/hub readiness, immutable executor snapshots and transactional dispatch/assignment gates. ER-05 lifecycle regression acceptance is in progress. Customer tariffs remain separate from internal execution costs; no external payout or settlement activation is included.
+- [Hub-assisted execution readiness design](docs/hub-assisted-execution-readiness-design.md) — ER-01 through ER-04 are merged. ER-05 regression coverage is merged through PR #182; live staging acceptance remains outstanding. See the [ER-05 staging acceptance runbook](docs/er-05-staging-acceptance.md). Customer tariffs remain separate from internal execution costs; no external payout or settlement activation is included.
 
 ## Driver assignment lifecycle
 
