@@ -309,6 +309,13 @@ test("hub-assisted integration quotes use shared per-leg operational tariffs", a
   assert.equal(state.options[0].partnerAgreementId, null);
   assert.equal(state.options[0].driverPayoutMinor, null);
   assert.equal(state.options[0].packageRateSnapshot.length, 3);
+  for (const key of [
+    "driverPayoutMinor", "partnerExecutionCostMinor", "executionCostMinor",
+    "executionSnapshot", "selectedDriverProfileId", "selectedPartnerId",
+  ]) {
+    assert.equal(Object.hasOwn(result.body.options[0], key), false, `customer quote DTO must not expose ${key}`);
+  }
+  assert.equal(JSON.stringify(result.body).includes("executionCostMinor"), false);
 });
 
 test("hub-assisted integration quote acceptance revalidates route and tariffs", async () => {
