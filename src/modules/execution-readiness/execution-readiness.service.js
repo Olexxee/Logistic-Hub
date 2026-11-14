@@ -434,6 +434,19 @@ export function createExecutionReadinessService({ prismaClient, repository, cloc
             mode: "PLATFORM_DRIVER",
             payoutAssessment: payout,
             eligibleDriverCount: eligibleDrivers.length,
+            driverCandidates: eligibleDrivers.map(driver => ({
+              driverProfileId: driver.id,
+              displayName: driver.user?.fullName ?? null,
+              serviceRadiusMeters: driver.serviceRadiusMeters,
+              lastLocationAt: driver.lastLocationAt?.toISOString?.() ?? null,
+              vehicles: (driver.vehicles ?? []).map(vehicle => ({
+                id: vehicle.id,
+                type: vehicle.type,
+                make: vehicle.make ?? null,
+                model: vehicle.model ?? null,
+                registrationPlate: vehicle.registrationPlate ?? null,
+              })),
+            })),
           };
         } else if (PARTNER_LEG_TYPES.has(leg.type) && packages.length) {
           if (packages.some(pkg => !validPositiveInteger(pkg.weightGrams))) {
