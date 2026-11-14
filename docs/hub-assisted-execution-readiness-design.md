@@ -3,7 +3,7 @@
 **Workstream:** HAT execution readiness  
 **Implementation branch:** phased ER-01 through ER-05 delivery on `main`  
 **Current slice:** ER-05 lifecycle and regression acceptance  
-**Status:** ER-01 through ER-04 are merged. ER-05 is in progress: the first regression increment is merged in PR #176; mixed local-driver/partner sequencing coverage is being added. PostgreSQL concurrency evidence and staging acceptance remain outstanding.
+**Status:** ER-01 through ER-04 are merged. ER-05 is in progress: the initial lifecycle regression (PR #176) and mixed local-driver/partner sequencing regression (PR #177) are merged. PostgreSQL execution-snapshot concurrency coverage is now being added; staging acceptance remains outstanding.
 
 ## 1. Objective
 
