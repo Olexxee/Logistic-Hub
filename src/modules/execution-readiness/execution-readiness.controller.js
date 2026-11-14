@@ -1,5 +1,15 @@
 export function createExecutionReadinessController(service) {
   return {
+    assessLeg: async (req, res) => {
+      const result = await service.assessLeg({
+        deliveryLegId: req.validated.params.legId,
+      });
+      if (result.found === false) return res.status(404).json({
+        success: false,
+        error: { code: "DELIVERY_LEG_NOT_FOUND", message: "Delivery leg not found." },
+      });
+      return res.status(200).json({ success: true, data: result });
+    },
     selectExecutor: async (req, res) => {
       const result = await service.selectExecutor({
         deliveryLegId: req.validated.params.legId,
