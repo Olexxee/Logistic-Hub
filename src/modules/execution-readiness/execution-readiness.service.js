@@ -142,6 +142,8 @@ function validateRecoveryDisposition(disposition, leg, booking) {
     && originHub?.id === disposition.hubPointId
     && leg.originHubPointId === originHub.id
     && leg.originServiceZoneId === originHub.serviceZoneId
+    && leg.originLatitude != null && originHub.latitude != null
+    && leg.originLongitude != null && originHub.longitude != null
     && Number(leg.originLatitude) === Number(originHub.latitude)
     && Number(leg.originLongitude) === Number(originHub.longitude)
     && (disposition.destinationServiceZoneId ?? null) === leg.destinationServiceZoneId
@@ -150,10 +152,14 @@ function validateRecoveryDisposition(disposition, leg, booking) {
       ? destinationHub.id === leg.destinationHubPointId
         && destinationHub.serviceZoneId === leg.destinationServiceZoneId
         && PARTNER_LEG_TYPES.has(leg.type)
+        && leg.destinationLatitude != null && destinationHub.latitude != null
+        && leg.destinationLongitude != null && destinationHub.longitude != null
         && Number(leg.destinationLatitude) === Number(destinationHub.latitude)
         && Number(leg.destinationLongitude) === Number(destinationHub.longitude)
       : leg.destinationHubPointId == null
         && leg.type === "FINAL_MILE"
+        && leg.destinationLatitude != null && booking.destinationLatitude != null
+        && leg.destinationLongitude != null && booking.destinationLongitude != null
         && Number(leg.destinationLatitude) === Number(booking.destinationLatitude)
         && Number(leg.destinationLongitude) === Number(booking.destinationLongitude))
     && booking.paymentStatus === "SUCCEEDED"
