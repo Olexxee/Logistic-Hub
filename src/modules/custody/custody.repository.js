@@ -161,13 +161,14 @@ export function createCustodyRepository({ prismaClient }) {
             select: {
               id: true, status: true, paymentStatus: true, parcelCategory: true,
               destinationServiceZoneId: true, destinationAddress: true,
-              destinationLatitude: true, destinationLongitude: true,
+              destinationLatitude: true, destinationLongitude: true, currency: true,
+              pricingSnapshot: true,
             },
           },
           deliveryLeg: {
             select: {
               id: true, sequence: true, status: true, type: true,
-              originServiceZoneId: true, destinationServiceZoneId: true,
+              originServiceZoneId: true, destinationServiceZoneId: true, metadata: true,
             },
           },
           hubPoint: {
